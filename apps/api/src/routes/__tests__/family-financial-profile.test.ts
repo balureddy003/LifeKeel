@@ -21,7 +21,8 @@ vi.mock('../../signals.js', () => ({
 // it called on a tenant's first final submit, and not on later ones.
 const rewardReferralIfPendingMock = vi.fn(async (_db: unknown, _tenantId: string) => {})
 vi.mock('../referrals.js', () => ({
-  rewardReferralIfPending: (db: unknown, tenantId: string) => rewardReferralIfPendingMock(db, tenantId),
+  rewardReferralIfPending: (db: unknown, tenantId: string) =>
+    rewardReferralIfPendingMock(db, tenantId),
 }))
 
 // PRD-111: getSignalsCollection() is an async singleton with no db
@@ -72,7 +73,7 @@ function daysFromNow(days: number): string {
 function matchesFilter(doc: Record<string, unknown>, filter: Record<string, unknown>): boolean {
   return Object.entries(filter).every(([key, cond]) => {
     if (cond && typeof cond === 'object' && '$in' in (cond as Record<string, unknown>)) {
-      return ((cond as { $in: unknown[] }).$in).includes(doc[key])
+      return (cond as { $in: unknown[] }).$in.includes(doc[key])
     }
     return doc[key] === cond
   })
@@ -114,40 +115,53 @@ function makeDb() {
     find: (filter: Record<string, unknown>) => ({
       toArray: async () => insightDocs.filter((d) => matchesFilter(d, filter)),
     }),
-    updateMany: vi.fn(async (filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
-      let modifiedCount = 0
-      for (const doc of insightDocs) {
-        if (matchesFilter(doc, filter)) {
-          Object.assign(doc, update.$set)
-          modifiedCount++
+    updateMany: vi.fn(
+      async (filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
+        let modifiedCount = 0
+        for (const doc of insightDocs) {
+          if (matchesFilter(doc, filter)) {
+            Object.assign(doc, update.$set)
+            modifiedCount++
+          }
         }
-      }
-      return { modifiedCount }
-    }),
+        return { modifiedCount }
+      },
+    ),
   }
   // PRD-111: one nudge-state doc per tenant, same upsert shape as the real
   // family_life_change_nudge_state collection.
   const nudgeStateDocs: Record<string, unknown>[] = []
   const nudgeStateCol = {
-    findOne: vi.fn(async (filter: Record<string, unknown>) => nudgeStateDocs.find((d) => matchesFilter(d, filter)) ?? null),
-    updateOne: vi.fn(async (filter: Record<string, unknown>, update: { $set: Record<string, unknown> }, opts?: { upsert?: boolean }) => {
-      let doc = nudgeStateDocs.find((d) => d['tenant_id'] === filter['tenant_id'])
-      if (!doc) {
-        if (!opts?.upsert) return { matchedCount: 0, modifiedCount: 0 }
-        doc = { tenant_id: filter['tenant_id'] }
-        nudgeStateDocs.push(doc)
-      }
-      Object.assign(doc, update.$set)
-      return { matchedCount: 1, modifiedCount: 1 }
-    }),
+    findOne: vi.fn(
+      async (filter: Record<string, unknown>) =>
+        nudgeStateDocs.find((d) => matchesFilter(d, filter)) ?? null,
+    ),
+    updateOne: vi.fn(
+      async (
+        filter: Record<string, unknown>,
+        update: { $set: Record<string, unknown> },
+        opts?: { upsert?: boolean },
+      ) => {
+        let doc = nudgeStateDocs.find((d) => d['tenant_id'] === filter['tenant_id'])
+        if (!doc) {
+          if (!opts?.upsert) return { matchedCount: 0, modifiedCount: 0 }
+          doc = { tenant_id: filter['tenant_id'] }
+          nudgeStateDocs.push(doc)
+        }
+        Object.assign(doc, update.$set)
+        return { matchedCount: 1, modifiedCount: 1 }
+      },
+    ),
   }
 
   // PRD-120: the per-member retirement eval looks up roster DOBs here.
   const familyGroupsCol = {
     findOne: vi.fn(async (filter: Record<string, unknown> = {}) =>
-      rosterMembers.length > 0 && (filter['tenant_id'] === undefined || filter['tenant_id'] === TENANT)
+      rosterMembers.length > 0 &&
+      (filter['tenant_id'] === undefined || filter['tenant_id'] === TENANT)
         ? { tenant_id: TENANT, members: rosterMembers }
-        : null),
+        : null,
+    ),
     createIndex: vi.fn(async () => ({})),
   }
 
@@ -163,32 +177,47 @@ function makeDb() {
   // emit doesn't fall through to profileCol and pollute the stored profile.
   const eventDocs: Record<string, unknown>[] = []
   const readinessEventsCol = {
-    updateOne: vi.fn(async (
-      filter: Record<string, unknown>,
-      update: { $set?: Record<string, unknown>; $setOnInsert?: Record<string, unknown> },
-    ) => {
-      const existing = eventDocs.find((d) => d['dedupe_key'] === filter['dedupe_key'])
-      if (existing) Object.assign(existing, update.$set)
-      else eventDocs.push({ ...update.$setOnInsert, ...update.$set })
-      return { upsertedCount: 1 }
-    }),
+    updateOne: vi.fn(
+      async (
+        filter: Record<string, unknown>,
+        update: { $set?: Record<string, unknown>; $setOnInsert?: Record<string, unknown> },
+      ) => {
+        const existing = eventDocs.find((d) => d['dedupe_key'] === filter['dedupe_key'])
+        if (existing) Object.assign(existing, update.$set)
+        else eventDocs.push({ ...update.$setOnInsert, ...update.$set })
+        return { upsertedCount: 1 }
+      },
+    ),
   }
 
   return {
     collection: (name: string) =>
-      name === 'insights' ? insightsCol
-        : name === 'family_life_change_nudge_state' ? nudgeStateCol
-        : name === 'family_groups' ? familyGroupsCol
-        : name === 'documents' ? documentsCol
-        : name === 'readiness_events' ? readinessEventsCol
-        : profileCol,
+      name === 'insights'
+        ? insightsCol
+        : name === 'family_life_change_nudge_state'
+          ? nudgeStateCol
+          : name === 'family_groups'
+            ? familyGroupsCol
+            : name === 'documents'
+              ? documentsCol
+              : name === 'readiness_events'
+                ? readinessEventsCol
+                : profileCol,
     _insightDocs: insightDocs,
     _nudgeStateDocs: nudgeStateDocs,
     _eventDocs: eventDocs,
   } as any
 }
 
-async function buildApp(engine: Engine): Promise<{ app: ReturnType<typeof Fastify>; insights: Insight[]; insightDocs: Record<string, unknown>[]; nudgeStateDocs: Record<string, unknown>[]; eventDocs: Record<string, unknown>[] }> {
+async function buildApp(
+  engine: Engine,
+): Promise<{
+  app: ReturnType<typeof Fastify>
+  insights: Insight[]
+  insightDocs: Record<string, unknown>[]
+  nudgeStateDocs: Record<string, unknown>[]
+  eventDocs: Record<string, unknown>[]
+}> {
   const app = Fastify()
   app.addHook('onRequest', async (request) => {
     ;(request as any).authContext = { tenant_id: TENANT, user_id: 'user-1', roles: ['admin'] }
@@ -209,7 +238,13 @@ async function buildApp(engine: Engine): Promise<{ app: ReturnType<typeof Fastif
   await registerFamilyFinancialProfileRoutes(app, db, engine, async (generated) => {
     insights.push(...generated)
   })
-  return { app, insights, insightDocs: db._insightDocs, nudgeStateDocs: db._nudgeStateDocs, eventDocs: db._eventDocs }
+  return {
+    app,
+    insights,
+    insightDocs: db._insightDocs,
+    nudgeStateDocs: db._nudgeStateDocs,
+    eventDocs: db._eventDocs,
+  }
 }
 
 const BASE_PROFILE = {
@@ -236,7 +271,13 @@ const BASE_PROFILE = {
     expected_annual_growth_pct: 5,
   },
   education_funds: [
-    { child_name: 'Sam', child_age: 8, current_savings_minor: 2_000_000, target_savings_minor: 2_000_000, years_remaining: 10 },
+    {
+      child_name: 'Sam',
+      child_age: 8,
+      current_savings_minor: 2_000_000,
+      target_savings_minor: 2_000_000,
+      years_remaining: 10,
+    },
   ],
 }
 
@@ -254,7 +295,11 @@ describe('PRD-102: policies[] and the new protection-domain rules', () => {
     const autosaved = await app.inject({ method: 'GET', url: '/family/financial-profile' })
     expect(autosaved.json().profile.insights_evaluated_at).toBeUndefined()
 
-    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, generate_insights: true },
+    })
     const finalised = await app.inject({ method: 'GET', url: '/family/financial-profile' })
     expect(finalised.json().profile.insights_evaluated_at).toBeDefined()
 
@@ -266,7 +311,14 @@ describe('PRD-102: policies[] and the new protection-domain rules', () => {
 
   it('round-trips policies[] through POST then GET', async () => {
     const { app } = await buildApp(engine)
-    const policies = [{ type: 'life', provider: 'Acme Insurance', coverage_amount_minor: 10_000_000, monthly_premium_minor: 2000 }]
+    const policies = [
+      {
+        type: 'life',
+        provider: 'Acme Insurance',
+        coverage_amount_minor: 10_000_000,
+        monthly_premium_minor: 2000,
+      },
+    ]
 
     const post = await app.inject({
       method: 'POST',
@@ -287,7 +339,15 @@ describe('PRD-102: policies[] and the new protection-domain rules', () => {
       url: '/family/financial-profile',
       payload: {
         ...BASE_PROFILE,
-        policies: [{ type: 'life', provider: 'Acme', coverage_amount_minor: 100, monthly_premium_minor: 0, renewal_date: daysFromNow(30) }],
+        policies: [
+          {
+            type: 'life',
+            provider: 'Acme',
+            coverage_amount_minor: 100,
+            monthly_premium_minor: 0,
+            renewal_date: daysFromNow(30),
+          },
+        ],
         generate_insights: true,
       },
     })
@@ -300,11 +360,67 @@ describe('PRD-102: policies[] and the new protection-domain rules', () => {
       url: '/family/financial-profile',
       payload: {
         ...BASE_PROFILE,
-        policies: [{ type: 'life', provider: 'Acme', coverage_amount_minor: 100, monthly_premium_minor: 0, renewal_date: daysFromNow(200) }],
+        policies: [
+          {
+            type: 'life',
+            provider: 'Acme',
+            coverage_amount_minor: 100,
+            monthly_premium_minor: 0,
+            renewal_date: daysFromNow(200),
+          },
+        ],
         generate_insights: true,
       },
     })
     expect(insights2.some((i) => i.rule_id === 'policy_renewal_window')).toBe(false)
+  })
+
+  it('PRD-213: fires policy_renewal_date_in_past for a renewal date already passed, not for a future one', async () => {
+    const { app, insights } = await buildApp(engine)
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        policies: [
+          {
+            type: 'car',
+            provider: 'Acme',
+            coverage_amount_minor: 100,
+            monthly_premium_minor: 4500,
+            renewal_date: daysFromNow(-34),
+          },
+        ],
+        generate_insights: true,
+      },
+    })
+    expect(res.statusCode).toBe(200)
+    const stale = insights.find((i) => i.rule_id === 'policy_renewal_date_in_past')
+    expect(stale).toBeDefined()
+    expect(stale?.feature_snapshot?.['stale_renewal_count']).toBe(1)
+    // A past-due date is not an upcoming renewal — the forward-looking
+    // rule must not also fire on it.
+    expect(insights.some((i) => i.rule_id === 'policy_renewal_window')).toBe(false)
+
+    const { app: app2, insights: insights2 } = await buildApp(engine)
+    await app2.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        policies: [
+          {
+            type: 'car',
+            provider: 'Acme',
+            coverage_amount_minor: 100,
+            monthly_premium_minor: 4500,
+            renewal_date: daysFromNow(90),
+          },
+        ],
+        generate_insights: true,
+      },
+    })
+    expect(insights2.some((i) => i.rule_id === 'policy_renewal_date_in_past')).toBe(false)
   })
 
   it('PRD-110: member_id on a policy round-trips and attributes the renewal insight to that roster member', async () => {
@@ -315,7 +431,14 @@ describe('PRD-102: policies[] and the new protection-domain rules', () => {
       payload: {
         ...BASE_PROFILE,
         policies: [
-          { type: 'health', provider: 'Bupa', coverage_amount_minor: 0, monthly_premium_minor: 9000, renewal_date: daysFromNow(30), member_id: 'member-7' },
+          {
+            type: 'health',
+            provider: 'Bupa',
+            coverage_amount_minor: 0,
+            monthly_premium_minor: 9000,
+            renewal_date: daysFromNow(30),
+            member_id: 'member-7',
+          },
         ],
         generate_insights: true,
       },
@@ -345,7 +468,14 @@ describe('PRD-102: policies[] and the new protection-domain rules', () => {
       url: '/family/financial-profile',
       payload: {
         ...BASE_PROFILE,
-        policies: [{ type: 'critical_illness', provider: 'Acme', coverage_amount_minor: 100, monthly_premium_minor: 0 }],
+        policies: [
+          {
+            type: 'critical_illness',
+            provider: 'Acme',
+            coverage_amount_minor: 100,
+            monthly_premium_minor: 0,
+          },
+        ],
         generate_insights: true,
       },
     })
@@ -359,7 +489,11 @@ describe('PRD-102: policies[] and the new protection-domain rules', () => {
       url: '/family/financial-profile',
       payload: {
         ...BASE_PROFILE,
-        household: { ...BASE_PROFILE.household, life_cover_minor: 0, income_protection_monthly_minor: 0 },
+        household: {
+          ...BASE_PROFILE.household,
+          life_cover_minor: 0,
+          income_protection_monthly_minor: 0,
+        },
         policies: [],
         generate_insights: true,
       },
@@ -381,19 +515,51 @@ describe('unset targets and missing monthly expenses', () => {
   // monthly-expenses figure.
   const UNSET = {
     ...BASE_PROFILE,
-    household: { ...BASE_PROFILE.household, monthly_salary_minor: 670000, annual_living_expenses_minor: 7_197_700, mortgage_outstanding_minor: 40_000_000, life_cover_minor: 0, income_protection_monthly_minor: 0 },
-    emergency_fund: { ...BASE_PROFILE.emergency_fund, emergency_savings_minor: 3_000_000, monthly_expenses_minor: 0 },
-    retirement: { ...BASE_PROFILE.retirement, current_age: 42, target_retirement_age: 70, target_retirement_income_minor: 0 },
+    household: {
+      ...BASE_PROFILE.household,
+      monthly_salary_minor: 670000,
+      annual_living_expenses_minor: 7_197_700,
+      mortgage_outstanding_minor: 40_000_000,
+      life_cover_minor: 0,
+      income_protection_monthly_minor: 0,
+    },
+    emergency_fund: {
+      ...BASE_PROFILE.emergency_fund,
+      emergency_savings_minor: 3_000_000,
+      monthly_expenses_minor: 0,
+    },
+    retirement: {
+      ...BASE_PROFILE.retirement,
+      current_age: 42,
+      target_retirement_age: 70,
+      target_retirement_income_minor: 0,
+    },
     education_funds: [
-      { child_name: 'A', child_age: 0, current_savings_minor: 0, target_savings_minor: 0, years_remaining: 0 },
-      { child_name: 'B', child_age: 0, current_savings_minor: 0, target_savings_minor: 1, years_remaining: 0 },
+      {
+        child_name: 'A',
+        child_age: 0,
+        current_savings_minor: 0,
+        target_savings_minor: 0,
+        years_remaining: 0,
+      },
+      {
+        child_name: 'B',
+        child_age: 0,
+        current_savings_minor: 0,
+        target_savings_minor: 1,
+        years_remaining: 0,
+      },
     ],
     policies: [],
   }
 
   it('accepts a 0 target, still fires the real protection gaps, and raises no education/retirement insight from unset targets', async () => {
     const { app, insights } = await buildApp(engine)
-    const res = await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...UNSET, generate_insights: true } })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...UNSET, generate_insights: true },
+    })
     expect(res.statusCode).toBe(200)
     const rules = insights.map((i) => i.rule_id)
     expect(rules).toContain('life_insurance_below_household_needs')
@@ -425,7 +591,11 @@ describe('unset targets and missing monthly expenses', () => {
     await app.inject({
       method: 'POST',
       url: '/family/financial-profile',
-      payload: { ...UNSET, emergency_fund: { ...UNSET.emergency_fund, emergency_savings_minor: 800_000 }, generate_insights: true },
+      payload: {
+        ...UNSET,
+        emergency_fund: { ...UNSET.emergency_fund, emergency_savings_minor: 800_000 },
+        generate_insights: true,
+      },
     })
     expect(insights.some((i) => i.rule_id === 'emergency_fund_below_3_months')).toBe(true)
   })
@@ -442,11 +612,25 @@ describe('PRD-105: car/home policy types, and gating life_insurance_below_househ
   it('accepts and round-trips type: "car" and type: "home" — previously a 400 invalid_enum_value', async () => {
     const { app } = await buildApp(engine)
     const policies = [
-      { type: 'car', provider: 'Acme Motor', coverage_amount_minor: 2_000_000, monthly_premium_minor: 3000 },
-      { type: 'home', provider: 'Acme Home', coverage_amount_minor: 30_000_000, monthly_premium_minor: 5000 },
+      {
+        type: 'car',
+        provider: 'Acme Motor',
+        coverage_amount_minor: 2_000_000,
+        monthly_premium_minor: 3000,
+      },
+      {
+        type: 'home',
+        provider: 'Acme Home',
+        coverage_amount_minor: 30_000_000,
+        monthly_premium_minor: 5000,
+      },
     ]
 
-    const post = await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, policies } })
+    const post = await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, policies },
+    })
     expect(post.statusCode).toBe(200)
 
     const get = await app.inject({ method: 'GET', url: '/family/financial-profile' })
@@ -460,7 +644,11 @@ describe('PRD-105: car/home policy types, and gating life_insurance_below_househ
       url: '/family/financial-profile',
       payload: {
         ...BASE_PROFILE,
-        household: { ...BASE_PROFILE.household, life_cover_minor: 0, mortgage_outstanding_minor: 0 },
+        household: {
+          ...BASE_PROFILE.household,
+          life_cover_minor: 0,
+          mortgage_outstanding_minor: 0,
+        },
         education_funds: [], // no children on file -> has_dependents: 0
         policies: [],
         generate_insights: true,
@@ -476,7 +664,11 @@ describe('PRD-105: car/home policy types, and gating life_insurance_below_househ
       url: '/family/financial-profile',
       payload: {
         ...BASE_PROFILE,
-        household: { ...BASE_PROFILE.household, life_cover_minor: 0, mortgage_outstanding_minor: 20_000_000 },
+        household: {
+          ...BASE_PROFILE.household,
+          life_cover_minor: 0,
+          mortgage_outstanding_minor: 20_000_000,
+        },
         education_funds: [],
         policies: [],
         generate_insights: true,
@@ -492,7 +684,11 @@ describe('PRD-105: car/home policy types, and gating life_insurance_below_househ
       url: '/family/financial-profile',
       payload: {
         ...BASE_PROFILE,
-        household: { ...BASE_PROFILE.household, life_cover_minor: 0, mortgage_outstanding_minor: 0 },
+        household: {
+          ...BASE_PROFILE.household,
+          life_cover_minor: 0,
+          mortgage_outstanding_minor: 0,
+        },
         // BASE_PROFILE already carries one child (Sam) -> has_dependents: 1
         policies: [],
         generate_insights: true,
@@ -521,7 +717,14 @@ describe('PRD-104: household.members[]', () => {
           ...BASE_PROFILE.household,
           // BASE_PROFILE's primary earner already has income_protection_monthly_minor: 400000,
           // so only this member's lack of protection should fire here.
-          members: [{ member_id: 'member-2', employment_status: 'employed', monthly_salary_minor: 350000, income_protection_monthly_minor: 0 }],
+          members: [
+            {
+              member_id: 'member-2',
+              employment_status: 'employed',
+              monthly_salary_minor: 350000,
+              income_protection_monthly_minor: 0,
+            },
+          ],
         },
         generate_insights: true,
       },
@@ -538,7 +741,11 @@ describe('PRD-104: household.members[]', () => {
     // twice (once per earner), but the 3 joint/shared rules must not
     // duplicate — they're evaluated once, correctly, from the primary
     // earner's event; the member event neutralizes them.
-    for (const ruleId of ['life_insurance_below_household_needs', 'policy_renewal_window', 'no_health_or_critical_illness_cover']) {
+    for (const ruleId of [
+      'life_insurance_below_household_needs',
+      'policy_renewal_window',
+      'no_health_or_critical_illness_cover',
+    ]) {
       expect(insights.filter((i) => i.rule_id === ruleId).length).toBeLessThanOrEqual(1)
     }
   })
@@ -553,7 +760,14 @@ describe('PRD-104: household.members[]', () => {
         household: {
           ...BASE_PROFILE.household,
           income_protection_monthly_minor: 0,
-          members: [{ member_id: 'member-2', employment_status: 'self_employed', monthly_salary_minor: 250000, income_protection_monthly_minor: 0 }],
+          members: [
+            {
+              member_id: 'member-2',
+              employment_status: 'self_employed',
+              monthly_salary_minor: 250000,
+              income_protection_monthly_minor: 0,
+            },
+          ],
         },
         generate_insights: true,
       },
@@ -571,7 +785,14 @@ describe('PRD-104: household.members[]', () => {
         household: {
           ...BASE_PROFILE.household,
           // Primary earner already has protection in BASE_PROFILE.
-          members: [{ member_id: 'member-2', employment_status: 'retired', monthly_salary_minor: 600000, income_protection_monthly_minor: 0 }],
+          members: [
+            {
+              member_id: 'member-2',
+              employment_status: 'retired',
+              monthly_salary_minor: 600000,
+              income_protection_monthly_minor: 0,
+            },
+          ],
         },
         generate_insights: true,
       },
@@ -581,7 +802,14 @@ describe('PRD-104: household.members[]', () => {
 
   it('round-trips members[] through POST then GET, and leaves it empty for profiles that never had any', async () => {
     const { app } = await buildApp(engine)
-    const members = [{ member_id: 'member-2', employment_status: 'employed' as const, monthly_salary_minor: 350000, income_protection_monthly_minor: 0 }]
+    const members = [
+      {
+        member_id: 'member-2',
+        employment_status: 'employed' as const,
+        monthly_salary_minor: 350000,
+        income_protection_monthly_minor: 0,
+      },
+    ]
 
     await app.inject({
       method: 'POST',
@@ -604,7 +832,15 @@ describe('PRD-120: per-member retirement evaluation', () => {
   beforeEach(async () => {
     engine = new Engine({ detectorsDir: DETECTORS_DIR, strictValidation: false })
     await engine.load()
-    rosterMembers = [{ id: 'member-2', name: 'Sudha', role: 'adult', status: 'active', date_of_birth: '1990-01-01' }]
+    rosterMembers = [
+      {
+        id: 'member-2',
+        name: 'Sudha',
+        role: 'adult',
+        status: 'active',
+        date_of_birth: '1990-01-01',
+      },
+    ]
   })
 
   const profileWithMember = (member: Record<string, unknown>) => ({
@@ -613,7 +849,7 @@ describe('PRD-120: per-member retirement evaluation', () => {
     generate_insights: true,
   })
 
-  it('evaluates the retirement detector on a member\'s own pension, attributed via member_id', async () => {
+  it("evaluates the retirement detector on a member's own pension, attributed via member_id", async () => {
     const { app, insights } = await buildApp(engine)
     const res = await app.inject({
       method: 'POST',
@@ -632,16 +868,22 @@ describe('PRD-120: per-member retirement evaluation', () => {
     expect(res.statusCode).toBe(200)
 
     const memberInsights = insights.filter(
-      (i) => i.detector_id === 'family_retirement_gap' && i.feature_snapshot?.['member_id'] === 'member-2',
+      (i) =>
+        i.detector_id === 'family_retirement_gap' &&
+        i.feature_snapshot?.['member_id'] === 'member-2',
     )
     expect(memberInsights.length).toBeGreaterThanOrEqual(1)
     // The member event's affordability gate used *their* salary.
     expect(memberInsights[0]?.feature_snapshot?.['monthly_salary_minor']).toBe(200_000)
     // The household event's own insights stay member-less — no cross-tagging.
     const householdInsights = insights.filter(
-      (i) => i.detector_id === 'family_retirement_gap' && i.feature_snapshot?.['member_id'] === undefined,
+      (i) =>
+        i.detector_id === 'family_retirement_gap' &&
+        i.feature_snapshot?.['member_id'] === undefined,
     )
-    expect(householdInsights.every((i) => i.feature_snapshot?.['member_id'] === undefined)).toBe(true)
+    expect(householdInsights.every((i) => i.feature_snapshot?.['member_id'] === undefined)).toBe(
+      true,
+    )
   })
 
   it('does not evaluate a member whose pension fields were never entered — absent is not zero', async () => {
@@ -658,7 +900,9 @@ describe('PRD-120: per-member retirement evaluation', () => {
     })
     expect(
       insights.filter(
-        (i) => i.detector_id === 'family_retirement_gap' && i.feature_snapshot?.['member_id'] === 'member-2',
+        (i) =>
+          i.detector_id === 'family_retirement_gap' &&
+          i.feature_snapshot?.['member_id'] === 'member-2',
       ),
     ).toHaveLength(0)
   })
@@ -680,7 +924,9 @@ describe('PRD-120: per-member retirement evaluation', () => {
     })
     expect(
       insights.filter(
-        (i) => i.detector_id === 'family_retirement_gap' && i.feature_snapshot?.['member_id'] === 'member-2',
+        (i) =>
+          i.detector_id === 'family_retirement_gap' &&
+          i.feature_snapshot?.['member_id'] === 'member-2',
       ),
     ).toHaveLength(0)
   })
@@ -730,7 +976,15 @@ describe('PRD-128: per-member life-cover detection', () => {
       payload: {
         ...BASE_PROFILE,
         household: { ...BASE_PROFILE.household, members: [memberEarner] },
-        policies: [{ type: 'life', provider: 'Aviva', coverage_amount_minor: 15_000_000, monthly_premium_minor: 3000, member_id: 'member-2' }],
+        policies: [
+          {
+            type: 'life',
+            provider: 'Aviva',
+            coverage_amount_minor: 15_000_000,
+            monthly_premium_minor: 3000,
+            member_id: 'member-2',
+          },
+        ],
         generate_insights: true,
       },
     })
@@ -773,34 +1027,58 @@ describe('KEEL-006: optimistic concurrency on POST /family/financial-profile', (
 
   it('first-ever save (no version) succeeds and returns version 1', async () => {
     const { app } = await buildApp(engine)
-    const res = await app.inject({ method: 'POST', url: '/family/financial-profile', payload: BASE_PROFILE })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: BASE_PROFILE,
+    })
     expect(res.statusCode).toBe(200)
     expect(res.json().version).toBe(1)
   })
 
   it('a save carrying the current version succeeds and bumps it', async () => {
     const { app } = await buildApp(engine)
-    const first = await app.inject({ method: 'POST', url: '/family/financial-profile', payload: BASE_PROFILE })
+    const first = await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: BASE_PROFILE,
+    })
     const v1 = first.json().version
 
-    const second = await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, version: v1 } })
+    const second = await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, version: v1 },
+    })
     expect(second.statusCode).toBe(200)
     expect(second.json().version).toBe(v1 + 1)
   })
 
   it('a save carrying a stale version is rejected with 409, not silently overwritten', async () => {
     const { app } = await buildApp(engine)
-    const first = await app.inject({ method: 'POST', url: '/family/financial-profile', payload: BASE_PROFILE })
+    const first = await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: BASE_PROFILE,
+    })
     const v1 = first.json().version
 
     // Simulate a second tab saving first, advancing the version...
-    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, version: v1 } })
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, version: v1 },
+    })
 
     // ...then the first tab, still holding the stale v1, tries to save.
     const stale = await app.inject({
       method: 'POST',
       url: '/family/financial-profile',
-      payload: { ...BASE_PROFILE, household: { ...BASE_PROFILE.household, monthly_salary_minor: 1 }, version: v1 },
+      payload: {
+        ...BASE_PROFILE,
+        household: { ...BASE_PROFILE.household, monthly_salary_minor: 1 },
+        version: v1,
+      },
     })
     expect(stale.statusCode).toBe(409)
     expect(stale.json().error).toMatch(/updated elsewhere/i)
@@ -867,7 +1145,9 @@ describe('PRD-106: retirement projection correctness at and past target age', ()
 
     expect(insights.some((i) => i.rule_id === 'retirement_behind_target_age')).toBe(false)
 
-    const shortfall = insights.find((i) => i.rule_id === 'retirement_gap_unaffordable_by_contributions')
+    const shortfall = insights.find(
+      (i) => i.rule_id === 'retirement_gap_unaffordable_by_contributions',
+    )
     expect(shortfall).toBeDefined()
     expect(shortfall!.reasoning).not.toMatch(/age/i)
     expect(shortfall!.reasoning).not.toContain('130')
@@ -891,7 +1171,9 @@ describe('PRD-106: retirement projection correctness at and past target age', ()
       },
     })
     expect(insights.some((i) => i.rule_id === 'retirement_behind_target_age')).toBe(false)
-    expect(insights.some((i) => i.rule_id === 'retirement_gap_unaffordable_by_contributions')).toBe(false)
+    expect(insights.some((i) => i.rule_id === 'retirement_gap_unaffordable_by_contributions')).toBe(
+      false,
+    )
   })
 
   it('a 63-year-old with a severe pre-target shortfall gets a sustainability insight, never "retire around age 111"', async () => {
@@ -913,7 +1195,9 @@ describe('PRD-106: retirement projection correctness at and past target age', ()
         generate_insights: true,
       },
     })
-    const shortfall = insights.find((i) => i.rule_id === 'retirement_gap_unaffordable_by_contributions')
+    const shortfall = insights.find(
+      (i) => i.rule_id === 'retirement_gap_unaffordable_by_contributions',
+    )
     expect(shortfall).toBeDefined()
     expect(shortfall!.reasoning).not.toMatch(/age/i)
   })
@@ -968,7 +1252,9 @@ describe('PRD-107: insight resolution', () => {
     expect(res.statusCode).toBe(200)
 
     const protectionInsight = insightDocs.find((d) => d['rule_id'] === 'no_income_protection')
-    const lifeInsuranceInsight = insightDocs.find((d) => d['rule_id'] === 'life_insurance_below_household_needs')
+    const lifeInsuranceInsight = insightDocs.find(
+      (d) => d['rule_id'] === 'life_insurance_below_household_needs',
+    )
     expect(protectionInsight?.['state']).toBe('resolved')
     expect(lifeInsuranceInsight?.['state']).toBe('resolved')
   })
@@ -1043,7 +1329,11 @@ describe('PRD-111: unreported life-change nudge', () => {
 
   it('a final save crossing employment_status to unemployed, with no recent life event, flags the nudge active', async () => {
     const { app, nudgeStateDocs } = await buildApp(engine)
-    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, generate_insights: true },
+    })
 
     await app.inject({
       method: 'POST',
@@ -1059,12 +1349,19 @@ describe('PRD-111: unreported life-change nudge', () => {
 
   it('the same crossing on an intermediate autosave (no generate_insights) does not flag the nudge', async () => {
     const { app, nudgeStateDocs } = await buildApp(engine)
-    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, generate_insights: true },
+    })
 
     await app.inject({
       method: 'POST',
       url: '/family/financial-profile',
-      payload: { ...BASE_PROFILE, household: { ...BASE_PROFILE.household, employment_status: 'unemployed' } },
+      payload: {
+        ...BASE_PROFILE,
+        household: { ...BASE_PROFILE.household, employment_status: 'unemployed' },
+      },
     })
     expect(nudgeStateDocs.find((d) => d['tenant_id'] === TENANT)?.['active']).not.toBe(true)
   })
@@ -1072,7 +1369,11 @@ describe('PRD-111: unreported life-change nudge', () => {
   it('a crossing does not flag the nudge when a life event was already reported recently', async () => {
     recentLifeEvent = true
     const { app, nudgeStateDocs } = await buildApp(engine)
-    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, generate_insights: true },
+    })
 
     await app.inject({
       method: 'POST',
@@ -1091,18 +1392,30 @@ describe('PRD-111: unreported life-change nudge', () => {
     await app.inject({
       method: 'POST',
       url: '/family/financial-profile',
-      payload: { ...BASE_PROFILE, household: { ...BASE_PROFILE.household, employment_status: 'unemployed' }, generate_insights: true },
+      payload: {
+        ...BASE_PROFILE,
+        household: { ...BASE_PROFILE.household, employment_status: 'unemployed' },
+        generate_insights: true,
+      },
     })
     expect(nudgeStateDocs.find((d) => d['tenant_id'] === TENANT)?.['active']).not.toBe(true)
   })
 
   it('a save with no threshold crossed does not flag the nudge', async () => {
     const { app, nudgeStateDocs } = await buildApp(engine)
-    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
     await app.inject({
       method: 'POST',
       url: '/family/financial-profile',
-      payload: { ...BASE_PROFILE, household: { ...BASE_PROFILE.household, monthly_salary_minor: 420000 }, generate_insights: true },
+      payload: { ...BASE_PROFILE, generate_insights: true },
+    })
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        household: { ...BASE_PROFILE.household, monthly_salary_minor: 420000 },
+        generate_insights: true,
+      },
     })
     expect(nudgeStateDocs.find((d) => d['tenant_id'] === TENANT)?.['active']).not.toBe(true)
   })
@@ -1118,16 +1431,28 @@ describe('PRD-112: friend referral reward wiring', () => {
 
   it('calls rewardReferralIfPending on a first-ever final submit', async () => {
     const { app } = await buildApp(engine)
-    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, generate_insights: true },
+    })
     expect(rewardReferralIfPendingMock).toHaveBeenCalledTimes(1)
     expect(rewardReferralIfPendingMock).toHaveBeenCalledWith(expect.anything(), TENANT)
   })
 
   it('does not call rewardReferralIfPending on a second submit', async () => {
     const { app } = await buildApp(engine)
-    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, generate_insights: true },
+    })
     rewardReferralIfPendingMock.mockClear()
-    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, generate_insights: true },
+    })
     expect(rewardReferralIfPendingMock).not.toHaveBeenCalled()
   })
 
@@ -1149,7 +1474,14 @@ describe('Financial Profile wizard: education_funds[].member_id (roster-linked c
   it('round-trips education_funds[].member_id through POST then GET', async () => {
     const { app } = await buildApp(engine)
     const education_funds = [
-      { child_name: 'Sam', child_age: 8, current_savings_minor: 2_000_000, target_savings_minor: 2_000_000, years_remaining: 10, member_id: 'roster-child-1' },
+      {
+        child_name: 'Sam',
+        child_age: 8,
+        current_savings_minor: 2_000_000,
+        target_savings_minor: 2_000_000,
+        years_remaining: 10,
+        member_id: 'roster-child-1',
+      },
     ]
 
     const post = await app.inject({
@@ -1196,7 +1528,10 @@ describe('PRD-121: family_estate_readiness detector', () => {
     })
     expect(res.statusCode).toBe(200)
     const estate = insights.filter((i) => i.detector_id === 'family_estate_readiness')
-    expect(estate.map((i) => i.rule_id).sort()).toEqual(['estate_no_power_of_attorney', 'estate_no_will'])
+    expect(estate.map((i) => i.rule_id).sort()).toEqual([
+      'estate_no_power_of_attorney',
+      'estate_no_will',
+    ])
   })
 
   it('fires only the missing-document rule when a will is already on file', async () => {
@@ -1233,7 +1568,10 @@ describe('PRD-121: family_estate_readiness detector', () => {
       payload: { ...BASE_PROFILE, generate_insights: true },
     })
     const estate = insights.filter((i) => i.detector_id === 'family_estate_readiness')
-    expect(estate.map((i) => i.rule_id).sort()).toEqual(['estate_no_power_of_attorney', 'estate_no_will'])
+    expect(estate.map((i) => i.rule_id).sort()).toEqual([
+      'estate_no_power_of_attorney',
+      'estate_no_will',
+    ])
   })
 
   it('resolves an open estate insight once the document is on file', async () => {
@@ -1270,7 +1608,11 @@ describe('PRD-136: profile_changed feed event', () => {
 
   it('first save emits nothing — no baseline to diff against', async () => {
     const { app, eventDocs } = await buildApp(engine)
-    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, generate_insights: true },
+    })
     await flush()
     expect(eventDocs.filter((e) => e['type'] === 'profile_changed')).toHaveLength(0)
     await app.close()
@@ -1278,10 +1620,18 @@ describe('PRD-136: profile_changed feed event', () => {
 
   it('a second save with changed fields emits one event naming them', async () => {
     const { app, eventDocs } = await buildApp(engine)
-    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, generate_insights: true },
+    })
     const changed = {
       ...BASE_PROFILE,
-      household: { ...BASE_PROFILE.household, monthly_salary_minor: 500_000, life_cover_minor: 12_000_000 },
+      household: {
+        ...BASE_PROFILE.household,
+        monthly_salary_minor: 500_000,
+        life_cover_minor: 12_000_000,
+      },
       emergency_fund: { ...BASE_PROFILE.emergency_fund, emergency_savings_minor: 4_000_000 },
       generate_insights: true,
     }
@@ -1303,8 +1653,16 @@ describe('PRD-136: profile_changed feed event', () => {
 
   it('an identical re-save emits nothing — same data is not a change', async () => {
     const { app, eventDocs } = await buildApp(engine)
-    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
-    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: { ...BASE_PROFILE, generate_insights: true } })
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, generate_insights: true },
+    })
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, generate_insights: true },
+    })
     await flush()
     expect(eventDocs.filter((e) => e['type'] === 'profile_changed')).toHaveLength(0)
     await app.close()

@@ -123,6 +123,12 @@ const EXEMPT_COLLECTIONS = new Set([
   // detector-level aggregate metrics (precision/recall per detector) — no
   // per-tenant key or family content by design
   'feature_hash_eval_reports',
+  // PRD-217 operator AI health — platform-wide call metadata
+  // (task/model/outcome/latency, no tenant_id, no prompt/completion content;
+  // 30-day TTL) and global day×route counters for the verified-vs-generated
+  // mix — global aggregates, not per-tenant data
+  'ai_task_calls',
+  'assistant_answer_routes',
 ])
 
 // Collection-name literals at known access patterns. Kept deliberately
