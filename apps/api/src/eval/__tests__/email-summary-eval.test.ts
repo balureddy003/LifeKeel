@@ -50,18 +50,19 @@ describe('runEmailSummaryEval', () => {
   })
 
   it('does not blame the summary for an email the model judged not relevant', async () => {
-    const skipsWill: DecisionFn = (async (req: Req) => {
+    const skipsTravel: DecisionFn = (async (req: Req) => {
       const e = emailFor(req)
-      if (e.name === 'will-reminder') return wrap({ ...verdict('', null), is_financial: false })
+      if (e.name === 'travel-claims-line')
+        return wrap({ ...verdict('', null), is_financial: false })
       return wrap(
         verdict('Your policy has an update; review the details in the email.', policyOf(e)),
       )
     }) as unknown as DecisionFn
-    const r = await runEmailSummaryEval(skipsWill, 'stub-skips-will')
-    expect(r.missedRelevance).toEqual(['will-reminder'])
+    const r = await runEmailSummaryEval(skipsTravel, 'stub-skips-travel')
+    expect(r.missedRelevance).toEqual(['travel-claims-line'])
     expect(r.missingSummary).toEqual([])
     expect(r.passed).toBe(true)
-    expect(formatEmailSummaryReport(r)).toMatch(/not summarised.*will-reminder/)
+    expect(formatEmailSummaryReport(r)).toMatch(/not summarised.*travel-claims-line/)
   })
 
   it('rejects missing summaries and wrong policy fields', async () => {
