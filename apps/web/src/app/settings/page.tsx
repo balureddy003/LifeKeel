@@ -50,6 +50,7 @@ import {
   Copy,
   Gift,
   HeartPulse,
+  FileCheck2,
 } from 'lucide-react'
 import {
   exportAccountData,
@@ -1262,6 +1263,19 @@ export default function SettingsPage() {
             <div className="text-base font-medium">Activity Log</div>
             <div className="text-xs text-ink-tertiary mt-0.5">
               Every security-relevant action on your family's account
+            </div>
+          </ListRow>
+          <ListRow
+            icon={FileCheck2}
+            onClick={() => {
+              haptic('light')
+              router.push('/receipts')
+            }}
+            chevron
+          >
+            <div className="text-base font-medium">Receipts</div>
+            <div className="text-xs text-ink-tertiary mt-0.5">
+              What Keel proposed, who approved it, and what ran — in order, tamper-evident
             </div>
           </ListRow>
           <ListRow icon={Download} onClick={handleExport} chevron={!exporting}>
