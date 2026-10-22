@@ -1,0 +1,73 @@
+/*
+ * Sectioned public pages (legal, guides): sidebar on wide screens, a collapsible
+ * menu above the content on phones. Lives inside .lk-public, so landing tokens apply.
+ */
+.lk-public-body:has(.lk-docs) { max-width: 1180px; }
+
+.lk-docs { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+.lk-docs-main { min-width: 0; max-width: 760px; }
+
+.lk-docs-label { font: 500 12px/1.3 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 0; }
+.lk-docs-h { font: 600 13px/1.3 var(--body); color: var(--ink); margin: 0 0 6px; }
+.lk-docs-group + .lk-docs-group { margin-top: 18px; }
+.lk-docs nav ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.lk-docs-side a, .lk-docs-mnav nav a {
+  display: flex; align-items: center; min-height: 40px; padding: 8px 12px; border-radius: 10px;
+  color: var(--muted); font-size: 14.5px; line-height: 1.35; text-decoration: none;
+  border-left: 2px solid transparent;
+}
+.lk-docs-side a:hover, .lk-docs-mnav nav a:hover { color: var(--ink); background: color-mix(in srgb, var(--line) 45%, transparent); }
+.lk-docs a[aria-current='page'] { color: var(--ink); font-weight: 600; background: var(--surface); border-left-color: var(--brass); }
+
+/* phones and tablets: a sticky disclosure under the site header */
+.lk-docs-side { display: none; }
+.lk-docs-mnav {
+  position: sticky; top: calc(68px + env(safe-area-inset-top, 0px)); z-index: 20;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+}
+.lk-docs-mnav summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px;
+  min-height: 52px; padding: 8px 14px; color: var(--ink);
+}
+.lk-docs-mnav summary::-webkit-details-marker { display: none; }
+.lk-docs-mnav summary svg { margin-left: auto; flex: none; transition: transform 0.2s ease; color: var(--muted); }
+.lk-docs-mnav[open] summary svg { transform: rotate(180deg); }
+.lk-docs-mnav[open] summary { border-bottom: 1px solid var(--line); }
+.lk-docs-current { font-weight: 600; font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lk-docs-mnav nav { padding: 12px 8px; max-height: min(60vh, 480px); overflow-y: auto; overscroll-behavior: contain; }
+.lk-docs-mnav .lk-docs-h { padding-inline: 12px; }
+
+@media (min-width: 960px) {
+  .lk-docs { grid-template-columns: 248px minmax(0, 1fr); gap: 56px; }
+  .lk-docs-side { display: block; }
+  .lk-docs-side nav {
+    position: sticky; top: calc(68px + env(safe-area-inset-top, 0px) + 24px);
+    max-height: calc(100vh - 68px - env(safe-area-inset-top, 0px) - 48px); overflow-y: auto;
+    padding-right: 4px;
+  }
+  .lk-docs-side .lk-docs-label { margin-bottom: 14px; }
+  .lk-docs-mnav { display: none; }
+}
+
+/* headings reached from the menu or an in-page link land below the sticky bars */
+.lk-docs-main [id] { scroll-margin-top: 140px; }
+@media (min-width: 960px) { .lk-docs-main [id] { scroll-margin-top: 92px; } }
+
+/* small uppercase section labels inside a page stay labels, not display headings */
+.lk-docs-main h2.uppercase { font: 500 12px/1.3 var(--mono); letter-spacing: 0.12em; color: var(--muted); }
+
+/* cookies page */
+.lk-cookie-page h1 { margin: 0; }
+.lk-cookie-page .lk-intro { margin: 16px 0 0; color: var(--muted); font-size: 17px; line-height: 1.55; max-width: 60ch; }
+.lk-cookie-page section { margin-top: 36px; }
+.lk-cookie-page section h2 { margin: 0 0 12px; }
+.lk-cookie-page section > p { margin: 0 0 12px; color: var(--muted); font-size: 15px; line-height: 1.6; }
+.lk-cookie-page a { color: var(--brass-text); font-weight: 500; }
+.lk-cookie-table { display: grid; margin-top: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); overflow: hidden; }
+.lk-cookie-table article { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 16px; }
+.lk-cookie-table article + article { border-top: 1px solid var(--line); }
+.lk-cookie-table h3 { margin: 0; font: 600 15px/1.35 var(--body); color: var(--ink); }
+.lk-cookie-table p { margin: 0; font-size: 14.5px; line-height: 1.55; color: var(--muted); overflow-wrap: anywhere; }
+.lk-cookie-table .lk-fine { font: 400 12.5px/1.45 var(--mono); margin-top: 4px; }
+@media (min-width: 640px) { .lk-cookie-table article { grid-template-columns: 220px minmax(0, 1fr); gap: 24px; padding: 18px 20px; } }
+.lk-cookie-page button { margin: 4px 0 14px; }

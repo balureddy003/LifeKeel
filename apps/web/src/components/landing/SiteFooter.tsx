@@ -77,10 +77,14 @@ const PRODUCT = [
 const COMPANY = [
   { href: '/blog', label: 'Blog' },
   { href: '/support', label: 'Support' },
+  { href: '/trust', label: 'Trust' },
+]
+const LEGAL = [
   { href: '/terms', label: 'Terms' },
   { href: '/privacy', label: 'Privacy' },
   { href: '/cookies', label: 'Cookies' },
-  { href: '/trust', label: 'Trust' },
+  { href: '/security', label: 'Security' },
+  { href: '/legal/gdpr', label: 'GDPR' },
 ]
 
 export function SiteFooter({ home = true }: { home?: boolean }) {
@@ -117,7 +121,15 @@ export function SiteFooter({ home = true }: { home?: boolean }) {
               </Link>
             ))}
           </nav>
-          <div>
+          <nav aria-label="Legal">
+            <p className="lk-foot-h">Legal</p>
+            {LEGAL.map((l) => (
+              <Link key={l.href} href={l.href}>
+                {l.label}
+              </Link>
+            ))}
+          </nav>
+          <div className="lk-foot-news">
             <p className="lk-foot-h">Stay in touch</p>
             <Newsletter />
           </div>
@@ -128,6 +140,7 @@ export function SiteFooter({ home = true }: { home?: boolean }) {
           always call your local emergency number (999, 112, 911, or the equivalent where you are)
           in a real emergency. Consult a qualified professional before making financial decisions.
         </p>
+        <p className="lk-fine lk-copyright">&copy; {new Date().getFullYear()} LifeKeel</p>
       </div>
     </footer>
   )

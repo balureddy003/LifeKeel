@@ -1,8 +1,13 @@
 import type { Metadata } from 'next'
 import { PublicShell } from '@/components/landing/PublicShell'
+import { LegalLayout } from '../legal/LegalLayout'
 
-export const metadata: Metadata = { title: 'Privacy Policy — LifeKeel' }
+export const metadata: Metadata = { title: 'Privacy Notice — LifeKeel' }
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  return <PublicShell>{children}</PublicShell>
+  return (
+    <PublicShell>
+      <LegalLayout>{children}</LegalLayout>
+    </PublicShell>
+  )
 }
