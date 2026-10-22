@@ -23,7 +23,7 @@ import {
 } from '../email/imap-client.js'
 import { refreshGoogleAccessToken } from '../email/gmail-oauth.js'
 import { classifyEmail } from '../email/classify.js'
-import { localDecisionFromEnv, emailEncoderFromEnv } from '../local-model.js'
+import { localDecisionFromEnv, emailEncoderFromEnv, emailTwoStepFromEnv } from '../local-model.js'
 import { taskLlm, taskDecide } from '../ai/task-gateway.js'
 import {
   recordEmailClassifyFailure,
@@ -211,6 +211,13 @@ export async function scanTenantInbox(
     tenantId,
     localDecisionFromEnv('classifier'),
   )
+  // Two-step mode: the one-word relevance call runs as email.policy_relevance.v1 (above) and the
+  // full classification of relevant mail as email.policy_summary.v1, so each has its own policy,
+  // deadline and cost attribution. Off unless EMAIL_TWO_STEP=true (and the self-hosted model is set).
+  const twoStep = emailTwoStepFromEnv()
+  const decideDetail = twoStep
+    ? taskDecide('email.policy_summary.v1', tenantId, localDecisionFromEnv('classifier'))
+    : undefined
   const ocrDecide = taskDecide('document.extract.v1', tenantId, localDecisionFromEnv('ocr'))
   const encoderCfg = emailEncoderFromEnv()
   const encoder = encoderCfg ? { ...encoderCfg, onOutcome: recordEmailEncoderOutcome } : undefined
@@ -235,6 +242,7 @@ export async function scanTenantInbox(
       decide,
       prefilter: true,
       encoder,
+      ...(twoStep ? { twoStep, decideDetail } : {}),
       onStage: recordEmailFunnelStage,
     })
     if (classification.failed) {

@@ -159,6 +159,7 @@ jobs:
             JUDGE_SHADOW=${{ vars.JUDGE_SHADOW }}
             EMAIL_ENCODER_URL=${{ vars.EMAIL_ENCODER_URL }}
             EMAIL_ENCODER_MODE=${{ vars.EMAIL_ENCODER_MODE }}
+            EMAIL_TWO_STEP=${{ vars.EMAIL_TWO_STEP }}
             LOCAL_CLASSIFIER_MODEL=${{ vars.LOCAL_CLASSIFIER_MODEL }}
             LOCAL_OCR_MODEL=${{ vars.LOCAL_OCR_MODEL }}
             LOCAL_TEXT_ENABLED=${{ vars.LOCAL_TEXT_ENABLED }}

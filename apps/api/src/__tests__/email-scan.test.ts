@@ -5,7 +5,7 @@
  * scan doesn't reprocess the same mail.
  */
 
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 
 const fetchRecentEmailsMock = vi.fn()
 const classifyEmailMock = vi.fn()
@@ -138,6 +138,60 @@ describe('scanTenantInbox', () => {
     // The UID cursor must not advance — mail received on the free plan
     // gets backfilled if the tenant upgrades later.
     expect(db._credentialUpdates).toHaveLength(0)
+  })
+
+  describe('EMAIL_TWO_STEP', () => {
+    const envKeys = ['EMAIL_TWO_STEP', 'LOCAL_JUDGE_BASE_URL'] as const
+    const saved: Record<string, string | undefined> = {}
+    beforeEach(() => {
+      for (const k of envKeys) saved[k] = process.env[k]
+    })
+    afterEach(() => {
+      for (const k of envKeys) {
+        if (saved[k] === undefined) delete process.env[k]
+        else process.env[k] = saved[k]
+      }
+    })
+
+    async function scanOne() {
+      fetchRecentEmailsMock.mockResolvedValue({ emails: [makeEmail()], highestUid: 1 })
+      classifyEmailMock.mockResolvedValue({
+        isFinancial: false,
+        summary: '',
+        actionLabel: '',
+        actionType: 'info',
+        priority: 'low',
+      })
+      const db = makeDb([], { plan: 'starter' })
+      await scanTenantInbox(db, TENANT, VALID_CREDENTIAL_DOC as any)
+      return classifyEmailMock.mock.calls[0]![2] as Record<string, unknown>
+    }
+
+    it('passes twoStep and a separate detail decision when the flag and the local model are set', async () => {
+      process.env['EMAIL_TWO_STEP'] = 'true'
+      process.env['LOCAL_JUDGE_BASE_URL'] = 'http://judge.test:11434'
+      const opts = await scanOne()
+      expect(opts['twoStep']).toBe(true)
+      expect(typeof opts['decideDetail']).toBe('function')
+      expect(opts['decideDetail']).not.toBe(opts['decide'])
+      expect(opts['prefilter']).toBe(true)
+    })
+
+    it('changes nothing when the flag is off', async () => {
+      delete process.env['EMAIL_TWO_STEP']
+      process.env['LOCAL_JUDGE_BASE_URL'] = 'http://judge.test:11434'
+      const opts = await scanOne()
+      expect('twoStep' in opts).toBe(false)
+      expect('decideDetail' in opts).toBe(false)
+      expect(opts['prefilter']).toBe(true)
+    })
+
+    it('stays off without the self-hosted model, even with the flag set', async () => {
+      process.env['EMAIL_TWO_STEP'] = 'true'
+      delete process.env['LOCAL_JUDGE_BASE_URL']
+      const opts = await scanOne()
+      expect('twoStep' in opts).toBe(false)
+    })
   })
 
   it('is a no-op when the tenant document is missing (defaults to free)', async () => {

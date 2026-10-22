@@ -135,7 +135,10 @@ tasks:
     allowed_processors: [ollama]
     primary_model: tier:fast
     preferred_execution: local_cpu
-    deadline_ms: 60000
+    # Full classification of relevant mail in two-step mode (EMAIL_TWO_STEP): on the CPU judge it
+    # writes ~110-150 tokens at ~2.9 tokens/s plus ~13s reading the prompt, which can pass 60s.
+    # Batch work nobody is waiting on, like the document tasks.
+    deadline_ms: 120000
     max_input_tokens: 4000
     max_output_tokens: 600
     budget_class: batch
