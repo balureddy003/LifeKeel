@@ -62,6 +62,7 @@ const RAW_MODEL_CONSTRUCTORS: Record<string, string> = {
   'local-model.ts': 'self-hosted model factory — input to taskDecide/taskVision',
   'ocr/extract.ts': 'OpenAI vision client — only reached via taskVision',
   'eval/assistant-eval.ts': 'offline eval CLI — operator tooling, not a serving path',
+  'eval/text-llm.ts': 'offline eval CLI helper — operator tooling, not a serving path',
 }
 
 const RAW_CONSTRUCTOR_RE =

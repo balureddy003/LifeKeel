@@ -11,6 +11,7 @@ import { z } from 'zod'
 import type { DecisionFn, LlmFn } from '@lifekeel/platform'
 import type { FetchedEmail } from './imap-client.js'
 import { mightBePolicyRelated } from './prefilter.js'
+import { willOrPowerOfAttorneyReminder } from './rules.js'
 import type { EncoderClassifier } from './encoder-classifier.js'
 
 export interface EmailClassification {
@@ -259,6 +260,11 @@ export async function classifyEmail(
   email: FetchedEmail,
   opts: ClassifyEmailOptions = {},
 ): Promise<EmailClassification> {
+  // Rules first: a will / lasting power of attorney review reminder is always
+  // surfaced, whatever the prefilter, encoder or model would have said.
+  const ruled = willOrPowerOfAttorneyReminder(email)
+  if (ruled) return ruled
+
   if (opts.prefilter && !mightBePolicyRelated(email)) return NOT_FINANCIAL
 
   const enc = opts.encoder

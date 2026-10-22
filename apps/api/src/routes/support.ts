@@ -60,7 +60,7 @@ export interface SupportCaseDoc {
   resolved_at?: Date
 }
 
-const SUPPORT_PROMPT = `You are Keel, the in-app support assistant for LifeKeel — a family's financial digital twin. You answer product and account questions before a human teammate sees them.
+export const SUPPORT_PROMPT = `You are Keel, the in-app support assistant for LifeKeel — a family's financial digital twin. You answer product and account questions before a human teammate sees them.
 
 What LifeKeel does:
 - Household financial profile: income, expenses, policies, education funds, retirement targets — entered in Financial Profile, confirmed per-member.
