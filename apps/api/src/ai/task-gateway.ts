@@ -361,14 +361,17 @@ export async function taskVision(taskId: string, tenantId: string): Promise<Visi
   const vision = await resolveVisionClient()
   if (!vision) return undefined
   const { client, model, provider } = vision
-  const base: VisionFn = async (content) => {
+  const base: VisionFn = async (content, opts) => {
     const started = Date.now()
-    const response = await client.chat.completions.create({
-      model,
-      messages: [{ role: 'user', content }],
-      max_tokens: policy.max_output_tokens,
-      temperature: 0,
-    })
+    const response = await client.chat.completions.create(
+      {
+        model,
+        messages: [{ role: 'user', content }],
+        max_tokens: policy.max_output_tokens,
+        temperature: 0,
+      },
+      { signal: opts?.signal },
+    )
     const usage = response.usage
     if (usage) {
       recordUsage({
