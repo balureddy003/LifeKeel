@@ -74,6 +74,7 @@ export type AuditAction =
   | 'family.continuity_updated'
   | 'family.continuity_check_in_sent'
   | 'family.continuity_alert_sent'
+  | 'family.rehearsal_completed'
   | 'life_event.nudge_shown'
   | 'life_event.nudge_dismissed'
   | 'life_event.nudge_acted_on'
@@ -152,7 +153,10 @@ export class AuditLogger {
       // TTL index: auto-delete after 7 years (retention policy)
       this.col.createIndex({ timestamp: 1 }, { expireAfterSeconds: 60 * 60 * 24 * 365 * 7 }),
     ]).catch((err: unknown) =>
-      auditLog.error({ err: String(err) }, 'Audit log index creation failed — retention TTL may be missing'),
+      auditLog.error(
+        { err: String(err) },
+        'Audit log index creation failed — retention TTL may be missing',
+      ),
     )
   }
 

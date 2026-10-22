@@ -520,19 +520,16 @@ export function registerFamilyLegacyRoutes(
     })
   })
 
-  // ── Continuity rehearsal (PRD-137 §6) ──────────────────────────────────
+  // ── Continuity rehearsal (PRD-137 §6, PRD-214 M3) ──────────────────────
   // "If <as> couldn't act tomorrow, could they find what matters?" — a
-  // pure read model over the register: what the chosen adult can see,
-  // what's locatable, who they're named on, and the records only one
-  // person knows about. Nothing is notified and nothing is released —
-  // rehearsal answers the question, it doesn't act on the answer.
-  app.get<{ Querystring: { as?: string } }>('/family/legacy/rehearsal', async (req, reply) => {
-    if (!(await requireAdult(req, reply))) return
-    const { tenant_id } = req.authContext
-    const asId = req.query.as
-    if (!asId) return reply.status(400).send({ error: 'as=<member_id> is required' })
-
-    const family = await db.collection<FamilyGroupDoc>('family_groups').findOne({ tenant_id })
+  // read model over the register: what the chosen adult can see, what's
+  // locatable, who they're named on, and the records only one person knows
+  // about. Nothing is notified and nothing is released — rehearsal answers
+  // the question, it doesn't act on the answer.
+  const resolveRehearsalSubject = async (tenantId: string, asId: string) => {
+    const family = await db
+      .collection<FamilyGroupDoc>('family_groups')
+      .findOne({ tenant_id: tenantId })
     const members = family?.members ?? []
     const subject = members.find((m) => m.id === asId)
     if (
@@ -540,21 +537,35 @@ export function registerFamilyLegacyRoutes(
       subject.status !== 'active' ||
       !['organizer', 'parent', 'adult'].includes(subject.role)
     ) {
-      return reply.status(400).send({ error: 'as must be an active adult member of the family' })
+      return { members, subject: null }
     }
+    return { members, subject }
+  }
+
+  interface RehearsalSubject {
+    id: string
+    name: string
+    role: string
+  }
+
+  const computeRehearsalView = async (
+    tenantId: string,
+    members: NonNullable<FamilyGroupDoc['members']>,
+    subject: RehearsalSubject,
+  ) => {
     const asOrganizer = subject.role === 'organizer'
 
     const [docs, contacts, notes, assets] = await Promise.all([
-      docsFor(tenant_id).find({}).toArray() as Promise<LegacyDocumentDoc[]>,
-      contactsFor(tenant_id)
+      docsFor(tenantId).find({}).toArray() as Promise<LegacyDocumentDoc[]>,
+      contactsFor(tenantId)
         .find({})
         .toArray()
         .catch(() => []) as Promise<LegacyContactDoc[]>,
-      notesFor(tenant_id)
+      notesFor(tenantId)
         .find({})
         .toArray()
         .catch(() => []) as Promise<KnowledgeNoteDoc[]>,
-      getTenantCollection<Record<string, unknown>>(db, 'family_assets', tenant_id)
+      getTenantCollection<Record<string, unknown>>(db, 'family_assets', tenantId)
         .find({})
         .toArray()
         .catch(() => [] as Record<string, unknown>[]),
@@ -648,6 +659,150 @@ export function registerFamilyLegacyRoutes(
       reachable_contacts: reachable,
       only_one_person_knows: onlyOnePersonKnows,
     }
+  }
+
+  app.get<{ Querystring: { as?: string } }>('/family/legacy/rehearsal', async (req, reply) => {
+    if (!(await requireAdult(req, reply))) return
+    const { tenant_id } = req.authContext
+    const asId = req.query.as
+    if (!asId) return reply.status(400).send({ error: 'as=<member_id> is required' })
+
+    const { members, subject } = await resolveRehearsalSubject(tenant_id, asId)
+    if (!subject) {
+      return reply.status(400).send({ error: 'as must be an active adult member of the family' })
+    }
+    return computeRehearsalView(tenant_id, members, subject)
+  })
+
+  // ── Rehearsal records (PRD-214 M3) ───────────────────────────────────────
+  // A rehearsal the family *completed* earns a dated record: who stood in,
+  // how much they could find, and what the open gaps were. Gaps found during
+  // the walk-through become insights — information to fix, not a failure
+  // grade. Completing a rehearsal is itself read-only over the register.
+
+  app.get('/family/legacy/rehearsals', async (req, reply) => {
+    if (!(await requireAdult(req, reply))) return
+    const records = await db
+      .collection('rehearsal_records')
+      .find({ tenant_id: req.authContext.tenant_id })
+      .sort({ completed_at: -1 })
+      .limit(50)
+      .toArray()
+    return { records: records.map((r) => ({ ...r, _id: undefined })) }
+  })
+
+  app.post<{ Body: { as?: string } }>('/family/legacy/rehearsal', async (req, reply) => {
+    if (!(await requireAdult(req, reply))) return
+    const { tenant_id, user_id } = req.authContext
+    const asId = req.body?.as
+    if (!asId) return reply.status(400).send({ error: 'as=<member_id> is required' })
+
+    const { members, subject } = await resolveRehearsalSubject(tenant_id, asId)
+    if (!subject) {
+      return reply.status(400).send({ error: 'as must be an active adult member of the family' })
+    }
+
+    const view = await computeRehearsalView(tenant_id, members, subject)
+    const now = new Date()
+
+    // Gaps become insights — deduped by entity_key so re-running the
+    // rehearsal never double-files the same open gap.
+    const gapCandidates: Array<{
+      entity_key: string
+      hypothesis: string
+      reasoning: string
+      actions: string[]
+    }> = [
+      ...view.documents_without_location.map(
+        (d: { id: string; type: string; subject_name: string | null }) => ({
+          entity_key: `rehearsal:no_location:${d.id}`,
+          hypothesis: `${d.subject_name ?? 'Someone'}'s ${d.type.replace(/_/g, ' ')} has no original location recorded`,
+          reasoning: `In a continuity rehearsal, ${subject.name} could not say where the original ${d.type.replace(/_/g, ' ')} is kept — the location isn't recorded. Record where the original is stored so the person stepping in can find it.`,
+          actions: [
+            `Record where the original ${d.type.replace(/_/g, ' ')} is kept (vault, solicitor, home safe)`,
+          ],
+        }),
+      ),
+      ...view.properties_without_title.map((p: { id: string; name: string }) => ({
+        entity_key: `rehearsal:no_title:${p.id}`,
+        hypothesis: `No title evidence is recorded for ${p.name}`,
+        reasoning: `In a continuity rehearsal, ${subject.name} would find the property ${p.name} recorded but nothing showing where its title documents are. Recording the title reference — not the document itself — is enough for someone to know where to look.`,
+        actions: [`Record where ${p.name}'s title documents are held`],
+      })),
+      ...view.only_one_person_knows.map(
+        (o: { kind: 'document' | 'asset'; id: string; label: string }) => ({
+          entity_key: `rehearsal:only_known:${o.kind}:${o.id}`,
+          hypothesis: `Only one person knows about ${o.label}`,
+          reasoning: `In a continuity rehearsal, ${o.label} turned out to be recorded where only the organizer can see it, with no note to guide anyone else. If the organizer were unavailable, this record would be invisible to the person stepping in.`,
+          actions: ["Widen the record's visibility or leave a knowledge note saying where to look"],
+        }),
+      ),
+    ]
+
+    const insightsCol = db.collection('insights')
+    let gapInsightsCreated = 0
+    for (const gap of gapCandidates) {
+      const open = await insightsCol.findOne({
+        tenant_id,
+        detector_id: 'family_estate_readiness',
+        rule_id: 'continuity_rehearsal_gap',
+        entity_key: gap.entity_key,
+        state: { $in: ['identified', 'sent', 'approved'] },
+      })
+      if (open) continue
+      const insight: Insight = {
+        id: randomUUID(),
+        tenant_id,
+        hypothesis: gap.hypothesis,
+        category: 'risk',
+        urgency: 'medium',
+        estimated_impact_low: 0,
+        estimated_impact_high: 0,
+        reasoning: gap.reasoning,
+        actions: gap.actions,
+        confidence_breakdown: {
+          or_score: 1,
+          combined_score: 1,
+          model_version: 'rehearsal@1',
+          evidence_refs: [gap.entity_key],
+        },
+        detector_id: 'family_estate_readiness',
+        rule_id: 'continuity_rehearsal_gap',
+        state: 'identified',
+        created_at: now,
+        derived_from_signals: [],
+        entity_key: gap.entity_key,
+        feature_snapshot: { rehearsal: true, as_member_id: subject.id },
+      }
+      await insightsCol.insertOne(insight as unknown as Record<string, unknown>)
+      gapInsightsCreated++
+    }
+
+    const record = {
+      id: randomUUID(),
+      tenant_id,
+      rehearsed_by: user_id,
+      as_member_id: subject.id,
+      as_member_name: subject.name,
+      findability_pct: view.findability_pct,
+      gap_counts: {
+        hidden_documents: view.hidden_documents.length,
+        documents_without_location: view.documents_without_location.length,
+        properties_without_title: view.properties_without_title.length,
+        only_one_person_knows: view.only_one_person_knows.length,
+      },
+      gap_insights_created: gapInsightsCreated,
+      completed_at: now,
+    }
+    await db.collection('rehearsal_records').insertOne(record)
+
+    getAuditLogger()?.fromRequest(req, 'family.rehearsal_completed', 'rehearsal', record.id, {
+      as_member_id: subject.id,
+      findability_pct: view.findability_pct,
+      gap_insights_created: gapInsightsCreated,
+    })
+
+    return { record, view }
   })
 }
 

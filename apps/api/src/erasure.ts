@@ -36,6 +36,7 @@ export const DELETABLE_COLLECTIONS = [
   'family_cashflow_entries',
   'family_scenarios',
   'family_continuity_state',
+  'rehearsal_records', // PRD-214 M3 — dated continuity rehearsals
   'family_join_requests',
   'family_member_invites',
   'family_invite_sends', // R43 daily invitation counter
