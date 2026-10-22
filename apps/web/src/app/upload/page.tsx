@@ -363,12 +363,12 @@ export default function UploadPage() {
                           style={{
                             color:
                               doc.status === 'extracted'
-                                ? '#4ade80'
+                                ? '#92e1d7'
                                 : doc.status === 'error'
-                                  ? '#f87171'
+                                  ? '#ffafa3'
                                   : doc.status === 'stored'
-                                    ? '#9ca3af'
-                                    : '#fbbf24',
+                                    ? '#8763aa'
+                                    : '#ffda87',
                           }}
                         >
                           {statusIcon(doc.status)} {statusLabel(doc.status, doc.extractedData)}

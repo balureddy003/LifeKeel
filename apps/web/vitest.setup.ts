@@ -1,5 +1,21 @@
 import '@testing-library/jest-dom/vitest'
 
+if (!window.matchMedia) {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: (query: string): MediaQueryList => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener() {},
+      removeListener() {},
+      addEventListener() {},
+      removeEventListener() {},
+      dispatchEvent: () => true,
+    }),
+  })
+}
+
 // Neither jsdom nor Node 22+'s own experimental `localStorage` global (which
 // requires --localstorage-file and otherwise resolves to undefined) reliably
 // provide a working Storage here — jsdom detects the native global exists and

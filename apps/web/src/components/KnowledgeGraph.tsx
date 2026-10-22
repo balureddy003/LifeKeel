@@ -21,7 +21,12 @@ import type { LucideIcon } from 'lucide-react'
 import { haptic } from '@/lib/haptics'
 import { useAuth } from '@/lib/auth-context'
 import type { FamilyMember } from '@/lib/types'
-import { getMemberSections, CATEGORY_COLOR, FAMILY_ACCENT, type GraphCategory } from '@/lib/familySections'
+import {
+  getMemberSections,
+  CATEGORY_COLOR,
+  FAMILY_ACCENT,
+  type GraphCategory,
+} from '@/lib/familySections'
 import { runForceSimulation, type SimNode, type SimEdge } from '@/lib/forceSimulation'
 import { fetchFinancialProfile, type FinancialProfilePolicy } from '@/lib/api'
 
@@ -38,9 +43,9 @@ interface NodeData {
 
 const KIND_COLOR: Record<NodeKind, string> = {
   root: FAMILY_ACCENT,
-  person: '#60a5fa',
-  category: '#8a8070',
-  asset: '#4ade80',
+  person: '#d3b8f5',
+  category: '#8763aa',
+  asset: '#92e1d7',
 }
 
 interface RawNode {
@@ -59,7 +64,10 @@ interface RawEdge {
   target: string
 }
 
-function buildGraphData(members: FamilyMember[], policies: FinancialProfilePolicy[]): { rawNodes: RawNode[]; rawEdges: RawEdge[] } {
+function buildGraphData(
+  members: FamilyMember[],
+  policies: FinancialProfilePolicy[],
+): { rawNodes: RawNode[]; rawEdges: RawEdge[] } {
   const rawNodes: RawNode[] = []
   const rawEdges: RawEdge[] = []
 
@@ -102,7 +110,10 @@ function buildGraphData(members: FamilyMember[], policies: FinancialProfilePolic
   return { rawNodes, rawEdges }
 }
 
-function buildFamilyGraph(members: FamilyMember[], policies: FinancialProfilePolicy[]): { nodes: Node<NodeData>[]; edges: Edge[] } {
+function buildFamilyGraph(
+  members: FamilyMember[],
+  policies: FinancialProfilePolicy[],
+): { nodes: Node<NodeData>[]; edges: Edge[] } {
   const { rawNodes, rawEdges } = buildGraphData(members, policies)
 
   const simNodes: SimNode[] = rawNodes.map((n) => ({
@@ -180,13 +191,14 @@ function GraphNode({ data }: NodeProps<NodeData>) {
           minWidth: isRoot ? 120 : isPerson ? 100 : 90,
         }}
       >
-        <div className="flex items-center gap-1" style={{ filter: `drop-shadow(0 0 8px ${color}40)` }}>
+        <div
+          className="flex items-center gap-1"
+          style={{ filter: `drop-shadow(0 0 8px ${color}40)` }}
+        >
           <data.icon size={isRoot ? 28 : isPerson ? 22 : 18} color={color} strokeWidth={1.5} />
           {isAsset && <ChevronRight size={12} color={color} strokeWidth={2} />}
         </div>
-        <div className="text-xs font-semibold text-ink-primary whitespace-nowrap">
-          {data.label}
-        </div>
+        <div className="text-xs font-semibold text-ink-primary whitespace-nowrap">{data.label}</div>
       </motion.div>
       <Handle type="source" position={Position.Bottom} style={{ opacity: 0 }} />
     </>
@@ -197,9 +209,9 @@ const nodeTypes = { graphNode: GraphNode }
 
 const FILTER_OPTIONS: { key: GraphCategory | 'all'; label: string; color: string }[] = [
   { key: 'all', label: 'All', color: FAMILY_ACCENT },
-  { key: 'protection', label: 'Protection', color: '#f87171' },
-  { key: 'wealth', label: 'Wealth', color: '#fbbf24' },
-  { key: 'goals', label: 'Goals', color: '#4ade80' },
+  { key: 'protection', label: 'Protection', color: '#ffafa3' },
+  { key: 'wealth', label: 'Wealth', color: '#ffda87' },
+  { key: 'goals', label: 'Goals', color: '#92e1d7' },
 ]
 
 interface KnowledgeGraphProps {
@@ -222,7 +234,9 @@ export function KnowledgeGraph({ fullscreen = false }: KnowledgeGraphProps) {
     fetchFinancialProfile().then((profile) => {
       if (!cancelled) setPolicies(profile?.policies ?? [])
     })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const graphMembers: FamilyMember[] = useMemo(() => {
@@ -236,7 +250,10 @@ export function KnowledgeGraph({ fullscreen = false }: KnowledgeGraphProps) {
     }))
   }, [family])
 
-  const { nodes: allNodes, edges: allEdges } = useMemo(() => buildFamilyGraph(graphMembers, policies), [graphMembers, policies])
+  const { nodes: allNodes, edges: allEdges } = useMemo(
+    () => buildFamilyGraph(graphMembers, policies),
+    [graphMembers, policies],
+  )
 
   const { nodes, edges } = useMemo(() => {
     if (filter === 'all') return { nodes: allNodes, edges: allEdges }
@@ -264,20 +281,26 @@ export function KnowledgeGraph({ fullscreen = false }: KnowledgeGraphProps) {
   // keydown listener further down) so both input methods activate a node
   // identically — see that listener's comment for why keyboard needs its
   // own handling at all.
-  const handleNodeActivate = useCallback((node: Node<NodeData>) => {
-    haptic('light')
-    if (node.data.kind === 'person' && node.data.navId) {
-      router.push(`/member/${node.data.navId}`)
-    } else if (node.data.kind === 'asset' && node.data.navId) {
-      router.push(`/asset/${node.data.navId}`)
-    } else if (node.data.kind === 'category') {
-      setSelected(node)
-    }
-  }, [router])
+  const handleNodeActivate = useCallback(
+    (node: Node<NodeData>) => {
+      haptic('light')
+      if (node.data.kind === 'person' && node.data.navId) {
+        router.push(`/member/${node.data.navId}`)
+      } else if (node.data.kind === 'asset' && node.data.navId) {
+        router.push(`/asset/${node.data.navId}`)
+      } else if (node.data.kind === 'category') {
+        setSelected(node)
+      }
+    },
+    [router],
+  )
 
-  const onNodeClick = useCallback((_: React.MouseEvent, node: Node<NodeData>) => {
-    handleNodeActivate(node)
-  }, [handleNodeActivate])
+  const onNodeClick = useCallback(
+    (_: React.MouseEvent, node: Node<NodeData>) => {
+      handleNodeActivate(node)
+    },
+    [handleNodeActivate],
+  )
 
   // Live-verification finding: every node is keyboard-focusable and
   // announced as a button (tabIndex=0, role="button", both react-flow
@@ -298,7 +321,8 @@ export function KnowledgeGraph({ fullscreen = false }: KnowledgeGraphProps) {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Enter' && e.key !== ' ') return
       const active = document.activeElement
-      if (!active || !container.contains(active) || !active.classList.contains('react-flow__node')) return
+      if (!active || !container.contains(active) || !active.classList.contains('react-flow__node'))
+        return
       const dataId = active.getAttribute('data-id')
       const node = nodes.find((n) => n.id === dataId)
       if (!node) return
@@ -310,19 +334,27 @@ export function KnowledgeGraph({ fullscreen = false }: KnowledgeGraphProps) {
   }, [nodes, handleNodeActivate])
 
   return (
-    <div ref={containerRef} className="relative w-full h-full rounded-3xl overflow-hidden glass flex flex-col">
+    <div
+      ref={containerRef}
+      className="relative w-full h-full rounded-3xl overflow-hidden glass flex flex-col"
+    >
       {/* Filter chips */}
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-tint/5 flex-shrink-0">
         {FILTER_OPTIONS.map((opt) => (
           <button
             key={opt.key}
-            onClick={() => { setFilter(opt.key); haptic('light') }}
+            onClick={() => {
+              setFilter(opt.key)
+              haptic('light')
+            }}
             className={`rounded-full px-3 py-1 text-xs font-semibold transition-all ${
-              filter === opt.key
-                ? 'text-ink-primary'
-                : 'text-ink-tertiary hover:text-ink-secondary'
+              filter === opt.key ? 'text-ink-primary' : 'text-ink-tertiary hover:text-ink-secondary'
             }`}
-            style={filter === opt.key ? { background: `${opt.color}25`, border: `1px solid ${opt.color}50` } : { border: '1px solid transparent' }}
+            style={
+              filter === opt.key
+                ? { background: `${opt.color}25`, border: `1px solid ${opt.color}50` }
+                : { border: '1px solid transparent' }
+            }
           >
             {opt.label}
           </button>
@@ -369,87 +401,104 @@ export function KnowledgeGraph({ fullscreen = false }: KnowledgeGraphProps) {
             </Link>
           </div>
         ) : (
-        <>
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          onNodeClick={onNodeClick}
-          fitView
-          fitViewOptions={{ padding: 0.2 }}
-          panOnScroll
-          zoomOnScroll={false}
-          zoomOnPinch
-          panOnDrag
-          nodesConnectable={false}
-          elementsSelectable
-          // React Flow makes edges keyboard-focusable by default, each
-          // with its own "Edge from X to Y" announcement — but nothing in
-          // this app responds to activating an edge (no onEdgeClick), so
-          // they're pure Tab-order noise between real content. Confirmed
-          // live via a real keyboard sweep: with 9 edges and 10 nodes in a
-          // typical family graph, a keyboard/screen-reader user had to tab
-          // through all 9 inert edges before ever reaching the first real,
-          // interactive node.
-          edgesFocusable={false}
-          proOptions={{ hideAttribution: true }}
-        >
-          <Background variant={BackgroundVariant.Dots} color="rgb(var(--tint) / 0.04)" gap={20} />
-          <Controls
-            showInteractive={false}
-            className="!bg-tint/5 !border-tint/10 !rounded-xl !backdrop-blur-md"
-          />
-          {fullscreen && (
-            // Live-verification finding: react-flow's default MiniMap
-            // footprint (~200x150) took up nearly a third of this canvas's
-            // own height — measured live overlapping 2-4 real nodes at
-            // several viewport sizes, including a realistic 812px-tall
-            // phone, not just this pane's own unusually short default. A
-            // corner overview is supposed to sit clear of the content it's
-            // summarizing; shrinking it cuts collision risk without
-            // touching the main graph's own zoom/fit behavior.
-            <MiniMap
-              className="!bg-tint/5 !backdrop-blur-md !rounded-xl !border-tint/10"
-              style={{ width: 96, height: 72 }}
-              nodeColor={(node) => CATEGORY_COLOR[(node.data?.category as GraphCategory) ?? 'family']}
-              nodeStrokeColor="rgb(var(--tint) / 0.2)"
-              maskColor="rgba(0,0,0,0.3)"
-            />
-          )}
-        </ReactFlow>
-
-        {/* Story panel */}
-        <AnimatePresence>
-          {selected && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 20 }}
-              className="absolute bottom-4 left-4 right-4 glass-strong rounded-2xl p-4 z-raised"
+          <>
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              nodeTypes={nodeTypes}
+              onNodeClick={onNodeClick}
+              fitView
+              fitViewOptions={{ padding: 0.2 }}
+              panOnScroll
+              zoomOnScroll={false}
+              zoomOnPinch
+              panOnDrag
+              nodesConnectable={false}
+              elementsSelectable
+              // React Flow makes edges keyboard-focusable by default, each
+              // with its own "Edge from X to Y" announcement — but nothing in
+              // this app responds to activating an edge (no onEdgeClick), so
+              // they're pure Tab-order noise between real content. Confirmed
+              // live via a real keyboard sweep: with 9 edges and 10 nodes in a
+              // typical family graph, a keyboard/screen-reader user had to tab
+              // through all 9 inert edges before ever reaching the first real,
+              // interactive node.
+              edgesFocusable={false}
+              proOptions={{ hideAttribution: true }}
             >
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: `${KIND_COLOR[selected.data.kind]}15`, border: `1px solid ${KIND_COLOR[selected.data.kind]}30` }}>
-                  <selected.data.icon size={18} color={KIND_COLOR[selected.data.kind]} strokeWidth={1.5} />
-                </div>
-                <div className="flex-1">
-                  <div className="text-sm font-bold text-ink-primary">{selected.data.label}</div>
-                  <p className="text-xs text-ink-secondary mt-1 leading-relaxed">
-                    {selected.data.story}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setSelected(null)}
-                  className="text-ink-tertiary flex-shrink-0"
-                  aria-label="Dismiss"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+              <Background
+                variant={BackgroundVariant.Dots}
+                color="rgb(var(--tint) / 0.04)"
+                gap={20}
+              />
+              <Controls
+                showInteractive={false}
+                className="!bg-tint/5 !border-tint/10 !rounded-xl !backdrop-blur-md"
+              />
+              {fullscreen && (
+                // Live-verification finding: react-flow's default MiniMap
+                // footprint (~200x150) took up nearly a third of this canvas's
+                // own height — measured live overlapping 2-4 real nodes at
+                // several viewport sizes, including a realistic 812px-tall
+                // phone, not just this pane's own unusually short default. A
+                // corner overview is supposed to sit clear of the content it's
+                // summarizing; shrinking it cuts collision risk without
+                // touching the main graph's own zoom/fit behavior.
+                <MiniMap
+                  className="!bg-tint/5 !backdrop-blur-md !rounded-xl !border-tint/10"
+                  style={{ width: 96, height: 72 }}
+                  nodeColor={(node) =>
+                    CATEGORY_COLOR[(node.data?.category as GraphCategory) ?? 'family']
+                  }
+                  nodeStrokeColor="rgb(var(--tint) / 0.2)"
+                  maskColor="rgba(0,0,0,0.3)"
+                />
+              )}
+            </ReactFlow>
 
-        </>
+            {/* Story panel */}
+            <AnimatePresence>
+              {selected && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 20 }}
+                  className="absolute bottom-4 left-4 right-4 glass-strong rounded-2xl p-4 z-raised"
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0"
+                      style={{
+                        background: `${KIND_COLOR[selected.data.kind]}15`,
+                        border: `1px solid ${KIND_COLOR[selected.data.kind]}30`,
+                      }}
+                    >
+                      <selected.data.icon
+                        size={18}
+                        color={KIND_COLOR[selected.data.kind]}
+                        strokeWidth={1.5}
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <div className="text-sm font-bold text-ink-primary">
+                        {selected.data.label}
+                      </div>
+                      <p className="text-xs text-ink-secondary mt-1 leading-relaxed">
+                        {selected.data.story}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setSelected(null)}
+                      className="text-ink-tertiary flex-shrink-0"
+                      aria-label="Dismiss"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </>
         )}
       </div>
     </div>

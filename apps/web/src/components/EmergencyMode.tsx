@@ -27,7 +27,7 @@ export function EmergencyMode({
   onSelectEvent: (eventId: string) => void
 }) {
   const emergencyEvents = LIFE_EVENTS.filter((e) =>
-    ['bereavement', 'medical', 'car', 'property', 'travel'].includes(e.id)
+    ['bereavement', 'medical', 'car', 'property', 'travel'].includes(e.id),
   )
   const containerRef = useFocusTrap<HTMLDivElement>(active)
   const router = useRouter()
@@ -54,7 +54,7 @@ export function EmergencyMode({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-overlay flex flex-col"
-          style={{ background: 'rgba(0,0,0,0.95)' }}
+          style={{ background: 'rgb(var(--surface-0))' }}
           ref={containerRef}
           tabIndex={-1}
         >
@@ -77,7 +77,7 @@ export function EmergencyMode({
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               className="text-3xl font-bold text-center"
-              style={{ color: '#f87171' }}
+              style={{ color: 'rgb(var(--danger))' }}
             >
               What happened?
             </motion.h1>
@@ -101,7 +101,7 @@ export function EmergencyMode({
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.1 }}
                 className="w-full flex items-center gap-4 p-6 rounded-3xl border border-white/10 active:scale-95 transition-transform"
-                style={{ background: 'rgba(255,255,255,0.03)', minHeight: 80 }}
+                style={{ background: 'rgb(var(--surface-1))', minHeight: 80 }}
               >
                 {(() => {
                   const Icon = EMERGENCY_ICONS[event.id] ?? HeartCrack
@@ -131,7 +131,7 @@ export function EmergencyMode({
               }}
               whileTap={{ scale: 0.97 }}
               className="w-full py-4 rounded-2xl font-semibold text-base text-danger border border-danger/30"
-              style={{ background: 'rgba(248,113,113,0.08)' }}
+              style={{ background: 'rgba(255,175,163,0.08)' }}
             >
               Something else — see all event types
             </motion.button>
@@ -146,7 +146,7 @@ export function EmergencyMode({
               }}
               whileTap={{ scale: 0.95 }}
               className="w-full py-4 rounded-2xl text-ink-tertiary font-semibold text-base"
-              style={{ background: 'rgba(255,255,255,0.03)' }}
+              style={{ background: 'rgb(var(--surface-1))' }}
             >
               Cancel
             </motion.button>

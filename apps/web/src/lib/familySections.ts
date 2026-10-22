@@ -1,4 +1,15 @@
-import { Home, Briefcase, ShieldCheck, HeartPulse, Target, GraduationCap, House, TrendingUp, Landmark, Wallet } from 'lucide-react'
+import {
+  Home,
+  Briefcase,
+  ShieldCheck,
+  HeartPulse,
+  Target,
+  GraduationCap,
+  House,
+  TrendingUp,
+  Landmark,
+  Wallet,
+} from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { FamilyMember } from './types'
 import type { FinancialProfilePolicy, PolicyType } from './api'
@@ -50,17 +61,17 @@ export interface MemberSection {
   category: GraphCategory
 }
 
-// The JS-land twin of globals.css's --family-accent (brass; one mid value that reads on both themes): consumers here do
+// The JS-land twin of globals.css's --family-accent (lilac; one mid value that reads on both themes): consumers here do
 // hex-alpha suffix math (`${color}14`) that var() strings can't survive,
 // so the literal has to live somewhere — it lives here, once, and the CSS
 // var's comment points at this line so the two stay in sync.
-export const FAMILY_ACCENT = '#b07a14'
+export const FAMILY_ACCENT = '#8763aa'
 
 export const CATEGORY_COLOR: Record<GraphCategory, string> = {
   family: FAMILY_ACCENT,
-  protection: '#f87171',
-  wealth: '#fbbf24',
-  goals: '#4ade80',
+  protection: '#ffafa3',
+  wealth: '#ffda87',
+  goals: '#92e1d7',
 }
 
 const BRANCH_ICONS: Record<string, LucideIcon> = {
@@ -127,9 +138,7 @@ export const ROLE_BRANCHES: Record<string, { label: string; icon: string; items:
     { label: 'Income', icon: 'Briefcase', items: ['Salary'] },
     { label: 'Protection', icon: 'ShieldCheck', items: ['Health Insurance'] },
   ],
-  child: [
-    { label: 'Future', icon: 'GraduationCap', items: ['Education Fund', 'Future Goals'] },
-  ],
+  child: [{ label: 'Future', icon: 'GraduationCap', items: ['Education Fund', 'Future Goals'] }],
 }
 
 /**
@@ -154,7 +163,10 @@ export const ROLE_BRANCHES: Record<string, { label: string; icon: string; items:
  * explicitly attributed to someone else is excluded. Household-wide types
  * (car/home/travel) are never filtered.
  */
-export function getMemberSections(member: FamilyMember, policies: FinancialProfilePolicy[] = []): MemberSection[] {
+export function getMemberSections(
+  member: FamilyMember,
+  policies: FinancialProfilePolicy[] = [],
+): MemberSection[] {
   const sections: MemberSection[] = []
   const memberPolicies = policies.filter(
     (p) => !PERSON_SCOPED_POLICY_TYPES.has(p.type) || !p.member_id || p.member_id === member.id,
@@ -180,11 +192,12 @@ export function getMemberSections(member: FamilyMember, policies: FinancialProfi
     const cat = BRANCH_CATEGORY[branch.icon] ?? 'wealth'
     const isProtectionBranch = branch.icon === 'ShieldCheck'
     const renewalDays = isProtectionBranch ? soonestRenewalWithinWindow(memberPolicies) : null
-    const story = isProtectionBranch && memberPolicies.length > 0
-      ? `${memberPolicies.length} ${memberPolicies.length === 1 ? 'policy' : 'policies'}: ${[...new Set(memberPolicies.map((p) => POLICY_TYPE_LABELS[p.type]))].join(', ')}${renewalDays !== null ? ` · renews in ${renewalDays} ${renewalDays === 1 ? 'day' : 'days'}` : ''}`
-      : isProtectionBranch
-        ? 'No policies on file yet'
-        : `Tracks ${branch.items.join(', ')}`
+    const story =
+      isProtectionBranch && memberPolicies.length > 0
+        ? `${memberPolicies.length} ${memberPolicies.length === 1 ? 'policy' : 'policies'}: ${[...new Set(memberPolicies.map((p) => POLICY_TYPE_LABELS[p.type]))].join(', ')}${renewalDays !== null ? ` · renews in ${renewalDays} ${renewalDays === 1 ? 'day' : 'days'}` : ''}`
+        : isProtectionBranch
+          ? 'No policies on file yet'
+          : `Tracks ${branch.items.join(', ')}`
     const step = BRANCH_STEP[branch.icon]
     sections.push({
       id: `branch-${member.id}-${branch.label}`,

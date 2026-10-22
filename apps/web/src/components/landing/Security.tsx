@@ -16,7 +16,7 @@ export const SECURITY: { claim: string; title: string; body: string }[] = [
   {
     claim: 'delete-account',
     title: 'Yours to delete',
-    body: 'Export your data or delete your account yourself from Settings. Deletion is immediate and cannot be undone.',
+    body: 'Export your data or request account deletion from Settings. See the privacy notice for deletion and retention details.',
   },
 ]
 

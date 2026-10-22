@@ -1317,8 +1317,8 @@ export default function SettingsPage() {
           onClick={handleSignOut}
           className="w-full rounded-2xl py-4 text-base font-semibold text-danger flex items-center justify-center gap-2"
           style={{
-            background: 'rgba(248,113,113,0.08)',
-            border: '1px solid rgba(248,113,113,0.15)',
+            background: 'rgba(255,175,163,0.08)',
+            border: '1px solid rgba(255,175,163,0.15)',
           }}
         >
           <LogOut size={18} />

@@ -1,31 +1,20 @@
 'use client'
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { SAMPLE_FAMILY, SCENARIOS, RUNWAY_CAP, runwayMonths, seaState } from './scenarios'
+import { useEffect, useRef, useState } from 'react'
+import { ArrowRight, ArrowUpRight, Check, FileText, Heart, ShieldCheck, Wallet } from 'lucide-react'
+import { SAMPLE_FAMILY, SCENARIOS, RUNWAY_CAP, gbp, runwayMonths } from './scenarios'
 import { useCountUp, useLandingMotion } from './motion'
-import { SeaBackdrop, SeaFront } from './SeaBackdrop'
-import { HarbourChart } from './HarbourChart'
-import { SignupCard } from './SignupCard'
 import { appUrl } from '@/lib/region'
 import { track } from '@/lib/growth-track'
 import { haptic } from '@/lib/haptics'
 import './landing.css'
 import './hero.css'
 
-const BAND_LABEL = { rough: 'Under 3 months', holding: '3 to 6 months', steady: '6 months or more' }
-const HEEL = { rough: '-14deg', holding: '-5deg', steady: '0deg' }
-/** Order the hero cycles through the four sample bad days. */
 const AUTO = [1, 0, 2, 3]
-const AUTO_MS = 6500
 
-function fmt(m: number): string {
-  return m >= RUNWAY_CAP ? `${RUNWAY_CAP}+` : m.toFixed(1)
-}
-
-/** Owns the per-frame count-up so only this span re-renders, not the sea and chart. */
 function Runway({ months, on }: { months: number; on: boolean }) {
   const counted = useCountUp(Math.min(months, RUNWAY_CAP), on)
-  return <>{months === Infinity ? 'Not drawn on' : fmt(counted)}</>
+  return <>{months === Infinity ? 'Covered' : months >= RUNWAY_CAP ? '24+' : counted.toFixed(1)}</>
 }
 
 export function LandingHero() {
@@ -33,112 +22,183 @@ export function LandingHero() {
   const [step, setStep] = useState(0)
   const [visible, setVisible] = useState(true)
   const scene = useRef<HTMLElement>(null)
-  const card = useRef<HTMLDivElement>(null)
-  const [cardH, setCardH] = useState(330)
-
   const scn = SCENARIOS[AUTO[step]!]!
   const calc = scn.calc(SAMPLE_FAMILY)
   const months = runwayMonths(calc)
-  const level = seaState(months)
 
-  // Cycle the sample days only while the hero is on screen, the tab is awake and motion is on.
   useEffect(() => {
     const el = scene.current
     if (!el || !('IntersectionObserver' in window)) return
-    const io = new IntersectionObserver((es) => setVisible(es[0]!.isIntersecting), {
+    const io = new IntersectionObserver((entries) => setVisible(entries[0]!.isIntersecting), {
       threshold: 0.1,
     })
     io.observe(el)
     return () => io.disconnect()
   }, [])
+
   useEffect(() => {
     if (!on || !visible) return
-    const t = setInterval(() => {
-      if (!document.hidden) setStep((s) => (s + 1) % AUTO.length)
-    }, AUTO_MS)
-    return () => clearInterval(t)
+    const timer = setInterval(() => {
+      if (!document.hidden) setStep((current) => (current + 1) % AUTO.length)
+    }, 6500)
+    return () => clearInterval(timer)
   }, [on, visible])
-
-  // On phones the sea stops above the signup card; keep that offset in step with the card's height.
-  useLayoutEffect(() => {
-    const el = card.current
-    if (!el || !('ResizeObserver' in window)) return
-    const ro = new ResizeObserver(() => setCardH(el.offsetHeight + 46))
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-
-  const spoken =
-    months === Infinity
-      ? 'income still covers spending'
-      : `savings last about ${months >= RUNWAY_CAP ? `more than ${RUNWAY_CAP}` : months.toFixed(1)} months`
 
   return (
     <div className="landing">
       <section
         ref={scene}
-        className={`lk-scene ${level}`}
-        data-visible={visible}
+        className="lk-modern-hero"
         aria-labelledby="lk-h1"
-        style={{ '--heel': HEEL[level], '--cardh': `${cardH}px` } as React.CSSProperties}
+        data-visible={visible}
       >
-        <SeaBackdrop />
-
-        <div className="lk-copy">
-          <span className="lk-eyebrow">Free to start. Optional paid plan later.</span>
+        <div className="lk-modern-copy">
+          <span className="lk-hero-label">
+            <span /> A little planning. A lot more clarity.
+          </span>
           <h1 id="lk-h1">
-            Your family&rsquo;s chart, <em>kept current.</em>
+            Life gets busy.
+            <br />
+            Stay one step <span>ready.</span>
           </h1>
-          <p className="lk-lede">
-            One home for your family&rsquo;s savings, cover and papers. Tell LifeKeel what you have
-            on file and it shows what is there, what is missing, and the steps if something happens.
-            No commissions.
+          <p>
+            Your savings, cover and important papers. Finally in one place, so your family knows
+            what&rsquo;s there — and what to do next.
           </p>
           <a
-            className="lk-btn lk-hero-cta"
+            id="signup"
+            className="lk-btn lk-modern-cta"
             href={appUrl('/signup')}
             onClick={() => {
               haptic('light')
-              track('landing_cta_click', { location: 'hero_top', method: 'signup' })
+              track('landing_cta_click', { location: 'hero', method: 'signup' })
             }}
           >
-            Create your free account
+            Start your family&rsquo;s plan <ArrowUpRight size={20} aria-hidden="true" />
+          </a>
+          <div className="lk-hero-perks">
+            <span>
+              <Check size={15} aria-hidden="true" /> Free to start
+            </span>
+            <span>
+              <Check size={15} aria-hidden="true" /> No commissions
+            </span>
+          </div>
+          <a className="lk-hero-explore" href="#how-it-works">
+            See how it works <ArrowRight size={16} aria-hidden="true" />
           </a>
         </div>
-
-        <div className="lk-stage">
-          <div className="lk-readout">
-            <div className="lk-read">
-              <small>Sample family: {scn.chip.toLowerCase()}</small>
-              <span aria-hidden="true">
-                <Runway months={months} on={on} />
+        <div className="lk-dashboard-wrap">
+          <div className="lk-dashboard" aria-label="Illustrative family dashboard">
+            <div className="lk-dash-top">
+              <span className="lk-dash-symbol">
+                <Heart size={20} aria-hidden="true" />
               </span>
-              {months !== Infinity && (
-                <span className="u" aria-hidden="true">
-                  months
+              <div>
+                <strong>Your family, in view.</strong>
+                <span>The Ellis family · Illustrative example</span>
+              </div>
+              <span className="lk-sample-tag">SAMPLE</span>
+            </div>
+            <div className="lk-dash-welcome">
+              <h2>
+                A clearer picture.
+                <br />A calmer next step.
+              </h2>
+              <div className="lk-avatars" aria-hidden="true">
+                <span>P</span>
+                <span>S</span>
+                <span>M</span>
+                <span>L</span>
+              </div>
+            </div>
+            <div className="lk-dash-stats">
+              <div>
+                <Wallet size={18} aria-hidden="true" />
+                <span>Savings on file</span>
+                <strong>{gbp(SAMPLE_FAMILY.savings)}</strong>
+                <small>Your family&rsquo;s buffer</small>
+              </div>
+              <div>
+                <ShieldCheck size={18} aria-hidden="true" />
+                <span>Cover on file</span>
+                <strong>{gbp(SAMPLE_FAMILY.cover)}</strong>
+                <small>Held by the provider</small>
+              </div>
+            </div>
+            <div className="lk-dash-scenario">
+              <div className="lk-dash-section-head">
+                <span>WHAT IF LIFE CHANGES?</span>
+                <button type="button" onClick={toggle}>
+                  {paused ? 'Play examples' : 'Pause examples'}
+                </button>
+              </div>
+              <label htmlFor="lk-hero-scenario" className="lk-sr">
+                Choose a sample scenario
+              </label>
+              <select
+                id="lk-hero-scenario"
+                value={step}
+                onChange={(event) => setStep(Number(event.target.value))}
+              >
+                {AUTO.map((scenario, index) => (
+                  <option key={scenario} value={index}>
+                    {SCENARIOS[scenario]!.chip}
+                  </option>
+                ))}
+              </select>
+              <div className="lk-dash-runway">
+                <div>
+                  <strong aria-hidden="true">
+                    <Runway months={months} on={on} />
+                  </strong>
+                  <span className="lk-sr">
+                    Savings last about {Math.min(months, RUNWAY_CAP).toFixed(1)} months in this
+                    sample scenario.
+                  </span>
+                  <span>
+                    months of savings
+                    <br />
+                    at this monthly gap
+                  </span>
+                </div>
+                <span className="lk-runway-icon">
+                  <ArrowUpRight size={26} aria-hidden="true" />
                 </span>
-              )}
+              </div>
+              <div className="lk-buffer-track" role="presentation">
+                <span style={{ width: `${Math.min(months / RUNWAY_CAP, 1) * 100}%` }} />
+              </div>
+              <p>{calc.note} An example, not your figures.</p>
             </div>
-            <span className={`lk-pill ${level}`}>{BAND_LABEL[level]}</span>
-            <div className="lk-ctl">
-              <span className="lk-fine">A made-up family: how long their savings would last</span>
-              <button className="lk-pause" type="button" onClick={toggle}>
-                {paused ? 'Play animation' : 'Pause animation'}
-              </button>
+            <div className="lk-dash-next">
+              <span className="lk-dash-file">
+                <FileText size={19} aria-hidden="true" />
+              </span>
+              <div>
+                <strong>A useful next step</strong>
+                <span>Check your income protection is on file.</span>
+              </div>
+              <ArrowRight size={18} aria-hidden="true" />
             </div>
-            <p className="lk-sr">
-              Sample family, {scn.chip.toLowerCase()}: {spoken}. Band: {BAND_LABEL[level]}. An
-              example, not your figures.
-            </p>
           </div>
-          <HarbourChart />
-        </div>
-
-        <SeaFront />
-        <div ref={card} className="lk-cardwrap">
-          <SignupCard />
+          <div className="lk-dash-caption">
+            <span /> Built around your people. Informed by your information.
+          </div>
         </div>
       </section>
+      <div className="lk-hero-strip">
+        <span>Less searching. More living.</span>
+        <span>
+          <Wallet size={17} aria-hidden="true" /> Savings &amp; spending
+        </span>
+        <span>
+          <ShieldCheck size={17} aria-hidden="true" /> Cover &amp; protection
+        </span>
+        <span>
+          <FileText size={17} aria-hidden="true" /> Papers &amp; plans
+        </span>
+      </div>
     </div>
   )
 }

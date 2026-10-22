@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { captureLead } from '@/lib/api'
 import { Brand } from './Brand'
+import { Facebook, Instagram, Linkedin } from 'lucide-react'
 import './landing.css'
 import './hero.css'
 import './bands.css'
@@ -46,14 +47,20 @@ function Newsletter() {
           type="email"
           inputMode="email"
           autoComplete="email"
+          maxLength={320}
+          aria-describedby="lk-news-consent"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@example.com"
         />
         <button type="submit" disabled={state === 'busy'}>
-          {state === 'busy' ? '...' : 'Join'}
+          {state === 'busy' ? 'Joining…' : 'Join'}
         </button>
       </div>
+      <p id="lk-news-consent" className="lk-fine">
+        By joining, you agree to receive emails from LifeKeel. Unsubscribe anytime. Read our{' '}
+        <Link href="/privacy">privacy policy</Link>.
+      </p>
       {(state === 'error' || state === 'empty') && (
         <p className="lk-fine" role="alert">
           {state === 'empty' ? 'Enter your email address.' : 'Could not subscribe. Try again.'}
@@ -71,8 +78,14 @@ const PRODUCT = [
 const COMPANY = [
   { href: '/blog', label: 'Blog' },
   { href: '/support', label: 'Support' },
+  { href: '/legal', label: 'Legal & trust' },
+]
+
+const LEGAL = [
   { href: '/terms', label: 'Terms' },
   { href: '/privacy', label: 'Privacy' },
+  { href: '/cookies', label: 'Cookies' },
+  { href: '/security', label: 'Security' },
   { href: '/trust', label: 'Trust' },
 ]
 
@@ -80,6 +93,16 @@ export function SiteFooter({ home = true }: { home?: boolean }) {
   return (
     <footer className="lk-band lk-footer">
       <div className="lk-foot-inner">
+        <div className="lk-footer-intro">
+          <div>
+            <span className="lk-eyebrow">THE NEXT CHAPTER STARTS HERE</span>
+            <h2>Life happens. Have a plan.</h2>
+          </div>
+          <div className="lk-footer-subscribe">
+            <h3>Good things, in your inbox.</h3>
+            <Newsletter />
+          </div>
+        </div>
         <div className="lk-foot-grid">
           <div>
             <Brand />
@@ -87,6 +110,24 @@ export function SiteFooter({ home = true }: { home?: boolean }) {
               Your family&rsquo;s chart, kept current. Know what is on file, and where to start if
               something happens.
             </p>
+            <div className="lk-socials" role="group" aria-label="Social media — links coming soon">
+              {[
+                { name: 'Instagram', Icon: Instagram },
+                { name: 'Facebook', Icon: Facebook },
+                { name: 'LinkedIn', Icon: Linkedin },
+              ].map(({ name, Icon }) => (
+                <button
+                  key={name}
+                  type="button"
+                  className="lk-social-icon"
+                  disabled
+                  title={`${name} — link coming soon`}
+                  aria-label={`${name} — link coming soon`}
+                >
+                  <Icon size={19} aria-hidden="true" />
+                </button>
+              ))}
+            </div>
           </div>
           <nav aria-label="Product">
             <p className="lk-foot-h">Product</p>
@@ -110,10 +151,20 @@ export function SiteFooter({ home = true }: { home?: boolean }) {
               </Link>
             ))}
           </nav>
-          <div>
-            <p className="lk-foot-h">Stay in touch</p>
-            <Newsletter />
-          </div>
+          <nav aria-label="Legal">
+            <p className="lk-foot-h">Legal</p>
+            {LEGAL.map((link) => (
+              <Link key={link.href} href={link.href}>
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+        </div>
+        <div className="lk-foot-bottom">
+          <p className="lk-fine">
+            © {new Date().getFullYear()} LifeKeel. Made for your family&rsquo;s next chapter.
+          </p>
+          <Link href="/cookies">Cookie settings</Link>
         </div>
         <p className="lk-fine lk-legalline">
           For informational and educational purposes only. Not financial, investment, tax,

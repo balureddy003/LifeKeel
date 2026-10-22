@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { reportError } from '@/lib/observability'
+import { AuthShell } from '@/components/landing/AuthShell'
 
 export default function AuthCallbackPage() {
   const router = useRouter()
@@ -47,23 +48,14 @@ export default function AuthCallbackPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-6">
-        <div className="text-center max-w-xs">
-          <p className="text-sm text-danger mb-4">Sign-in failed: {error}</p>
-          <button
-            onClick={() => router.push('/login')}
-            className="w-full bg-family-500 text-white font-semibold rounded-2xl py-3 text-sm"
-          >
-            Back to sign in
-          </button>
-        </div>
-      </div>
+      <AuthShell title="Sign-in failed">
+        <p className="text-sm text-danger mb-4">Sign-in failed: {error}</p>
+        <button onClick={() => router.push('/login')} className="lk-btn">
+          Back to sign in
+        </button>
+      </AuthShell>
     )
   }
 
-  return (
-    <div className="min-h-screen flex items-center justify-center px-6">
-      <p className="text-sm text-ink-tertiary">Signing you in…</p>
-    </div>
-  )
+  return <AuthShell title="Signing you in…" />
 }

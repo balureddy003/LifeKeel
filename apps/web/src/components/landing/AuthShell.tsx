@@ -2,6 +2,7 @@
 
 import type { ReactNode, Ref } from 'react'
 import Link from 'next/link'
+import { FileText, Heart, ShieldCheck, Wallet } from 'lucide-react'
 import { Brand } from './Brand'
 import { Wave } from './SeaBackdrop'
 import './landing.css'
@@ -37,13 +38,40 @@ export function AuthShell({
         <Brand />
         {aside}
       </header>
-      <main className={`lk-auth-card${wide ? ' wide' : ''}`}>
-        <h1 ref={headingRef} tabIndex={headingRef ? -1 : undefined}>
-          {title}
-        </h1>
-        {sub && <p className="lk-auth-sub">{sub}</p>}
-        {children}
-      </main>
+      <div className="lk-auth-layout">
+        <aside className="lk-auth-intro" aria-label="About LifeKeel">
+          <p className="lk-eyebrow">A LITTLE MORE READY FOR LIFE</p>
+          <h2>
+            Less scattered.
+            <br />
+            More together.
+          </h2>
+          <p>
+            A home for your family’s money, cover and important papers. Start with what you know,
+            and build at your own pace.
+          </p>
+          <div className="lk-auth-tiles">
+            {[
+              { Icon: Wallet, label: 'Your money' },
+              { Icon: ShieldCheck, label: 'Your cover' },
+              { Icon: FileText, label: 'Your papers' },
+              { Icon: Heart, label: 'Your people' },
+            ].map(({ Icon, label }) => (
+              <div key={label}>
+                <Icon size={28} aria-hidden="true" />
+                <span>{label}</span>
+              </div>
+            ))}
+          </div>
+        </aside>
+        <main className={`lk-auth-card${wide ? ' wide' : ''}`}>
+          <h1 ref={headingRef} tabIndex={headingRef ? -1 : undefined}>
+            {title}
+          </h1>
+          {sub && <p className="lk-auth-sub">{sub}</p>}
+          {children}
+        </main>
+      </div>
       <footer className="lk-auth-foot">
         <Link href="/terms">Terms</Link>
         <Link href="/privacy">Privacy</Link>

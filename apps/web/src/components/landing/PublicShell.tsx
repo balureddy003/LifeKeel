@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { SiteHeader } from './SiteHeader'
 import { SiteFooter } from './SiteFooter'
+import { LegalNav } from './LegalNav'
 import './landing.css'
 import './hero.css'
 import './bands.css'
@@ -21,7 +22,10 @@ export function PublicShell({ children }: { children: ReactNode }) {
   return (
     <div className="landing lk-public">
       <SiteHeader home={false} signedIn={isAuthenticated} />
-      <div className="lk-public-body">{children}</div>
+      <div className="lk-public-body">
+        <LegalNav />
+        {children}
+      </div>
       <SiteFooter home={false} />
     </div>
   )

@@ -6,6 +6,8 @@ import { appUrl } from '@/lib/region'
 import { track } from '@/lib/growth-track'
 import { haptic } from '@/lib/haptics'
 import { Brand } from './Brand'
+import { Moon, Sun } from 'lucide-react'
+import { useThemePreference } from '@/lib/theme'
 import './landing.css'
 import './hero.css'
 import './bands.css'
@@ -15,8 +17,8 @@ const LINKS: { href: string; label: string; page?: boolean }[] = [
   { href: '#features', label: 'Features' },
   { href: '#pricing', label: 'Pricing' },
   { href: '#security', label: 'Security' },
-  { href: '#faq', label: 'FAQ' },
   { href: '/guides', label: 'Guides', page: true },
+  { href: '/legal', label: 'Legal', page: true },
 ]
 
 /**
@@ -24,10 +26,17 @@ const LINKS: { href: string; label: string; page?: boolean }[] = [
  * below it, so the logo and the page content share one left edge.
  */
 /** `home` is false off the landing page, so the section links go to / first. */
-export function SiteHeader({ home = true, signedIn = false }: { home?: boolean; signedIn?: boolean }) {
+export function SiteHeader({
+  home = true,
+  signedIn = false,
+}: {
+  home?: boolean
+  signedIn?: boolean
+}) {
   const href = (h: string) => (home || !h.startsWith('#') ? h : `/${h}`)
   const [open, setOpen] = useState(false)
   const menuBtn = useRef<HTMLButtonElement>(null)
+  const [, setTheme] = useThemePreference()
 
   // Escape closes the phone menu, as people expect from a disclosure.
   useEffect(() => {
@@ -68,12 +77,29 @@ export function SiteHeader({ home = true, signedIn = false }: { home?: boolean; 
           )}
         </nav>
         <div className="lk-header-actions">
+          <button
+            type="button"
+            className="lk-theme-btn"
+            aria-label="Toggle light and dark theme"
+            onClick={() =>
+              setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark')
+            }
+          >
+            <Sun className="lk-theme-sun" size={18} aria-hidden="true" />
+            <Moon className="lk-theme-moon" size={18} aria-hidden="true" />
+          </button>
           {signedIn ? (
-            <Link className="lk-btn lk-btn-sm" href="/">Open LifeKeel</Link>
+            <Link className="lk-btn lk-btn-sm" href="/">
+              Open LifeKeel
+            </Link>
           ) : (
             <>
-              <a className="lk-signin" href={appUrl('/login')} onClick={signIn}>Sign in</a>
-              <a className="lk-btn lk-btn-sm" href={appUrl('/signup')} onClick={start}>Get started</a>
+              <a className="lk-signin" href={appUrl('/login')} onClick={signIn}>
+                Sign in
+              </a>
+              <a className="lk-btn lk-btn-sm" href={appUrl('/signup')} onClick={start}>
+                Get started
+              </a>
             </>
           )}
           <button
@@ -87,32 +113,47 @@ export function SiteHeader({ home = true, signedIn = false }: { home?: boolean; 
           >
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
               {open ? (
-                <path d="M5 5 L19 19 M19 5 L5 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path
+                  d="M5 5 L19 19 M19 5 L5 19"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
               ) : (
-                <path d="M4 7 H20 M4 12 H20 M4 17 H20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path
+                  d="M4 7 H20 M4 12 H20 M4 17 H20"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
               )}
             </svg>
           </button>
         </div>
       </div>
       <nav id="lk-menu" className="lk-menu" aria-label="Menu" hidden={!open}>
-          {LINKS.map((l) =>
-            l.page ? (
-              <Link key={l.href} href={l.href} onClick={() => setOpen(false)}>
-                {l.label}
-              </Link>
-            ) : (
-              <a key={l.href} href={href(l.href)} onClick={() => setOpen(false)}>
-                {l.label}
-              </a>
-            ),
-          )}
-          {!signedIn && (
+        {LINKS.map((l) =>
+          l.page ? (
+            <Link key={l.href} href={l.href} onClick={() => setOpen(false)}>
+              {l.label}
+            </Link>
+          ) : (
+            <a key={l.href} href={href(l.href)} onClick={() => setOpen(false)}>
+              {l.label}
+            </a>
+          ),
+        )}
+        {!signedIn && (
+          <>
             <a href={appUrl('/login')} onClick={signIn}>
               Sign in
             </a>
-          )}
-        </nav>
+            <a href={appUrl('/signup')} onClick={start}>
+              Get started
+            </a>
+          </>
+        )}
+      </nav>
     </header>
   )
 }

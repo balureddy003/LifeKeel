@@ -18,10 +18,16 @@ export function ReadinessSparkline() {
   useEffect(() => {
     let cancelled = false
     fetchReadinessHistory()
-      .then((h) => { if (!cancelled) setHistory(h) })
+      .then((h) => {
+        if (!cancelled) setHistory(h)
+      })
       .catch(() => {})
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   // Need at least 3 data points to show a meaningful trend
@@ -45,7 +51,8 @@ export function ReadinessSparkline() {
   const latest = scores[scores.length - 1]!
   const previous = scores[scores.length - 2]!
   const delta = latest - previous
-  const trendColor = delta > 0 ? '#4ade80' : delta < 0 ? '#f87171' : '#b07a14'
+  const trendColor =
+    delta > 0 ? 'rgb(var(--success))' : delta < 0 ? 'rgb(var(--danger))' : 'rgb(var(--family-400))'
   const TrendIcon = delta > 0 ? TrendingUp : delta < 0 ? TrendingDown : Minus
 
   return (
@@ -83,9 +90,7 @@ export function ReadinessSparkline() {
         <span className="text-xs font-semibold" style={{ color: trendColor }}>
           {delta > 0 ? `+${delta}` : delta}
         </span>
-        <span className="text-xs text-ink-tertiary">
-          {history.length}d
-        </span>
+        <span className="text-xs text-ink-tertiary">{history.length}d</span>
       </div>
     </motion.div>
   )
