@@ -871,6 +871,52 @@ export async function evaluateProfileAndGenerateInsights(
       })
       generatedInsights.push(...result.insights)
     }
+
+    // Stale renewal dates (PRD-213): soonestPolicyRenewal skips past-due
+    // dates entirely, so without this a policy whose recorded renewal has
+    // passed is invisible — the record may just be stale, or the cover may
+    // have ended; the register can't tell which, and either way the family
+    // should notice. Emitted even when empty, same stale-resolution reason
+    // as the orphan event above.
+    const staleRenewals = profile.policies.flatMap((p) => {
+      if (!p.renewal_date) return []
+      const renewalMs = new Date(p.renewal_date).getTime()
+      if (Number.isNaN(renewalMs)) return []
+      const days = Math.floor((Date.now() - renewalMs) / 86_400_000)
+      return days > 0 ? [{ policy: p, days_overdue: days }] : []
+    })
+    {
+      const eventId = crypto.randomUUID()
+      const data = {
+        stale_renewal_count: staleRenewals.length,
+        stale_renewal_descriptions: staleRenewals
+          .map(
+            (s) =>
+              `${s.policy.type} policy with ${s.policy.provider} held by ${holderLabel(s.policy)}, renewal date ${s.days_overdue} days in the past`,
+          )
+          .slice(0, 4)
+          .join('; '),
+        stale_renewal_monthly_premium_minor: staleRenewals.reduce(
+          (s, r) => s + r.policy.monthly_premium_minor,
+          0,
+        ),
+      }
+      const signalId = await persistSignal({
+        tenant_id: tenantId,
+        signal_type: 'family.policy_review',
+        source: 'manual-entry',
+        external_id: eventId,
+        data,
+      })
+      const result = await engine.evaluate({
+        event_type: 'family.policy_review',
+        tenant_id: tenantId,
+        event_id: eventId,
+        data,
+        derived_from_signals: [signalId],
+      })
+      generatedInsights.push(...result.insights)
+    }
   }
 
   // ── family_estate_readiness (PRD-121) ────────────────────────────────
