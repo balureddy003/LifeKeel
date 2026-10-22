@@ -4,6 +4,7 @@
  *   pnpm --filter @lifekeel/api email:preview   → http://localhost:8025
  * Refuses to run without MAILPIT_URL, so it can never reach real recipients.
  */
+import sgMail from '@sendgrid/mail'
 import { installMailpitTransport } from './mailpit.js'
 import {
   sendContinuityAlertEmail,
@@ -35,6 +36,15 @@ import { appUrl } from '../email/layout.js'
 if (!installMailpitTransport()) {
   console.error('MAILPIT_URL is not set — refusing to send previews. See STARTER.md.')
   process.exit(1)
+}
+
+process.env['SENDGRID_API_KEY'] ||= 'SG.local-preview'
+const capture = sgMail.send.bind(sgMail)
+let sent = 0
+sgMail.send = async (data, ...args) => {
+  const result = await capture(data, ...args)
+  sent += Array.isArray(data) ? data.length : 1
+  return result
 }
 
 const to = 'preview@lifekeel.test'
@@ -122,16 +132,20 @@ const lifecycle: [string, string][] = [
   ['Three things families often find out late', leadEducationBody('Sam', app, unsub)],
   ['Still here when you’re ready', leadLastCallBody('Sam', app, unsub)],
   ['One step left — your family profile', activationBody('Sam', app)],
-  ['What Keel Plus adds', upgradeBody('Sam', app)],
+  ['What Keel Plus adds', upgradeBody('Sam', app, unsub)],
   [
     'Your LifeKeel trial ends soon',
     trialEndingBody('Sam', new Date(Date.now() + 3 * 86_400_000), app),
   ],
   ['Your trial has ended — AI is paused', trialExpiredBody('Sam', app)],
-  ['Your Keel data is still here', winbackBody('Sam', app)],
+  ['Your Keel data is still here', winbackBody('Sam', app, unsub)],
 ]
 for (const [subject, html] of lifecycle) await sendEmail(to, subject, html)
 
-console.log(
-  `Sent ${12 + lifecycle.length} preview emails to Mailpit (${process.env['MAILPIT_URL']})`,
-)
+const expected = 12 + lifecycle.length
+if (sent !== expected) {
+  throw new Error(
+    `Only ${sent} of ${expected} previews reached Mailpit; check the send errors above`,
+  )
+}
+console.log(`Sent ${sent} preview emails to Mailpit`)

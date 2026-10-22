@@ -315,7 +315,7 @@ export function buildEmailHtml(n: InsightNotification): {
     : ''
   const reasoningHtml = clean_reasoning ? p(escapeHtml(clean_reasoning.substring(0, 400))) : ''
   const actionsHtml = n.recommended_actions?.length
-    ? `${label('Recommended Actions')}<ol style="margin:0 0 16px;padding-left:20px;">${n.recommended_actions
+    ? `${label('Possible next steps')}<ol style="margin:0 0 16px;padding-left:20px;">${n.recommended_actions
         .slice(0, 3)
         .map((a) => `<li style="margin:0 0 6px;">${escapeHtml(a)}</li>`)
         .join('')}</ol>`

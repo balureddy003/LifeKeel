@@ -83,7 +83,7 @@ export async function sendChecklistReminderEmail(
       to,
       from: { email: getFromEmail(), name: 'LifeKeel' },
       subject: `Your ${playbookTitle} checklist`,
-      text: `Hi ${firstName},\n\nA few days ago you reported: ${playbookTitle}. ${remainingCount} ${stepWord} on that response plan are still unchecked.\n\nSign in any time to pick back up — no rush, this is just a reminder it's still there.`,
+      text: `Hi ${firstName},\n\nA few days ago you reported: ${playbookTitle}. ${remainingCount} ${stepWord} on that response plan are still unchecked.\n\nSign in any time to pick back up — no rush, this is just a reminder it's still there.\n${appUrl()}/life-events`,
       html: renderEmail({
         preheader: `${remainingCount} ${stepWord} on your response plan are still unchecked.`,
         eyebrow: 'Response plan',

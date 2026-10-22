@@ -444,3 +444,52 @@ describe('ledger honesty — provider acceptance gates the sent state', () => {
     expect(sgSend).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('promotional lifecycle opt-out', () => {
+  it.each(['upgrade', 'winback'] as const)(
+    'adds unsubscribe and honors opt-out for %s without suppressing account mail',
+    async (sequence) => {
+      await db
+        .collection('tenants')
+        .insertOne({ tenant_id: 't1', plan: 'free', created_at: new Date(Date.now() - 60 * DAY) })
+      await db.collection('users').insertOne({
+        id: 'u1',
+        tenant_id: 't1',
+        email: 'u@example.com',
+        name: 'Uma',
+        status: 'active',
+        email_opt_out: true,
+        created_at: new Date(Date.now() - 60 * DAY),
+      })
+      if (sequence === 'upgrade') {
+        await db
+          .collection('growth_events')
+          .insertOne({ event: 'upgrade_intent', meta: { tenant_id: 't1' }, created_at: new Date() })
+      } else {
+        await db.collection('audit_log').insertOne({
+          action: 'billing.plan_downgraded',
+          tenant_id: 't1',
+          timestamp: new Date(Date.now() - 5 * DAY),
+        })
+      }
+      expect(await runLifecycleSweep(db)).toHaveLength(0)
+      expect(sgSend).not.toHaveBeenCalled()
+      await db.collection('users').updateOne({ id: 'u1' }, { $set: { email_opt_out: false } })
+      const sent = await runLifecycleSweep(db, { appUrl: 'https://app.example' })
+      expect(sent.map((s) => s.sequence)).toEqual([sequence])
+      const data = sgSend.mock.calls[0]![0]
+      const message = Array.isArray(data) ? data[0]! : data
+      expect(message.html).toContain('>Unsubscribe</a>')
+      expect(message.headers?.['List-Unsubscribe']).toContain('/users/unsubscribe?id=u1&sig=')
+
+      await lifecycleSendsCol(db).deleteMany({})
+      await db
+        .collection('users')
+        .updateOne(
+          { id: 'u1' },
+          { $set: { email_opt_out: true, created_at: new Date(Date.now() - 3 * DAY) } },
+        )
+      expect((await runLifecycleSweep(db)).map((s) => s.sequence)).toEqual(['activation'])
+    },
+  )
+})

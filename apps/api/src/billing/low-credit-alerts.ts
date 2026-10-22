@@ -13,7 +13,7 @@
 
 import type { Db } from 'mongodb'
 import { createLogger, getTenantCollection } from '@lifekeel/platform'
-import { EMAIL_COLORS, EMAIL_FONTS, button, p, renderEmail } from '../email/layout.js'
+import { EMAIL_COLORS, EMAIL_FONTS, appUrl, button, p, renderEmail } from '../email/layout.js'
 
 const log = createLogger({ service: 'low-credit-alerts', version: '0.0.0' })
 
@@ -107,13 +107,11 @@ export async function sendLowCreditEmail(
 ): Promise<void> {
   // Use the existing EmailChannel if available, otherwise log
 
-  const studioUrl = process.env['STUDIO_URL'] ?? 'https://studio.lifekeel.dev'
-  const upgradeUrl = `${studioUrl}/settings/billing?upgrade=true`
-  const creditsUrl = `${studioUrl}/settings/billing?buy_credits=true`
+  const upgradeUrl = `${appUrl()}/upgrade`
 
   const subject =
     type === 'zero'
-      ? 'You\u2019re out of outcome credits \u2014 upgrade to keep getting insights'
+      ? 'You\u2019re out of outcome credits'
       : `Running low on outcome credits \u2014 ${tenant.billing?.credits_balance} remaining`
 
   const heading =
@@ -124,7 +122,7 @@ export async function sendLowCreditEmail(
   const bodyText =
     type === 'zero'
       ? 'Your outcome credits are at zero. This means LifeKeel will stop measuring and charging for verified outcomes \u2014 you\u2019ll miss out on attributed results until your credits refill or you upgrade.'
-      : 'You\u2019re running low on outcome credits. When they run out, LifeKeel will stop measuring verified outcomes. Upgrade your plan or buy a credit pack to keep getting attributed results.'
+      : 'You\u2019re running low on outcome credits. When they run out, LifeKeel will stop measuring verified outcomes. Review your plan to see your available options.'
 
   const option = (title: string, blurb: string, link: { url: string; label: string }) =>
     `<div style="margin:0 0 14px;padding:16px 18px;background:${EMAIL_COLORS.page};border:1px solid ${EMAIL_COLORS.line};border-radius:12px;"><div style="font-size:16px;font-weight:600;margin:0 0 4px;">${title}</div><div style="font-size:14px;color:${EMAIL_COLORS.muted};margin:0 0 4px;">${blurb}</div>${button(link)}</div>`
@@ -139,17 +137,12 @@ export async function sendLowCreditEmail(
       option('Upgrade your plan', 'Get more credits every month plus higher quotas.', {
         url: upgradeUrl,
         label: 'Upgrade \u2192',
-      }) +
-      option(
-        'Buy a credit pack',
-        'One-time purchase \u2014 25, 50, 100 or 250 credits. No plan change needed.',
-        { url: creditsUrl, label: 'Buy Credits \u2192' },
-      ),
-    secondaryLinks: [{ url: `${studioUrl}/settings/billing`, label: 'Manage billing' }],
+      }),
+    secondaryLinks: [{ url: upgradeUrl, label: 'Manage billing' }],
     footer: { reason: 'You got this because you manage billing for this LifeKeel account.' },
   })
 
-  const text = `${heading}\n\n${bodyText}\n\nUpgrade: ${upgradeUrl}\nBuy credits: ${creditsUrl}`
+  const text = `${heading}\n\n${bodyText}\n\nUpgrade: ${upgradeUrl}`
 
   // Use SendGrid directly (the EmailChannel expects InsightNotification, so we send raw)
   const sgMail = (await import('@sendgrid/mail')).default

@@ -61,7 +61,7 @@ export async function sendVaultReminderEmail(
       to,
       from: { email: getFromEmail(), name: 'LifeKeel' },
       subject: "Your family's Digital Estate Vault",
-      text: `Hi ${firstName},\n\n${reporterName} reported: ${playbookTitle}.\n\nYour family's Digital Estate Vault has ${docCount} ${docWord} on file. Sign in any time to view them.\n\nOak never opens, shares, or releases these on its own — a family member always has to sign in and choose to view one.`,
+      text: `Hi ${firstName},\n\n${reporterName} reported: ${playbookTitle}.\n\nYour family's Digital Estate Vault has ${docCount} ${docWord} on file. Sign in any time to view them.\n\nKeel never opens, shares, or releases these on its own — a family member always has to sign in and choose to view one.\n${appUrl()}/vault`,
       html: renderEmail({
         preheader: `Your family's Digital Estate Vault has ${docCount} ${docWord} on file.`,
         eyebrow: 'Digital Estate Vault',

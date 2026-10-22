@@ -130,7 +130,13 @@ pnpm --filter @lifekeel/api email:preview   # sends 20 emails to Mailpit
 
 The logo is loaded from `${LIFEKEEL_URL}/icon-192.png`, so keep the web app
 running while previewing. In `bodyHtml`, pass any user-supplied value through
-`escapeHtml`; the layout escapes everything else.
+`escapeHtml`; the layout escapes everything else. Links must be absolute HTTP(S)
+URLs without embedded credentials.
+
+The sender name is LifeKeel. The footer uses the owner-supplied correspondence
+location, `Milton Keynes, MK4 4NW, UK`; set `EMAIL_POSTAL_ADDRESS` to override it.
+Verify that this is a deliverable business address for the markets you email;
+rendering an address does not establish marketing-law compliance.
 
 ## Stop and reset
 
