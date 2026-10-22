@@ -111,10 +111,14 @@ describe('GET /operator/ai-health (PRD-217)', () => {
       created_at: now,
     })
     const today = now.toISOString().slice(0, 10)
-    await db.collection('assistant_answer_routes').insertMany([
-      { _id: `${today}|verified`, day: today, route: 'verified', count: 3, updated_at: now },
-      { _id: `${today}|generated`, day: today, route: 'generated', count: 1, updated_at: now },
-    ])
+    await db
+      .collection<{ _id: string; day: string; route: string; count: number; updated_at: Date }>(
+        'assistant_answer_routes',
+      )
+      .insertMany([
+        { _id: `${today}|verified`, day: today, route: 'verified', count: 3, updated_at: now },
+        { _id: `${today}|generated`, day: today, route: 'generated', count: 1, updated_at: now },
+      ])
     await db.collection('llm_guard_events').insertOne({
       tenant_id: 'family-1',
       call_id: 'c1',

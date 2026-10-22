@@ -9,7 +9,7 @@ description: >
 version: 1.0.0
 signal_types:
   - family.policy_review
-industries: ["family", "insurance"]
+industries: ['family', 'insurance']
 
 rules:
   - id: duplicate_policy_coverage
@@ -17,10 +17,10 @@ rules:
     # One event per (type, holder) overlap group — the composite member_id
     # ("m_123:life" or "household:car") keeps each overlap's entity_key
     # distinct so dedup and stale-resolution stay per-pair.
-    condition: "data.overlap_count > 1"
+    condition: 'data.overlap_count > 1'
     confidence: 0.7
-    impact_low: "data.overlap_monthly_premium_minor"
-    impact_high: "data.overlap_monthly_premium_minor * 12"
+    impact_low: 'data.overlap_monthly_premium_minor'
+    impact_high: 'data.overlap_monthly_premium_minor * 12'
     reasoning_template: >
       {{data.overlap_count}} {{data.overlap_type}} policies appear on file for {{data.overlap_holder}}
       ({{data.overlap_providers}}), costing {{data.overlap_monthly_premium_minor}}/month combined. This can
@@ -34,7 +34,7 @@ rules:
 
   - id: policy_attributed_to_removed_member
     name: Policy Attributed To Someone No Longer On The Roster
-    condition: "data.orphaned_policy_count > 0"
+    condition: 'data.orphaned_policy_count > 0'
     confidence: 0.7
     impact_low: 0
     impact_high: 0
@@ -46,3 +46,24 @@ rules:
     actions:
       - Re-assign the policy to the correct roster member, or remove it if the cover ended
       - If the member left the family, check whether the policy itself should still be on file
+
+  - id: policy_renewal_date_in_past
+    name: Renewal Date On File Has Passed
+    # soonestPolicyRenewal only looks forward — a renewal_date in the past is
+    # invisible without this rule. The record may be stale (the policy renewed
+    # and nobody updated the date) or the cover may have lapsed; the register
+    # cannot tell which, so this stays a record-keeping finding.
+    condition: 'data.stale_renewal_count > 0'
+    confidence: 0.8
+    impact_low: 0
+    impact_high: 'data.stale_renewal_monthly_premium_minor * 12'
+    reasoning_template: >
+      {{data.stale_renewal_count}} policies on file have a renewal date that has already passed:
+      {{data.stale_renewal_descriptions}}. The cover may have renewed without the record being updated,
+      or the policy may have ended — the record on file cannot show which. This is informational only:
+      your insurer or a licensed insurance professional can confirm the policy's current status.
+    actions:
+      - Check each policy's documents or your insurer account for its current status
+      - Update the renewal date on file if the policy renewed
+      - Remove the policy from the register if the cover ended
+      - If you are unsure whether the cover is still active, ask your insurer or a licensed insurance professional
