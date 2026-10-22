@@ -3450,6 +3450,9 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   db.collection('assistant_answer_routes')
     .createIndex({ day: 1 })
     .catch(() => {})
+  db.collection('ai_cascade_funnel')
+    .createIndex({ day: 1 })
+    .catch(() => {})
 
   function percentile(sorted: number[], p: number): number | null {
     if (sorted.length === 0) return null
@@ -3465,7 +3468,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
       const sinceDay = since.toISOString().slice(0, 10)
 
-      const [callRows, costRows, answerRows, guardRows, config] = await Promise.all([
+      const [callRows, costRows, answerRows, guardRows, funnelRows, config] = await Promise.all([
         db
           .collection('ai_task_calls')
           .aggregate([
@@ -3521,6 +3524,15 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
             { $match: { persisted_at: { $gte: since } } },
             // Event type + action only — never field_path or content hashes.
             { $group: { _id: { type: '$type', action: '$action' }, count: { $sum: 1 } } },
+          ])
+          .toArray(),
+        db
+          .collection('ai_cascade_funnel')
+          .aggregate([
+            { $match: { day: { $gte: sinceDay } } },
+            {
+              $group: { _id: { task_id: '$task_id', stage: '$stage' }, count: { $sum: '$count' } },
+            },
           ])
           .toArray(),
         getPlatformConfig(db),
@@ -3591,6 +3603,14 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         guard_events: guardRows.map((r) => ({
           type: (r['_id'] as { type: string }).type,
           action: (r['_id'] as { action: string }).action,
+          count: r['count'],
+        })),
+        // PRD-215: per-task cascade tier counts (rules / encoder / model).
+        // generator_share is the share settled by the model itself — the
+        // regression signal the alert job pages on.
+        cascade_funnel: funnelRows.map((r) => ({
+          task_id: (r['_id'] as { task_id: string }).task_id,
+          stage: (r['_id'] as { stage: string }).stage,
           count: r['count'],
         })),
         disabled_tasks: config.ai_disabled_tasks,

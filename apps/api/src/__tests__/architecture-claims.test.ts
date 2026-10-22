@@ -69,9 +69,12 @@ const EXEMPT_COLLECTIONS = new Set([
   'platform_operators',
   'platform_config',
   'platform_config_history',
-  // PRD-217/212 AI-health telemetry: task, model, outcome, latency and per-day route counts; no tenant id or content
+  // PRD-217/212/215 AI-health telemetry: per-call metadata (task, model,
+  // outcome, latency), per-day route counts, and per-day cascade-funnel
+  // counts — global aggregates, no tenant id or content
   'ai_task_calls',
   'assistant_answer_routes',
+  'ai_cascade_funnel',
   // infra state (not family data)
   'cron_locks',
   'migrations',
@@ -123,12 +126,6 @@ const EXEMPT_COLLECTIONS = new Set([
   // detector-level aggregate metrics (precision/recall per detector) — no
   // per-tenant key or family content by design
   'feature_hash_eval_reports',
-  // PRD-217 operator AI health — platform-wide call metadata
-  // (task/model/outcome/latency, no tenant_id, no prompt/completion content;
-  // 30-day TTL) and global day×route counters for the verified-vs-generated
-  // mix — global aggregates, not per-tenant data
-  'ai_task_calls',
-  'assistant_answer_routes',
 ])
 
 // Collection-name literals at known access patterns. Kept deliberately

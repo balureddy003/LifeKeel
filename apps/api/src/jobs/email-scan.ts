@@ -193,7 +193,8 @@ export async function scanTenantInbox(
   // Gmail OAuth mailboxes read through the REST API under gmail.readonly
   // (R38); everything else is IMAP. Each keeps its own cursor field because
   // IMAP UIDs and Gmail timestamps are not comparable.
-  const useGmailApi = credentialDoc.auth_type === 'oauth' && credentialDoc.extra?.provider === 'gmail'
+  const useGmailApi =
+    credentialDoc.auth_type === 'oauth' && credentialDoc.extra?.provider === 'gmail'
   const cursorField = useGmailApi ? 'last_synced_gmail_at' : 'last_synced_uid'
   const previousCursor = credentialDoc[cursorField] as number | undefined
 
@@ -255,7 +256,30 @@ export async function scanTenantInbox(
       decide,
       prefilter: true,
       encoder,
-      onStage: recordEmailFunnelStage,
+      onStage: (stage) => {
+        recordEmailFunnelStage(stage)
+        // PRD-215: also persist the funnel — global day × task × stage counts
+        // only (no tenant, no content). Powers the generator-share regression
+        // check in the AI-health alert job and /operator/ai-health.
+        const day = new Date().toISOString().slice(0, 10)
+        db.collection<{
+          _id: string
+          day: string
+          task_id: string
+          stage: string
+          count: number
+          updated_at: Date
+        }>('ai_cascade_funnel')
+          .updateOne(
+            { _id: `${day}|email.policy_relevance.v1|${stage}` },
+            {
+              $inc: { count: 1 },
+              $set: { day, task_id: 'email.policy_relevance.v1', stage, updated_at: new Date() },
+            },
+            { upsert: true },
+          )
+          .catch(() => {})
+      },
     })
     if (classification.failed) {
       recordEmailClassifyFailure()
@@ -315,7 +339,10 @@ export async function scanTenantInbox(
       if (!signatureMatchesMime(attachment.content, attachment.contentType)) continue
       const scan = await scanUpload(attachment.content)
       if (scan.result === 'infected') {
-        log.warn({ tenantId, messageId: email.messageId }, 'Email attachment dropped by malware scan')
+        log.warn(
+          { tenantId, messageId: email.messageId },
+          'Email attachment dropped by malware scan',
+        )
         continue
       }
       const parseAllowed = docExtractionEnabled && mayParse(scan)

@@ -25,6 +25,9 @@ export interface AiHealthAlertResult {
   alerted: string[]
 }
 
+const FUNNEL_MIN_EVENTS = 10
+const GENERATOR_SHARE = 0.8
+
 export async function runAiHealthAlert(db: Db, now = new Date()): Promise<AiHealthAlertResult> {
   const since = new Date(now.getTime() - WINDOW_MS)
   const rows = await db
@@ -65,5 +68,47 @@ export async function runAiHealthAlert(db: Db, now = new Date()): Promise<AiHeal
     })
     alerted.push(taskId)
   }
+
+  // PRD-215 escalation telemetry: when the encoder gate is meant to be
+  // settling most email classifications, a high model_call share means the
+  // cheap tiers stopped gating (encoder outage → fail-open, or a traffic
+  // mix shift) — the cascade has regressed to "everything hits the model".
+  // Only meaningful in gate mode: off/shadow expects ~100% model calls.
+  if (process.env['EMAIL_ENCODER_MODE'] === 'gate') {
+    const today = now.toISOString().slice(0, 10)
+    const funnel = await db
+      .collection('ai_cascade_funnel')
+      .aggregate([
+        { $match: { day: today } },
+        {
+          $group: {
+            _id: '$task_id',
+            total: { $sum: '$count' },
+            generator: {
+              $sum: { $cond: [{ $eq: ['$stage', 'model_call'] }, '$count', 0] },
+            },
+          },
+        },
+        { $match: { total: { $gte: FUNNEL_MIN_EVENTS } } },
+      ])
+      .toArray()
+    for (const row of funnel) {
+      const total = row['total'] as number
+      const generator = row['generator'] as number
+      if (generator / total < GENERATOR_SHARE) continue
+      const taskId = row['_id'] as string
+      await sendOpsAlert({
+        title: `Cascade regression: '${taskId}' generator share ${Math.round((generator / total) * 100)}%`,
+        message:
+          `${generator}/${total} classified items reached the model today while the ` +
+          `encoder is in gate mode — the cheap tiers should be settling most of these. ` +
+          `Check the encoder service (it fails open to the model) and the funnel on /operator/ai.`,
+        severity: 'warning',
+        fingerprint: `ai-cascade-regression:${taskId}:${today}`,
+      })
+      alerted.push(`cascade:${taskId}`)
+    }
+  }
+
   return { checked_tasks: rows.length, alerted }
 }

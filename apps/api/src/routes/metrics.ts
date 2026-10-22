@@ -62,6 +62,7 @@ let featureHashEvictions: Counter | null = null
 let featureHashCacheHits: Counter | null = null
 let featureHashCacheMisses: Counter | null = null
 let localModelCalls: Counter | null = null
+let localModelQueueRejections: Counter | null = null
 let processorViolations: Counter | null = null
 let localModelLatency: Histogram | null = null
 let localModelQueueWait: Histogram | null = null
@@ -217,6 +218,14 @@ function initMetrics(registry: Registry): void {
     labelNames: ['purpose', 'outcome'],
     registers: [registry],
   })
+  // PRD-215: work the bounded queue refused before it reached the model.
+  // queue_full = load shed; aborted = its deadline fired while it waited.
+  localModelQueueRejections = new Counter({
+    name: 'lifekeel_local_model_queue_rejections_total',
+    help: 'Local model calls refused before reaching the model, by reason (queue_full | aborted)',
+    labelNames: ['purpose', 'reason'],
+    registers: [registry],
+  })
   // PRD-142: a model call whose processor is not approved for the task. Reason
   // and mode only: no task ids or tenants as labels.
   processorViolations = new Counter({
@@ -368,10 +377,12 @@ export function recordLocalModelCall(
   latencySeconds: number,
   queueWaitSeconds: number,
   costUsd = 0,
+  rejected?: 'queue_full' | 'aborted',
 ): void {
   initMetrics(getRegistry())
   if (costUsd > 0) localModelCost!.inc({ purpose }, costUsd)
   localModelCalls!.inc({ purpose, outcome: ok ? 'ok' : 'error' })
+  if (rejected) localModelQueueRejections!.inc({ purpose, reason: rejected })
   localModelLatency!.observe({ purpose }, latencySeconds)
   localModelQueueWait!.observe({ purpose }, queueWaitSeconds)
 }

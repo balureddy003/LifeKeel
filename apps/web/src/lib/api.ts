@@ -4528,6 +4528,10 @@ export interface OperatorAiHealth {
     generation_escape_rate: number | null
   }
   guard_events: Array<{ type: string; action: string; count: number }>
+  /** PRD-215: per-task cascade tier counts (rule_hit / prefilter_skip /
+   *  encoder_skip / model_call). model_call share is the generator-escape
+   *  signal for tiered tasks. */
+  cascade_funnel: Array<{ task_id: string; stage: string; count: number }>
   disabled_tasks: string[]
   /** Self-hosted model queue stats — mean wait for a concurrency slot. */
   local_model: { calls: number; queue_wait_mean_s: number | null }
