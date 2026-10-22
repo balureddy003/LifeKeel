@@ -12,6 +12,15 @@ let mongod: MongoMemoryServer
 let client: MongoClient
 let db: Db
 
+interface FunnelDoc {
+  _id: string
+  day: string
+  task_id: string
+  stage: string
+  count: number
+  updated_at: Date
+}
+
 const calls = (n: number) => Array.from({ length: n }, (_, i) => i)
 
 beforeAll(async () => {
@@ -126,5 +135,71 @@ describe('runAiHealthAlert (PRD-217)', () => {
     const result = await runAiHealthAlert(db, now)
     expect(result.checked_tasks).toBe(0)
     expect(sendOpsAlert).not.toHaveBeenCalled()
+  })
+
+  it('warns on a cascade regression — high model share while the encoder gate is on', async () => {
+    const now = new Date()
+    process.env['EMAIL_ENCODER_MODE'] = 'gate'
+    try {
+      const today = now.toISOString().slice(0, 10)
+      await db.collection<FunnelDoc>('ai_cascade_funnel').insertMany([
+        // 9 of 10 emails reaching the model — the encoder stopped gating.
+        {
+          _id: `${today}|email.policy_relevance.v1|model_call`,
+          day: today,
+          task_id: 'email.policy_relevance.v1',
+          stage: 'model_call',
+          count: 9,
+          updated_at: now,
+        },
+        {
+          _id: `${today}|email.policy_relevance.v1|encoder_skip`,
+          day: today,
+          task_id: 'email.policy_relevance.v1',
+          stage: 'encoder_skip',
+          count: 1,
+          updated_at: now,
+        },
+      ])
+      const result = await runAiHealthAlert(db, now)
+      expect(result.alerted).toEqual(['cascade:email.policy_relevance.v1'])
+      const arg = vi.mocked(sendOpsAlert).mock.calls[0]![0]
+      expect(arg.severity).toBe('warning')
+      expect(arg.title).toContain('generator share 90%')
+      expect(arg.fingerprint).toBe(`ai-cascade-regression:email.policy_relevance.v1:${today}`)
+    } finally {
+      delete process.env['EMAIL_ENCODER_MODE']
+    }
+  })
+
+  it('skips the cascade check when the encoder is not gating or volume is too small', async () => {
+    const now = new Date()
+    const today = now.toISOString().slice(0, 10)
+    const funnelDoc = (count: number): FunnelDoc => ({
+      _id: `${today}|email.policy_relevance.v1|model_call`,
+      day: today,
+      task_id: 'email.policy_relevance.v1',
+      stage: 'model_call',
+      count,
+      updated_at: now,
+    })
+
+    // No gate mode → a 100% model share is expected behaviour, not regression.
+    delete process.env['EMAIL_ENCODER_MODE']
+    await db.collection<FunnelDoc>('ai_cascade_funnel').insertOne(funnelDoc(50))
+    await runAiHealthAlert(db, now)
+    expect(sendOpsAlert).not.toHaveBeenCalled()
+
+    // Gate on but under the event floor — too early to call a regression.
+    process.env['EMAIL_ENCODER_MODE'] = 'gate'
+    try {
+      await db.collection<FunnelDoc>('ai_cascade_funnel').deleteMany({})
+      await db.collection<FunnelDoc>('ai_cascade_funnel').insertOne(funnelDoc(9))
+      const result = await runAiHealthAlert(db, now)
+      expect(result.alerted).toEqual([])
+      expect(sendOpsAlert).not.toHaveBeenCalled()
+    } finally {
+      delete process.env['EMAIL_ENCODER_MODE']
+    }
   })
 })

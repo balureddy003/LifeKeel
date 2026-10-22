@@ -133,6 +133,33 @@ describe('GET /operator/ai-health (PRD-217)', () => {
       timestamp: now,
       persisted_at: now,
     })
+    await db
+      .collection<{
+        _id: string
+        day: string
+        task_id: string
+        stage: string
+        count: number
+        updated_at: Date
+      }>('ai_cascade_funnel')
+      .insertMany([
+        {
+          _id: `${today}|email.policy_relevance.v1|encoder_skip`,
+          day: today,
+          task_id: 'email.policy_relevance.v1',
+          stage: 'encoder_skip',
+          count: 8,
+          updated_at: now,
+        },
+        {
+          _id: `${today}|email.policy_relevance.v1|model_call`,
+          day: today,
+          task_id: 'email.policy_relevance.v1',
+          stage: 'model_call',
+          count: 2,
+          updated_at: now,
+        },
+      ])
 
     const app = await buildApp()
     const res = await app.inject({ method: 'GET', url: '/operator/ai-health' })
@@ -170,6 +197,23 @@ describe('GET /operator/ai-health (PRD-217)', () => {
     const guards = body.guard_events as Record<string, unknown>[]
     expect(guards).toContainEqual(
       expect.objectContaining({ type: 'pii_redaction', action: 'redacted', count: 1 }),
+    )
+
+    // PRD-215 cascade funnel: day×task×stage counts reach the operator view.
+    const funnel = body.cascade_funnel as Record<string, unknown>[]
+    expect(funnel).toContainEqual(
+      expect.objectContaining({
+        task_id: 'email.policy_relevance.v1',
+        stage: 'encoder_skip',
+        count: 8,
+      }),
+    )
+    expect(funnel).toContainEqual(
+      expect.objectContaining({
+        task_id: 'email.policy_relevance.v1',
+        stage: 'model_call',
+        count: 2,
+      }),
     )
 
     // Metadata-only contract: nothing shaped like a prompt or completion

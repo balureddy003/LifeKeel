@@ -3,6 +3,7 @@ import { z } from 'zod'
 import {
   createLocalDecisionFn,
   LocalDecisionError,
+  LocalDecisionQueueFullError,
   type LocalDecisionCallEvent,
 } from '../local-decision.js'
 
@@ -144,6 +145,69 @@ describe('createLocalDecisionFn concurrency and metrics hook', () => {
 
     expect((await Promise.all(results)).map((r) => r.value.ok)).toEqual([true, true, true, true])
     expect(peak).toBe(2)
+  })
+
+  it('refuses work past maxQueue with LocalDecisionQueueFullError — load shed, not a model call', async () => {
+    const events: LocalDecisionCallEvent[] = []
+    const gate = deferred()
+    const fetchImpl = vi.fn(async () => {
+      await gate.promise
+      return reply('{"ok":true}')
+    })
+    const decide = createLocalDecisionFn({
+      baseUrl: 'http://judge:11434',
+      model: 'm',
+      fetchImpl,
+      maxConcurrent: 1,
+      maxQueue: 1,
+      onCall: (e) => events.push(e),
+    })
+
+    const running = decide(req)
+    const queued = decide(req)
+    const shed = decide(req)
+    await expect(shed).rejects.toBeInstanceOf(LocalDecisionQueueFullError)
+    // The refused call never touched the model and is tagged queue_full.
+    expect(events.at(-1)).toMatchObject({ ok: false, rejected: 'queue_full' })
+    gate.resolve(reply('{"ok":true}'))
+    expect((await running).value.ok).toBe(true)
+    expect((await queued).value.ok).toBe(true)
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+  })
+
+  it('drops a waiter when its caller signal aborts — it never takes a slot for a dead request', async () => {
+    const events: LocalDecisionCallEvent[] = []
+    const gates = [deferred(), deferred()]
+    let call = 0
+    const fetchImpl = vi.fn(async () => {
+      const mine = gates[call++]!
+      return mine.promise
+    })
+    const decide = createLocalDecisionFn({
+      baseUrl: 'http://judge:11434',
+      model: 'm',
+      fetchImpl,
+      maxConcurrent: 1,
+      onCall: (e) => events.push(e),
+    })
+
+    const first = decide(req)
+    const controller = new AbortController()
+    const doomed = decide(req, { signal: controller.signal })
+    const survivor = decide(req)
+    await new Promise((r) => setTimeout(r, 10))
+    controller.abort()
+    await expect(doomed).rejects.toBeDefined()
+    expect(events.at(-1)).toMatchObject({ ok: false, rejected: 'aborted' })
+
+    // The aborted waiter vacated the queue: finishing the first call hands
+    // the slot to the survivor, which completes without a second queue gap.
+    gates[0]!.resolve(reply('{"ok":true}'))
+    await new Promise((r) => setTimeout(r, 10))
+    gates[1]!.resolve(reply('{"ok":true}'))
+    expect((await first).value.ok).toBe(true)
+    expect((await survivor).value.ok).toBe(true)
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
   })
 
   it('releases the slot when a call fails so one failure cannot wedge the queue', async () => {

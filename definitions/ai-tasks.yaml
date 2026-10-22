@@ -140,7 +140,9 @@ tasks:
     allowed_processors: [ollama]
     primary_model: tier:fast
     preferred_execution: local_cpu
-    deadline_ms: 60000
+    # PRD-215: batch deadline — a scanned email is retried on the next run if
+    # this one times out, so waiting for a slow CPU model beats failing fast.
+    deadline_ms: 120000
     max_input_tokens: 4000
     max_output_tokens: 300
     budget_class: batch
@@ -157,7 +159,8 @@ tasks:
     allowed_processors: [ollama]
     primary_model: tier:fast
     preferred_execution: local_cpu
-    deadline_ms: 60000
+    # PRD-215: batch deadline (see email.policy_relevance.v1).
+    deadline_ms: 120000
     max_input_tokens: 4000
     max_output_tokens: 600
     budget_class: batch

@@ -232,6 +232,44 @@ export default function OperatorAiPage() {
         </div>
       </GlassCard>
 
+      {health.cascade_funnel.length > 0 && (
+        <GlassCard className="mt-4 p-5">
+          <div className="flex items-center gap-2 text-sm font-medium text-ink-secondary">
+            <Zap size={15} /> Cascade funnel
+          </div>
+          <p className="mt-1 text-xs text-ink-tertiary">
+            Which tier settled each request — rules and encoder calls are free; model_call is the
+            generator share.
+          </p>
+          <div className="mt-3 space-y-2">
+            {[...new Set(health.cascade_funnel.map((f) => f.task_id))].map((taskId) => {
+              const rows = health.cascade_funnel.filter((f) => f.task_id === taskId)
+              const total = rows.reduce((s, r) => s + r.count, 0)
+              const gen = rows.find((r) => r.stage === 'model_call')?.count ?? 0
+              const share = total > 0 ? Math.round((gen / total) * 100) : 0
+              return (
+                <div key={taskId} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                  <span className="font-mono text-xs">{taskId}</span>
+                  <span
+                    className={`text-xs font-medium ${share > 80 ? 'text-warning' : 'text-ink-tertiary'}`}
+                  >
+                    {share}% model
+                  </span>
+                  {rows.map((r) => (
+                    <span
+                      key={r.stage}
+                      className="rounded-full border border-tint/[0.08] px-2.5 py-0.5 text-xs text-ink-secondary"
+                    >
+                      {r.stage}: {r.count}
+                    </span>
+                  ))}
+                </div>
+              )
+            })}
+          </div>
+        </GlassCard>
+      )}
+
       {health.guard_events.length > 0 && (
         <GlassCard className="mt-4 p-5">
           <div className="flex items-center gap-2 text-sm font-medium text-ink-secondary">

@@ -308,14 +308,20 @@ const BASE_DELAY_MS = 500
  * Wraps an LLM call with exponential backoff retry on transient errors.
  * Retries on: rate limits (429), server errors (5xx), network errors.
  * Does NOT retry on auth errors (401/403) or bad requests (400/422).
+ *
+ * PRD-215: the backoff sleep is abort-aware — a caller signal that fires
+ * mid-backoff stops the wait and the retry loop instead of sleeping out the
+ * full delay on a request that is already dead.
  */
 async function withRetry<T>(
   fn: () => Promise<T>,
+  signal?: AbortSignal,
   retries = MAX_RETRIES,
   delayMs = BASE_DELAY_MS,
 ): Promise<T> {
   let lastErr: unknown
   for (let attempt = 0; attempt <= retries; attempt++) {
+    if (signal?.aborted) throw signal.reason ?? lastErr ?? new Error('aborted')
     try {
       return await fn()
     } catch (err) {
@@ -349,7 +355,21 @@ async function withRetry<T>(
         },
         'LLM attempt failed — retrying',
       )
-      await new Promise((r) => setTimeout(r, wait))
+      // Sleep capped by the caller's deadline: an abort during backoff breaks
+      // the loop immediately rather than burning the remaining delay.
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          cleanup()
+          resolve()
+        }, wait)
+        const onAbort = () => {
+          clearTimeout(timer)
+          cleanup()
+          reject(signal?.reason ?? lastErr)
+        }
+        const cleanup = () => signal?.removeEventListener('abort', onAbort)
+        signal?.addEventListener('abort', onAbort, { once: true })
+      })
     }
   }
   throw lastErr
@@ -404,7 +424,7 @@ async function callAnthropic(
     const block = response.content[0]
     if (!block || block.type !== 'text') throw new Error('Anthropic: no text block in response')
     return block.text
-  })
+  }, signal)
 }
 
 async function callOpenAI(
@@ -448,7 +468,7 @@ async function callOpenAI(
       })
     }
     return response.choices[0]?.message.content ?? ''
-  })
+  }, signal)
 }
 
 async function callAzure(
@@ -510,7 +530,7 @@ async function callAzure(
       })
     }
     return response.choices[0]?.message.content ?? ''
-  })
+  }, signal)
 }
 
 async function callGroq(
@@ -553,7 +573,7 @@ async function callGroq(
       })
     }
     return response.choices[0]?.message.content ?? ''
-  })
+  }, signal)
 }
 
 const OLLAMA_TIMEOUT_MS = 180_000
@@ -616,7 +636,7 @@ async function callOllama(
       })
     }
     return data.message?.content ?? ''
-  })
+  }, signal)
 }
 
 // ── Public factory ─────────────────────────────────────────────────────────────
