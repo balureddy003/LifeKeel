@@ -12,6 +12,7 @@ hot reload and debuggers work. For CI-mirror checks see
 | API (Fastify) | http://localhost:3001 | pnpm |
 | MongoDB 7 | 127.0.0.1:27017 | Podman |
 | Redis 7 | 127.0.0.1:6379 | Podman |
+| Mailpit (email inbox) | http://localhost:8025 | Podman |
 
 ## 1. Prerequisites
 
@@ -44,6 +45,12 @@ MONGODB_URL=mongodb://127.0.0.1:27017
 MONGODB_DB=lifekeel
 REDIS_URL=redis://127.0.0.1:6379
 CORS_ORIGIN=http://localhost:3002
+
+# Email to Mailpit (see "Testing email" below)
+MAILPIT_URL=http://localhost:8025
+SENDGRID_API_KEY=SG.local-mailpit-placeholder
+SENDGRID_FROM_EMAIL=accounts@lifekeel.test
+EMAIL_VERIFICATION_ENABLED=true
 ```
 
 Everything else (LLM keys, Google OAuth, Stripe test keys, VAPID) is optional
@@ -54,7 +61,7 @@ locally; the features that need them stay off until set. See the comments in
 
 ```bash
 podman compose -f compose.local.yml up -d
-podman compose -f compose.local.yml ps      # both should be "Up"
+podman compose -f compose.local.yml ps      # mongodb, redis, mailpit "Up"
 ```
 
 `compose.local.yml` uses fully qualified image names (`docker.io/library/...`)
@@ -80,10 +87,31 @@ curl -s localhost:3001/health         # "detectors": 9
 curl -s localhost:3001/health/ready   # mongodb + redis "connected"
 ```
 
-Open <http://localhost:3002> and sign up. With `EMAIL_VERIFICATION_ENABLED`
-unset, the account is verified automatically, so no SMTP is needed. For
-seeded demo data without signing up, use the demo token described in
+Open <http://localhost:3002> and sign up with any address (use a `.test`
+domain, e.g. `you@lifekeel.test`). For seeded demo data without signing up,
+use the demo token described in
 [docs/local-debugging.md](docs/local-debugging.md#see-the-app-with-data).
+
+## Testing email
+
+With `MAILPIT_URL` set, every email the API sends (verification, password
+reset, family invites, reminders, lifecycle mail) is delivered to Mailpit
+instead of SendGrid. Open <http://localhost:8025> to read it and click its
+links.
+
+- The API logs `Mailpit dev transport enabled` at boot when it is active.
+  Restart the API after changing `.env`; it is read only at startup.
+- `SENDGRID_API_KEY` must be set (any placeholder) or senders skip before
+  sending. With `MAILPIT_URL` set, nothing reaches SendGrid.
+- The API refuses to boot if `MAILPIT_URL` is set with `NODE_ENV=production`
+  or points at anything other than localhost/127.0.0.1/[::1]
+  (`apps/api/src/dev/mailpit.ts`).
+- Quick checks: sign up (verification email), then use "Forgot password" on
+  the sign-in page (reset email). `curl -s localhost:8025/api/v1/messages`
+  lists the inbox; `curl -X DELETE localhost:8025/api/v1/messages` clears it.
+- Without Mailpit, unset `MAILPIT_URL`, `SENDGRID_API_KEY` and
+  `EMAIL_VERIFICATION_ENABLED`: accounts are then auto-verified and email is
+  skipped with a log warning.
 
 ## Stop and reset
 
@@ -95,8 +123,8 @@ podman exec -it lifekeel-local-mongodb-1 mongosh lifekeel   # inspect data
 
 ## Gotchas
 
-- **Port already in use.** Another project's Redis/Mongo on 6379/27017 will
-  block startup. `lsof -nP -iTCP:6379 -sTCP:LISTEN` finds it.
+- **Port already in use.** Another project's Redis/Mongo/Mailpit on
+  6379/27017/8025/1025 will block startup. `lsof -nP -iTCP:6379 -sTCP:LISTEN` finds it.
 - **Don't run `pnpm typecheck`/`pnpm build` while `next dev` is running.** It
   overwrites `apps/web/.next`; the page then renders unstyled. Stop the dev
   server, `rm -rf apps/web/.next`, restart.
