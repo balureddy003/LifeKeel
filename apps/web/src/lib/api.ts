@@ -3304,6 +3304,64 @@ export async function fetchAuditLog(before?: string): Promise<AuditLogEntry[]> {
   )
 }
 
+// ── Receipt Chain (PRD-214, M7) — what Keel did, hash-chained ─────────────
+
+export interface FamilyReceipt {
+  id: string
+  chain_index: number
+  chain_hash: string
+  payload_hash: string
+  action_type: string
+  action_label: string | null
+  outcome: string
+  outcome_reason: string | null
+  executed_at: string
+  approved_by: string | null
+  approved_via: string | null
+  detector_id: string | null
+  insight_id: string | null
+  dry_run: boolean
+  /** Plain-language "policy that allowed it", derived server-side. */
+  policy: string
+}
+
+export interface FamilyReceiptsResponse {
+  receipts: FamilyReceipt[]
+  total: number
+  chain_head: string | null
+  chain_note: string
+}
+
+export async function fetchFamilyReceipts(limit = 50, offset = 0): Promise<FamilyReceiptsResponse> {
+  return apiFetch<FamilyReceiptsResponse>(`/family/receipts?limit=${limit}&offset=${offset}`, {
+    receipts: [],
+    total: 0,
+    chain_head: null,
+    chain_note: '',
+  })
+}
+
+/** CSV export — fetched with the family's credentials, saved as a blob. */
+export async function downloadFamilyReceiptsCsv(): Promise<boolean> {
+  try {
+    const headers: Record<string, string> = {}
+    const token = getAuthToken()
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    const res = await credFetch(`${getApiBase()}/family/receipts?format=csv`, { headers })
+    if (!res.ok) return false
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `lifekeel-receipts-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+    return true
+  } catch {
+    return false
+  }
+}
+
 // ── Password reset & email verification ─────────────────────────────────
 
 // Someone reaching these is very possibly locked out of an account they
