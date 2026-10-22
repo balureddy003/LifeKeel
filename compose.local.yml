@@ -1,4 +1,4 @@
-# Local backing services (MongoDB + Redis) for running apps/api and apps/web
+# Local backing services (MongoDB, Redis, Mailpit) for running apps/api and apps/web
 # natively with pnpm. Works with Podman and Docker:
 #   podman compose -f compose.local.yml up -d
 #   docker compose -f compose.local.yml up -d
@@ -28,6 +28,16 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # Catches every email the API sends when MAILPIT_URL is set (dev only).
+  # Inbox UI + send API: http://localhost:8025, SMTP: 127.0.0.1:1025.
+  mailpit:
+    image: docker.io/axllent/mailpit:v1.31.6
+    ports:
+      - '127.0.0.1:8025:8025'
+      - '127.0.0.1:1025:1025'
+    environment:
+      MP_MAX_MESSAGES: '500'
 
 volumes:
   lifekeel_mongo:
