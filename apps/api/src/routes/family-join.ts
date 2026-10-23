@@ -140,8 +140,9 @@ export function registerFamilyJoinRoutes(
     '/family/join',
     // Rate-limited like signup — an invite code is a shared, guessable-ish
     // secret (6 hex characters), so brute-forcing it needs the same
-    // per-route throttle signup already applies to email enumeration.
-    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    // per-route throttle signup already applies to email enumeration,
+    // plus Turnstile (§4.1 group J).
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' }, turnstile: 'family_join' } },
     async (req, reply) => {
       const { invite_code, name, email, password } = req.body ?? {}
       if (!invite_code?.trim()) return reply.status(400).send({ error: 'Invite code required' })

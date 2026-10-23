@@ -69,6 +69,13 @@ Each run is recorded in `job_runs` (counts only). The sweep never deletes docume
 | Stripe webhook event ids | 400 days once completed | idempotency across Stripe's retry window, plus a year for reconciliation | `jobs/retention-worker.ts` |
 | Invitation send counter | 7 days | daily invitation limit | `jobs/retention-worker.ts` |
 | Saved quiz answers awaiting an email link | 24 hours | completing the link | `routes/magic-link.ts` |
+| Unverified signups (`users.registration_status: pending`) and the tenant only they created | 7 days, then swept unless they ever signed in | an address someone mistyped or abandoned becomes free again | `jobs/pending-registrations.ts` |
+| Email OTP challenges (`otp_chains`) | chain lifetime (30 minutes) + 1 hour (TTL); code stored only as an HMAC | completing sign-in | `auth/otp.ts`, `erasure.ts` |
+| Email OTP send budgets (`otp_send_windows`) | each window's end + 25 hours (TTL), counts only | abuse limits that survive restarting signup or login | `auth/otp.ts`, `erasure.ts` |
+| Uploads awaiting scan (R2 `lifekeel-quarantine`) | deleted at promotion or rejection; bucket lifecycle removes anything left after 1 day | malware and structure checks before anything is readable | `documents/scan-job.ts`, `documents/reconciler.ts` |
+| Infected or rejected uploads | metadata only (no bytes) under the audit-log window | evidence of what was blocked | `documents/scan-job.ts` |
+| Deleted documents in R2 | first purge at delete; second purge after every presigned URL has expired (about 10 minutes), then the receipt closes | an unexpired upload URL cannot bring a deleted file back | `documents/deletion.ts` |
+| Daily upload counters (`tenant_quota_days`) | 48 hours (TTL) | daily upload limit | `documents/quota.ts` |
 
 Still open (tracked in `docs/reviews/SECURITY_AND_COMPLIANCE.md`, R23): an inactivity
 window for households that stop using LifeKeel, retention for AI evaluation captures and

@@ -106,6 +106,14 @@ export type AuditAction =
   | 'marketing.profile_edit'
   | 'marketing.profile_apply'
   | 'legacy.document.read'
+  // CLOUDFLARE_INTEGRATION.md §8.2 A09
+  | 'auth.otp_issued'
+  | 'auth.otp_failed'
+  | 'auth.otp_locked'
+  | 'auth.otp_succeeded'
+  | 'document.uploaded'
+  | 'document.scan_result'
+  | 'document.accessed'
 
 export interface AuditEntry {
   tenant_id: string

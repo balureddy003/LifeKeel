@@ -202,6 +202,14 @@ jobs:
             VERTEX_LOCATION=${{ vars.VERTEX_LOCATION }}
             VERTEX_REASONING_EFFORT=${{ vars.VERTEX_REASONING_EFFORT }}
             LIFEKEEL_LLM_PROVIDER=${{ vars.LIFEKEEL_LLM_PROVIDER }}
+            TURNSTILE_MODE=${{ vars.TURNSTILE_MODE }}
+            TURNSTILE_ALLOWED_HOSTNAMES=${{ vars.TURNSTILE_ALLOWED_HOSTNAMES }}
+            AUTH_OTP_MODE=${{ vars.AUTH_OTP_MODE }}
+            DOCUMENTS_STORAGE=${{ vars.DOCUMENTS_STORAGE }}
+            DOCUMENTS_R2_TENANTS=${{ vars.DOCUMENTS_R2_TENANTS }}
+            VAULT_STORAGE=${{ vars.VAULT_STORAGE }}
+            R2_ACCOUNT_ID=${{ vars.R2_ACCOUNT_ID }}
+            R2_JURISDICTION=${{ vars.R2_JURISDICTION }}
           # NOTE: no comments inside this block — deploy-cloudrun feeds every
           # line to gcloud verbatim. Web push: without the VAPID secrets,
           # /push/vapid-key 503s and no browser can subscribe. Values come from
@@ -221,6 +229,10 @@ jobs:
             VAPID_PUBLIC_KEY=lifekeel-vapid-public-key:latest
             VAPID_PRIVATE_KEY=lifekeel-vapid-private-key:latest
             VAPID_SUBJECT=lifekeel-vapid-subject:latest
+            METRICS_SCRAPE_TOKEN=lifekeel-metrics-scrape-token:latest
+            TURNSTILE_SECRET_KEY=lifekeel-turnstile-secret-key:latest
+            OTP_PEPPER=lifekeel-otp-pepper:latest
+            SENDGRID_API_KEY=lifekeel-sendgrid-api-key:latest
           secrets_update_strategy: overwrite
 
       # Step 3 of 4. Test the new revision at its tagged URL before any user reaches it. If this fails, production

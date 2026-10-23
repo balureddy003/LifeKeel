@@ -37,6 +37,10 @@ export type SigningPurpose =
   | 'lead-unsubscribe'
   | 'user-unsubscribe'
   | 'heartbeat-unsubscribe'
+  /** Email-OTP pending token (CLOUDFLARE_INTEGRATION.md D11): never a session key. */
+  | 'otp-pending'
+  /** Dev/test-only fallback for OTP_PEPPER; production reads the secret. */
+  | 'otp-pepper'
 
 export function purposeKey(purpose: SigningPurpose): Buffer {
   return Buffer.from(

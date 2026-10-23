@@ -1751,9 +1751,49 @@ models**. The implementation already separates several important boundaries:
   narrower account context rather than the full financial profile.
 - Email/document content is treated as untrusted data, bounded to task fields,
   and routed to a configured hosted model or a local/self-hosted path.
-- Vault documents are encrypted before GridFS, excluded from ordinary document
-  routes and OCR, and can be additionally sealed in the browser so the service
-  cannot read the plaintext.
+- Vault documents are envelope-encrypted before they reach the byte store
+  (GridFS, or the private `lifekeel-vault` R2 bucket), excluded from ordinary
+  document routes and OCR, and can be additionally sealed in the browser so the
+  service cannot read the plaintext.
+- Document bytes can live in Cloudflare R2 (CLOUDFLARE_INTEGRATION.md §7):
+  browser uploads go to a private quarantine bucket, a separate scan worker
+  checks type, structure and malware in a credential-less parser child, and
+  only then promotes bytes to a private clean bucket served by 60-second
+  presigned URLs. Cloudflare is a **storage sub-processor**, not a model
+  processor: no Cloudflare content-inspection or AI feature is enabled on these
+  buckets and no R2 event pipeline may point at a model. Every read goes
+  through `documents/storage.ts` (dual-read GridFS + R2).
+
+### Edge and account protection (CLOUDFLARE_INTEGRATION.md)
+
+- **Turnstile** guards every human-initiated public mutation (signup, login,
+  password reset, verification resend, OTP resend, lead capture, family join)
+  via `config.turnstile` on the route; rate limits run first. It sends visitor
+  signals to Cloudflare on pre-login pages only.
+- **Email OTP** after signup and after password login for accounts without
+  TOTP. It is mailbox verification and a second step against password-only
+  attacks, **not** phishing-resistant MFA (the pending token is a bearer
+  credential). Passkeys are the future answer.
+- **Public surface inventory**: `security/public-routes.ts` lists every
+  session-less prefix with its protection group; a snapshot test pins it.
+- **Boot guards** refuse to start outside dev with demo tokens, API docs
+  without a recorded exception, `/metrics` without a scrape token, Turnstile
+  or OTP enabled without their secrets, or R2 enabled without its keys.
+
+```mermaid
+flowchart LR
+  B[Browser] -->|presigned PUT 5 min| Q[(R2 quarantine)]
+  B -->|init / complete| A[API]
+  A -->|HEAD, presign| Q
+  A -->|wake-up| R[(Redis)]
+  W[Scan worker] -->|claim lease| M[(MongoDB rows = outbox)]
+  W -->|GET| Q
+  W -->|INSTREAM| C[ClamAV]
+  W -->|parser child, no creds| P[structure + WebP]
+  W -->|PUT verified bytes| CL[(R2 clean)]
+  B -->|presigned GET 60 s| CL
+  A -->|ciphertext only| V[(R2 vault)]
+```
 - The exact-match LLM cache is tenant/task/input keyed with TTL; semantic
   response caching remains prohibited for sensitive household content.
 - Prompt/completion telemetry is off by default; model tracing should carry

@@ -6,8 +6,8 @@ import SignUpPage from '../signup/page'
 import LoginPage from '../login/page'
 import WelcomePage from '../welcome/page'
 
-const signUp = vi.fn(async () => {})
-const signIn = vi.fn(async () => ({ mfaRequired: false }))
+const signUp = vi.fn(async (): Promise<Record<string, unknown>> => ({ user: { id: 'u1' } }))
+const signIn = vi.fn(async (): Promise<Record<string, unknown>> => ({ mfaRequired: false }))
 const push = vi.fn()
 vi.mock('@/lib/auth-context', () => ({
   useAuth: () => ({
@@ -63,6 +63,16 @@ describe('signup form', () => {
     expect(push).toHaveBeenCalledWith('/family-setup')
   })
 
+  it('goes to the email-code step when the API asks for one (CLOUDFLARE_INTEGRATION.md §6.4)', async () => {
+    signUp.mockResolvedValueOnce({ otp: { otp_required: true, otp_token: 't' } })
+    const { container } = render(<SignUpPage />)
+    fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'Alex' } })
+    fireEvent.change(screen.getByLabelText('Email address'), { target: { value: 'alex@example.com' } })
+    fireEvent.change(container.querySelector('#signup-password')!, { target: { value: 'longenough1' } })
+    fireEvent.submit(container.querySelector('form')!)
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/verify-otp'))
+  })
+
   it('tells the visitor what happens next and says the data is not sold', () => {
     render(<SignUpPage />)
     expect(screen.getByText(/Next you add the people in your household/)).toBeTruthy()
@@ -80,6 +90,17 @@ describe('login form', () => {
       'Enter your email address and password.',
     )
     expect(screen.getByLabelText('Email address').getAttribute('aria-invalid')).toBe('true')
+  })
+})
+
+describe('login with email OTP', () => {
+  it('sends a password-only account to the code step', async () => {
+    signIn.mockResolvedValueOnce({ otpRequired: true })
+    const { container } = render(<LoginPage />)
+    fireEvent.change(screen.getByLabelText('Email address'), { target: { value: 'a@b.co' } })
+    fireEvent.change(container.querySelector('#login-password')!, { target: { value: 'secret123' } })
+    fireEvent.submit(container.querySelector('form')!)
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/verify-otp'))
   })
 })
 
@@ -129,6 +150,7 @@ describe('exits and titles', () => {
       'signup',
       'reset-password',
       'verify-email',
+      'verify-otp',
       'terms',
       'privacy',
       'support',

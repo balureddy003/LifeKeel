@@ -30,7 +30,11 @@ import rateLimit from '@fastify/rate-limit'
 import { Redis } from 'ioredis'
 import { isDevOrTest, rootSigningSecret } from './auth/signing-key.js'
 import { isSessionTokenRevoked, revokeSessionToken } from './auth/session-revocation.js'
+import { checkAccountLiveness, INACTIVE_USER_STATUSES } from './auth/liveness.js'
 import { redactUrl, scrubSecrets } from './observability/redact.js'
+import { apiDocsEnabled, collectBootGuards } from './security/boot-guard-registry.js'
+import { registerTurnstile, turnstileConfig } from './security/turnstile.js'
+import { openPrefixes } from './security/public-routes.js'
 import multipart from '@fastify/multipart'
 import helmet from '@fastify/helmet'
 import compress from '@fastify/compress'
@@ -70,6 +74,8 @@ import {
 } from './routes/metrics.js'
 import { initAuditLogger } from './audit/audit-log.js'
 import { registerAuthUserRoutes } from './routes/auth-users.js'
+import { registerAuthOtpRoutes } from './routes/auth-otp.js'
+import { ensureOtpIndexes } from './auth/otp.js'
 import {
   clearSessionCookie,
   isOriginAllowedForCookieAuth,
@@ -115,7 +121,11 @@ import {
   runCampaignSendJob,
   type CampaignSendJob,
 } from './marketing/campaigns.js'
-import { retryFailedDocuments } from './ocr/retry-failed.js'
+import { dispatchPendingOcr, retryFailedDocuments } from './ocr/retry-failed.js'
+import { registerDocumentUploadRoutes } from './routes/documents-uploads.js'
+import { ensureQuotaIndexes } from './documents/quota.js'
+import { ensureDeletionIndexes } from './documents/deletion.js'
+import { assertDocumentsSchemaFloor } from './documents/storage.js'
 import {
   withCronLock,
   acquireCronLock,
@@ -316,6 +326,17 @@ try {
   // the jobs role fires crons.)
   await ensureSpendIndexes(workflowDb)
   ensureTenantKeyIndexes(workflowDb) // per-tenant DEK store (B4)
+  await ensureOtpIndexes(workflowDb) // email OTP chains and send budgets
+  await ensureQuotaIndexes(workflowDb) // shared upload reservations (§7.12)
+  await ensureDeletionIndexes(workflowDb) // fenced-delete tombstones (§7.7)
+  // Rollback floor (§7.9): refuse to serve a database holding documents this
+  // build cannot read.
+  try {
+    await assertDocumentsSchemaFloor(workflowDb)
+  } catch (err) {
+    log.error({ err }, 'FATAL: documents schema floor')
+    process.exit(1)
+  }
 
   // Queue connection is role-agnostic: API routes publish jobs and inspect
   // queue health; consumers below are the gated part.
@@ -451,6 +472,27 @@ try {
       )
       log.info({}, 'Document OCR retry cron started')
     }
+
+    // OCR hand-off for documents the scan worker promoted to 'clean'
+    // (CLOUDFLARE_INTEGRATION.md §7.3). Claimed per row, so one dispatch
+    // per document across replicas; free plans go to 'stored'.
+    cron.schedule(
+      '* * * * *',
+      async () => {
+        try {
+          await withCronLock(workflowDb, 'document-ocr-dispatch', () =>
+            dispatchPendingOcr(
+              workflowDb,
+              taskDecideFor('document.extract.v1', localDecisionFromEnv('ocr')),
+              (tenantId) => taskVision('document.extract.v1', tenantId),
+            ),
+          )
+        } catch (err) {
+          log.error({ err }, 'Document OCR dispatch cron failed')
+        }
+      },
+      { missedExecutionTolerance: 30_000, noOverlap: true },
+    )
 
     // Marketing publish sweep — every minute. Channels can't hold schedules,
     // so approved posts with a due scheduled_at are dispatched here; the lock
@@ -1433,6 +1475,20 @@ if (process.env['NODE_ENV'] === 'production' && connectorLoader.count === 0) {
   process.exit(1)
 }
 
+// Flags that open a public surface are refused outside dev (§8.4 of
+// CLOUDFLARE_INTEGRATION.md): demo tokens, API docs without a recorded
+// exception, and /metrics without a scrape token.
+{
+  const guards = collectBootGuards(process.env, deploymentConfig.mode)
+  for (const exception of guards.exceptions) log.warn({ exception }, 'Boot guard exception in effect')
+  if (guards.violations.length > 0) {
+    log.error({ violations: guards.violations }, 'FATAL: boot guard violations. Refusing to start.')
+    process.exit(1)
+  }
+}
+const DOCS_ENABLED = apiDocsEnabled(process.env, deploymentConfig.mode)
+const OPEN_ROUTE_PREFIXES = openPrefixes({ docsEnabled: DOCS_ENABLED })
+
 const trustedProxyHops = Number(
   process.env['TRUST_PROXY_HOPS'] ?? (deploymentConfig.mode === 'dev' ? 0 : 1),
 )
@@ -1548,7 +1604,9 @@ await app.register(swagger, {
   transform: jsonSchemaTransform,
 })
 // The interactive route inventory is a local tool, not a public page (API9).
-if (deploymentConfig.mode === 'dev' || process.env['ENABLE_API_DOCS'] === 'true') {
+// Outside dev it needs ENABLE_API_DOCS=true plus a recorded API_DOCS_EXCEPTION
+// (boot guard above); when off, /documentation is not on the open list either.
+if (DOCS_ENABLED) {
   await app.register(swaggerUi, {
     routePrefix: '/documentation',
     uiConfig: { docExpansion: 'list', deepLinking: false },
@@ -1598,6 +1656,11 @@ await app.register(rateLimit, {
     req.url === '/health' || req.url === '/engine/health' || req.url.startsWith('/documentation'),
 })
 
+// Turnstile (CLOUDFLARE_INTEGRATION.md §5): routes opt in with
+// config.turnstile. Registered after the rate limiter so its preHandler runs
+// second — floods are rejected before any siteverify round trip.
+registerTurnstile(app, { config: () => turnstileConfig(process.env, deploymentConfig.mode) })
+
 // Multipart support for file uploads (50 MB limit)
 await app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } })
 registerApiVersioning(app)
@@ -1621,57 +1684,23 @@ app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (request, bo
 
 // ─── Auth middleware ──────────────────────────────────────────────────────────
 
-/** Users who exist as rows but must not hold a session: erased tombstones and
- *  members an organizer removed from the household (R03). */
-const INACTIVE_USER_STATUSES = new Set(['erased', 'removed'])
 
 app.addHook('onRequest', async (request, reply) => {
-  // PRD-110: '/family/join' is deliberately NOT a prefix of the organizer-only
-  // '/family/access-requests*' endpoints below — this array is matched by
-  // startsWith, so '/family/join-requests' would have made those public too.
-  const open = [
-    '/health',
-    '/engine/health',
-    '/status',
-    '/metrics',
-    '/auth/token',
-    '/auth/demo-token',
-    '/auth/signup',
-    '/auth/login',
-    '/auth/logout',
-    '/auth/mfa/verify',
-    '/auth/sso/',
-    '/auth/google/',
-    '/auth/github/',
-    '/auth/request-password-reset',
-    '/auth/reset-password',
-    '/auth/verify-email',
-    '/auth/resend-verification',
-    '/entitlements/plans',
-    '/blog/posts',
-    '/a/',
-    '/why/',
-    '/verify/',
-    '/webhooks/',
-    '/inbound/',
-    '/insights/cleanup-stale-all',
-    '/billing/webhook',
-    '/documentation',
-    '/documentation/json',
-    '/documentation/uiOptions',
-    '/documentation/static',
-    '/growth/events',
-    '/trust',
-    '/leads',
-    '/users/unsubscribe',
-    '/heartbeat/unsubscribe',
-    '/family/join',
-    '/family/invite/',
-  ]
+  // The inventory and its protection groups live in security/public-routes.ts.
   if (/^\/connectors\/[^/]+\/oauth\/callback/.test(request.url)) return
   if (/^\/auth\/(google|github)\/callback/.test(request.url)) return
   if (/^\/auth\/(google|github)\/exchange/.test(request.url)) return
-  if (open.some((p) => request.url.startsWith(p))) {
+  // Public routes can also consume the ambient session cookie (dual-mode
+  // resend/verification). Apply CSRF checks before their opportunistic auth
+  // path, not only in the protected-route branch below.
+  if (
+    !extractBearerToken(request.headers.authorization) &&
+    readSessionCookie(request) &&
+    !isOriginAllowedForCookieAuth(request)
+  ) {
+    return reply.status(403).send({ error: 'Origin not allowed' })
+  }
+  if (OPEN_ROUTE_PREFIXES.some((p) => request.url.startsWith(p))) {
     // Dual-mode open routes (e.g. /auth/resend-verification) behave
     // differently when a valid Bearer token rides along — authenticate it
     // opportunistically instead of dropping it. A bad/absent token just
@@ -1691,30 +1720,16 @@ app.addHook('onRequest', async (request, reply) => {
         if (ctx.mfa_pending) throw new Error('mfa_pending token on open route')
         if (workflowDb) {
           if (await isSessionTokenRevoked(workflowDb, opportunistic)) throw new Error('signed out')
-          const user = await workflowDb
-            .collection('users')
-            .findOne(
-              { tenant_id: ctx.tenant_id, id: ctx.user_id },
-              { projection: { status: 1, sessions_revoked_at: 1 } },
-            )
-          if (!user && !ctx.demo && deploymentConfig.mode !== 'dev') throw new Error('no such user')
-          if (user?.['status'] === 'suspended') throw new Error('user suspended')
-          if (INACTIVE_USER_STATUSES.has(user?.['status'] as string))
-            throw new Error('user inactive')
-          const revokedAt = user?.['sessions_revoked_at'] as Date | undefined
-          if (
-            revokedAt &&
-            ctx.iat !== undefined &&
-            ctx.iat <= Math.floor(revokedAt.getTime() / 1000)
+          const live = await checkAccountLiveness(
+            workflowDb,
+            { tenant_id: ctx.tenant_id, user_id: ctx.user_id },
+            {
+              ...(ctx.iat !== undefined ? { issuedAtSeconds: ctx.iat } : {}),
+              allowMissingUser: Boolean(ctx.demo) || deploymentConfig.mode === 'dev',
+              skipTenantCheck: deploymentConfig.mode === 'dev',
+            },
           )
-            throw new Error('session revoked')
-          if (deploymentConfig.mode !== 'dev') {
-            const tenant = await workflowDb.collection('tenants').findOne({
-              $or: [{ tenant_id: ctx.tenant_id }, { id: ctx.tenant_id }],
-              status: { $in: ['active', 'trial'] },
-            })
-            if (!tenant) throw new Error('tenant not active')
-          }
+          if (!live.ok) throw new Error(live.reason)
         }
         request.authContext = ctx
       } catch {
@@ -2159,6 +2174,7 @@ await registerInsightRoutes(
   deliveryRouter,
 )
 await registerAuthUserRoutes(app, auth)
+await registerAuthOtpRoutes(app, auth)
 if (workflowDb) {
   await registerSocialAuthRoutes(app, auth, workflowDb)
 }
@@ -2168,6 +2184,7 @@ if (workflowDb) {
   registerBillingRoutes(app, workflowDb)
   registerBlogRoutes(app, workflowDb)
   registerDocumentRoutes(app, workflowDb, engine, insightsDeliveryHook)
+  registerDocumentUploadRoutes(app, workflowDb)
   registerVaultRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerAuditLogRoutes(app, workflowDb)
   registerAutomationSettingsRoutes(app, workflowDb)

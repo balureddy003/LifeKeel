@@ -5,12 +5,14 @@ import Link from 'next/link'
 import { requestPasswordReset } from '@/lib/api'
 import { haptic } from '@/lib/haptics'
 import { AuthShell } from '@/components/landing/AuthShell'
+import { Turnstile, useTurnstile } from '@/components/security/Turnstile'
 
 export default function RequestPasswordResetPage() {
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sent, setSent] = useState(false)
+  const captcha = useTurnstile()
 
   // Submitting swaps the entire page content — form to a "Check your
   // email" confirmation screen — with nothing else on the page for a
@@ -33,7 +35,7 @@ export default function RequestPasswordResetPage() {
     setLoading(true)
     setError(null)
     try {
-      await requestPasswordReset(email.trim())
+      await requestPasswordReset(email.trim(), captcha.consume())
       haptic('success')
       setSent(true)
     } catch (err) {
@@ -86,10 +88,16 @@ export default function RequestPasswordResetPage() {
             aria-describedby="reset-error"
           />
         </div>
+        <Turnstile
+          ref={captcha.ref}
+          action="password_reset_request"
+          onToken={captcha.onToken}
+          onExpire={captcha.onExpire}
+        />
         <div id="reset-error" role="alert" className="lk-err">
           {error ?? ''}
         </div>
-        <button type="submit" className="lk-btn" disabled={loading}>
+        <button type="submit" className="lk-btn" disabled={loading || !captcha.ready}>
           {loading ? 'Sending...' : 'Send reset link'}
         </button>
       </form>

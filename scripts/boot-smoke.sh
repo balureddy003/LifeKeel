@@ -35,6 +35,14 @@ env_args=(NODE_ENV=production LIFEKEEL_DEPLOYMENT_MODE=cloud LOG_LEVEL=info PORT
   JWT_SECRET="smoke-jwt-secret-smoke-jwt-secret-0123456789"
   SETTINGS_ENCRYPTION_KEY="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
 for v in "${DEPLOY_VARS[@]}"; do env_args+=("$v="); done   # empty, like an unset repo variable
+# Secrets the deploy mounts from Secret Manager (never empty in a real deploy),
+# plus the app hosts the deploy sets via --update-env-vars. Boot guards
+# (apps/api/src/security/boot-guard-registry.ts) refuse to start without them.
+env_args+=(METRICS_SCRAPE_TOKEN="smoke-metrics-scrape-token-0123456789"
+  TURNSTILE_SECRET_KEY="1x0000000000000000000000000000000AA"
+  OTP_PEPPER="smoke-otp-pepper-smoke-otp-pepper-0123456789"
+  SENDGRID_API_KEY="SG.smoke-not-a-real-key"
+  LIFEKEEL_APP_HOSTS="app.lifekeel.co.uk,app.lifekeel.si")
 echo "Booting with ${#DEPLOY_VARS[@]} deploy-style EMPTY variables: ${DEPLOY_VARS[*]}"
 
 if [ -n "${SMOKE_IMAGE:-}" ]; then

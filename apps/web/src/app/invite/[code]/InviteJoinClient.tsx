@@ -10,6 +10,7 @@ import { PasswordInput } from '@/components/PasswordInput'
 import { joinFamily, fetchFamilyInvite, type FamilyInviteInfo } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
+import { Turnstile, useTurnstile } from '@/components/security/Turnstile'
 
 // This page serves two different "invite" flows, distinguished by the URL
 // segment's shape:
@@ -169,8 +170,9 @@ function RequestJoin({ code }: { code: string }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState<{ familyName: string } | null>(null)
+  const captcha = useTurnstile()
 
-  const canSubmit = name.trim() && email.trim() && password.length >= 8
+  const canSubmit = name.trim() && email.trim() && password.length >= 8 && captcha.ready
 
   const handleSubmit = async () => {
     if (!canSubmit) return
@@ -178,7 +180,13 @@ function RequestJoin({ code }: { code: string }) {
     setLoading(true)
     setError(null)
     try {
-      const result = await joinFamily(code, name.trim(), email.trim(), password)
+      const result = await joinFamily(
+        code,
+        name.trim(),
+        email.trim(),
+        password,
+        captcha.consume(),
+      )
       haptic('success')
       setSubmitted(result)
     } catch (err) {
@@ -276,6 +284,13 @@ function RequestJoin({ code }: { code: string }) {
           )}
         </div>
       </div>
+
+      <Turnstile
+        ref={captcha.ref}
+        action="family_join"
+        onToken={captcha.onToken}
+        onExpire={captcha.onExpire}
+      />
 
       {error && (
         <p role="status" aria-live="polite" className="text-sm text-danger text-center mb-4">

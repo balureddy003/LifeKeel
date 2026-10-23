@@ -1,7 +1,12 @@
 /**
  * Prometheus Metrics Endpoint
  *
- * GET /metrics — standard Prometheus text format (no auth required)
+ * GET /metrics — standard Prometheus text format. Requires
+ * `Authorization: Bearer ${METRICS_SCRAPE_TOKEN}` whenever that token is set,
+ * and outside dev the server refuses to boot without it
+ * (security/boot-guards.ts). The route stays on the open-routes list so the
+ * global auth hook does not try to read the opaque scrape token as a session
+ * JWT (CLOUDFLARE_INTEGRATION.md §8.4).
  *
  * Gauges / counters exported:
  *   lifekeel_engine_evaluations_total      counter
@@ -18,6 +23,7 @@
  */
 
 import type { FastifyInstance } from 'fastify'
+import { timingSafeEqual } from 'node:crypto'
 import { Registry, Counter, Gauge, Histogram, collectDefaultMetrics } from 'prom-client'
 import type { Engine, ScoreCalibrator } from '@lifekeel/engine'
 import { getAllCircuitBreakers } from '@lifekeel/platform'
@@ -25,6 +31,28 @@ import { getAllCircuitBreakers } from '@lifekeel/platform'
 // ── Singleton registry (created once, reused on hot-reload) ──────────────────
 
 let _registry: Registry | null = null
+
+/** Shared registry, for metric modules that live outside this file. */
+export function getMetricsRegistry(): Registry {
+  return getRegistry()
+}
+
+/**
+ * Scrape authorization. With a token configured, only an exact
+ * `Bearer <token>` passes (constant-time compare); a session JWT or any
+ * other credential is refused. With no token configured the endpoint is
+ * open, which boot guards only allow in dev.
+ */
+export function metricsScrapeAuthorized(
+  authorization: string | undefined,
+  expected: string | undefined,
+): boolean {
+  if (!expected) return true
+  if (!authorization?.startsWith('Bearer ')) return false
+  const given = Buffer.from(authorization.slice(7).trim())
+  const want = Buffer.from(expected)
+  return given.length === want.length && timingSafeEqual(given, want)
+}
 
 function getRegistry(): Registry {
   if (!_registry) {
@@ -507,7 +535,10 @@ export async function registerMetricsRoutes(
   const registry = getRegistry()
   initMetrics(registry)
 
-  app.get('/metrics', async (_req, reply) => {
+  app.get('/metrics', async (req, reply) => {
+    if (!metricsScrapeAuthorized(req.headers.authorization, process.env['METRICS_SCRAPE_TOKEN'])) {
+      return reply.status(401).send({ error: 'Unauthorized' })
+    }
     // ── Engine metrics ──────────────────────────────────────────────────────
     const snap = engine.metrics.snapshot()
 
