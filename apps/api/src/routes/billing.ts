@@ -22,6 +22,7 @@ import Stripe from 'stripe'
 import { TERMINAL_TENANT_STATUSES } from '../billing/cancel-on-delete.js'
 import { redeemPromoCode } from '../billing/promo-codes.js'
 import { resolveStripePriceId } from '../billing/stripe-price.js'
+import { churnFields, willCancel } from '../billing/cancellation.js'
 import {
   PLAN_QUOTAS,
   PLAN_CREDITS,
@@ -446,7 +447,9 @@ export function registerBillingRoutes(
           id: sub.id,
           status: sub.status,
           current_period_end: periodEnd,
-          cancel_at_period_end: sub.cancel_at_period_end,
+          // Portal cancellations set cancel_at, not the boolean (see
+          // billing/cancellation.ts) — report "will not renew" either way.
+          cancel_at_period_end: willCancel(sub),
         }
       } catch (error) {
         app.log.error(error)
@@ -702,11 +705,13 @@ export function registerBillingRoutes(
             // sequence reads the timestamp, not the reason.
             const cancelDetail = subscription.cancellation_details
             if (cancelDetail?.reason || cancelDetail?.feedback) {
-              updates['billing.churn_reason'] = cancelDetail.reason ?? null
-              if (cancelDetail.feedback)
-                updates['billing.churn_feedback'] = String(cancelDetail.feedback).slice(0, 500)
-              updates['billing.cancel_at_period_end'] = subscription.cancel_at_period_end === true
+              const churn = churnFields(cancelDetail)
+              updates['billing.churn_reason'] = churn.reason
+              if (churn.feedback) updates['billing.churn_feedback'] = churn.feedback
             }
+            // Always recorded (not only when a reason is present): resuming a
+            // subscription clears cancel_at, and the flag must follow.
+            updates['billing.cancel_at_period_end'] = willCancel(subscription)
             await db
               .collection('tenants')
               .updateOne({ tenant_id: tenant['tenant_id'], ...LIVE_TENANT }, { $set: updates })
@@ -745,17 +750,13 @@ export function registerBillingRoutes(
                     'billing.trial_expired': true,
                     'billing.churned_at': new Date(),
                     ...(cancelDetail?.reason || cancelDetail?.feedback
-                      ? {
-                          'billing.churn_reason': cancelDetail.reason ?? null,
-                          ...(cancelDetail.feedback
-                            ? {
-                                'billing.churn_feedback': String(cancelDetail.feedback).slice(
-                                  0,
-                                  500,
-                                ),
-                              }
-                            : {}),
-                        }
+                      ? (() => {
+                          const churn = churnFields(cancelDetail)
+                          return {
+                            'billing.churn_reason': churn.reason,
+                            ...(churn.feedback ? { 'billing.churn_feedback': churn.feedback } : {}),
+                          }
+                        })()
                       : {}),
                     updated_at: new Date(),
                   },

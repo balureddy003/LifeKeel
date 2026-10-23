@@ -87,16 +87,27 @@ function makeDb() {
     // the matched-and-updated document directly (not wrapped in `.value`),
     // or null when the filter (e.g. a version match) doesn't match anything
     // existing, which is exactly the conflict case the route now checks for.
-    findOneAndUpdate: vi.fn(async (filter: Record<string, unknown>, update: { $set: Record<string, unknown>; $inc?: Record<string, number> }) => {
-      if ('version' in filter && (stored?.['version'] ?? 0) !== filter['version']) return null
-      const currentVersion = (stored?.['version'] as number | undefined) ?? 0
-      stored = { ...(stored ?? {}), ...update.$set, version: currentVersion + (update.$inc?.['version'] ?? 0) }
-      return stored
-    }),
-    updateOne: vi.fn(async (_filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
-      stored = { ...(stored ?? {}), ...update.$set }
-      return { matchedCount: stored ? 1 : 0 }
-    }),
+    findOneAndUpdate: vi.fn(
+      async (
+        filter: Record<string, unknown>,
+        update: { $set: Record<string, unknown>; $inc?: Record<string, number> },
+      ) => {
+        if ('version' in filter && (stored?.['version'] ?? 0) !== filter['version']) return null
+        const currentVersion = (stored?.['version'] as number | undefined) ?? 0
+        stored = {
+          ...(stored ?? {}),
+          ...update.$set,
+          version: currentVersion + (update.$inc?.['version'] ?? 0),
+        }
+        return stored
+      },
+    ),
+    updateOne: vi.fn(
+      async (_filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
+        stored = { ...(stored ?? {}), ...update.$set }
+        return { matchedCount: stored ? 1 : 0 }
+      },
+    ),
     // R27: first creation is an insert; a second insert is the unique-index conflict.
     insertOne: vi.fn(async (doc: Record<string, unknown>) => {
       if (stored) throw Object.assign(new Error('E11000 duplicate key'), { code: 11000 })
@@ -209,9 +220,7 @@ function makeDb() {
   } as any
 }
 
-async function buildApp(
-  engine: Engine,
-): Promise<{
+async function buildApp(engine: Engine): Promise<{
   app: ReturnType<typeof Fastify>
   insights: Insight[]
   insightDocs: Record<string, unknown>[]
@@ -1095,7 +1104,10 @@ describe('KEEL-006: optimistic concurrency on POST /family/financial-profile', (
       method: 'POST',
       url: '/family/financial-profile',
       headers: { 'x-raw-version': '1' },
-      payload: { ...BASE_PROFILE, household: { ...BASE_PROFILE.household, monthly_salary_minor: 1 } },
+      payload: {
+        ...BASE_PROFILE,
+        household: { ...BASE_PROFILE.household, monthly_salary_minor: 1 },
+      },
     })
     expect(blind.statusCode).toBe(409)
     expect(blind.json().version).toBe(1)
@@ -1109,7 +1121,11 @@ describe('KEEL-006: optimistic concurrency on POST /family/financial-profile', (
       ;(request as any).authContext = { tenant_id: TENANT, user_id: 'viewer-1', roles: ['viewer'] }
     })
     await registerFamilyFinancialProfileRoutes(app, makeDb(), engine, async () => {})
-    const res = await app.inject({ method: 'POST', url: '/family/financial-profile', payload: BASE_PROFILE })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: BASE_PROFILE,
+    })
     expect(res.statusCode).toBe(403)
     const evaluate = await app.inject({ method: 'POST', url: '/family/financial-profile/evaluate' })
     expect(evaluate.statusCode).toBe(403)
@@ -1429,7 +1445,7 @@ describe('PRD-112: friend referral reward wiring', () => {
     await engine.load()
   })
 
-  it('calls rewardReferralIfPending on a first-ever final submit', async () => {
+  it('calls rewardReferralIfPending on a final submit', async () => {
     const { app } = await buildApp(engine)
     await app.inject({
       method: 'POST',
@@ -1440,20 +1456,22 @@ describe('PRD-112: friend referral reward wiring', () => {
     expect(rewardReferralIfPendingMock).toHaveBeenCalledWith(expect.anything(), TENANT)
   })
 
-  it('does not call rewardReferralIfPending on a second submit', async () => {
+  it('still rewards when the wizard autosaved first — the real UI path (regression)', async () => {
+    // The wizard POSTs after every step; only the last sends generate_insights.
+    // A profile document therefore exists before the final submit. The reward
+    // used to be gated on "no previous document", so it never fired in the app.
     const { app } = await buildApp(engine)
-    await app.inject({
-      method: 'POST',
-      url: '/family/financial-profile',
-      payload: { ...BASE_PROFILE, generate_insights: true },
-    })
-    rewardReferralIfPendingMock.mockClear()
-    await app.inject({
-      method: 'POST',
-      url: '/family/financial-profile',
-      payload: { ...BASE_PROFILE, generate_insights: true },
-    })
+    await app.inject({ method: 'POST', url: '/family/financial-profile', payload: BASE_PROFILE })
+    const saved = await app.inject({ method: 'GET', url: '/family/financial-profile' })
+    const version = saved.json().profile?.version
     expect(rewardReferralIfPendingMock).not.toHaveBeenCalled()
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, version, generate_insights: true },
+    })
+    expect(rewardReferralIfPendingMock).toHaveBeenCalledTimes(1)
+    expect(rewardReferralIfPendingMock).toHaveBeenCalledWith(expect.anything(), TENANT)
   })
 
   it('does not call rewardReferralIfPending on an intermediate autosave (no generate_insights)', async () => {
