@@ -10,6 +10,7 @@
     "build:workspace-deps": "pnpm --filter \"@lifekeel/api^...\" build",
     "predev": "pnpm build:workspace-deps",
     "dev": "set -a; [ ! -f ../../.env ] || . ../../.env; set +a; tsx src/server.ts",
+    "stripe:reconcile": "set -a; [ ! -f ../../.env ] || . ../../.env; set +a; tsx src/billing/stripe-cli.ts",
     "predev:watch": "pnpm build:workspace-deps",
     "dev:watch": "set -a; [ ! -f ../../.env ] || . ../../.env; set +a; tsx watch src/server.ts",
     "email:preview": "set -a; [ ! -f ../../.env ] || . ../../.env; set +a; tsx src/dev/email-preview.ts",

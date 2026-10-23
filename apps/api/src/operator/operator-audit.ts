@@ -31,6 +31,7 @@ export type OperatorAuditAction =
   | 'operator.campaign.pause'
   | 'operator.campaign.resume'
   | 'operator.billing.adjust_credits'
+  | 'operator.billing.stripe_reconcile'
   | 'operator.reminder.retry'
   | 'operator.user.revoke_sessions'
   | 'operator.queue.requeue_dead'

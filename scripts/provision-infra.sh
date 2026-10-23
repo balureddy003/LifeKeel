@@ -14,6 +14,9 @@
 #   dns        push the collected records to Hostinger (surgical overwrite —
 #              only the names/types we own are replaced; MX etc. untouched)
 #   github     set repo Actions variables; upload SA keys as secrets
+#   stripe     make Stripe match definitions/stripe-config.yaml (product, price,
+#              webhook endpoint, Customer Portal) — dry-run unless STRIPE_APPLY=1.
+#              Not part of `all`: it needs a Stripe key. See docs/runbooks/stripe-setup.md
 #   status     dig/curl every host we just wired up
 #
 # Run everything:   ./scripts/provision-infra.sh all
@@ -363,6 +366,52 @@ step_github() {
 }
 
 # ---------------------------------------------------------------------------
+# stripe — billing setup as code. Dry-run by default.
+#   STRIPE_RECONCILE_KEY   restricted key (rk_...); falls back to the
+#                          lifekeel-stripe-secret-key secret in Secret Manager
+#   STRIPE_APPLY=1         actually make the changes (default: print the diff)
+#   STRIPE_ALLOW_LIVE=1    required to apply against a LIVE key
+# When the run creates the webhook endpoint, Stripe returns its signing secret
+# exactly once. It goes straight from a 0600 temp file into Secret Manager
+# (lifekeel-stripe-webhook-secret) and is never printed or kept.
+step_stripe() {
+  say "Stripe (config as code)"
+  need pnpm
+  local key="${STRIPE_RECONCILE_KEY:-}"
+  if [ -z "$key" ]; then
+    key=$(gcloud secrets versions access latest --secret lifekeel-stripe-secret-key --project "$GCP_PROJECT" 2>/dev/null || true)
+    [ -n "$key" ] && echo "  using key from Secret Manager (lifekeel-stripe-secret-key)"
+  fi
+  [ -n "$key" ] || { warn "no Stripe key: set STRIPE_RECONCILE_KEY (restricted key) and re-run"; return 1; }
+
+  local api_sub; api_sub=$(echo "$RUN_SUBDOMAINS" | awk '{print $1}')
+  local args=(--api-origin "https://$api_sub.$PRIMARY_DOMAIN" --app-origin "https://app.$PRIMARY_DOMAIN")
+  local secret_file=""
+  if [ "${STRIPE_APPLY:-0}" = "1" ]; then
+    secret_file=$(mktemp); chmod 600 "$secret_file"
+    args+=(--apply --webhook-secret-file "$secret_file")
+    [ "${STRIPE_ALLOW_LIVE:-0}" = "1" ] && args+=(--allow-live)
+  else
+    echo "  dry-run — set STRIPE_APPLY=1 to apply"
+  fi
+
+  local rc=0
+  STRIPE_RECONCILE_KEY="$key" pnpm --filter @lifekeel/api run stripe:reconcile "${args[@]}" || rc=$?
+
+  if [ -n "$secret_file" ]; then
+    if [ -s "$secret_file" ]; then
+      gcloud secrets versions add lifekeel-stripe-webhook-secret --data-file="$secret_file" --project "$GCP_PROJECT" >/dev/null
+      echo "  webhook signing secret stored in lifekeel-stripe-webhook-secret"
+      echo "  -> redeploy the API (Deploy API workflow) so the new revision reads it"
+    fi
+    rm -f "$secret_file"
+  fi
+  # Exit 2 = drift found in a dry-run; surface it without failing 'all'-style chains.
+  [ "$rc" = "2" ] && { warn "drift found (see above)"; return 0; }
+  return "$rc"
+}
+
+# ---------------------------------------------------------------------------
 step_status() {
   say "Status — live DNS vs plan"
   for d in $APEX_DOMAINS; do
@@ -407,6 +456,7 @@ for step in "$@"; do
     run-map)  step_run_map ;;
     dns)      step_dns ;;
     github)   step_github ;;
+    stripe)   step_stripe ;;
     status)   step_status ;;
     *) echo "unknown step: $step" >&2; exit 1 ;;
   esac

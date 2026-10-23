@@ -111,6 +111,15 @@ Sets the vars the workflows read (`FIREBASE_PROJECT_ID`, `GCP_REGION`,
 the SA keys as `GCP_SA_KEY` / `FIREBASE_SA_KEY` / `GCP_PROJECT_ID` secrets.
 Delete `deploy-out/` afterwards.
 
+### `stripe` — billing setup as code
+
+Not part of `all` (it needs a Stripe key). Makes the Stripe account match
+`definitions/stripe-config.yaml`: product, price (by `lookup_key`), webhook endpoint and Customer Portal.
+Dry-run by default; `STRIPE_APPLY=1` applies, and a live key also needs `STRIPE_ALLOW_LIVE=1`. When it creates
+the webhook endpoint, the one-time signing secret goes from a `0600` temp file straight into
+`lifekeel-stripe-webhook-secret`; redeploy the API afterwards. Full detail:
+[runbooks/stripe-setup.md](runbooks/stripe-setup.md).
+
 ### `status` — verify
 
 Digs every hostname so you can watch cutover.

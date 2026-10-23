@@ -305,6 +305,7 @@ keep unrelated changes in separate PRs.
 | `ci.yml` | one `turbo run typecheck lint test build` graph, boot smoke, python services; skipped on draft PRs | Yes |
 | `images.yml` | Container builds (path-filtered, weekly) | Yes when triggered |
 | `security.yml` | `pnpm audit --prod --audit-level=high` and gitleaks on every PR; CodeQL weekly and on demand | Yes (audit baseline cleaned by root `pnpm.overrides`) |
+| `stripe-drift.yml` | Read-only weekly check that Stripe still matches `definitions/stripe-config.yaml`; skips without `STRIPE_RECONCILE_KEY`; never applies | No (reports drift only) |
 
 **These are advisory until G10 is fixed.** Making them required status checks needs branch
 protection (6.0), which is available but not yet switched on; until then "Blocks merge: Yes" means "the check

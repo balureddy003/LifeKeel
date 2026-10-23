@@ -164,6 +164,7 @@ import { runLifecycleSweep } from './marketing/lifecycle-emails.js'
 import { runAutopilotSweep, ensureAutopilotIndexes } from './operator/autopilot.js'
 import { socialPublisherFromEnv, DbSocialPublisher } from './marketing/social-publisher.js'
 import { registerOperatorRoutes } from './routes/operator.js'
+import { registerOperatorStripeRoutes } from './routes/operator-stripe.js'
 import { getPlatformConfig, registerPublicStatusRoute } from './operator/platform-config.js'
 import { registerDetectorEvalRoutes, detectorEvalDir } from './routes/detector-evals.js'
 import {
@@ -2208,6 +2209,7 @@ if (workflowDb) {
   registerMarketingPlanRoutes(app, workflowDb)
   ensureAutopilotIndexes(workflowDb)
   await registerOperatorRoutes(app, workflowDb)
+  registerOperatorStripeRoutes(app, workflowDb)
   registerOperatorRetentionRoutes(app, workflowDb)
   registerOperatorDeletionRoutes(app, workflowDb)
   registerDetectorEvalRoutes(app, workflowDb, engine, detectorEvalDir(ROOT))
