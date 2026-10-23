@@ -25,8 +25,8 @@ describe('isOriginAllowedForCookieAuth', () => {
     expect(isOriginAllowedForCookieAuth(fakeRequest('HEAD', 'https://evil.example'))).toBe(true)
   })
 
-  it('allows missing Origin (non-browser clients)', () => {
-    expect(isOriginAllowedForCookieAuth(fakeRequest('POST'))).toBe(true)
+  it('fails closed on a missing Origin (non-browser clients use Bearer, not cookies)', () => {
+    expect(isOriginAllowedForCookieAuth(fakeRequest('POST'))).toBe(false)
   })
 
   it('allows a known app origin', () => {
