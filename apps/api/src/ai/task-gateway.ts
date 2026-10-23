@@ -31,7 +31,9 @@ import {
   governedDecide,
   governedLlm,
   governedVision,
+  LlmResponseCache,
   llmCallContext,
+  MongoLlmCacheStore,
   parseTaskRegistry,
   repoRoot,
   resolveTaskPolicy,
@@ -55,6 +57,7 @@ import { familyDataLlmFromEnv, localDecisionFromEnv } from '../local-model.js'
 import {
   recordDeviceEscalation,
   recordLocalModelCall,
+  recordLlmCacheHitMiss,
   recordProcessorViolation,
 } from '../routes/metrics.js'
 
@@ -220,6 +223,15 @@ export function initTaskGateway(db: Db): void {
       onProcessorViolation,
     },
     guardEventSink: createGuardEventSink(db, 'task-gateway'),
+    // Exact-match answer cache (llm_cache collection, TTL-indexed, tenant-
+    // keyed, erasure-catalogued): only tasks that declare cache_ttl_seconds
+    // consult it — a hit serves the stored output with zero provider spend
+    // and an outcome 'cache_hit' row in ai_task_calls.
+    answerCache: new LlmResponseCache(
+      new MongoLlmCacheStore(db),
+      3_600_000,
+      (tenantId, task, hit) => recordLlmCacheHitMiss(tenantId, task, hit),
+    ),
     // PRD-217 disable→fallback switch: audited operator flag in
     // platform_config, ~10s cached — a refused call throws TaskDisabledError
     // and the caller's existing failure path serves its honest fallback.

@@ -97,6 +97,9 @@ tasks:
     max_output_tokens: 200
     budget_class: batch
     guard_policy: family_pii
+    # Exact-match cache: a re-uploaded identical document returns the stored
+    # classification for 24h instead of re-running the model.
+    cache_ttl_seconds: 86400
 
   document.extract.v1:
     purpose: Extract structured fields from an uploaded document
@@ -114,6 +117,7 @@ tasks:
     max_output_tokens: 2000
     budget_class: batch
     guard_policy: family_pii
+    cache_ttl_seconds: 86400
 
   document.profile_candidate.v1:
     purpose: Suggest financial-profile fields from an extracted document
@@ -131,6 +135,7 @@ tasks:
     max_output_tokens: 2000
     budget_class: batch
     guard_policy: family_pii
+    cache_ttl_seconds: 86400
 
   email.policy_relevance.v1:
     purpose: Decide whether an inbox email relates to the family's protection
@@ -150,6 +155,9 @@ tasks:
     max_output_tokens: 300
     budget_class: batch
     guard_policy: family_pii
+    # Exact-match cache: an unchanged email re-seen by a later scan run
+    # returns the stored verdict for 24h instead of re-running the model.
+    cache_ttl_seconds: 86400
 
   email.policy_summary.v1:
     purpose: Summarise a policy-relevant email for the inbox card
@@ -168,6 +176,7 @@ tasks:
     max_output_tokens: 600
     budget_class: batch
     guard_policy: family_pii
+    cache_ttl_seconds: 86400
 
   insight.score_enrichment.v1:
     purpose: LLM confidence score on a rules-engine insight candidate
@@ -282,6 +291,9 @@ tasks:
     max_output_tokens: 800
     budget_class: batch
     guard_policy: standard
+    # Exact-match cache: re-drafting from the same public source link returns
+    # the stored draft for 24h instead of a paid repeat call.
+    cache_ttl_seconds: 86400
 
   assistant.answer.sensitive.v1:
     # Special-category (Art. 9) quarantine path for /assistant/ask. The

@@ -19,6 +19,7 @@ import { parseProcessorRegistry, type ProcessorViolation } from '../ai-processor
 import { getAllCircuitBreakers } from '../llm-circuit-breaker.js'
 import type { LlmFn } from '../llm.js'
 import type { DecisionFn } from '../local-decision.js'
+import { LlmResponseCache, type LlmCacheEntry, type LlmCacheStore } from '../llm-response-cache.js'
 
 function policy(overrides: Partial<AiTaskPolicy> = {}): AiTaskPolicy {
   return {
@@ -125,6 +126,28 @@ describe('parseTaskRegistry', () => {
 
   it('rejects an empty registry', () => {
     expect(() => parseTaskRegistry({ tasks: {} })).toThrow(TaskPolicyError)
+  })
+
+  it('rejects a non-positive or non-numeric cache_ttl_seconds', () => {
+    const doc = structuredClone(validDoc) as { tasks: Record<string, Record<string, unknown>> }
+    doc.tasks['a.v1']!['cache_ttl_seconds'] = 0
+    expect(() => parseTaskRegistry(doc)).toThrow(/cache_ttl_seconds/)
+    doc.tasks['a.v1']!['cache_ttl_seconds'] = -5
+    expect(() => parseTaskRegistry(doc)).toThrow(/cache_ttl_seconds/)
+    doc.tasks['a.v1']!['cache_ttl_seconds'] = 'tomorrow'
+    expect(() => parseTaskRegistry(doc)).toThrow(/cache_ttl_seconds/)
+    doc.tasks['a.v1']!['cache_ttl_seconds'] = 3600
+    expect(parseTaskRegistry(doc).get('a.v1')?.cache_ttl_seconds).toBe(3600)
+  })
+
+  it('bars cache_ttl_seconds on quarantine and device boundaries', () => {
+    const doc = structuredClone(validDoc) as { tasks: Record<string, Record<string, unknown>> }
+    doc.tasks['a.v1']!['cache_ttl_seconds'] = 60
+    doc.tasks['a.v1']!['data_boundary'] = 'lifekeel_infra_required'
+    expect(() => parseTaskRegistry(doc)).toThrow(/never cache/)
+    doc.tasks['a.v1']!['data_boundary'] = 'device_only'
+    doc.tasks['a.v1']!['allowed_processors'] = []
+    expect(() => parseTaskRegistry(doc)).toThrow(/never cache/)
   })
 })
 
@@ -640,5 +663,143 @@ describe('operator disable switch (PRD-217)', () => {
       't1',
     )
     await expect(fn([{ type: 'text', text: 'x' }])).rejects.toBeInstanceOf(TaskDisabledError)
+  })
+})
+
+describe('governed answer cache', () => {
+  function memoryStore(overrides: Partial<LlmCacheStore> = {}) {
+    const entries = new Map<string, LlmCacheEntry<unknown>>()
+    const store: LlmCacheStore = {
+      get: async <T>(tenant: string, task: string, hash: string) =>
+        (entries.get(`${tenant}:${task}:${hash}`) as LlmCacheEntry<T> | undefined) ?? null,
+      set: async <T>(entry: LlmCacheEntry<T>) => {
+        entries.set(`${entry.tenant_id}:${entry.task}:${entry.input_hash}`, entry)
+      },
+      ...overrides,
+    }
+    return { entries, store }
+  }
+
+  function cacheDeps(
+    store: LlmCacheStore,
+    overrides: Partial<TaskGatewayDeps> = {},
+  ): TaskGatewayDeps {
+    return deps({
+      registry: registryOf(policy({ cache_ttl_seconds: 3600 })),
+      answerCache: new LlmResponseCache(store),
+      ...overrides,
+    })
+  }
+
+  it('serves a repeated identical call from cache — the provider runs once', async () => {
+    const { store } = memoryStore()
+    const events: unknown[] = []
+    const base = vi.fn(async () => 'cached-answer')
+    const fn = governedLlm(
+      base,
+      cacheDeps(store, { onCall: (e) => events.push(e) }),
+      'test.task.v1',
+      't1',
+    )
+    expect(await fn('sys', 'prompt')).toBe('cached-answer')
+    expect(await fn('sys', 'prompt')).toBe('cached-answer')
+    expect(base).toHaveBeenCalledOnce()
+    expect(events[1]).toMatchObject({ ok: true, outcome: 'cache_hit' })
+  })
+
+  it('misses when the prompt, model or task differs', async () => {
+    const { store } = memoryStore()
+    const base = vi.fn(async () => 'answer')
+    const d = deps({
+      registry: registryOf(
+        policy({
+          cache_ttl_seconds: 3600,
+          allowed_models: ['tier:fast', 'tier:balanced'],
+        }),
+      ),
+      answerCache: new LlmResponseCache(store),
+    })
+    const fn = governedLlm(base, d, 'test.task.v1', 't1')
+    await fn('sys', 'prompt')
+    await fn('sys', 'prompt') // hit — same everything
+    await fn('sys', 'other prompt') // miss — prompt differs
+    await fn('sys', 'prompt', 'tier:balanced') // miss — model differs
+    expect(base).toHaveBeenCalledTimes(3)
+    const other = policy({
+      task_id: 'other.task.v1',
+      cache_ttl_seconds: 3600,
+    })
+    const d2 = deps({
+      registry: registryOf(
+        policy({ cache_ttl_seconds: 3600, allowed_models: ['tier:fast', 'tier:balanced'] }),
+        other,
+      ),
+      answerCache: new LlmResponseCache(store),
+    })
+    await governedLlm(base, d2, 'other.task.v1', 't1')('sys', 'prompt')
+    expect(base).toHaveBeenCalledTimes(4) // task differs
+  })
+
+  it('never crosses a tenant boundary', async () => {
+    const { store } = memoryStore()
+    const base = vi.fn(async (_s: string, _p: string) => 'answer')
+    const d = cacheDeps(store)
+    await governedLlm(base, d, 'test.task.v1', 't1')('sys', 'prompt')
+    await governedLlm(base, d, 'test.task.v1', 't2')('sys', 'prompt')
+    expect(base).toHaveBeenCalledTimes(2)
+  })
+
+  it('misses an expired entry', async () => {
+    const { entries, store } = memoryStore()
+    const base = vi.fn(async () => 'answer')
+    const fn = governedLlm(base, cacheDeps(store), 'test.task.v1', 't1')
+    await fn('sys', 'prompt')
+    for (const e of entries.values()) e.expires_at = new Date(Date.now() - 1000)
+    await fn('sys', 'prompt')
+    expect(base).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not touch the store for tasks without cache_ttl_seconds', async () => {
+    const get = vi.fn(async () => null)
+    const set = vi.fn(async () => {})
+    const base = vi.fn(async () => 'answer')
+    const d = deps({
+      answerCache: new LlmResponseCache({ get, set }),
+    })
+    await governedLlm(base, d, 'test.task.v1', 't1')('sys', 'prompt')
+    expect(base).toHaveBeenCalledOnce()
+    expect(get).not.toHaveBeenCalled()
+    expect(set).not.toHaveBeenCalled()
+  })
+
+  it('serves through a store read failure and tolerates a write failure', async () => {
+    const base = vi.fn(async () => 'answer')
+    const d = cacheDeps({
+      get: async () => {
+        throw new Error('store down')
+      },
+      set: async () => {
+        throw new Error('store down')
+      },
+    })
+    await expect(governedLlm(base, d, 'test.task.v1', 't1')('sys', 'prompt')).resolves.toBe(
+      'answer',
+    )
+    expect(base).toHaveBeenCalledOnce()
+  })
+
+  it('does not reach the provider on a hit even though guards still ran', async () => {
+    const { store } = memoryStore()
+    const guardEvents: unknown[] = []
+    const base = vi.fn(async () => 'answer')
+    const d = cacheDeps(store, {
+      guardEventSink: async (events) => {
+        guardEvents.push(...events)
+      },
+    })
+    const fn = governedLlm(base, d, 'test.task.v1', 't1')
+    await fn('sys', 'prompt')
+    await fn('sys', 'prompt')
+    expect(base).toHaveBeenCalledOnce()
   })
 })

@@ -630,7 +630,7 @@ architecture, not a property of today's task set.
 | Local judge/classifier/OCR | Implemented and optional | Guarded CPU Ollama service with IAM and measured capacity |
 | On-device generation | Implemented and bounded | Opt-in crisis-contact drafting via multi-provider probe (Capacitor native plugin, Chrome `LanguageModel`, WebLLM + schema-constrained output); client output checks + verified deterministic template fallback. Opted-in users never egress on failure; non-opted-in users keep the hosted path |
 | Reversible PII curtain | Implemented primitive | `redactForCloudEgress`/`restore` shipped and tested (nonce placeholders, URL-safe restore, UK PII recognizers); no production client-context egress path consumes it yet — mandatory wiring pending |
-| Exact response cache | Implemented, partially adopted | Tenant/task/system/prompt/model hash; scorer path |
+| Exact response cache | Implemented | Tenant/task/system/prompt/model hash; scorer path plus governed calls on tasks declaring `cache_ttl_seconds` (repeatable batch/classification tasks only — conversational and `lifekeel_infra_required`/`device_only` boundaries never cache; a hit records an `ai_task_calls` row with `outcome: 'cache_hit'` and zero usage) |
 | Prompt version registry | Implemented primitive, limited adoption | Candidate/A-B/production/retired lifecycle and spans |
 | Model output guards | Implemented | Advice/provider/ungrounded-number checks + symmetric input/output guards on cloud, local and vision paths via the task gateway |
 | Budget and cost ledger | Implemented | Per-tenant limits checked pre-call; every provider (incl. Azure/Ollama) records usage to CostLedger per task/tenant; atomic reservation still debt (§8.15) |
