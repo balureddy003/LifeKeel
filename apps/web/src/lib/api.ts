@@ -3627,11 +3627,7 @@ export async function requestPasswordReset(
   email: string,
   turnstileToken?: string | null,
 ): Promise<void> {
-  return authPostRequest(
-    '/auth/request-password-reset',
-    { email, app: 'family' },
-    turnstileToken,
-  )
+  return authPostRequest('/auth/request-password-reset', { email, app: 'family' }, turnstileToken)
 }
 
 export async function confirmPasswordReset(
@@ -4988,6 +4984,108 @@ export function resolveAutopilotProposal(
     if (!res.ok) throw new Error((data.error as string) || `Proposal ${decision} failed`)
     return data
   })
+}
+
+// ── Operator: marketing economics ─────────────────────────────────────────
+
+export interface EconomicsRate {
+  numerator: number
+  denominator: number
+  rate: number | null
+  low: number | null
+  high: number | null
+}
+
+export type EconomicsConfidence = 'insufficient' | 'directional' | 'solid'
+
+export interface EconomicsRow {
+  key: string
+  /** null where the dimension has no visit data (content items). */
+  visits: number | null
+  cta_clicks: number | null
+  signups: number
+  profiles: number
+  activated: number
+  paid: number
+  revenue_pence: number
+  spend_pence: number | null
+  cost_per_signup_pence: number | null
+  cac_pence: number | null
+  payback_months: number | null
+  visit_to_signup: EconomicsRate | null
+  signup_to_activated: EconomicsRate
+  signup_to_paid: EconomicsRate
+  confidence: EconomicsConfidence
+  finding: string
+}
+
+export interface EconomicsView {
+  window_days: number
+  model: 'first' | 'last'
+  totals: EconomicsRow
+  by_source: EconomicsRow[]
+  by_campaign: EconomicsRow[]
+  by_content: EconomicsRow[]
+  last_touch_coverage: number | null
+  arpu_pence: number | null
+  notes: string[]
+  revenue: {
+    synced: boolean
+    last_sync_at: string | null
+    mrr_pence: number | null
+    livemode: boolean | null
+  }
+  rollup_ready: boolean
+}
+
+export interface SpendEntry {
+  id: string
+  month: string
+  channel: string
+  amount_pence: number
+  note?: string
+  created_by: string
+  created_at: string
+}
+
+export function fetchEconomics(days: number, model: 'first' | 'last'): Promise<EconomicsView> {
+  return operatorRequest(`/operator/marketing/economics?days=${days}&model=${model}`)
+}
+
+export function fetchSpend(): Promise<{ entries: SpendEntry[] }> {
+  return operatorRequest('/operator/marketing/spend')
+}
+
+async function operatorJson<T>(method: 'POST' | 'DELETE', path: string, body: unknown): Promise<T> {
+  const token = getAuthToken()
+  const res = await credFetch(`${getApiBase()}${path}`, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((data.error as string) || 'Request failed')
+  return data as T
+}
+
+export function addSpendEntry(
+  entry: { month: string; channel: string; amount_pence: number; note?: string },
+  reason: string,
+): Promise<{ entry: SpendEntry }> {
+  return operatorJson('POST', '/operator/marketing/spend', { ...entry, reason })
+}
+
+export function deleteSpendEntry(id: string, reason: string): Promise<{ ok: boolean }> {
+  return operatorJson('DELETE', `/operator/marketing/spend/${encodeURIComponent(id)}`, { reason })
+}
+
+export function syncRevenueNow(
+  reason: string,
+): Promise<{ configured: boolean; invoices: number; subscriptions: number }> {
+  return operatorJson('POST', '/operator/marketing/revenue/sync', { reason })
 }
 
 /** Verdict on one shadow row — "would that have been the right call?". */
