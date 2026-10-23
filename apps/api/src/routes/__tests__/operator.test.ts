@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import Fastify, { type FastifyInstance } from 'fastify'
 import { MongoClient, type Db } from 'mongodb'
 import { MongoMemoryServer } from 'mongodb-memory-server'
@@ -2242,6 +2242,105 @@ describe('security monitoring', () => {
     await ops.close()
   })
 
+  describe('marketing revenue (read-only Stripe)', () => {
+    const asOperator = async (roles: string[]) => {
+      await db.collection('platform_operators').deleteMany({})
+      await db
+        .collection('platform_operators')
+        .insertOne({ user_id: 'operator-1', status: 'active', roles })
+      return buildApp()
+    }
+    afterEach(() => {
+      delete process.env['STRIPE_READONLY_KEY']
+    })
+
+    it('is readable by marketing roles only', async () => {
+      const marketing = await asOperator(['marketing_operator'])
+      const ok = await marketing.inject({ method: 'GET', url: '/operator/marketing/revenue' })
+      expect(ok.statusCode).toBe(200)
+      expect(ok.json()).toMatchObject({ synced: false, stripe_configured: false })
+      await marketing.close()
+
+      const support = await asOperator(['support'])
+      expect(
+        (await support.inject({ method: 'GET', url: '/operator/marketing/revenue' })).statusCode,
+      ).toBe(403)
+      await support.close()
+    })
+
+    it('refuses to sync without a restricted key, and says what to create', async () => {
+      const app = await asOperator(['operations'])
+      const res = await app.inject({
+        method: 'POST',
+        url: '/operator/marketing/revenue/sync',
+        payload: { reason: 'First revenue sync' },
+      })
+      expect(res.statusCode).toBe(409)
+      expect(res.json().code).toBe('stripe_readonly_not_configured')
+      await app.close()
+    })
+
+    it('refuses a full secret key placed in the read-only variable', async () => {
+      process.env['STRIPE_READONLY_KEY'] = 'sk_test_not_restricted'
+      const app = await asOperator(['operations'])
+      const res = await app.inject({
+        method: 'POST',
+        url: '/operator/marketing/revenue/sync',
+        payload: { reason: 'Trying a secret key' },
+      })
+      expect(res.statusCode).toBe(400)
+      expect(res.json().error).toMatch(/restricted key/i)
+      expect(await db.collection('revenue_events').countDocuments()).toBe(0)
+      await app.close()
+    })
+
+    it('requires operations.manage and a reason to sync', async () => {
+      process.env['STRIPE_READONLY_KEY'] = 'rk_test_abc'
+      const marketing = await asOperator(['marketing_operator'])
+      expect(
+        (
+          await marketing.inject({
+            method: 'POST',
+            url: '/operator/marketing/revenue/sync',
+            payload: { reason: 'Not mine to run' },
+          })
+        ).statusCode,
+      ).toBe(403)
+      await marketing.close()
+      const ops = await asOperator(['operations'])
+      expect(
+        (await ops.inject({ method: 'POST', url: '/operator/marketing/revenue/sync', payload: {} }))
+          .statusCode,
+      ).toBe(400)
+      await ops.close()
+    })
+
+    it('funnel MRR is the labelled estimate until Stripe has synced, then the real figure', async () => {
+      await db
+        .collection('tenants')
+        .insertOne({ tenant_id: 'payer', plan: 'starter', name: 'Payer', status: 'active' })
+      const app = await asOperator(['platform_admin'])
+      const before = (await app.inject({ method: 'GET', url: '/operator/funnel' })).json().revenue
+      expect(before).toMatchObject({
+        mrr_source: 'estimate',
+        mrr_pence: 799,
+        revenue_30d_pence: null,
+      })
+
+      await db.collection('revenue_sync').insertOne({ _id: 'last' as never, synced_at: new Date() })
+      await db.collection('revenue_subscriptions').insertOne({
+        subscription_id: 'sub_1',
+        tenant_id: 'payer',
+        status: 'active',
+        currency: 'gbp',
+        mrr_pence: 1234,
+      })
+      const after = (await app.inject({ method: 'GET', url: '/operator/funnel' })).json().revenue
+      expect(after).toMatchObject({ mrr_source: 'stripe', mrr_pence: 1234 })
+      await app.close()
+    })
+  })
+
   describe('mission control', () => {
     const proposal = (id: string, kind: string, perm: string) => ({
       id,
@@ -2267,15 +2366,13 @@ describe('security monitoring', () => {
       await db
         .collection('autopilot_actions')
         .insertOne(proposal('p1', 'user.suspend', 'users.manage'))
-      await db
-        .collection('operator_alerts')
-        .insertOne({
-          dedup_key: 'dead_letters',
-          title: 'Dead jobs',
-          severity: 'danger',
-          status: 'open',
-          updated_at: new Date(),
-        })
+      await db.collection('operator_alerts').insertOne({
+        dedup_key: 'dead_letters',
+        title: 'Dead jobs',
+        severity: 'danger',
+        status: 'open',
+        updated_at: new Date(),
+      })
       const app = await buildApp()
       const res = await app.inject({ method: 'GET', url: '/operator/mission-control' })
       expect(res.statusCode).toBe(200)

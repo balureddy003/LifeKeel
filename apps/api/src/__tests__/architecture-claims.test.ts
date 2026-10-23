@@ -89,6 +89,11 @@ const EXEMPT_COLLECTIONS = new Set([
   'tenant_usage',
   // billing/financial record (retained as the ledger of what happened)
   'credit_ledger',
+  // marketing-intelligence revenue read from Stripe: what was paid, kept as the
+  // financial record like credit_ledger. Amounts and dates only; no content.
+  'revenue_events',
+  'revenue_subscriptions',
+  'revenue_sync',
   'outcome_charges',
   'stripe_webhook_events',
   // commercial plane (pre-signup/operator-scoped). Leads matching a deleted

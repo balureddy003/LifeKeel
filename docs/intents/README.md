@@ -21,3 +21,4 @@ and CONTRIBUTING.md's loop. Each file here is a stub for one Stage A item in
 | `10-claim-drift-remediation.md` | A10 drift fixes | mostly fast-path PRs |
 | `11-device-runtime-verification-and-eval-harness.md` | Device-first §8.4a — weakest-runtime eval gate | — |
 | `12-mission-control-and-shadow-mode.md` | Operator autonomy slice 1 — decision queue + shadow-mode rules | — |
+| `13-marketing-intelligence-revenue-and-attribution.md` | Marketing intelligence slice 1 — revenue truth, attribution, channel economics | PRD-210 |

@@ -60,6 +60,7 @@ Each run is recorded in `job_runs` (counts only). The sweep never deletes docume
 | Audit log | 7 years (TTL) | project policy: evidence of approvals and deletions; not a universal legal requirement, review per action class | `audit/audit-log.ts` |
 | Deletion receipts | 7 years (TTL) | answering a later "was I deleted?" request | `deletion/receipt.ts` |
 | Credit ledger and Stripe identifiers of a deleted household | 7 years after deletion, then swept | UK company record-keeping (6 years after the financial year end) | `jobs/retention-worker.ts` |
+| Stripe revenue copies for marketing intelligence (`revenue_events`, `revenue_subscriptions`: invoice id, amount, date, tenant) | same as the credit ledger: 7 years after the household's deletion, then swept | the same payments, read-only from Stripe, to measure what each channel earns; no content, no card data | `marketing/revenue.ts`, `jobs/retention-worker.ts` |
 | Sign-in history (`login_events`) | 30 days (TTL); removed at once on account deletion | security investigation | `db.ts`, `erasure.ts` |
 | Signed-out session tokens (`revoked_sessions`) | 31 days (TTL), hashes only | longest session lifetime | `auth/session-revocation.ts` |
 | Parked OAuth grants (`oauth_pending_grants`) | 10 minutes (TTL), encrypted | completing a connection | `routes/connector-credentials.ts` |

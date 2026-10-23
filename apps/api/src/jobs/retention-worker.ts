@@ -97,30 +97,44 @@ export class RetentionWorker {
         { updated_at: { $exists: false }, created_at: { $lt: ago(PLATFORM_RETENTION_DAYS.leads) } },
       ],
     })
-    await sweep('lifecycle_sends', { created_at: { $lt: ago(PLATFORM_RETENTION_DAYS.lifecycle_sends) } })
-    await sweep('growth_events', { created_at: { $lt: ago(PLATFORM_RETENTION_DAYS.growth_events) } })
+    await sweep('lifecycle_sends', {
+      created_at: { $lt: ago(PLATFORM_RETENTION_DAYS.lifecycle_sends) },
+    })
+    await sweep('growth_events', {
+      created_at: { $lt: ago(PLATFORM_RETENTION_DAYS.growth_events) },
+    })
     await sweep('stripe_webhook_events', {
       status: 'completed',
       processed_at: { $lt: ago(PLATFORM_RETENTION_DAYS.stripe_webhook_events) },
     })
-    await sweep('family_invite_sends', { created_at: { $lt: ago(PLATFORM_RETENTION_DAYS.family_invite_sends) } })
+    await sweep('family_invite_sends', {
+      created_at: { $lt: ago(PLATFORM_RETENTION_DAYS.family_invite_sends) },
+    })
 
     // Billing evidence of a deleted household is kept for the tax period,
     // then the ledger and the payment-provider identifiers go too.
     const expired = await this.db
       .collection('tenants')
       .find(
-        { status: 'deleted', deleted_at: { $lt: ago(PLATFORM_RETENTION_DAYS.billing_after_deletion) } },
+        {
+          status: 'deleted',
+          deleted_at: { $lt: ago(PLATFORM_RETENTION_DAYS.billing_after_deletion) },
+        },
         { projection: { tenant_id: 1 } },
       )
       .toArray()
     if (expired.length > 0) {
       const ids = expired.map((t) => String(t['tenant_id']))
       await sweep('credit_ledger', { tenant_id: { $in: ids } })
-      await this.db.collection('tenants').updateMany(
-        { tenant_id: { $in: ids } },
-        { $unset: { stripe_customer_id: '', stripe_subscription_id: '', billing: '' } },
-      )
+      // Marketing-intelligence copies of the same payments (read from Stripe).
+      await sweep('revenue_events', { tenant_id: { $in: ids } })
+      await sweep('revenue_subscriptions', { tenant_id: { $in: ids } })
+      await this.db
+        .collection('tenants')
+        .updateMany(
+          { tenant_id: { $in: ids } },
+          { $unset: { stripe_customer_id: '', stripe_subscription_id: '', billing: '' } },
+        )
     }
     return out
   }

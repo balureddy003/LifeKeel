@@ -52,6 +52,7 @@ import {
 import { runWeeklyDigest } from '../operator/weekly-digest.js'
 import { approveProposal, rejectProposal } from '../operator/proposal-resolution.js'
 import { buildDecisions } from '../operator/mission-control.js'
+import { readRevenueSnapshot, readonlyStripeFromEnv, syncRevenue } from '../marketing/revenue.js'
 import {
   campaignsCol,
   resolveAudience,
@@ -1842,6 +1843,8 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       sources.set(source, row)
     }
 
+    const revenueSnapshot = await readRevenueSnapshot(db)
+
     return {
       window_days: 30,
       totals: {
@@ -1857,9 +1860,16 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         paying_tenants: payingTenantDocs.length,
         paying_30d: newPayers.length,
         trialing_tenants: trialing.size,
-        // Only starter ("Keel Plus") has a real price — £7.99/mo. Dormant
-        // growth/enterprise tiers count toward paying totals but not MRR.
-        mrr_pence: payingTenantDocs.filter((t) => t['plan'] === 'starter').length * 799,
+        // Once Stripe revenue has been synced (read-only), MRR is what is
+        // actually being paid. Until then it is the old estimate: only starter
+        // ("Keel Plus") has a real price — £7.99/mo — so dormant tiers count
+        // toward paying totals but not MRR.
+        mrr_pence: revenueSnapshot.synced
+          ? revenueSnapshot.mrr_pence
+          : payingTenantDocs.filter((t) => t['plan'] === 'starter').length * 799,
+        mrr_source: revenueSnapshot.synced ? ('stripe' as const) : ('estimate' as const),
+        revenue_30d_pence: revenueSnapshot.synced ? revenueSnapshot.revenue_30d_pence : null,
+        revenue_last_sync_at: revenueSnapshot.last_sync_at,
         currency: 'GBP',
         median_days_to_paid: medianDaysToPaid,
       },
@@ -3140,6 +3150,57 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
       const out = await rejectProposal(db, audit, request, request.params.id, parsed.data.reason)
       return reply.status(out.status).send(out.body)
+    },
+  )
+
+  // ── Marketing revenue (read-only Stripe) ────────────────────────────────
+  // Revenue truth for marketing intelligence. The sync reads Stripe with a
+  // restricted key only (STRIPE_READONLY_KEY) and writes our own
+  // revenue_events / revenue_subscriptions; it can never change billing.
+
+  app.get(
+    '/operator/marketing/revenue',
+    { preHandler: requireOperator(db, 'marketing.read') },
+    async () => ({
+      ...(await readRevenueSnapshot(db)),
+      stripe_configured: Boolean(process.env['STRIPE_READONLY_KEY']),
+    }),
+  )
+
+  app.post(
+    '/operator/marketing/revenue/sync',
+    { preHandler: requireOperator(db, 'operations.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      let source
+      try {
+        source = readonlyStripeFromEnv()
+      } catch (err) {
+        return reply.status(400).send({ error: (err as Error).message })
+      }
+      if (!source)
+        return reply.status(409).send({
+          error:
+            'STRIPE_READONLY_KEY is not set — create a restricted read-only key in Stripe first',
+          code: 'stripe_readonly_not_configured',
+        })
+      try {
+        const result = await syncRevenue(db, source)
+        await audit.log(
+          request,
+          'operator.marketing.revenue_sync',
+          'revenue',
+          'stripe',
+          parsed.data.reason,
+          { ...result },
+        )
+        return result
+      } catch (err) {
+        request.log.error({ err }, 'Revenue sync failed')
+        return reply.status(502).send({ error: 'Stripe revenue sync failed' })
+      }
     },
   )
 
