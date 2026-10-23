@@ -472,7 +472,7 @@ step_resend() {
   # Probe once: a restricted key 401s on GET /domains — keep the key (it's
   # correct for runtime) and print the dashboard path instead of dying.
   local probe; probe=$(resend_api GET "domains" || true)
-  if ! echo "${probe:-{}}" | jq -e '.data != null' >/dev/null 2>&1; then
+  if ! printf '%s' "${probe:-null}" | jq -e '.data != null' >/dev/null 2>&1; then
     warn "RESEND_API_KEY is send-only — it can't manage domains/webhooks, which is"
     warn "fine for runtime (send is all the API does). Finish in the Resend dashboard:"
     warn "  1. Domains → Add Domain → $domain (region $region) → enable open+click"
@@ -488,7 +488,7 @@ step_resend() {
   local dom_id dom
   dom=$(resend_api POST "domains" \
     "{\"name\":\"$domain\",\"region\":\"$region\",\"open_tracking\":true,\"click_tracking\":true,\"tracking_subdomain\":\"links\"}" || true)
-  dom_id=$(echo "${dom:-{}}" | jq -r '.id // empty')
+  dom_id=$(printf '%s' "${dom:-null}" | jq -r '.id // empty')
   if [ -z "$dom_id" ]; then
     dom_id=$(echo "$probe" | jq -r --arg n "$domain" \
       '.data[]? | select(.name == $n) | .id' | head -1)
@@ -514,7 +514,18 @@ step_resend() {
     # "priority host"; TXT values lose their zone-file quoting.
     echo "$dom" | jq -r '.records[]? | [.name, .type, .value, (.priority // "")] | @tsv' \
       | while IFS=$'\t' read -r name type value priority; do
-        fqdn=$name; case "$fqdn" in *"$domain") ;; *) fqdn="$fqdn.$domain" ;; esac
+        # Resend record names are relative to the parent zone of the sender
+        # domain: for mail.<apex> they already carry the "mail" label
+        # (send.mail, resend._domainkey.mail). Handle all three shapes —
+        # FQDN, zone-relative, and sender-domain-relative — without ever
+        # producing a doubled label like send.mail.mail.<apex>.
+        local sub="${domain%.$apex}"
+        fqdn=$name
+        case "$fqdn" in
+          *".$apex"|"$apex") ;;               # already an FQDN
+          *".$sub")          fqdn="$fqdn.$apex" ;;   # zone-relative: send.mail
+          *)                 fqdn="$fqdn.$domain" ;; # sender-relative: resend._domainkey
+        esac
         rel=$fqdn;  case "$rel" in   *".$apex") rel="${rel%.$apex}" ;; "$apex") rel="@" ;; esac
         case "$type" in
           MX)  value="${priority:-10} $value" ;;
@@ -531,17 +542,22 @@ step_resend() {
     && echo "  verification requested" || warn "verify call failed — retry after DNS propagates"
   echo "$dom" | jq -r '.records[]? | "  \(.record // "?") \(.status)"' | sort -u | sed 's/^/  status:/'
 
-  # Event webhook → api.<primary>/webhooks/resend. Resend returns the
-  # signing_secret on create AND on list/get, so re-running recovers it.
-  local wh wh_secret
+  # Event webhook → api.<primary>/webhooks/resend. The list endpoint omits
+  # signing_secret; GET /webhooks/:id returns it, so re-running recovers it.
+  local wh wh_id wh_secret
   wh=$(resend_api GET "webhooks" || true)
-  wh_secret=$(echo "${wh:-{}}" | jq -r --arg e "$endpoint" \
-    '[.data[]? | select(.endpoint == $e)] | first | .signing_secret // empty')
+  wh_id=$(printf '%s' "${wh:-null}" | jq -r --arg e "$endpoint" \
+    '[.data[]? | select(.endpoint == $e)] | first | .id // empty')
+  if [ -n "$wh_id" ]; then
+    wh_secret=$(resend_api GET "webhooks/$wh_id" 2>/dev/null \
+      | jq -r '.signing_secret // empty')
+  fi
+  wh_secret="${wh_secret:-}"
   if [ -n "$wh_secret" ]; then
     echo "  webhook exists: $endpoint"
   else
     wh=$(resend_api POST "webhooks" "{\"endpoint\":\"$endpoint\",\"events\":$events}" || true)
-    wh_secret=$(echo "${wh:-{}}" | jq -r '.signing_secret // empty')
+    wh_secret=$(printf '%s' "${wh:-null}" | jq -r '.signing_secret // empty')
     [ -n "$wh_secret" ] && echo "  webhook created: $endpoint" \
       || warn "webhook create failed — add $endpoint in the Resend dashboard for the events: $events"
   fi
