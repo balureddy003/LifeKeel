@@ -42,7 +42,7 @@ export function SampleDay() {
   return (
     <section className="lk-band" id="sample" aria-labelledby="lk-sample-h">
       <p className="lk-eyebrow">A sample family</p>
-      <h2 id="lk-sample-h">Four bad days, and what Keel would check.</h2>
+      <h2 id="lk-sample-h">Four days in everyone&apos;s life, and what Keel would check.</h2>
       <p className="lk-intro">
         This is a made-up household with {gbp(SAMPLE_FAMILY.savings)} in savings,{' '}
         {gbp(SAMPLE_FAMILY.spend)} of monthly spending and {gbp(SAMPLE_FAMILY.cover)} of life cover
@@ -97,10 +97,10 @@ export function SampleDay() {
           <details className="lk-how">
             <summary>How this was worked out</summary>
             <p className="lk-maths">
-            {gap === 0
-              ? `Monthly gap = ${gbp(c.spend)} spending - ${gbp(c.income)} income = £0, so savings are not drawn on.`
-              : `Runway = ${gbp(c.fund)} / (${gbp(c.spend)} spending - ${gbp(c.income)} income) = ${months.toFixed(1)} months${months >= RUNWAY_CAP ? ` (drawn as ${RUNWAY_CAP}+)` : ''}. Common rules of thumb run from 3 to 6 months. Yours may differ.`}
-          </p>
+              {gap === 0
+                ? `Monthly gap = ${gbp(c.spend)} spending - ${gbp(c.income)} income = £0, so savings are not drawn on.`
+                : `Runway = ${gbp(c.fund)} / (${gbp(c.spend)} spending - ${gbp(c.income)} income) = ${months.toFixed(1)} months${months >= RUNWAY_CAP ? ` (drawn as ${RUNWAY_CAP}+)` : ''}. Common rules of thumb run from 3 to 6 months. Yours may differ.`}
+            </p>
           </details>
           <p className="lk-own">
             Sample figures for a made-up household. After you sign up, Keel uses only what you tell
