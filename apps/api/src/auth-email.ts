@@ -3,10 +3,10 @@
  *
  * Separate from delivery/channels.ts's EmailChannel, which is tightly
  * coupled to insight-notification copy (buildEmailHtml(InsightNotification)).
- * This is generic account mail, sent the same way (SendGrid, same env vars)
- * but with its own templates.
+ * This is generic account mail, sent through whichever provider
+ * email/transport.ts selects (SendGrid or Resend) but with its own templates.
  *
- * Gracefully no-ops when SENDGRID_API_KEY isn't configured — matching the
+ * Gracefully no-ops when no email provider is configured — matching the
  * OCR extraction pattern (apps/api/src/ocr/extract.ts): the request still
  * succeeds, a warning is logged, and nothing crashes for users running
  * without an email provider configured.
@@ -14,12 +14,13 @@
 
 import sgMail from '@sendgrid/mail'
 import { createLogger } from '@lifekeel/platform'
+import { emailConfigured, emailFromAddress } from './email/transport.js'
 import { EMAIL_COLORS, EMAIL_FONTS, escapeHtml, p, renderEmail } from './email/layout.js'
 
 const log = createLogger({ service: 'auth-email', version: '0.0.0' })
 
 function getFromEmail(): string {
-  return process.env['SENDGRID_FROM_EMAIL'] ?? 'accounts@lifekeel.co.uk'
+  return emailFromAddress() ?? 'accounts@lifekeel.co.uk'
 }
 
 // Sent on signup, email change, and resend-verification. The token-bearing
@@ -30,13 +31,13 @@ export async function sendEmailVerificationEmail(
   name: string,
   verifyUrl: string,
 ): Promise<void> {
-  const apiKey = process.env['SENDGRID_API_KEY']
-  if (!apiKey) {
-    log.warn({ to }, 'No SENDGRID_API_KEY — skipping email verification email')
+  if (!emailConfigured()) {
+    log.warn({ to }, 'No email provider configured — skipping email verification email')
     return
   }
 
-  sgMail.setApiKey(apiKey)
+  const apiKey = process.env['SENDGRID_API_KEY']
+  if (apiKey) sgMail.setApiKey(apiKey)
   const firstName = name.split(' ')[0] || 'there'
 
   try {
@@ -126,17 +127,17 @@ export async function sendOtpEmail(
   code: string,
   purpose: OtpPurpose,
 ): Promise<OtpDelivery> {
-  const apiKey = process.env['SENDGRID_API_KEY']
-  if (!apiKey) {
+  if (!emailConfigured()) {
     const isDev = !process.env['NODE_ENV'] || ['development', 'test'].includes(process.env['NODE_ENV'])
     if (isDev) {
-      log.warn({ to, purpose, code }, 'No SENDGRID_API_KEY — dev only: OTP code logged instead of sent')
+      log.warn({ to, purpose, code }, 'No email provider configured — dev only: OTP code logged instead of sent')
       return 'sent'
     }
-    log.error({ to, purpose }, 'No SENDGRID_API_KEY — OTP email not sent')
+    log.error({ to, purpose }, 'No email provider configured — OTP email not sent')
     return 'failed'
   }
-  sgMail.setApiKey(apiKey)
+  const apiKey = process.env['SENDGRID_API_KEY']
+  if (apiKey) sgMail.setApiKey(apiKey)
   const { subject, text, html } = otpEmailContent(name, code, purpose)
   const send = sgMail.send({
     to,
@@ -176,13 +177,13 @@ export async function sendPasswordResetEmail(
   name: string,
   resetUrl: string,
 ): Promise<void> {
-  const apiKey = process.env['SENDGRID_API_KEY']
-  if (!apiKey) {
-    log.warn({ to }, 'No SENDGRID_API_KEY — skipping password reset email')
+  if (!emailConfigured()) {
+    log.warn({ to }, 'No email provider configured — skipping password reset email')
     return
   }
 
-  sgMail.setApiKey(apiKey)
+  const apiKey = process.env['SENDGRID_API_KEY']
+  if (apiKey) sgMail.setApiKey(apiKey)
   const firstName = name.split(' ')[0] || 'there'
 
   try {
@@ -220,13 +221,13 @@ export async function sendFamilyInviteEmail(
   familyName: string,
   inviteUrl: string,
 ): Promise<void> {
-  const apiKey = process.env['SENDGRID_API_KEY']
-  if (!apiKey) {
-    log.warn({ to }, 'No SENDGRID_API_KEY — skipping family invite email')
+  if (!emailConfigured()) {
+    log.warn({ to }, 'No email provider configured — skipping family invite email')
     return
   }
 
-  sgMail.setApiKey(apiKey)
+  const apiKey = process.env['SENDGRID_API_KEY']
+  if (apiKey) sgMail.setApiKey(apiKey)
   const firstName = name.split(' ')[0] || 'there'
 
   try {
@@ -267,12 +268,12 @@ export async function sendContinuityCheckInEmail(
   daysInactive: number,
   appUrl: string,
 ): Promise<void> {
-  const apiKey = process.env['SENDGRID_API_KEY']
-  if (!apiKey) {
-    log.warn({ to }, 'No SENDGRID_API_KEY — skipping continuity check-in email')
+  if (!emailConfigured()) {
+    log.warn({ to }, 'No email provider configured — skipping continuity check-in email')
     return
   }
-  sgMail.setApiKey(apiKey)
+  const apiKey = process.env['SENDGRID_API_KEY']
+  if (apiKey) sgMail.setApiKey(apiKey)
   const firstName = name.split(' ')[0] || 'there'
   try {
     await sgMail.send({
@@ -311,12 +312,12 @@ export async function sendContinuityAlertEmail(
   daysInactive: number,
   appUrl: string,
 ): Promise<void> {
-  const apiKey = process.env['SENDGRID_API_KEY']
-  if (!apiKey) {
-    log.warn({ to }, 'No SENDGRID_API_KEY — skipping continuity alert email')
+  if (!emailConfigured()) {
+    log.warn({ to }, 'No email provider configured — skipping continuity alert email')
     return
   }
-  sgMail.setApiKey(apiKey)
+  const apiKey = process.env['SENDGRID_API_KEY']
+  if (apiKey) sgMail.setApiKey(apiKey)
   const firstName = memberName.split(' ')[0] || 'there'
   try {
     await sgMail.send({
@@ -401,12 +402,12 @@ export async function sendHeartbeatEmail(
    *  List-Unsubscribe + List-Unsubscribe-Post (RFC 8058) and in the footer. */
   unsubscribeUrl?: string,
 ): Promise<HeartbeatDeliveryResult> {
-  const apiKey = process.env['SENDGRID_API_KEY']
-  if (!apiKey) {
-    log.warn({ to }, 'No SENDGRID_API_KEY — skipping heartbeat email')
+  if (!emailConfigured()) {
+    log.warn({ to }, 'No email provider configured — skipping heartbeat email')
     return { ok: false, reason: 'no_api_key' }
   }
-  sgMail.setApiKey(apiKey)
+  const apiKey = process.env['SENDGRID_API_KEY']
+  if (apiKey) sgMail.setApiKey(apiKey)
   const firstName = name.split(' ')[0] || 'there'
   try {
     await sgMail.send(buildHeartbeatMessage(to, firstName, rendered, unsubscribeUrl))

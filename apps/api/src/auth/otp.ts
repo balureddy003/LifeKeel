@@ -57,8 +57,10 @@ export function evaluateOtpBoot(
   if (mode !== 'off') {
     if ((env['OTP_PEPPER'] ?? '').length < 32)
       violations.push('AUTH_OTP_MODE requires OTP_PEPPER (at least 32 characters) outside dev')
-    if (!env['SENDGRID_API_KEY'])
-      violations.push('AUTH_OTP_MODE requires SENDGRID_API_KEY outside dev')
+    if (!env['SENDGRID_API_KEY'] && !env['RESEND_API_KEY'])
+      violations.push(
+        'AUTH_OTP_MODE requires an email provider (RESEND_API_KEY or SENDGRID_API_KEY) outside dev',
+      )
   }
   return { violations, exceptions }
 }
@@ -154,7 +156,10 @@ function utcKey(d: Date, unit: 'h' | 'd'): { key: string; end: Date } {
   const m = String(d.getUTCMonth() + 1).padStart(2, '0')
   const day = String(d.getUTCDate()).padStart(2, '0')
   if (unit === 'd') {
-    return { key: `${y}${m}${day}`, end: new Date(Date.UTC(y, d.getUTCMonth(), d.getUTCDate() + 1)) }
+    return {
+      key: `${y}${m}${day}`,
+      end: new Date(Date.UTC(y, d.getUTCMonth(), d.getUTCDate() + 1)),
+    }
   }
   const h = String(d.getUTCHours()).padStart(2, '0')
   return {
@@ -168,7 +173,11 @@ function utcKey(d: Date, unit: 'h' | 'd'): { key: string; end: Date } {
  * conditional upserts in order; the first refusal aborts. A counter spent by
  * an earlier step stays spent if a later one refuses (fails closed).
  */
-export async function reserveSend(db: Db, userId: string, now = new Date()): Promise<ReserveResult> {
+export async function reserveSend(
+  db: Db,
+  userId: string,
+  now = new Date(),
+): Promise<ReserveResult> {
   const col = sendWindows(db)
   const nextSendAt = new Date(now.getTime() + OTP_COOLDOWN_MS)
   try {
@@ -260,9 +269,7 @@ export async function issueChain(
   return { chain, code }
 }
 
-export type ResendResult =
-  | { ok: true; issued: IssuedCode }
-  | { ok: false; reason: 'expired' }
+export type ResendResult = { ok: true; issued: IssuedCode } | { ok: false; reason: 'expired' }
 
 /** New code in the same chain: version+1, attempts 0, code TTL restarts, chain TTL unchanged. */
 export async function resendInChain(
@@ -314,7 +321,10 @@ export async function recordDelivery(
   version: number,
   delivery: OtpChain['delivery'],
 ): Promise<void> {
-  await otpChains(db).updateOne({ chain_id: chainId, code_version: version }, { $set: { delivery } })
+  await otpChains(db).updateOne(
+    { chain_id: chainId, code_version: version },
+    { $set: { delivery } },
+  )
 }
 
 export type VerifyResult =
@@ -349,10 +359,7 @@ export async function verifyChain(
   if (!claimed) {
     const doc = await col.findOne({ chain_id: ids.chain_id, user_id: ids.user_id })
     const live =
-      doc &&
-      doc.consumed_at === null &&
-      doc.code_expires_at > now &&
-      doc.chain_expires_at > now
+      doc && doc.consumed_at === null && doc.code_expires_at > now && doc.chain_expires_at > now
     return { ok: false, reason: live ? 'locked' : 'expired' }
   }
 

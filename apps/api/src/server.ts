@@ -1,5 +1,6 @@
 import './env.js'
 import { installMailpitTransport } from './dev/mailpit.js'
+import { installResendTransport } from './email/transport.js'
 
 import { randomUUID } from 'node:crypto'
 
@@ -214,6 +215,7 @@ import { registerMarketingProfileRoutes } from './routes/marketing-profiles.js'
 import { registerLeadRoutes } from './routes/leads.js'
 import { registerHeartbeatUnsubscribeRoutes } from './routes/heartbeat-unsubscribe.js'
 import { registerSendgridWebhookRoutes } from './routes/webhooks-sendgrid.js'
+import { registerResendWebhookRoutes } from './routes/webhooks-resend.js'
 import { sendOpsAlert } from './operator/ops-alerts.js'
 import { registerFamilySignalSchemas } from './family/family-signal-schemas.js'
 
@@ -232,7 +234,9 @@ await initTelemetry('lifekeel-api')
 
 const log = createLogger({ service: 'api', version: process.env['npm_package_version'] ?? '0.0.0' })
 
-installMailpitTransport()
+// Mailpit (dev capture) wins over any real provider; Resend takes over
+// sgMail.send when RESEND_API_KEY is set, SendGrid stays the default.
+if (!installMailpitTransport()) installResendTransport()
 
 // These are instantiated before MongoDB connects — they degrade gracefully
 // when DB is unavailable (calibrator/thresholds use identity/fallback values)
@@ -2217,6 +2221,7 @@ if (workflowDb) {
   await registerLeadRoutes(app, workflowDb)
   await registerHeartbeatUnsubscribeRoutes(app, workflowDb)
   registerSendgridWebhookRoutes(app, workflowDb)
+  registerResendWebhookRoutes(app, workflowDb)
   await registerFamilyFinancialProfileRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerLifeEventRoutes(app, workflowDb)
   registerPushRoutes(app, workflowDb, deliveryRouter)

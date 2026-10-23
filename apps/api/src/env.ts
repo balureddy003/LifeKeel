@@ -110,6 +110,10 @@ const ConfigSchema = z.object({
   LIFEKEEL_SLACK_BOT_TOKEN: z.string().optional(),
   SENDGRID_API_KEY: z.string().optional(),
   SENDGRID_FROM_EMAIL: z.string().optional(),
+  RESEND_API_KEY: z.string().optional(),
+  RESEND_API_BASE: z.string().optional(),
+  RESEND_WEBHOOK_SECRET: z.string().optional(),
+  EMAIL_FROM: z.string().optional(),
 
   // URLs
   STUDIO_URL: z.string().default('http://localhost:3000'),

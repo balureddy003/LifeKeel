@@ -48,6 +48,7 @@ import {
   type User,
 } from './auth-users.js'
 import { sendFamilyInviteEmail } from '../auth-email.js'
+import { emailConfigured } from '../email/transport.js'
 import { isMinorMember, memberMatchesUser } from '../family/family-permissions.js'
 import { generateInviteCode, type FamilyGroupDoc, type FamilyMemberDoc } from './family-group.js'
 import type { AuthService } from '@lifekeel/platform'
@@ -486,14 +487,12 @@ export function registerFamilyJoinRoutes(
       log.info({ tenantId: tenant_id, memberId: member.id }, 'Family member invite created')
 
       // invite_url is returned so the organizer can share it manually when
-      // SendGrid isn't configured (the email silently no-ops in that case).
-      return reply
-        .status(201)
-        .send({
-          invited: true,
-          emailed: Boolean(process.env['SENDGRID_API_KEY']),
-          invite_url: inviteUrl,
-        })
+      // no email provider is configured (the email silently no-ops then).
+      return reply.status(201).send({
+        invited: true,
+        emailed: emailConfigured(),
+        invite_url: inviteUrl,
+      })
     },
   )
 
@@ -506,7 +505,9 @@ export function registerFamilyJoinRoutes(
     { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const filter = inviteTokenFilter(req.params.token)
-      const invite = filter ? ((await invites.findOne(filter)) as FamilyMemberInviteDoc | null) : null
+      const invite = filter
+        ? ((await invites.findOne(filter)) as FamilyMemberInviteDoc | null)
+        : null
       if (!invite || invite.expires_at.getTime() < Date.now()) {
         return reply.status(404).send({ error: 'This invite link is invalid or has expired' })
       }

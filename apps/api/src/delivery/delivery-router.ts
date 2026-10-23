@@ -30,6 +30,7 @@ import { RealWebPushSender, type WebPushSubscription } from './web-push-sender.j
 import { CompositeMobilePushSender, FcmMobilePushSender } from './fcm-sender.js'
 import { recordDeliveryLatency } from '../routes/metrics.js'
 import { recordSpend, spendCost } from '../spend-ledger.js'
+import { activeEmailProvider } from '../email/transport.js'
 import { decideSend, maybeOfferDigestOnly, recordSent } from './notification-budget.js'
 import { resolveAlertEmail } from './alert-email.js'
 
@@ -615,7 +616,7 @@ export class DeliveryRouter {
   private recordChannelSpend(
     result: DeliveryResult,
     tenantId: string,
-    provider: 'twilio' | 'sendgrid',
+    provider: 'twilio' | 'sendgrid' | 'resend',
     unit: 'sms' | 'whatsapp' | 'email',
     channel: Channel,
   ): void {
@@ -658,7 +659,13 @@ export class DeliveryRouter {
         prefs.business_name ?? 'LifeKeel',
         notification,
       )
-      this.recordChannelSpend(result, tenantId, 'sendgrid', 'email', channel)
+      this.recordChannelSpend(
+        result,
+        tenantId,
+        activeEmailProvider() ?? 'sendgrid',
+        'email',
+        channel,
+      )
       return result
     }
     if (channel === 'web_push' && this.webPush && prefs.web_push_enabled) {

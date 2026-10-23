@@ -112,6 +112,11 @@ links.
 - Without Mailpit, unset `MAILPIT_URL`, `SENDGRID_API_KEY` and
   `EMAIL_VERIFICATION_ENABLED`: accounts are then auto-verified and email is
   skipped with a log warning.
+- To send real email instead of capturing it, set `RESEND_API_KEY` (Resend,
+  cheaper) or a real `SENDGRID_API_KEY` — `RESEND_API_KEY` wins if both are
+  set. The sender domain must be verified with the provider; set
+  `EMAIL_FROM` to an address on it. The API logs `Resend email transport
+  enabled` at boot when Resend is active.
 
 ### Email templates
 
