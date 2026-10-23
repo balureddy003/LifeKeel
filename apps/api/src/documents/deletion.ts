@@ -134,6 +134,9 @@ export async function finishDuePurges(
       { category: 'document file', count: (await store.head('clean', key)) ? 1 : 0 },
       { category: 'uploaded copy awaiting scan', count: (await store.head('quarantine', key)) ? 1 : 0 },
     ]
+    // Never claim erasure is complete while bytes or rows remain. Keep the
+    // tombstone and retry the second purge on the next reconciliation pass.
+    if (!residual.every((r) => r.count === 0)) continue
     if (t.receipt_id) {
       const receipt = await loadReceipt(db, t.receipt_id)
       if (receipt) {
@@ -146,8 +149,7 @@ export async function finishDuePurges(
         )
       }
     }
-    if (residual.every((r) => r.count === 0))
-      await db.collection(TOMBSTONES).deleteOne({ tenant_id: t.tenant_id, document_id: t.document_id })
+    await db.collection(TOMBSTONES).deleteOne({ tenant_id: t.tenant_id, document_id: t.document_id })
   }
   return due.length
 }
