@@ -169,6 +169,29 @@ describe('renderVerifiedAnswer', () => {
     expect(a.content).toContain('Emergency fund: 50/100')
   })
 
+  it('readiness: with estateInputs it scores estate like /family/readiness instead of gating it out', () => {
+    // Home computes the composite with the vault's doc types + estate
+    // signal; without those inputs the estate component gated out and the
+    // mean re-weighted — the source of the Home-vs-Ask-Keel score split.
+    const a = renderVerifiedAnswer(
+      'readiness',
+      data({
+        estateInputs: { estateDocTypes: ['will', 'power_of_attorney'], estateSignal: null },
+      }),
+    )!
+    expect(a.content).not.toContain('Estate: restricted')
+    expect(a.content).toContain('Estate')
+    expect(a.content).toContain('vault')
+  })
+
+  it('readiness: a gated caller (child / no vault access) still reports restricted', () => {
+    const a = renderVerifiedAnswer(
+      'readiness',
+      data({ estateInputs: { estateDocTypes: null, estateSignal: null } }),
+    )!
+    expect(a.content).toContain('Estate: restricted')
+  })
+
   it('education funds: shows each fund against its target', () => {
     const a = renderVerifiedAnswer('education_funds', data())!
     expect(a.content).toContain('Sam')

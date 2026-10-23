@@ -78,6 +78,9 @@ export function useFamilyReadinessScore() {
   const [score, setScore] = useState<number>(0)
   const [hasLiveData, setHasLiveData] = useState(false)
   const [loading, setLoading] = useState(true)
+  // When the displayed score was last computed — the score card renders
+  // this so "nothing changed" reads as a fresh check, not a stale number.
+  const [computedAt, setComputedAt] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -85,13 +88,18 @@ export function useFamilyReadinessScore() {
       setLoading(true)
       try {
         // A hung request must not leave the home score card as a skeleton forever.
-        const { score: apiScore, hasLiveData: liveData } = await Promise.race([
+        const {
+          score: apiScore,
+          hasLiveData: liveData,
+          computedAt: at,
+        } = await Promise.race([
           fetchFamilyReadinessScore(),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 10_000)),
         ])
         if (!cancelled) {
           setScore(apiScore)
           setHasLiveData(liveData)
+          setComputedAt(at)
         }
       } catch {
         // Live-verification finding: this had no catch — a rejected fetch
@@ -112,7 +120,7 @@ export function useFamilyReadinessScore() {
     }
   }, [])
 
-  return { score, hasLiveData, loading }
+  return { score, hasLiveData, computedAt, loading }
 }
 
 // A target of <= £1 (100 minor units) is unset — see isUnsetTarget in the API.

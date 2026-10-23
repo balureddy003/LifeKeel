@@ -4,6 +4,7 @@
  * and times only; no device identifiers leave this module.
  */
 import type { Db } from 'mongodb'
+import { resolveAlertEmail } from './alert-email.js'
 
 export interface ChannelState {
   email: { available: boolean }
@@ -41,7 +42,11 @@ export async function getChannelState(
       })
       .toArray() as unknown as Promise<{ channel: string; at: Date }[]>,
   ])
-  const email = Boolean(prefs?.email_to)
+  // email_to is only set when an organizer picked an address explicitly —
+  // nothing in signup ever writes one. Without the roster/account fallback
+  // every family read as "no email on file" even though the account (and
+  // the delivery floor) has one.
+  const email = Boolean(prefs?.email_to ?? (await resolveAlertEmail(db, tenantId)))
   const last = failures.reduce<Date | null>((m, f) => (m === null || f.at > m ? f.at : m), null)
   return {
     email: { available: email },

@@ -402,14 +402,19 @@ export async function fetchReadinessHistory(): Promise<ReadinessHistoryPoint[]> 
 export async function fetchFamilyReadinessScore(): Promise<{
   score: number
   hasLiveData: boolean
+  /** When this number was last computed — the server recomputes on every
+   *  read and says so via computed_at; surfaced on the score card so a
+   *  stable score reads as "just checked, unchanged" rather than stale. */
+  computedAt: string | null
 }> {
   const server = await fetchFamilyReadiness()
   if (server && server.has_live_data && server.score !== null) {
-    return { score: server.score, hasLiveData: true }
+    return { score: server.score, hasLiveData: true, computedAt: server.computed_at }
   }
-  if (server && !server.has_live_data) return { score: 0, hasLiveData: false }
+  if (server && !server.has_live_data)
+    return { score: 0, hasLiveData: false, computedAt: server.computed_at }
   if (server && server.has_live_data && server.score === null)
-    return { score: 0, hasLiveData: true }
+    return { score: 0, hasLiveData: true, computedAt: server.computed_at }
 
   const insights = await fetchFamilyInsights()
   if (insights.length === 0) {
@@ -419,8 +424,8 @@ export async function fetchFamilyReadinessScore(): Promise<{
     // also has zero insights — scoring that 100 told a family with a
     // £400k mortgage and no life cover they were "on track".
     return profile?.insights_evaluated_at
-      ? { score: 100, hasLiveData: true }
-      : { score: 0, hasLiveData: false }
+      ? { score: 100, hasLiveData: true, computedAt: profile.insights_evaluated_at }
+      : { score: 0, hasLiveData: false, computedAt: null }
   }
   const openPenalty = insights
     .filter((i) => !RESOLVED_INSIGHT_STATES.includes(i.state))
@@ -428,6 +433,7 @@ export async function fetchFamilyReadinessScore(): Promise<{
   return {
     score: Math.round(Math.max(0, Math.min(100, 100 - openPenalty * 10))),
     hasLiveData: true,
+    computedAt: new Date().toISOString(),
   }
 }
 
@@ -3082,7 +3088,24 @@ export async function fetchFinancialProfileWithVersion(): Promise<{
   profile: FinancialProfile | null
   version: number
 }> {
-  return fetchFinancialProfileRaw()
+  // Deliberately NOT apiFetch's silent-fallback path: a failed load must
+  // reach the wizard as an error, because rendering EMPTY_FORM after a
+  // transient failure reads as "your saved answers were lost" — and the
+  // next autosave would then overwrite the real profile with blanks
+  // (KEEL-006's version check only guards that once the doc has a nonzero
+  // version; a first-failure save carries none).
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  const res = await credFetch(`${base}/family/financial-profile`, { headers })
+  if (!res.ok) {
+    const err = new Error(`Profile load failed (${res.status})`)
+    reportError(err, { path: '/family/financial-profile' })
+    throw err
+  }
+  const data = (await res.json()) as { profile?: FinancialProfile | null; version?: number }
+  return { profile: data.profile ?? null, version: data.version ?? 0 }
 }
 
 // generateInsights defaults to false — most calls are the wizard's per-step

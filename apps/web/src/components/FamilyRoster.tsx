@@ -7,7 +7,7 @@ import { Home as HomeIcon, User, ChevronRight, Maximize2 } from 'lucide-react'
 import { haptic } from '@/lib/haptics'
 import { useAuth } from '@/lib/auth-context'
 import { ROLE_LABELS, memberStatusLabel } from '@/lib/auth-types'
-import { getMemberSections, CATEGORY_COLOR } from '@/lib/familySections'
+import { getMemberSections, CATEGORY_COLOR, type CoverTotals } from '@/lib/familySections'
 import { fetchFinancialProfile, type FinancialProfilePolicy } from '@/lib/api'
 
 function initials(name: string): string {
@@ -30,11 +30,21 @@ export function FamilyRoster({ showFullMapLink = true }: FamilyRosterProps) {
   const members = family?.members ?? []
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [policies, setPolicies] = useState<FinancialProfilePolicy[]>([])
+  const [coverTotals, setCoverTotals] = useState<CoverTotals | null>(null)
 
   useEffect(() => {
     let cancelled = false
     fetchFinancialProfile().then((profile) => {
-      if (!cancelled) setPolicies(profile?.policies ?? [])
+      if (cancelled) return
+      setPolicies(profile?.policies ?? [])
+      setCoverTotals(
+        profile?.household
+          ? {
+              lifeCoverMinor: profile.household.life_cover_minor,
+              incomeProtectionMonthlyMinor: profile.household.income_protection_monthly_minor,
+            }
+          : null,
+      )
     })
     return () => {
       cancelled = true
@@ -60,8 +70,9 @@ export function FamilyRoster({ showFullMapLink = true }: FamilyRosterProps) {
           selected.role === 'organizer' ? 'owner' : selected.role === 'parent' ? 'spouse' : 'child',
       },
       policies,
+      coverTotals,
     )
-  }, [selected, policies])
+  }, [selected, policies, coverTotals])
 
   if (members.length === 0 || !selected) {
     return (
@@ -131,7 +142,7 @@ export function FamilyRoster({ showFullMapLink = true }: FamilyRosterProps) {
               <div
                 className={`text-caption truncate ${m.status === 'pending' ? 'text-warning font-medium' : 'text-ink-tertiary'}`}
               >
-                {m.status === 'pending' ? memberStatusLabel(m.status) : ROLE_LABELS[m.role]}
+                {m.status === 'pending' ? memberStatusLabel(m.status, m.role) : ROLE_LABELS[m.role]}
               </div>
             </button>
           )
@@ -149,13 +160,27 @@ export function FamilyRoster({ showFullMapLink = true }: FamilyRosterProps) {
           className="flex items-center gap-2 rounded-xl px-3 py-2.5 mb-2 bg-warning/10 border border-warning/20 active:opacity-70"
         >
           <div className="flex-1 min-w-0">
-            <div className="text-xs font-semibold text-warning">
-              {selected.name.split(' ')[0]} hasn&apos;t joined yet
-            </div>
-            <div className="text-caption text-ink-tertiary">
-              Send an invite or finish their profile — their data counts toward the family score
-              either way.
-            </div>
+            {selected.role === 'child' ? (
+              <>
+                <div className="text-xs font-semibold text-warning">
+                  {selected.name.split(' ')[0]} doesn&apos;t need a sign-in
+                </div>
+                <div className="text-caption text-ink-tertiary">
+                  Children can&apos;t join themselves — adults manage their profile, and their data
+                  already counts toward the family score.
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-xs font-semibold text-warning">
+                  {selected.name.split(' ')[0]} hasn&apos;t joined yet
+                </div>
+                <div className="text-caption text-ink-tertiary">
+                  Send an invite or finish their profile — their data counts toward the family score
+                  either way.
+                </div>
+              </>
+            )}
           </div>
           <ChevronRight size={14} className="text-warning flex-shrink-0" />
         </Link>
