@@ -195,6 +195,10 @@ jobs:
             LOCAL_MODEL_MAX_CONCURRENT=${{ vars.LOCAL_MODEL_MAX_CONCURRENT }}
             EMAIL_SCAN_FANOUT=${{ vars.EMAIL_SCAN_FANOUT }}
             EMAIL_SCAN_CONCURRENCY=${{ vars.EMAIL_SCAN_CONCURRENCY }}
+            VERTEX_PROJECT=${{ vars.VERTEX_PROJECT }}
+            VERTEX_LOCATION=${{ vars.VERTEX_LOCATION }}
+            VERTEX_REASONING_EFFORT=${{ vars.VERTEX_REASONING_EFFORT }}
+            LIFEKEEL_LLM_PROVIDER=${{ vars.LIFEKEEL_LLM_PROVIDER }}
           # NOTE: no comments inside this block — deploy-cloudrun feeds every
           # line to gcloud verbatim. Web push: without the VAPID secrets,
           # /push/vapid-key 503s and no browser can subscribe. Values come from
