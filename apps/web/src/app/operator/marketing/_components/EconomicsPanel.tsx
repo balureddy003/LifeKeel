@@ -32,6 +32,9 @@ const gbp = (pence: number | null) =>
         maximumFractionDigits: 2,
       })}`
 
+/** The rollup's bucket for "no campaign tag" reads badly as a raw key. */
+const keyLabel = (key: string) => (key === 'none' ? '(no campaign)' : key)
+
 const pct = (r: number) => `${(r * 100).toFixed(r < 0.1 ? 1 : 0)}%`
 
 const BADGE: Record<EconomicsConfidence, { label: string; cls: string; title: string }> = {
@@ -130,7 +133,7 @@ function Table({
           {rows.map((r) => (
             <tr key={r.key} className="border-t border-tint/[0.06]">
               <th scope="row" className="py-1 pr-2 text-left font-medium text-ink-primary">
-                {r.key}
+                {keyLabel(r.key)}
               </th>
               <td className="px-2 py-1 text-right">{r.visits ?? '—'}</td>
               <td className="px-2 py-1 text-right">{r.signups}</td>

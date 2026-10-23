@@ -119,6 +119,17 @@ describe('EconomicsPanel', () => {
     expect(within(screen.getByRole('table', { name: /By pillar/i })).queryByText('CAC')).toBeNull()
   })
 
+  it('shows the untagged bucket in words, not as a raw key', async () => {
+    fetchEconomics.mockResolvedValue(
+      view({ by_campaign: [row({ key: 'none', spend_pence: null })] }),
+    )
+    render(<EconomicsPanel />)
+    await screen.findByText('bluesky: finding sentence')
+    const table = screen.getByRole('table', { name: /By pillar/i })
+    expect(within(table).getByText('(no campaign)')).toBeTruthy()
+    expect(within(table).queryByText('none')).toBeNull()
+  })
+
   it('switches attribution model and refetches', async () => {
     render(<EconomicsPanel />)
     await screen.findByText('bluesky: finding sentence')
