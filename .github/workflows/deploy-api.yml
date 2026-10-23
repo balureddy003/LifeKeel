@@ -230,9 +230,12 @@ jobs:
             VAPID_PRIVATE_KEY=lifekeel-vapid-private-key:latest
             VAPID_SUBJECT=lifekeel-vapid-subject:latest
             METRICS_SCRAPE_TOKEN=lifekeel-metrics-scrape-token:latest
-            TURNSTILE_SECRET_KEY=lifekeel-turnstile-secret-key:latest
             OTP_PEPPER=lifekeel-otp-pepper:latest
-            SENDGRID_API_KEY=lifekeel-sendgrid-api-key:latest
+            # TURNSTILE_SECRET_KEY and SENDGRID_API_KEY are deliberately NOT bound. This deployment runs with
+            # TURNSTILE_MODE=off and AUTH_OTP_MODE=off (repository variables), and the boot guards only require
+            # those two keys when the matching mode is on; auth-email.ts no-ops without a SendGrid key. To turn
+            # either feature on later, create the secret, bind it here, and set the mode variable
+            # (docs/runbooks/cloudflare-integration.md).
           secrets_update_strategy: overwrite
 
       # Step 3 of 4. Test the new revision at its tagged URL before any user reaches it. If this fails, production

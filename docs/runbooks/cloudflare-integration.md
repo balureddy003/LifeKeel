@@ -18,11 +18,13 @@ traffic moves):
 | Secret | Value |
 |---|---|
 | `lifekeel-metrics-scrape-token` | 32+ random chars. Put the same value in the Prometheus scrape config as `Authorization: Bearer …` |
-| `lifekeel-turnstile-secret-key` | Turnstile widget secret (Cloudflare dashboard → Turnstile → add site; hostnames = the Firebase app hosts) |
+| `lifekeel-turnstile-secret-key` | **Only when `TURNSTILE_MODE` is `monitor` or `enforce`** (not bound by `deploy-api.yml` while it is `off`). Turnstile widget secret (Cloudflare dashboard → Turnstile → add site; hostnames = the Firebase app hosts) |
 | `lifekeel-otp-pepper` | 48+ random chars (`openssl rand -base64 48`) |
-| `lifekeel-sendgrid-api-key` | SendGrid key for the authenticated sending domain (SPF/DKIM/DMARC for `accounts@lifekeel.co.uk`) |
+| `lifekeel-sendgrid-api-key` | **Only when `AUTH_OTP_MODE` is not `off`** (not bound while it is `off`; other emails no-op without it). SendGrid key for the authenticated sending domain (SPF/DKIM/DMARC for `accounts@lifekeel.co.uk`) |
 
-Then set GitHub **Variables** for the first deploy (safe start):
+Then set GitHub **Variables** for the first deploy (safe start). A deployment that does not use Turnstile or
+email OTP sets `TURNSTILE_MODE=off` and `AUTH_OTP_MODE=off`; it then needs neither the Turnstile nor the SendGrid
+secret, and the boot guard logs the downgrade:
 
 | Variable | First deploy | Later |
 |---|---|---|
