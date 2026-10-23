@@ -52,11 +52,7 @@ const PROVIDER_OPTIONS: Array<{ value: LlmProviderId | 'auto'; label: string; di
       label: 'OpenAI (unreviewed — processor gate will refuse)',
       disabled: 'Processor terms not reviewed',
     },
-    {
-      value: 'groq',
-      label: 'Groq (unreviewed — processor gate will refuse)',
-      disabled: 'Processor terms not reviewed',
-    },
+    { value: 'groq', label: 'Groq (approved — enable ZDR in Data Controls for zero retention)' },
   ]
 
 export default function OperatorConfigurationPage() {
