@@ -1530,9 +1530,15 @@ Remaining debt:
    (`ProcessorPolicyError`, never a fallback to another provider).
    `AI_PROCESSOR_ENFORCEMENT` is `off | warn | enforce`, default `warn`: it
    logs and counts (`lifekeel_ai_processor_violations_total`) and still serves
-   the call. **Azure OpenAI is approved** (owner decision, 2026-10-22, default
-   abuse-monitoring retention); anthropic, openai and groq remain `unreviewed`
-   and are refused under `enforce`. A
+   the call. **Azure OpenAI and Google Cloud Vertex AI (Gemini) are
+   approved** (owner decisions, 2026-10-22, conservative `limited_abuse_log`
+   retention recorded on both — Azure until modified abuse monitoring is
+   granted, Vertex until the deployment's data-governance configuration is
+   confirmed); anthropic, openai and groq remain `unreviewed` and are refused
+   under `enforce`. Vertex auth is OAuth2 only — `VERTEX_PROJECT` +
+   `VERTEX_LOCATION`, credentials via the Cloud Run service account
+   (`roles/aiplatform.user`) or `VERTEX_SERVICE_ACCOUNT_JSON` off-GCP;
+   `LIFEKEEL_LLM_PROVIDER` overrides first-configured-key provider detection. A
    `lifekeel_infra` task still falls back to hosted when the local model is
    off; the check flags that fallback, it does not stop it in `warn`.
    Subprocessor and terms review stays a human/legal process. A read-only
@@ -1564,6 +1570,9 @@ authoritative safety boundary for anything beyond language.
 - [Microsoft Azure OpenAI data, privacy, and security](https://learn.microsoft.com/en-us/azure/ai-foundry/responsible-ai/openai/data-privacy)
   and
   [abuse monitoring](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/concepts/abuse-monitoring)
+- [Vertex AI data governance and generative-AI privacy](https://cloud.google.com/vertex-ai/generative-ai/docs/data-governance)
+  and
+  [Google Cloud Data Processing Addendum](https://cloud.google.com/terms/data-processing-addendum)
 - [Groq data privacy FAQ](https://groq.com/privacy-faq/)
 - [ICO AI and data protection](https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/artificial-intelligence/)
 - [Anthropic: building effective agents](https://www.anthropic.com/engineering/building-effective-agents)

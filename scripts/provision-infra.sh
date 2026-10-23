@@ -96,6 +96,7 @@ step_gcp() {
     run.googleapis.com artifactregistry.googleapis.com \
     secretmanager.googleapis.com firebasehosting.googleapis.com \
     firebase.googleapis.com iam.googleapis.com \
+    aiplatform.googleapis.com \
     siteverification.googleapis.com --project "$GCP_PROJECT"
 
   if ! gcloud artifacts repositories describe "$AR_REPO" --location "$GCP_REGION" >/dev/null 2>&1; then
@@ -142,6 +143,10 @@ step_gcp() {
   gcloud projects add-iam-policy-binding "$GCP_PROJECT" \
     --member "serviceAccount:${num}-compute@developer.gserviceaccount.com" \
     --role roles/secretmanager.secretAccessor >/dev/null
+  # Vertex AI Gemini — the API's identity calls aiplatform via ADC, no key.
+  gcloud projects add-iam-policy-binding "$GCP_PROJECT" \
+    --member "serviceAccount:${num}-compute@developer.gserviceaccount.com" \
+    --role roles/aiplatform.user >/dev/null
 
   echo "SA keys written to $OUT_DIR/ — upload via the 'github' step, then delete."
 }

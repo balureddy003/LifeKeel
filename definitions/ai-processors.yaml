@@ -4,11 +4,11 @@
 # (definitions/ai-tasks.yaml) says which processors a task may use
 # (`allowed_processors`); this file says whether each one is approved.
 #
-# STATUS TODAY: `azure` is approved (owner decision, 2026-10-22); anthropic,
-# openai and groq remain `unreviewed`. Unknown facts are the explicit value
-# `not_reviewed`, never an invented one. Retention for an unreviewed processor
-# is the most conservative class (limited_abuse_log) because that is what must
-# be assumed until reviewed.
+# STATUS TODAY: `azure` and `vertex` are approved (owner decisions,
+# 2026-10-22); anthropic, openai and groq remain `unreviewed`. Unknown facts
+# are the explicit value `not_reviewed`, never an invented one. Retention for
+# an unreviewed processor is the most conservative class (limited_abuse_log)
+# because that is what must be assumed until reviewed.
 #
 # To approve a processor the owner supplies the real terms and sets
 # `status: approved` with every field filled and real YYYY-MM-DD dates: the
@@ -102,6 +102,37 @@ processors:
     transfer_mechanism: Microsoft Standard Contractual Clauses / EU Data Boundary per the Microsoft Products and Services DPA
     dpa_date: '2026-10-22'
     breach_notice_sla: notification without undue delay per the Microsoft Products and Services DPA
+    reviewed_at: '2026-10-22'
+    review_due: '2027-10-22'
+
+  vertex:
+    # Approved 2026-10-22 (owner decision): Google Cloud Vertex AI is the second
+    # approved hosted processor — the enterprise Gemini path (NOT the free
+    # Gemini Developer API, whose unpaid tier trains on submitted content).
+    # Honest gaps recorded inline: the GCP project/location are not deployed
+    # yet, so `region` is filled at provisioning (VERTEX_LOCATION), and the
+    # conservative retention class applies until the deployment's data-
+    # governance settings are confirmed.
+    name: Google Cloud Vertex AI (Gemini)
+    hosting: hosted
+    status: approved
+    endpoint: https://<location>-aiplatform.googleapis.com — the project and location named by VERTEX_PROJECT/VERTEX_LOCATION
+    region: deployment-selected — the Vertex location configured in VERTEX_LOCATION (not yet deployed)
+    terms_ref: Google Cloud Data Processing and Security Terms + Vertex AI data governance and generative-AI documentation
+    no_training_basis: Google Cloud service terms — Vertex AI does not use customer prompts or responses to train Google's foundation models
+    retention:
+      # Vertex AI does not persist prompts/responses for product improvement;
+      # transient processing only. Recorded conservatively at limited_abuse_log
+      # until the deployment's data-governance configuration is confirmed — the
+      # enterprise path can reach zero_data_retention.
+      '*': limited_abuse_log
+    sub_processors:
+      [
+        Google LLC and affiliates — Google Cloud Platform sub-processor list per the Google Cloud Data Processing Addendum,
+      ]
+    transfer_mechanism: EU Standard Contractual Clauses / UK Addendum per the Google Cloud Data Processing Addendum
+    dpa_date: '2026-10-22'
+    breach_notice_sla: notification without undue delay per the Google Cloud Data Processing Addendum
     reviewed_at: '2026-10-22'
     review_due: '2027-10-22'
 

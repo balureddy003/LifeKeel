@@ -26,7 +26,8 @@ dotenv.config({ path: envPath })
 // An empty value (e.g. an unset deploy variable passed as KEY=) must behave as unset everywhere:
 // code reads process.env['X'] ?? default, and '' is not nullish. See env-helpers.ts.
 const droppedEmpty = dropEmptyEnv()
-if (droppedEmpty.length > 0) log.info({ vars: droppedEmpty.join(',') }, 'Treating empty environment variables as unset')
+if (droppedEmpty.length > 0)
+  log.info({ vars: droppedEmpty.join(',') }, 'Treating empty environment variables as unset')
 
 // ── Config schema ─────────────────────────────────────────────────────────────
 //
@@ -56,6 +57,23 @@ const ConfigSchema = z.object({
   AZURE_OPENAI_API_KEY: z.string().optional(),
   AZURE_OPENAI_DEPLOYMENT: z.string().optional(),
   AZURE_OPENAI_API_VERSION: z.string().optional(),
+  // Vertex AI Gemini — OAuth mode only: project + location, credentials from
+  // VERTEX_SERVICE_ACCOUNT_JSON (off-GCP) or the metadata server (Cloud Run).
+  // The OpenAI-compatible surface rejects express-mode API keys.
+  VERTEX_PROJECT: z.string().optional(),
+  VERTEX_LOCATION: z.string().optional(),
+  VERTEX_SERVICE_ACCOUNT_JSON: z.string().optional(),
+  VERTEX_REASONING_EFFORT: optionalEnum(['minimal', 'low', 'medium', 'high']),
+  // Operator override: when set, the named provider wins over env-key detection.
+  LIFEKEEL_LLM_PROVIDER: optionalEnum([
+    'anthropic',
+    'openai',
+    'azure',
+    'vertex',
+    'ollama',
+    'groq',
+    'auto',
+  ]),
   OLLAMA_BASE_URL: z.string().optional(),
   // Self-hosted small model for the move judge (see infra/local-judge). When set,
   // the judge never calls a cloud LLM.
@@ -110,9 +128,7 @@ export type Config = z.infer<typeof ConfigSchema>
 const parsed = ConfigSchema.safeParse(process.env)
 
 if (!parsed.success) {
-  const errors = parsed.error.issues
-    .map(i => `  ${i.path.join('.')}: ${i.message}`)
-    .join('\n')
+  const errors = parsed.error.issues.map((i) => `  ${i.path.join('.')}: ${i.message}`).join('\n')
   log.error({ errors }, 'FATAL: Invalid environment configuration')
   process.exit(1)
 }
@@ -121,8 +137,13 @@ export const config = parsed.data
 
 // In production, enforce required vars that are optional in dev
 if (config.NODE_ENV === 'production') {
-  const requiredInProd: Array<keyof Config> = ['MONGODB_URL', 'JWT_SECRET', 'REDIS_URL', 'SETTINGS_ENCRYPTION_KEY']
-  const missing = requiredInProd.filter(k => !config[k])
+  const requiredInProd: Array<keyof Config> = [
+    'MONGODB_URL',
+    'JWT_SECRET',
+    'REDIS_URL',
+    'SETTINGS_ENCRYPTION_KEY',
+  ]
+  const missing = requiredInProd.filter((k) => !config[k])
   if (missing.length > 0) {
     log.error({ missing: missing.join(', ') }, 'FATAL: Missing required env vars in production')
     process.exit(1)

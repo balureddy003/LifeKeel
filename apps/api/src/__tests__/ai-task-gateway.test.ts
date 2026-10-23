@@ -267,9 +267,10 @@ describe('AI processor registry (PRD-142)', () => {
     // If this fails because you approved a processor: good, update the list here
     // and make sure the entry carries real terms (the loader already insists).
     const approved = [...processors().values()].filter((e) => e.status === 'approved')
-    expect(approved.map((e) => e.id)).toEqual(['azure'])
+    expect(approved.map((e) => e.id)).toEqual(['azure', 'vertex'])
     for (const e of processors().values()) {
-      if (e.hosting === 'hosted' && e.id !== 'azure') expect(e.status).toBe('unreviewed')
+      if (e.hosting === 'hosted' && e.id !== 'azure' && e.id !== 'vertex')
+        expect(e.status).toBe('unreviewed')
     }
   })
 
@@ -290,6 +291,11 @@ describe('AI processor registry (PRD-142)', () => {
       'OPENAI_API_KEY',
       'GROQ_API_KEY',
       'AZURE_OPENAI_ENDPOINT',
+      'VERTEX_PROJECT',
+      'VERTEX_LOCATION',
+      'VERTEX_SERVICE_ACCOUNT_JSON',
+      'VERTEX_REASONING_EFFORT',
+      'LIFEKEEL_LLM_PROVIDER',
       'OLLAMA_BASE_URL',
       'LOCAL_JUDGE_BASE_URL',
       'LOCAL_TEXT_ENABLED',
@@ -331,6 +337,15 @@ describe('AI processor registry (PRD-142)', () => {
       delete process.env['GROQ_API_KEY']
       process.env['AZURE_OPENAI_ENDPOINT'] = 'https://x.openai.azure.com'
       expect(resolveServingProcessor(t)).toBe('azure')
+      process.env['VERTEX_PROJECT'] = 'p'
+      // Incumbent wins when both are configured — no silent flip on rollout.
+      expect(resolveServingProcessor(t)).toBe('azure')
+      delete process.env['AZURE_OPENAI_ENDPOINT']
+      expect(resolveServingProcessor(t)).toBe('vertex')
+      // Operator override beats first-configured-key detection.
+      process.env['AZURE_OPENAI_ENDPOINT'] = 'https://x.openai.azure.com'
+      process.env['LIFEKEEL_LLM_PROVIDER'] = 'vertex'
+      expect(resolveServingProcessor(t)).toBe('vertex')
     })
 
     it('with the shipped registries, the hosted fallback for a self-hosted-only task is flagged, and the self-hosted path is clean', () => {
@@ -427,9 +442,12 @@ describe('AI processor registry (PRD-142)', () => {
       sub_processors: null,
       review_due: null,
     })
-    // Azure is owner-approved (2026-10-22); the rest of hosted stays unreviewed.
+    // Azure and Vertex are owner-approved (2026-10-22); the rest of hosted stays unreviewed.
     expect(byId['azure']?.status).toBe('approved')
-    expect(d.processors.every((p) => p.id === 'azure' || p.status !== 'approved')).toBe(true)
+    expect(byId['vertex']?.status).toBe('approved')
+    expect(
+      d.processors.every((p) => p.id === 'azure' || p.id === 'vertex' || p.status !== 'approved'),
+    ).toBe(true)
     const where = Object.fromEntries(d.tasks.map((t) => [t.task_id, t.where]))
     expect(where['draft.crisis_on_device.v1']).toBe('device')
     expect(where['assistant.youth_answer.v1']).toBe('lifekeel')

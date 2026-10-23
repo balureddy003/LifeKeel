@@ -41,8 +41,9 @@ Each stage is idempotent and separately runnable: `./scripts/provision-infra.sh 
 ### `gcp` — project plumbing
 
 Enables the APIs (`run`, `artifactregistry`, `secretmanager`, `firebasehosting`,
-`siteverification`, `iam`), creates the `lifekeel-docker` Artifact Registry
-repo, and creates two deploy service accounts:
+`siteverification`, `iam`, `aiplatform` — Vertex AI Gemini), creates the
+`lifekeel-docker` Artifact Registry repo, and creates two deploy service
+accounts:
 
 - `github-deploy` — `run.admin`, `artifactregistry.writer`,
   `iam.serviceAccountUser`, `storage.admin` → exported to
@@ -51,7 +52,10 @@ repo, and creates two deploy service accounts:
   (becomes `FIREBASE_SA_KEY`)
 
 It also grants the default compute SA `secretmanager.secretAccessor`, since the
-Cloud Run service mounts secrets without an explicit runtime SA.
+Cloud Run service mounts secrets without an explicit runtime SA, plus
+`aiplatform.user` so the API's identity can call Vertex AI via ADC — no key is
+stored anywhere (off-GCP deployments use `VERTEX_SERVICE_ACCOUNT_JSON`
+instead).
 
 ### `secrets` — Secret Manager values
 

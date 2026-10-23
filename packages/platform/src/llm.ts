@@ -7,6 +7,8 @@
  *   anthropic  — Claude 3 Haiku / Sonnet / Opus  (ANTHROPIC_API_KEY)
  *   openai     — GPT-4o, GPT-4o-mini, o1, o3     (OPENAI_API_KEY)
  *   azure      — Azure OpenAI deployments         (AZURE_OPENAI_*)
+ *   vertex     — Google Cloud Vertex AI Gemini    (VERTEX_PROJECT/VERTEX_LOCATION,
+ *                                                VERTEX_SERVICE_ACCOUNT_JSON or ADC)
  *   ollama     — local models via Ollama HTTP API  (OLLAMA_BASE_URL)
  *   groq       — Llama 3 / Mixtral via Groq        (GROQ_API_KEY)
  *
@@ -20,10 +22,11 @@
 
 import { createLogger } from './logger.js'
 import { ollamaNumCtx } from './ollama-options.js'
+import { vertexAccessTokenProvider } from './vertex-auth.js'
 
 const log = createLogger({ service: 'llm', version: '0.0.0' })
 
-export type LlmProvider = 'anthropic' | 'openai' | 'azure' | 'ollama' | 'groq' | 'auto'
+export type LlmProvider = 'anthropic' | 'openai' | 'azure' | 'vertex' | 'ollama' | 'groq' | 'auto'
 
 // ── Azure Endpoint Validation ─────────────────────────────────────────────────────
 
@@ -108,6 +111,13 @@ export const DEFAULT_TIER_MODELS: Record<LlmProvider, Record<ReasoningTier, stri
     fast: 'gpt-4o-mini',
     balanced: 'gpt-4o',
     powerful: 'gpt-4o',
+  },
+  // Gemini 2.5 family retired Oct 2026 — 3.5/4 are the GA lines. Bare model
+  // ids; callVertex adds the `google/` publisher prefix Vertex requires.
+  vertex: {
+    fast: 'gemini-3.5-flash-lite',
+    balanced: 'gemini-3.5-flash',
+    powerful: 'gemini-4-argon',
   },
   ollama: {
     fast: 'llama3.2:3b',
@@ -196,6 +206,23 @@ export interface LlmConfig {
   azureDeployment?: string
   /** Azure API version */
   azureApiVersion?: string
+  /** Google Cloud project for Vertex AI (OAuth mode). */
+  vertexProject?: string
+  /** Vertex location — 'global' (best availability) or a region like 'europe-west1' (data residency). */
+  vertexLocation?: string
+  /**
+   * Per-call auth-header resolver — same pattern as ollamaHeaders. Vertex's
+   * OpenAI-compatible surface accepts only OAuth2 access tokens (~1h TTL), so
+   * a static key cannot work; defaults to vertexAccessTokenProvider() which
+   * mints them from VERTEX_SERVICE_ACCOUNT_JSON or the metadata server.
+   */
+  vertexHeaders?: () => Promise<Record<string, string>>
+  /**
+   * Thinking floor sent as reasoning_effort. Gemini 3.x/4 cannot disable
+   * thinking ('none' was 2.5-only); 'low' is the universal floor. Reasoning
+   * tokens bill as output.
+   */
+  vertexReasoningEffort?: 'minimal' | 'low' | 'medium' | 'high'
   /** Ollama base URL (default: http://localhost:11434) */
   ollamaBaseUrl?: string
   /** Extra headers for Ollama calls, resolved per call (e.g. a Cloud Run identity token). */
@@ -264,6 +291,12 @@ const MODEL_PROVIDER_MAP: Record<string, LlmProvider> = {
   'llama-3.1-8b-instant': 'groq',
   'mixtral-8x7b-32768': 'groq',
   'gemma2-9b-it': 'groq',
+  // Vertex AI Gemini
+  'gemini-3.5-flash-lite': 'vertex',
+  'gemini-3.5-flash': 'vertex',
+  'gemini-3.8-flash': 'vertex',
+  'gemini-4-argon': 'vertex',
+  'gemini-3.1-pro': 'vertex',
 }
 
 function detectProviderFromModel(model: string): LlmProvider | null {
@@ -274,7 +307,21 @@ function detectProviderFromModel(model: string): LlmProvider | null {
   if (model.startsWith('gpt-') || model.startsWith('o1') || model.startsWith('o3')) return 'openai'
   if (model.startsWith('llama') || model.startsWith('mixtral') || model.startsWith('gemma'))
     return 'groq'
+  if (model.startsWith('gemini') || model.startsWith('google/gemini')) return 'vertex'
   return null
+}
+
+/**
+ * Operator override: when set, the named provider wins over env-key detection
+ * for every call that didn't name a model belonging to another provider.
+ * Fixes first-configured-key-wins ambiguity when several providers are
+ * provisioned at once — the operator selects the active one deliberately.
+ */
+function envProviderOverride(): LlmProvider | null {
+  const name = process.env['LIFEKEEL_LLM_PROVIDER']
+  if (!name || name === 'auto') return null
+  const providers: readonly string[] = ['anthropic', 'openai', 'azure', 'vertex', 'ollama', 'groq']
+  return providers.includes(name) ? (name as LlmProvider) : null
 }
 
 function resolveProvider(cfg: LlmConfig, model: string): LlmProvider {
@@ -282,11 +329,15 @@ function resolveProvider(cfg: LlmConfig, model: string): LlmProvider {
   // Auto-detect from model name
   const fromModel = detectProviderFromModel(model)
   if (fromModel) return fromModel
+  // Operator override beats whichever API key happens to be configured
+  const override = envProviderOverride()
+  if (override) return override
   // Fall back to whichever API key is available
   if (process.env['ANTHROPIC_API_KEY']) return 'anthropic'
   if (process.env['OPENAI_API_KEY']) return 'openai'
   if (process.env['GROQ_API_KEY']) return 'groq'
   if (process.env['AZURE_OPENAI_ENDPOINT']) return 'azure'
+  if (process.env['VERTEX_PROJECT']) return 'vertex'
   if (
     process.env['OLLAMA_BASE_URL'] ||
     model.startsWith('llama') ||
@@ -576,6 +627,77 @@ async function callGroq(
   }, signal)
 }
 
+const VERTEX_TIMEOUT_MS = 120_000
+
+/**
+ * Vertex AI Gemini on the OpenAI-compatible surface — fetch-based, not the
+ * OpenAI SDK, because auth is a per-call header resolver (OAuth tokens expire
+ * hourly; a static SDK apiKey cannot refresh).
+ *
+ * Endpoint shape:
+ *   global   → https://aiplatform.googleapis.com/v1/projects/P/locations/global/endpoints/openapi/chat/completions
+ *   regional → https://{loc}-aiplatform.googleapis.com/v1/projects/P/locations/{loc}/endpoints/openapi/chat/completions
+ *
+ * The model name in the request body needs the `google/` publisher prefix.
+ * `reasoning_effort` maps to thinking levels — 'none' is invalid on Gemini
+ * 3.x/4 (thinking floor is 'minimal'/'low'), and reasoning tokens bill as
+ * output, so 'low' is the default.
+ */
+async function callVertex(
+  system: string,
+  prompt: string,
+  model: string,
+  project: string,
+  location: string,
+  getHeaders: () => Promise<Record<string, string>>,
+  reasoningEffort: string,
+  maxTokens: number,
+  temperature: number,
+  onUsage?: LlmUsageCallback,
+  signal?: AbortSignal,
+): Promise<string> {
+  const host =
+    location === 'global'
+      ? 'https://aiplatform.googleapis.com'
+      : `https://${location}-aiplatform.googleapis.com`
+  const url = `${host}/v1/projects/${project}/locations/${location}/endpoints/openapi/chat/completions`
+  const body = {
+    model: model.startsWith('google/') ? model : `google/${model}`,
+    stream: false,
+    max_tokens: maxTokens,
+    temperature,
+    reasoning_effort: reasoningEffort,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: prompt },
+    ],
+  }
+  return withRetry(async () => {
+    const t0 = Date.now()
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(await getHeaders()) },
+      body: JSON.stringify(body),
+      signal: signal ?? AbortSignal.timeout(VERTEX_TIMEOUT_MS),
+    })
+    if (!res.ok) throw new Error(`Vertex HTTP ${res.status}: ${await res.text()}`)
+    const data = (await res.json()) as {
+      choices?: { message?: { content?: string } }[]
+      usage?: { prompt_tokens?: number; completion_tokens?: number }
+    }
+    if (data.usage) {
+      onUsage?.({
+        input_tokens: data.usage.prompt_tokens ?? 0,
+        output_tokens: data.usage.completion_tokens ?? 0,
+        model,
+        provider: 'vertex',
+        latency_ms: Date.now() - t0,
+      })
+    }
+    return data.choices?.[0]?.message?.content ?? ''
+  }, signal)
+}
+
 const OLLAMA_TIMEOUT_MS = 180_000
 
 async function callOllama(
@@ -770,6 +892,36 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
           )
         }
 
+        case 'vertex': {
+          const project = cfg.vertexProject ?? process.env['VERTEX_PROJECT'] ?? ''
+          const location = cfg.vertexLocation ?? process.env['VERTEX_LOCATION'] ?? 'global'
+          if (!project) throw new Error('VERTEX_PROJECT not set')
+          // Lazily construct the default token provider only when a vertex
+          // call actually runs — building it eagerly would read
+          // VERTEX_SERVICE_ACCOUNT_JSON / hit the metadata server for
+          // deployments that never route here. Cached: the provider's token
+          // cache lives in its closure, so a fresh one per call would defeat
+          // it (and hit the token endpoint every request).
+          const getHeaders =
+            cfg.vertexHeaders ??
+            getCachedClient('vertex:default-headers', () => vertexAccessTokenProvider())
+          const effort =
+            cfg.vertexReasoningEffort ?? process.env['VERTEX_REASONING_EFFORT'] ?? 'low'
+          return await callVertex(
+            system,
+            prompt,
+            resolvedModel,
+            project,
+            location,
+            getHeaders,
+            effort,
+            maxTokens,
+            temperature,
+            cfg.onUsage,
+            signal,
+          )
+        }
+
         case 'groq': {
           const apiKey = cfg.apiKey ?? process.env['GROQ_API_KEY'] ?? ''
           if (!apiKey) throw new Error('GROQ_API_KEY not set')
@@ -829,10 +981,13 @@ export function createLlmRouterFromEnv(cfg: LlmConfig = {}): LlmFn {
 
 /** The provider createLlmRouterFromEnv would pick right now, from the environment. */
 export function detectActiveProvider(): LlmProvider | null {
+  const override = envProviderOverride()
+  if (override) return override
   if (process.env['ANTHROPIC_API_KEY']) return 'anthropic'
   if (process.env['OPENAI_API_KEY']) return 'openai'
   if (process.env['GROQ_API_KEY']) return 'groq'
   if (process.env['AZURE_OPENAI_ENDPOINT']) return 'azure'
+  if (process.env['VERTEX_PROJECT']) return 'vertex'
   if (process.env['OLLAMA_BASE_URL']) return 'ollama'
   return null
 }
@@ -842,6 +997,7 @@ export const DEFAULT_MODELS: Record<LlmProvider, string> = {
   anthropic: 'claude-haiku-4-5',
   openai: 'gpt-4o-mini',
   azure: 'gpt-4o',
+  vertex: 'gemini-3.5-flash',
   groq: 'llama-3.1-70b-versatile',
   ollama: 'llama3.1',
   auto: 'claude-haiku-4-5',

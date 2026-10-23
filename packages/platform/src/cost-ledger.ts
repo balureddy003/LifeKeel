@@ -26,53 +26,58 @@ import type { Collection, Db } from 'mongodb'
  * e.g. claude-haiku-4-5 input: 25 = $0.00025 / 1K tokens = $0.25 / 1M tokens.
  */
 export interface ModelPricing {
-  input_per_1k: number   // micro-dollars per 1K input tokens
-  output_per_1k: number  // micro-dollars per 1K output tokens
+  input_per_1k: number // micro-dollars per 1K input tokens
+  output_per_1k: number // micro-dollars per 1K output tokens
 }
 
 const DEFAULT_PRICING: Record<string, ModelPricing> = {
   // Anthropic
-  'claude-haiku-4-5':             { input_per_1k: 25,    output_per_1k: 125 },
-  'claude-3-5-haiku-20241022':    { input_per_1k: 80,    output_per_1k: 400 },
-  'claude-3-5-sonnet-20241022':   { input_per_1k: 300,   output_per_1k: 1500 },
-  'claude-opus-4':                { input_per_1k: 1500,  output_per_1k: 7500 },
+  'claude-haiku-4-5': { input_per_1k: 25, output_per_1k: 125 },
+  'claude-3-5-haiku-20241022': { input_per_1k: 80, output_per_1k: 400 },
+  'claude-3-5-sonnet-20241022': { input_per_1k: 300, output_per_1k: 1500 },
+  'claude-opus-4': { input_per_1k: 1500, output_per_1k: 7500 },
   // OpenAI
-  'gpt-4o-mini':                  { input_per_1k: 15,    output_per_1k: 60 },
-  'gpt-4o':                       { input_per_1k: 250,   output_per_1k: 1000 },
-  'o3-mini':                      { input_per_1k: 110,   output_per_1k: 440 },
-  'o3':                           { input_per_1k: 1000,  output_per_1k: 4000 },
+  'gpt-4o-mini': { input_per_1k: 15, output_per_1k: 60 },
+  'gpt-4o': { input_per_1k: 250, output_per_1k: 1000 },
+  'o3-mini': { input_per_1k: 110, output_per_1k: 440 },
+  o3: { input_per_1k: 1000, output_per_1k: 4000 },
   // Groq (significantly cheaper — open models via inference API)
-  'llama-3.1-8b-instant':         { input_per_1k: 5,     output_per_1k: 8 },
-  'llama-3.1-70b-versatile':      { input_per_1k: 59,    output_per_1k: 79 },
+  'llama-3.1-8b-instant': { input_per_1k: 5, output_per_1k: 8 },
+  'llama-3.1-70b-versatile': { input_per_1k: 59, output_per_1k: 79 },
+  // Vertex AI Gemini — micro-dollars per 1K. flash-lite $0.10/$0.40 per 1M,
+  // flash $0.30/$2.50, argon estimated flagship-class; reasoning tokens count
+  // as output. Override via LIFEKEEL_LLM_PRICING_JSON as prices shift.
+  'gemini-3.5-flash-lite': { input_per_1k: 10, output_per_1k: 40 },
+  'gemini-3.5-flash': { input_per_1k: 30, output_per_1k: 250 },
+  'gemini-4-argon': { input_per_1k: 125, output_per_1k: 1000 },
   // Ollama — local, zero cost
-  'llama3.2:3b':                  { input_per_1k: 0,     output_per_1k: 0 },
-  'qwen2.5:7b':                   { input_per_1k: 0,     output_per_1k: 0 },
-  'qwen2.5:14b':                  { input_per_1k: 0,     output_per_1k: 0 },
-  'qwen2.5:1.5b':                 { input_per_1k: 0,     output_per_1k: 0 },
-  'qwen2.5:3b':                   { input_per_1k: 0,     output_per_1k: 0 },
+  'llama3.2:3b': { input_per_1k: 0, output_per_1k: 0 },
+  'qwen2.5:7b': { input_per_1k: 0, output_per_1k: 0 },
+  'qwen2.5:14b': { input_per_1k: 0, output_per_1k: 0 },
+  'qwen2.5:1.5b': { input_per_1k: 0, output_per_1k: 0 },
+  'qwen2.5:3b': { input_per_1k: 0, output_per_1k: 0 },
 }
 
 function loadPricingTable(): Record<string, ModelPricing> {
   try {
     const override = process.env['LIFEKEEL_LLM_PRICING_JSON']
-    if (override) return { ...DEFAULT_PRICING, ...JSON.parse(override) } as Record<string, ModelPricing>
-  } catch { /* ignore malformed override */ }
+    if (override)
+      return { ...DEFAULT_PRICING, ...JSON.parse(override) } as Record<string, ModelPricing>
+  } catch {
+    /* ignore malformed override */
+  }
   return DEFAULT_PRICING
 }
 
 const PRICING = loadPricingTable()
 
 /** Compute cost in micro-dollars for a given model and token counts. */
-export function computeCost(
-  model: string,
-  inputTokens: number,
-  outputTokens: number,
-): number {
+export function computeCost(model: string, inputTokens: number, outputTokens: number): number {
   // Fuzzy match: strip date suffixes (gpt-4o-2024-11-20 → gpt-4o)
-  const pricing = PRICING[model] ?? PRICING[model.replace(/-\d{8}$/, '')] ?? PRICING['claude-haiku-4-5']!
+  const pricing =
+    PRICING[model] ?? PRICING[model.replace(/-\d{8}$/, '')] ?? PRICING['claude-haiku-4-5']!
   return Math.round(
-    (inputTokens / 1000) * pricing.input_per_1k +
-    (outputTokens / 1000) * pricing.output_per_1k,
+    (inputTokens / 1000) * pricing.input_per_1k + (outputTokens / 1000) * pricing.output_per_1k,
   )
 }
 
@@ -105,8 +110,8 @@ export interface CostSummary {
   total_input_tokens: number
   total_output_tokens: number
   total_calls: number
-  by_workflow: Record<string, number>   // workflow_id → cost_microdollars
-  by_model: Record<string, number>      // model → cost_microdollars
+  by_workflow: Record<string, number> // workflow_id → cost_microdollars
+  by_model: Record<string, number> // model → cost_microdollars
   by_day: Array<{ date: string; cost_microdollars: number; calls: number }>
   most_expensive_run?: { workflow_run_id: string; cost_microdollars: number }
 }
@@ -130,7 +135,7 @@ export class CostLedger {
   }
 
   async record(record: Omit<LlmUsageRecord, '_id' | 'created_at'>): Promise<void> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     await (this.col as any).insertOne({
       ...record,
       created_at: new Date(),
@@ -202,7 +207,11 @@ export class CostLedger {
   }
 
   /** Per-workflow cost breakdown — useful for the Studio Workflows page. */
-  async getWorkflowCost(tenantId: string, workflowId: string, days = 30): Promise<{
+  async getWorkflowCost(
+    tenantId: string,
+    workflowId: string,
+    days = 30,
+  ): Promise<{
     cost_microdollars: number
     cost_display: string
     total_calls: number
@@ -214,7 +223,7 @@ export class CostLedger {
       .toArray()
 
     const cost = records.reduce((s, r) => s + r.cost_microdollars, 0)
-    const runs = new Set(records.map(r => r.workflow_run_id).filter(Boolean)).size
+    const runs = new Set(records.map((r) => r.workflow_run_id).filter(Boolean)).size
 
     return {
       cost_microdollars: cost,

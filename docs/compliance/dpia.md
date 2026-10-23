@@ -58,7 +58,7 @@ Retention for each is in `docs/data-retention.md`.
 | A former member keeps access | removal revokes sessions and marks the login removed (R03) | |
 | A viewer changes shared facts | household-editor check on profile and policy writes (R04) | which other writes count is a product decision |
 | Mailbox over-collection | Gmail read-only scope; finance-only retention (R38) | Google restricted-scope verification (CASA) |
-| Data sent to an unreviewed AI processor | processor registry enforced outside dev; downgrade needs a recorded exception (R14); Azure OpenAI approved 2026-10-22 | Azure resource not yet provisioned; region recorded at deployment; default 30-day abuse-monitoring retention until modified abuse monitoring is approved |
+| Data sent to an unreviewed AI processor | processor registry enforced outside dev; downgrade needs a recorded exception (R14); Azure OpenAI and Google Cloud Vertex AI approved 2026-10-22 | Neither resource provisioned yet; regions recorded at deployment; conservative `limited_abuse_log` retention on both — Azure until modified abuse monitoring is approved, Vertex until data-governance configuration is confirmed |
 | Restore resurrects erased data | erasure journal, maintenance mode and enforced replay (R15) | journal storage location is operational |
 | Tracking on a sensitive product | consent gate; never in the signed-in app (R36) | |
 

@@ -113,10 +113,16 @@ scorer warm-start can use it.
   processor is refused) and hosted fallback for `lifekeel_infra` tasks is
   denied; in `dev` the default is `warn`. A non-dev downgrade (`warn`, `off`,
   `AI_HOSTED_FALLBACK=allow`) only takes effect with a recorded
-  `AI_POLICY_EXCEPTION` reference and is logged at boot. Azure OpenAI is the
-  approved hosted processor (2026-10-22, default abuse-monitoring retention —
-  `limited_abuse_log`, tolerated on non-sensitive tasks only); anthropic,
-  openai and groq stay `unreviewed` and are refused in a non-dev deployment.
+  `AI_POLICY_EXCEPTION` reference and is logged at boot. Azure OpenAI and
+  Google Cloud Vertex AI are the approved hosted processors (2026-10-22,
+  `limited_abuse_log` retention recorded conservatively on both, tolerated on
+  non-sensitive tasks only); anthropic, openai and groq stay `unreviewed` and
+  are refused in a non-dev deployment. `LIFEKEEL_LLM_PROVIDER` pins the active
+  provider when several are configured; without it the router picks the first
+  configured credential (anthropic → openai → groq → azure → vertex → ollama).
+  Vertex auth is OAuth only — the service's GCP service account on Cloud Run,
+  or `VERTEX_SERVICE_ACCOUNT_JSON` off-GCP; express-mode API keys do not work
+  on its OpenAI-compatible endpoint.
   Provider no-training and retention terms, Gmail Limited Use
   exclusion from cross-tenant scorers, and a consent flow for third-party AI
   remain procedural. Do not claim rule 3 is technically enforced by code
