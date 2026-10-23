@@ -53,6 +53,10 @@ const PROVIDER_OPTIONS: Array<{ value: LlmProviderId | 'auto'; label: string; di
       disabled: 'Processor terms not reviewed',
     },
     { value: 'groq', label: 'Groq (approved — enable ZDR in Data Controls for zero retention)' },
+    {
+      value: 'xai',
+      label: 'xAI Grok (approved — ZDR REQUIRED: enable in xAI Console Team Settings first)',
+    },
   ]
 
 export default function OperatorConfigurationPage() {

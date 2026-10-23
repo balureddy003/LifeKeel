@@ -1537,7 +1537,12 @@ Remaining debt:
    confirmed); Groq is approved (2026-10-23 — no default inference retention,
    self-serve ZDR via Console → Data Controls; recorded as `limited_abuse_log`
    until that toggle is on, and chat/completions only — the /batches and
-   /fine_tunings surfaces retain by design). Anthropic and openai remain
+   /fine_tunings surfaces retain by design); xAI is approved (2026-10-23)
+   **conditional on ZDR** — its Sept-2026 DPA requires Personal Data to go
+   through the ZDR-enabled API only, so Console → Team Settings → Zero Data
+   Retention must be on before use (xAI keeps a perpetual safety-research
+   licence on prompts/outputs — reviewed at approval, not model training).
+   Anthropic and openai remain
    `unreviewed` and are refused under `enforce`. Vertex auth is OAuth2 only —
    `VERTEX_PROJECT` +
    `VERTEX_LOCATION`, credentials via the Cloud Run service account

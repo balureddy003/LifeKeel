@@ -4439,7 +4439,7 @@ export function fetchOperatorReferrals(): Promise<OperatorReferrals> {
 
 // ── Operator: configuration ───────────────────────────────────────────────
 
-export type LlmProviderId = 'anthropic' | 'openai' | 'azure' | 'vertex' | 'ollama' | 'groq'
+export type LlmProviderId = 'anthropic' | 'openai' | 'azure' | 'vertex' | 'ollama' | 'groq' | 'xai'
 
 export interface PlatformConfig {
   maintenance_mode: boolean

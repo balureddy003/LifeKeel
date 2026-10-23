@@ -54,6 +54,7 @@ const VALID_PROVIDER_OVERRIDES = new Set<string>([
   'vertex',
   'ollama',
   'groq',
+  'xai',
 ])
 
 export const CONFIG_DOC_KEY = 'global'
