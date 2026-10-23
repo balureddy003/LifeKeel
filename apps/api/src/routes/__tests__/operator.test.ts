@@ -12,6 +12,7 @@ vi.mock('@sendgrid/mail', () => ({
 
 import { registerOperatorRoutes } from '../operator.js'
 import { hashAuthToken } from '../auth-users.js'
+import { invalidatePlatformConfigCache } from '../../operator/platform-config.js'
 
 let mongod: MongoMemoryServer
 let client: MongoClient
@@ -90,6 +91,9 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   process.env['SENDGRID_API_KEY'] = 'test-key'
+  // platform_config is cached for 10s — a flag set by one test must not leak
+  // into the next after the database is dropped.
+  invalidatePlatformConfigCache()
   await db.dropDatabase()
   await db.collection('users').insertMany([
     {
@@ -2116,6 +2120,320 @@ describe('security monitoring', () => {
     const list = await app.inject({ method: 'GET', url: '/operator/autopilot' })
     expect(list.statusCode).toBe(200)
     await app.close()
+  })
+
+  it('keeps a shadowing rule from going live until its reviewed precision clears the bar', async () => {
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    const app = await buildApp()
+    const put = (payload: Record<string, unknown>) =>
+      app.inject({ method: 'PUT', url: '/operator/autopilot/auto_unlock_expired', payload })
+
+    const shadow = await put({ enabled: true, mode: 'shadow', reason: 'Trial in shadow first' })
+    expect(shadow.statusCode).toBe(200)
+    expect(shadow.json().rule.mode).toBe('shadow')
+
+    const rows = Array.from({ length: 20 }, (_, i) => ({
+      id: `sh-${i}`,
+      rule: 'auto_unlock_expired',
+      dedup_key: `shadow:k${i}`,
+      target_type: 'user',
+      target_id: `u${i}`,
+      reason: 'r',
+      status: 'shadow',
+      created_at: new Date(),
+    }))
+    await db.collection('autopilot_actions').insertMany(rows)
+
+    // Nothing reviewed yet → refused, with the track record in the body.
+    const early = await put({ mode: 'live', reason: 'Skip the trial please' })
+    expect(early.statusCode).toBe(409)
+    expect(early.json().code).toBe('shadow_not_promotable')
+    expect(early.json().shadow).toMatchObject({ reviewed: 0, promotable: false })
+
+    // 17 of 20 right (85%) — enough reviews, not enough precision.
+    for (let i = 0; i < 20; i++) {
+      const r = await app.inject({
+        method: 'POST',
+        url: `/operator/autopilot/shadow/sh-${i}/review`,
+        payload: { verdict: i < 17 ? 'right' : 'wrong', reason: 'Checked against the user' },
+      })
+      expect(r.statusCode).toBe(200)
+    }
+    expect((await put({ mode: 'live', reason: 'Close but not there' })).statusCode).toBe(409)
+
+    // Fix one verdict → 18/20 = 90% → promotable.
+    await app.inject({
+      method: 'POST',
+      url: '/operator/autopilot/shadow/sh-17/review',
+      payload: { verdict: 'right', reason: 'Re-checked, it was right' },
+    })
+    const live = await put({ mode: 'live', reason: 'Earned it: 90% over 20 rows' })
+    expect(live.statusCode).toBe(200)
+    expect(live.json().rule.mode).toBe('live')
+
+    const modeAudits = await db
+      .collection('operator_audit_log')
+      .countDocuments({ action: 'operator.autopilot.mode' })
+    expect(modeAudits).toBe(2) // shadow + live; the refused promotions are not audited as changes
+    expect(
+      await db
+        .collection('operator_audit_log')
+        .countDocuments({ action: 'operator.autopilot.shadow_review' }),
+    ).toBe(21)
+    await app.close()
+  })
+
+  it('exposes shadow stats and the kill switch on GET /operator/autopilot', async () => {
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    const app = await buildApp()
+    await app.inject({
+      method: 'PUT',
+      url: '/operator/autopilot/auto_unlock_expired',
+      payload: { enabled: true, mode: 'shadow', reason: 'Trial in shadow first' },
+    })
+    const before = await app.inject({ method: 'GET', url: '/operator/autopilot' })
+    expect(before.json().paused).toBe(false)
+    expect(before.json().shadow_promotion).toEqual({ min_reviewed: 20, min_precision: 0.9 })
+    const rule = (before.json().rules as { rule: string; shadow: unknown }[]).find(
+      (r) => r.rule === 'auto_unlock_expired',
+    )
+    expect(rule?.shadow).toMatchObject({ total: 0, reviewed: 0, promotable: false })
+
+    const pause = await app.inject({
+      method: 'PUT',
+      url: '/operator/configuration',
+      payload: { autopilot_paused: true, reason: 'Kill switch drill' },
+    })
+    expect(pause.statusCode).toBe(200)
+    expect((await app.inject({ method: 'GET', url: '/operator/autopilot' })).json().paused).toBe(
+      true,
+    )
+    await app.close()
+  })
+
+  it('reviewing a shadow row needs operations.manage and an existing shadow row', async () => {
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    const app = await buildApp()
+    const denied = await app.inject({
+      method: 'POST',
+      url: '/operator/autopilot/shadow/anything/review',
+      payload: { verdict: 'right', reason: 'Support cannot judge rules' },
+    })
+    expect(denied.statusCode).toBe(403)
+    await app.close()
+
+    await db.collection('platform_operators').deleteMany({})
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
+    const ops = await buildApp()
+    const missing = await ops.inject({
+      method: 'POST',
+      url: '/operator/autopilot/shadow/nope/review',
+      payload: { verdict: 'right', reason: 'No such row exists' },
+    })
+    expect(missing.statusCode).toBe(404)
+    await ops.close()
+  })
+
+  describe('mission control', () => {
+    const proposal = (id: string, kind: string, perm: string) => ({
+      id,
+      rule: 'propose_suspend_brute_force',
+      dedup_key: `k-${id}`,
+      target_type: 'user',
+      target_id: 'user-2',
+      reason: 'Credential stuffing',
+      status: 'proposed',
+      proposal: {
+        kind,
+        required_permission: perm,
+        summary: `Do ${id}`,
+        payload: { user_id: 'user-2' },
+      },
+      created_at: new Date(),
+    })
+
+    it('lists decisions for the caller and reports the kill switch', async () => {
+      await db
+        .collection('platform_operators')
+        .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+      await db
+        .collection('autopilot_actions')
+        .insertOne(proposal('p1', 'user.suspend', 'users.manage'))
+      await db
+        .collection('operator_alerts')
+        .insertOne({
+          dedup_key: 'dead_letters',
+          title: 'Dead jobs',
+          severity: 'danger',
+          status: 'open',
+          updated_at: new Date(),
+        })
+      const app = await buildApp()
+      const res = await app.inject({ method: 'GET', url: '/operator/mission-control' })
+      expect(res.statusCode).toBe(200)
+      expect(res.json().autopilot_paused).toBe(false)
+      const ids = (res.json().decisions as { id: string }[]).map((d) => d.id)
+      expect(ids).toContain('alert:dead_letters')
+      expect(ids).not.toContain('proposal:p1') // support lacks users.manage
+      await app.close()
+    })
+
+    it('denies mission control to non-operators', async () => {
+      const app = await buildApp('user-2')
+      expect(
+        (await app.inject({ method: 'GET', url: '/operator/mission-control' })).statusCode,
+      ).toBe(403)
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url: '/operator/mission-control/batch',
+            payload: { items: [{ id: 'alert:x', action: 'ack' }], reason: 'nope nope' },
+          })
+        ).statusCode,
+      ).toBe(403)
+      await app.close()
+    })
+
+    it('batch acks alerts and rejects proposals, one audit row per item plus a batch row', async () => {
+      await db
+        .collection('platform_operators')
+        .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+      await db
+        .collection('autopilot_actions')
+        .insertMany([
+          proposal('p1', 'user.suspend', 'users.manage'),
+          proposal('p2', 'user.suspend', 'users.manage'),
+        ])
+      const app = await buildApp()
+      const res = await app.inject({
+        method: 'POST',
+        url: '/operator/mission-control/batch',
+        payload: {
+          reason: 'Triage sweep',
+          items: [
+            { id: 'proposal:p1', action: 'reject' },
+            { id: 'proposal:p2', action: 'reject' },
+            { id: 'alert:dead_letters', action: 'ack' },
+          ],
+        },
+      })
+      expect(res.statusCode).toBe(200)
+      expect((res.json().results as { ok: boolean }[]).every((r) => r.ok)).toBe(true)
+      expect(await db.collection('autopilot_actions').countDocuments({ status: 'rejected' })).toBe(
+        2,
+      )
+      expect(
+        (await db.collection('operator_alerts').findOne({ dedup_key: 'dead_letters' }))?.['status'],
+      ).toBe('ack')
+      const audits = db.collection('operator_audit_log')
+      expect(await audits.countDocuments({ action: 'operator.autopilot.reject' })).toBe(2)
+      expect(await audits.countDocuments({ action: 'operator.alert.ack' })).toBe(1)
+      expect(await audits.countDocuments({ action: 'operator.mission_control.batch' })).toBe(1)
+      await app.close()
+    })
+
+    it('refuses a batch containing anything not batchable, applying none of it', async () => {
+      await db
+        .collection('platform_operators')
+        .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+      await db
+        .collection('autopilot_actions')
+        .insertOne(proposal('p1', 'user.suspend', 'users.manage'))
+      const app = await buildApp()
+      for (const bad of [
+        { id: 'post_draft:m1', action: 'approve' },
+        { id: 'campaign_draft:k1', action: 'approve' },
+        { id: 'dual_approval:d1', action: 'approve' },
+        { id: 'proposal:p1', action: 'ack' },
+        { id: 'alert:x', action: 'approve' },
+      ]) {
+        const res = await app.inject({
+          method: 'POST',
+          url: '/operator/mission-control/batch',
+          payload: {
+            reason: 'Should be refused',
+            items: [{ id: 'proposal:p1', action: 'reject' }, bad],
+          },
+        })
+        expect(res.statusCode, JSON.stringify(bad)).toBe(400)
+      }
+      // The valid first item must not have been applied by any refused batch.
+      expect((await db.collection('autopilot_actions').findOne({ id: 'p1' }))?.['status']).toBe(
+        'proposed',
+      )
+      await app.close()
+    })
+
+    it("enforces each item's own permission without aborting the rest", async () => {
+      // operations carries operations.manage (reject ok) but not marketing.manage (approve the draft proposal).
+      await db
+        .collection('platform_operators')
+        .insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
+      await db
+        .collection('autopilot_actions')
+        .insertMany([
+          proposal('p-draft', 'marketing.blog_draft', 'marketing.manage'),
+          proposal('p-other', 'user.suspend', 'users.manage'),
+        ])
+      const app = await buildApp()
+      const res = await app.inject({
+        method: 'POST',
+        url: '/operator/mission-control/batch',
+        payload: {
+          reason: 'Mixed permissions',
+          items: [
+            { id: 'proposal:p-draft', action: 'approve' },
+            { id: 'proposal:p-other', action: 'reject' },
+          ],
+        },
+      })
+      expect(res.statusCode).toBe(200)
+      const byId = Object.fromEntries(
+        (res.json().results as { id: string; ok: boolean; status: number }[]).map((r) => [r.id, r]),
+      )
+      expect(byId['proposal:p-draft']).toMatchObject({ ok: false, status: 403 })
+      expect(byId['proposal:p-other']).toMatchObject({ ok: true })
+      expect(
+        (await db.collection('autopilot_actions').findOne({ id: 'p-draft' }))?.['status'],
+      ).toBe('proposed')
+      await app.close()
+    })
+
+    it('requires a recent login (step-up) and caps the batch size', async () => {
+      await db
+        .collection('platform_operators')
+        .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+      const stale = await buildApp('operator-1', Math.floor(Date.now() / 1000) - 3600)
+      const res = await stale.inject({
+        method: 'POST',
+        url: '/operator/mission-control/batch',
+        payload: { reason: 'Old session', items: [{ id: 'alert:x', action: 'ack' }] },
+      })
+      expect(res.statusCode).toBe(403)
+      expect(res.json().code).toBe('step_up_required')
+      await stale.close()
+
+      const app = await buildApp()
+      const tooMany = await app.inject({
+        method: 'POST',
+        url: '/operator/mission-control/batch',
+        payload: {
+          reason: 'Too many',
+          items: Array.from({ length: 21 }, (_, i) => ({ id: `alert:a${i}`, action: 'ack' })),
+        },
+      })
+      expect(tooMany.statusCode).toBe(400)
+      await app.close()
+    })
   })
 
   it('approves a suspend proposal — executes the mutation, audits, and cannot be re-approved', async () => {

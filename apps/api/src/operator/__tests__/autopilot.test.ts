@@ -7,8 +7,12 @@ import {
   PROPOSAL_HANDLERS,
   ensureAutopilotIndexes,
   listAutopilotRules,
+  meetsPromotion,
+  reviewShadowRow,
   runAutopilotSweep,
+  shadowStats,
 } from '../autopilot.js'
+import { invalidatePlatformConfigCache } from '../platform-config.js'
 
 let mongod: MongoMemoryServer
 let client: MongoClient
@@ -23,6 +27,7 @@ beforeAll(async () => {
 })
 
 beforeEach(async () => {
+  invalidatePlatformConfigCache()
   for (const name of await db.listCollections().toArray()) {
     await db.collection(name.name).deleteMany({})
   }
@@ -394,6 +399,177 @@ describe('cooldown follows action, not attempt', () => {
       .collection('social_connections')
       .insertOne({ tenant_id: 't2', channel: 'x', status: 'active' })
     expect(await runAutopilotSweep(db)).toHaveLength(0)
+  })
+})
+
+describe('shadow mode', () => {
+  const lockedUser = () =>
+    db.collection('users').insertOne({
+      id: 'u1',
+      email: 'u1@example.com',
+      failed_login_attempts: 5,
+      locked_until: new Date(Date.now() - 60_000),
+    })
+
+  it('logs what it would do and changes nothing', async () => {
+    await enableRule('auto_unlock_expired', { mode: 'shadow' })
+    await lockedUser()
+
+    const rows = await runAutopilotSweep(db)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ status: 'shadow', target_id: 'u1' })
+    expect(rows[0]!.would_do).toMatch(/would act/i)
+
+    // The act() never ran: the user is still locked-out state, untouched.
+    const user = await db.collection('users').findOne({ id: 'u1' })
+    expect(user?.['failed_login_attempts']).toBe(5)
+    // And no audit row claims an action happened.
+    expect(await db.collection('operator_audit_log').countDocuments()).toBe(0)
+  })
+
+  it('files no real proposal and raises no alert while shadowing', async () => {
+    await enableRule('propose_blog_promo', { mode: 'shadow' })
+    await db.collection('blog_posts').insertOne({
+      slug: 's',
+      title: 'T',
+      published: true,
+      published_at: new Date(Date.now() - 5 * 24 * 3600_000),
+    })
+    await db
+      .collection('social_connections')
+      .insertOne({ tenant_id: 't1', channel: 'x', status: 'active' })
+    await db.collection('leads').insertOne({
+      id: 'l1',
+      email: 'l@example.com',
+      stage: 'new',
+      created_at: new Date(Date.now() - 72 * 3600_000),
+    })
+    await enableRule('stale_lead_alerts', { mode: 'shadow' })
+
+    const rows = await runAutopilotSweep(db)
+    expect(rows.length).toBeGreaterThanOrEqual(2)
+    expect(rows.every((r) => r.status === 'shadow')).toBe(true)
+    expect(await db.collection('autopilot_actions').countDocuments({ status: 'proposed' })).toBe(0)
+    expect(await db.collection('operator_alerts').countDocuments()).toBe(0)
+  })
+
+  it('going live later still acts on targets already seen in shadow', async () => {
+    await enableRule('auto_unlock_expired', { mode: 'shadow' })
+    await lockedUser()
+    await runAutopilotSweep(db)
+
+    await db
+      .collection('autopilot_rules')
+      .updateOne(
+        { rule: 'auto_unlock_expired' },
+        { $set: { mode: 'live' }, $unset: { last_run_at: '' } },
+      )
+    const rows = await runAutopilotSweep(db)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ status: 'executed', target_id: 'u1' })
+    expect((await db.collection('users').findOne({ id: 'u1' }))?.['failed_login_attempts']).toBe(0)
+  })
+
+  it('does not log the same target twice', async () => {
+    await enableRule('auto_unlock_expired', { mode: 'shadow', cooldown_minutes: 5 })
+    await lockedUser()
+    await runAutopilotSweep(db)
+    await db
+      .collection('autopilot_rules')
+      .updateOne({ rule: 'auto_unlock_expired' }, { $unset: { last_run_at: '' } })
+    expect(await runAutopilotSweep(db)).toHaveLength(0)
+  })
+
+  it('treats a rule with no mode as live (rules enabled before shadow existed)', async () => {
+    await enableRule('auto_unlock_expired')
+    await lockedUser()
+    const rows = await runAutopilotSweep(db)
+    expect(rows[0]).toMatchObject({ status: 'executed' })
+  })
+})
+
+describe('kill switch', () => {
+  it('runs nothing — shadow or live — while autopilot_paused is set', async () => {
+    await enableRule('auto_unlock_expired')
+    await enableRule('stale_lead_alerts', { mode: 'shadow' })
+    await db.collection('users').insertOne({
+      id: 'u2',
+      email: 'u2@example.com',
+      failed_login_attempts: 5,
+      locked_until: new Date(Date.now() - 60_000),
+    })
+    await db
+      .collection('platform_config')
+      .updateOne({ key: 'global' }, { $set: { autopilot_paused: true } }, { upsert: true })
+    invalidatePlatformConfigCache()
+
+    expect(await runAutopilotSweep(db)).toEqual([])
+    expect((await db.collection('users').findOne({ id: 'u2' }))?.['failed_login_attempts']).toBe(5)
+
+    await db
+      .collection('platform_config')
+      .updateOne({ key: 'global' }, { $set: { autopilot_paused: false } })
+    invalidatePlatformConfigCache()
+    expect(await runAutopilotSweep(db)).toHaveLength(1)
+  })
+})
+
+describe('shadow track record', () => {
+  async function shadowRows(n: number) {
+    await db.collection('autopilot_actions').insertMany(
+      Array.from({ length: n }, (_, i) => ({
+        id: `s${i}`,
+        rule: 'auto_unlock_expired',
+        dedup_key: `shadow:k${i}`,
+        target_type: 'user',
+        target_id: `u${i}`,
+        reason: 'r',
+        status: 'shadow',
+        created_at: new Date(),
+      })),
+    )
+  }
+
+  it('needs both enough reviews and enough of them right', () => {
+    expect(meetsPromotion(19, 19)).toBe(false) // too few reviewed
+    expect(meetsPromotion(20, 17)).toBe(false) // 85% < 90%
+    expect(meetsPromotion(20, 18)).toBe(true) // 90%
+    expect(meetsPromotion(40, 40)).toBe(true)
+  })
+
+  it('computes stats from verdicts and flips promotable at the bar', async () => {
+    await shadowRows(25)
+    expect(await shadowStats(db, 'auto_unlock_expired')).toMatchObject({
+      total: 25,
+      reviewed: 0,
+      precision: null,
+      promotable: false,
+    })
+
+    for (let i = 0; i < 20; i++) {
+      await reviewShadowRow(db, `s${i}`, i < 17 ? 'right' : 'wrong', 'op1')
+    }
+    const thin = await shadowStats(db, 'auto_unlock_expired')
+    expect(thin).toMatchObject({ reviewed: 20, right: 17, promotable: false })
+    expect(thin.precision).toBeCloseTo(0.85)
+
+    await reviewShadowRow(db, 's17', 'right', 'op1') // re-verdict a wrong one
+    expect((await shadowStats(db, 'auto_unlock_expired')).promotable).toBe(true)
+  })
+
+  it('only reviews shadow rows', async () => {
+    await db.collection('autopilot_actions').insertOne({
+      id: 'x1',
+      rule: 'auto_unlock_expired',
+      dedup_key: 'live:1',
+      target_type: 'user',
+      target_id: 'u',
+      reason: 'r',
+      status: 'executed',
+      created_at: new Date(),
+    })
+    expect(await reviewShadowRow(db, 'x1', 'right', 'op1')).toBeNull()
+    expect(await reviewShadowRow(db, 'nope', 'right', 'op1')).toBeNull()
   })
 })
 

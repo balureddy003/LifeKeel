@@ -44,9 +44,14 @@ import {
   getAutopilotRule,
   NEVER_AUTONOMOUS,
   PROPOSAL_HANDLERS,
+  SHADOW_PROMOTION,
+  reviewShadowRow,
+  shadowStats,
   type AutopilotActionDoc,
 } from '../operator/autopilot.js'
 import { runWeeklyDigest } from '../operator/weekly-digest.js'
+import { approveProposal, rejectProposal } from '../operator/proposal-resolution.js'
+import { buildDecisions } from '../operator/mission-control.js'
 import {
   campaignsCol,
   resolveAudience,
@@ -2940,6 +2945,9 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   const autopilotActions = db.collection('autopilot_actions')
   const AutopilotUpdateSchema = z.object({
     enabled: z.boolean().optional(),
+    /** shadow = log "would do" only; live = act. shadow → live is gated on
+     *  the rule's reviewed precision (SHADOW_PROMOTION). */
+    mode: z.enum(['shadow', 'live']).optional(),
     max_blast_radius: z.number().int().min(1).max(500).optional(),
     cooldown_minutes: z.number().int().min(5).max(10080).optional(),
     reason: z.string().trim().min(5).max(500),
@@ -2949,15 +2957,28 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     '/operator/autopilot',
     { preHandler: requireOperator(db, 'operations.read') },
     async () => {
-      const [ruleRows, recent] = await Promise.all([
+      const [ruleRows, recent, paused] = await Promise.all([
         listAutopilotRules(db),
         autopilotActions
           .find({}, { projection: { _id: 0 } })
           .sort({ created_at: -1 })
           .limit(50)
           .toArray(),
+        getPlatformConfig(db).then((c) => c.autopilot_paused),
       ])
-      return { rules: ruleRows, recent_actions: recent, never_autonomous: NEVER_AUTONOMOUS }
+      const rules = await Promise.all(
+        ruleRows.map(async (r) => ({
+          ...r,
+          shadow: r.mode === 'shadow' ? await shadowStats(db, r.rule) : null,
+        })),
+      )
+      return {
+        rules,
+        recent_actions: recent,
+        never_autonomous: NEVER_AUTONOMOUS,
+        paused,
+        shadow_promotion: SHADOW_PROMOTION,
+      }
     },
   )
 
@@ -2973,19 +2994,40 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         return reply
           .status(404)
           .send({ error: 'Unknown autopilot rule — not in the automatable registry' })
-      const { enabled, max_blast_radius, cooldown_minutes, reason } = parsed.data
+      const { enabled, mode, max_blast_radius, cooldown_minutes, reason } = parsed.data
       if (
         enabled === undefined &&
+        mode === undefined &&
         max_blast_radius === undefined &&
         cooldown_minutes === undefined
       ) {
         return reply.status(400).send({ error: 'Nothing to update' })
+      }
+      if (mode === 'live') {
+        // Promotion gate: a rule that has been shadowing only goes live once
+        // an operator has verified enough of its "would do" rows as right.
+        const current = (await listAutopilotRules(db)).find((r) => r.rule === rule.id)
+        if (current?.mode === 'shadow') {
+          const stats = await shadowStats(db, rule.id)
+          if (!stats.promotable) {
+            return reply.status(409).send({
+              error:
+                `Shadow track record too thin to go live: ${stats.reviewed} reviewed ` +
+                `(need ${SHADOW_PROMOTION.min_reviewed}), ` +
+                `${stats.precision === null ? 'no verdicts yet' : `${Math.round(stats.precision * 100)}% right`} ` +
+                `(need ${SHADOW_PROMOTION.min_precision * 100}%)`,
+              code: 'shadow_not_promotable',
+              shadow: stats,
+            })
+          }
+        }
       }
       const set: Record<string, unknown> = {
         updated_by: request.operatorContext?.user_id,
         updated_at: new Date(),
       }
       if (enabled !== undefined) set['enabled'] = enabled
+      if (mode !== undefined) set['mode'] = mode
       if (max_blast_radius !== undefined) set['max_blast_radius'] = max_blast_radius
       if (cooldown_minutes !== undefined) set['cooldown_minutes'] = cooldown_minutes
       await autopilotRules.updateOne(
@@ -2993,13 +3035,48 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         { $set: set, $setOnInsert: { rule: rule.id } },
         { upsert: true },
       )
-      await audit.log(request, 'operator.autopilot.update', 'autopilot_rule', rule.id, reason, {
-        changes: { enabled, max_blast_radius, cooldown_minutes },
-      })
+      await audit.log(
+        request,
+        mode !== undefined ? 'operator.autopilot.mode' : 'operator.autopilot.update',
+        'autopilot_rule',
+        rule.id,
+        reason,
+        { changes: { enabled, mode, max_blast_radius, cooldown_minutes } },
+      )
       const updated = await autopilotRules.findOne({ rule: rule.id }, { projection: { _id: 0 } })
       return {
         rule: { ...rule.defaults, ...updated, label: rule.label, description: rule.description },
       }
+    },
+  )
+
+  /** Operator's verdict on one shadow row — "would that have been right?".
+   *  These verdicts are the only thing that can unlock shadow → live. */
+  app.post<{ Params: { id: string } }>(
+    '/operator/autopilot/shadow/:id/review',
+    { preHandler: requireOperator(db, 'operations.manage') },
+    async (request, reply) => {
+      const parsed = z
+        .object({ verdict: z.enum(['right', 'wrong']), reason: z.string().trim().min(5).max(500) })
+        .safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid review', issues: parsed.error.issues })
+      const reviewed = await reviewShadowRow(
+        db,
+        request.params.id,
+        parsed.data.verdict,
+        request.operatorContext?.user_id ?? 'unknown',
+      )
+      if (!reviewed) return reply.status(404).send({ error: 'Shadow row not found' })
+      await audit.log(
+        request,
+        'operator.autopilot.shadow_review',
+        'autopilot_action',
+        request.params.id,
+        parsed.data.reason,
+        { rule: reviewed.rule, verdict: parsed.data.verdict },
+      )
+      return { ok: true, shadow: await shadowStats(db, reviewed.rule) }
     },
   )
 
@@ -3040,67 +3117,15 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
         return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-      const action = await autopilotActions.findOne({ id: request.params.id })
-      if (!action || action['status'] !== 'proposed' || !action['proposal']) {
-        return reply.status(404).send({ error: 'Proposal not found or already resolved' })
-      }
-      const proposal = action['proposal'] as NonNullable<AutopilotActionDoc['proposal']>
-      const roles = (request.operatorContext?.roles ?? []) as PlatformRole[]
-      if (!hasOperatorPermission(roles, proposal.required_permission as OperatorPermission)) {
-        return reply
-          .status(403)
-          .send({ error: `This proposal requires ${proposal.required_permission}` })
-      }
-      const handler = PROPOSAL_HANDLERS[proposal.kind]
-      if (!handler)
-        return reply.status(400).send({ error: `Unknown proposal kind: ${proposal.kind}` })
-
-      // Claim first: proposed → approved is atomic, so two racing approvers
-      // can't both execute the underlying mutation. A crash mid-handler
-      // leaves 'approved' — visible as stuck, never silently re-run.
-      const claim = await autopilotActions.updateOne(
-        { id: action['id'], status: 'proposed' },
-        {
-          $set: {
-            status: 'approved',
-            resolved_by: request.operatorContext?.user_id,
-            resolved_at: new Date(),
-          },
-        },
-      )
-      if (claim.modifiedCount === 0)
-        return reply.status(409).send({ error: 'Proposal already resolved' })
-
-      let result: string
-      let finalStatus: 'executed' | 'failed' = 'executed'
-      try {
-        result = await handler(db, proposal.payload, {
-          llmFor: taskLlmFor('marketing.social_draft.v1'),
-        })
-      } catch (err) {
-        finalStatus = 'failed'
-        result = String(err).slice(0, 300)
-      }
-      await autopilotActions.updateOne(
-        { id: action['id'] },
-        { $set: { status: finalStatus, result } },
-      )
-      await audit.log(
+      const out = await approveProposal(
+        db,
+        audit,
         request,
-        'operator.autopilot.approve',
-        'autopilot_action',
-        action['id'] as string,
+        request.params.id,
         parsed.data.reason,
-        {
-          kind: proposal.kind,
-          target: action['target_id'],
-          status: finalStatus,
-          result,
-        },
+        taskLlmFor('marketing.social_draft.v1'),
       )
-      if (finalStatus === 'failed')
-        return reply.status(502).send({ error: `Proposal execution failed: ${result}` })
-      return { ok: true, result }
+      return reply.status(out.status).send(out.body)
     },
   )
 
@@ -3113,27 +3138,145 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
         return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-      const result = await autopilotActions.updateOne(
-        { id: request.params.id, status: 'proposed' },
-        {
-          $set: {
-            status: 'rejected',
-            result: parsed.data.reason,
-            resolved_by: request.operatorContext?.user_id,
-            resolved_at: new Date(),
-          },
-        },
+      const out = await rejectProposal(db, audit, request, request.params.id, parsed.data.reason)
+      return reply.status(out.status).send(out.body)
+    },
+  )
+
+  // ── Mission Control — one ranked list of decisions waiting on a human ───
+  // Read-only aggregation (operator/mission-control.ts) plus a batch endpoint
+  // that is deliberately narrow: only autopilot proposals (approve/reject) and
+  // alert acknowledgements. Posts, campaigns, four-eyes approvals and erasure
+  // are never batched — they publish or destroy, so each keeps its own click
+  // (intent 03; CLAUDE.md trust tiers). Every item goes through the same
+  // permission check, atomic claim and audit row as its single-item route.
+
+  app.get(
+    '/operator/mission-control',
+    { preHandler: requireOperator(db, 'overview.read') },
+    async (request) => {
+      const operator = request.operatorContext!
+      const [decisions, config] = await Promise.all([
+        buildDecisions(db, { user_id: operator.user_id, roles: operator.roles }),
+        getPlatformConfig(db),
+      ])
+      return { decisions, autopilot_paused: config.autopilot_paused }
+    },
+  )
+
+  const BatchSchema = z.object({
+    items: z
+      .array(
+        z.object({
+          id: z.string().min(3).max(200),
+          action: z.enum(['approve', 'reject', 'ack']),
+        }),
       )
-      if (result.matchedCount === 0)
-        return reply.status(404).send({ error: 'Proposal not found or already resolved' })
+      .min(1)
+      .max(20),
+    reason: z.string().trim().min(5).max(500),
+  })
+
+  app.post(
+    '/operator/mission-control/batch',
+    { preHandler: requireOperator(db, 'overview.read', { stepUp: true }) },
+    async (request, reply) => {
+      const parsed = BatchSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid batch', issues: parsed.error.issues })
+      const { items, reason } = parsed.data
+      if (new Set(items.map((i) => i.id)).size !== items.length)
+        return reply.status(400).send({ error: 'Duplicate items in batch' })
+
+      // Validate the whole batch's shape before touching anything — a
+      // non-batchable item rejects the request rather than half-applying it.
+      const parsedItems = items.map((item) => {
+        const cut = item.id.indexOf(':')
+        return { ...item, kind: item.id.slice(0, cut), rawId: item.id.slice(cut + 1) }
+      })
+      for (const item of parsedItems) {
+        const ok =
+          (item.kind === 'proposal' && (item.action === 'approve' || item.action === 'reject')) ||
+          (item.kind === 'alert' && item.action === 'ack')
+        if (!ok)
+          return reply.status(400).send({
+            error: `Not batchable: ${item.id} (${item.action}). Only proposal approve/reject and alert ack are.`,
+          })
+      }
+
+      const roles = (request.operatorContext?.roles ?? []) as PlatformRole[]
+      const results: { id: string; ok: boolean; status: number; error?: string }[] = []
+      for (const item of parsedItems) {
+        try {
+          if (item.kind === 'proposal' && item.action === 'approve') {
+            const out = await approveProposal(
+              db,
+              audit,
+              request,
+              item.rawId,
+              reason,
+              taskLlmFor('marketing.social_draft.v1'),
+            )
+            results.push({
+              id: item.id,
+              ok: out.status === 200,
+              status: out.status,
+              ...(out.status === 200 ? {} : { error: String(out.body['error']) }),
+            })
+          } else if (item.kind === 'proposal') {
+            if (!hasOperatorPermission(roles, 'operations.manage')) {
+              results.push({
+                id: item.id,
+                ok: false,
+                status: 403,
+                error: 'Missing operator permission: operations.manage',
+              })
+              continue
+            }
+            const out = await rejectProposal(db, audit, request, item.rawId, reason)
+            results.push({
+              id: item.id,
+              ok: out.status === 200,
+              status: out.status,
+              ...(out.status === 200 ? {} : { error: String(out.body['error']) }),
+            })
+          } else {
+            const now = new Date()
+            await alerts.updateOne(
+              { dedup_key: item.rawId },
+              {
+                $set: {
+                  status: 'ack',
+                  updated_by: request.operatorContext?.user_id,
+                  updated_at: now,
+                  snoozed_until: null,
+                },
+                $setOnInsert: { dedup_key: item.rawId, created_at: now },
+              },
+              { upsert: true },
+            )
+            await audit.log(request, 'operator.alert.ack', 'alert', item.rawId, reason)
+            results.push({ id: item.id, ok: true, status: 200 })
+          }
+        } catch (err) {
+          // One item failing must not abort the rest — report it per item.
+          request.log.error({ err, id: item.id }, 'Mission Control batch item failed')
+          results.push({ id: item.id, ok: false, status: 500, error: 'Unexpected error' })
+        }
+      }
       await audit.log(
         request,
-        'operator.autopilot.reject',
-        'autopilot_action',
-        request.params.id,
-        parsed.data.reason,
+        'operator.mission_control.batch',
+        'mission_control',
+        'batch',
+        reason,
+        {
+          requested: items.length,
+          succeeded: results.filter((r) => r.ok).length,
+          failed: results.filter((r) => !r.ok).length,
+        },
       )
-      return { ok: true }
+      return { results }
     },
   )
 
@@ -3925,6 +4068,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     maintenance_mode: z.boolean().optional(),
     signups_enabled: z.boolean().optional(),
     marketing_paused: z.boolean().optional(),
+    autopilot_paused: z.boolean().optional(),
     /** null clears a scheduled window; object sets/replaces it. */
     maintenance_window: MaintenanceWindowSchema.nullable().optional(),
     /** Runtime LLM provider pick; 'auto'/null clears back to router detection. */
@@ -3953,6 +4097,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         maintenance_mode: changes.maintenance_mode ?? before.maintenance_mode,
         signups_enabled: changes.signups_enabled ?? before.signups_enabled,
         marketing_paused: changes.marketing_paused ?? before.marketing_paused,
+        autopilot_paused: changes.autopilot_paused ?? before.autopilot_paused,
         maintenance_window:
           changes.maintenance_window === undefined
             ? before.maintenance_window

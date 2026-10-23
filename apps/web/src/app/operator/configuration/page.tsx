@@ -12,7 +12,8 @@ import {
 } from '@/lib/api'
 import { ReasonAction } from '../_components/ReasonAction'
 
-type BooleanFlagKey = 'maintenance_mode' | 'signups_enabled' | 'marketing_paused'
+type BooleanFlagKey =
+  'maintenance_mode' | 'signups_enabled' | 'marketing_paused' | 'autopilot_paused'
 
 const FLAGS: Array<{ key: BooleanFlagKey; label: string; description: string; whenOn: string }> = [
   {
@@ -33,6 +34,13 @@ const FLAGS: Array<{ key: BooleanFlagKey; label: string; description: string; wh
     description:
       'Approvals and auto-publish stop dispatching to channels; posts stay approved for retry.',
     whenOn: 'No posts are being dispatched',
+  },
+  {
+    key: 'autopilot_paused',
+    label: 'Autopilot kill switch',
+    description:
+      'Stops the autopilot sweep entirely — shadow and live rules do nothing until you turn it off. Only a person can resume it.',
+    whenOn: 'Autopilot is stopped; nothing is being checked or acted on',
   },
 ]
 
