@@ -16,8 +16,11 @@ import type { Db } from 'mongodb'
  */
 
 import { COHORT_DAYS, cohortFunnelRows, eventFunnelRows } from '../marketing/funnel.js'
+import { cohortJourneyRows } from '../marketing/journeys.js'
 
 const RECENT_COHORT_DAYS = 3
+/** Payment lands days or weeks after signup, so journey cohorts keep maturing for a quarter. */
+const JOURNEY_COHORT_DAYS = 90
 
 const META_ID = 'meta'
 const BACKFILL_DAYS = 90
@@ -125,6 +128,37 @@ async function rollupCohorts(db: Db, now: Date, full: boolean): Promise<number> 
       { ordered: false },
     )
     written += rowsForDay.length
+  }
+  written += await rollupJourneys(db, now, full)
+  return written
+}
+
+/**
+ * Attribution journeys per signup day (signups, activation, paid, revenue by
+ * first/last touch). Paid and revenue arrive after signup, so the whole
+ * 90-day window is recomputed once a day; recent days every run.
+ */
+async function rollupJourneys(db: Db, now: Date, full: boolean): Promise<number> {
+  const coll = db.collection<MetricDoc>('metrics_daily')
+  const span = full ? JOURNEY_COHORT_DAYS : RECENT_COHORT_DAYS
+  let written = 0
+  for (let i = 0; i < span; i++) {
+    const day = dayKey(new Date(now.getTime() - i * 24 * 60 * 60 * 1000))
+    const rows = await cohortJourneyRows(db, day, { $gte: dayStart(day), $lte: dayEnd(day) })
+    if (rows.length === 0) continue
+    await coll.bulkWrite(
+      rows.map((r) => ({
+        updateOne: {
+          filter: { _id: `${day}|journey|${r.dim}` },
+          update: {
+            $set: { day, metric: 'journey', dim: r.dim, count: r.count, updated_at: new Date() },
+          },
+          upsert: true,
+        },
+      })),
+      { ordered: false },
+    )
+    written += rows.length
   }
   return written
 }

@@ -61,3 +61,8 @@ export function attributionKey(a: Record<string, unknown> | null | undefined): {
     campaign: bucket(a?.['utm_campaign'], 'none'),
   }
 }
+
+/** The content item (post, brief or email step) a visit or signup came from. */
+export function attributionContent(a: Record<string, unknown> | null | undefined): string {
+  return bucket(a?.['utm_content'], 'none')
+}
