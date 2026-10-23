@@ -24,6 +24,7 @@ import { getSignalsCollection } from '../db.js'
 import type { FamilyGroupDoc } from '../routes/family-group.js'
 import { memberMatchesUser } from '../family/family-permissions.js'
 import { renderPlaybook, type LifeEventType } from './render-playbook.js'
+import { emailConfigured, emailFromAddress } from '../email/transport.js'
 import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
 import type { FinancialProfile } from '../routes/family-financial-profile.js'
 import { appUrl, escapeHtml, p, renderEmail } from '../email/layout.js'
@@ -60,7 +61,7 @@ interface LifeEventSignalDoc {
 }
 
 function getFromEmail(): string {
-  return process.env['SENDGRID_FROM_EMAIL'] ?? 'accounts@lifekeel.co.uk'
+  return emailFromAddress() ?? 'accounts@lifekeel.co.uk'
 }
 
 export async function sendChecklistReminderEmail(
@@ -69,12 +70,12 @@ export async function sendChecklistReminderEmail(
   playbookTitle: string,
   remainingCount: number,
 ): Promise<void> {
-  const apiKey = process.env['SENDGRID_API_KEY']
-  if (!apiKey) {
-    log.warn({ to }, 'No SENDGRID_API_KEY — skipping checklist reminder email')
+  if (!emailConfigured()) {
+    log.warn({ to }, 'No email provider configured — skipping checklist reminder email')
     return
   }
-  sgMail.setApiKey(apiKey)
+  const apiKey = process.env['SENDGRID_API_KEY']
+  if (apiKey) sgMail.setApiKey(apiKey)
   const firstName = recipientName.split(' ')[0] || 'there'
   const stepWord = remainingCount === 1 ? 'step' : 'steps'
 

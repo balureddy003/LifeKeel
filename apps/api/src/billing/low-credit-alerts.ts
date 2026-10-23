@@ -13,6 +13,7 @@
 
 import type { Db } from 'mongodb'
 import { createLogger, getTenantCollection } from '@lifekeel/platform'
+import { emailConfigured, emailFromAddress } from '../email/transport.js'
 import { EMAIL_COLORS, EMAIL_FONTS, appUrl, button, p, renderEmail } from '../email/layout.js'
 
 const log = createLogger({ service: 'low-credit-alerts', version: '0.0.0' })
@@ -144,18 +145,18 @@ export async function sendLowCreditEmail(
 
   const text = `${heading}\n\n${bodyText}\n\nUpgrade: ${upgradeUrl}`
 
-  // Use SendGrid directly (the EmailChannel expects InsightNotification, so we send raw)
+  // Send directly (the EmailChannel expects InsightNotification, so we send raw)
   const sgMail = (await import('@sendgrid/mail')).default
-  const apiKey = process.env['SENDGRID_API_KEY']
-  if (!apiKey) {
+  if (!emailConfigured()) {
     log.warn(
       { tenant_id: tenant.tenant_id },
-      'SENDGRID_API_KEY not set — skipping low-credit email',
+      'No email provider configured — skipping low-credit email',
     )
     return
   }
-  sgMail.setApiKey(apiKey)
-  const fromEmail = process.env['SENDGRID_FROM_EMAIL'] ?? 'insights@lifekeel.dev'
+  const apiKey = process.env['SENDGRID_API_KEY']
+  if (apiKey) sgMail.setApiKey(apiKey)
+  const fromEmail = emailFromAddress() ?? 'insights@lifekeel.dev'
   await sgMail.send({
     to,
     from: { email: fromEmail, name: 'LifeKeel' },
