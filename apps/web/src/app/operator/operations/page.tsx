@@ -31,6 +31,7 @@ import {
   fetchOperatorAutopilot,
   updateOperatorAutopilot,
   resolveAutopilotProposal,
+  reviewShadowAction,
   fetchOperatorDigest,
   sendOperatorDigest,
   fetchDualApprovals,
@@ -109,6 +110,8 @@ export default function OperationsPage() {
     rules: AutopilotRule[]
     recent_actions: AutopilotAction[]
     never_autonomous: string[]
+    paused: boolean
+    shadow_promotion: { min_reviewed: number; min_precision: number }
   } | null>(null)
   const [digest, setDigest] = useState<OperatorDigest | null>(null)
   const [retention, setRetention] = useState<RetentionMetrics | null>(null)
@@ -473,45 +476,143 @@ export default function OperationsPage() {
           <p className="mt-1 text-xs text-ink-tertiary">
             Tier 0/1 rules — reversible, bounded, ledgered. Every act is written to the action
             ledger before it runs and can only touch a given target once. All off by default; enable
-            one at a time as trust builds.
+            one at a time as trust builds. New rules start in shadow: they log what they would do,
+            you check it, and only a proven rule goes live.
           </p>
+          {autopilot.paused && (
+            <p className="mt-2 rounded-lg border border-warning/30 bg-warning/[0.06] px-3 py-2 text-xs text-warning">
+              Kill switch is on — nothing is checked or acted on. Turn it off in Configuration.
+            </p>
+          )}
           <div className="mt-3 divide-y divide-tint/[0.06]">
-            {autopilot.rules.map((r) => (
-              <div key={r.rule} className="py-2.5">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <span className="text-sm font-medium text-ink-primary">{r.label}</span>
-                    <span
-                      className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-semibold ${r.enabled ? 'bg-success/15 text-success' : 'bg-tint/[0.06] text-ink-tertiary'}`}
-                    >
-                      {r.enabled ? 'enabled' : 'off'}
-                    </span>
+            {autopilot.rules.map((r) => {
+              const shadowing = r.enabled && r.mode === 'shadow'
+              const pending = autopilot.recent_actions.filter(
+                (a) => a.rule === r.rule && a.status === 'shadow' && !a.review,
+              )
+              const need = autopilot.shadow_promotion
+              return (
+                <div key={r.rule} className="py-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <span className="text-sm font-medium text-ink-primary">{r.label}</span>
+                      <span
+                        className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          !r.enabled
+                            ? 'bg-tint/[0.06] text-ink-tertiary'
+                            : shadowing
+                              ? 'bg-warning/15 text-warning'
+                              : 'bg-success/15 text-success'
+                        }`}
+                      >
+                        {!r.enabled ? 'off' : shadowing ? 'shadow' : 'live'}
+                      </span>
+                    </div>
+                    <div className="flex shrink-0 gap-1.5">
+                      {!r.enabled && (
+                        <ReasonAction
+                          label="Enable in shadow"
+                          description={`Run ${r.label} silently: it logs what it would do and changes nothing. Review its calls, then promote it to live once it has earned it.`}
+                          onConfirm={async (reason) => {
+                            await updateOperatorAutopilot(
+                              r.rule,
+                              { enabled: true, mode: 'shadow' },
+                              reason,
+                            )
+                            toast({ message: `${r.label} running in shadow`, variant: 'success' })
+                            await loadAutopilot()
+                          }}
+                        />
+                      )}
+                      {shadowing && r.shadow?.promotable && (
+                        <ReasonAction
+                          label="Go live"
+                          description={`${r.label} has ${r.shadow.reviewed} reviewed calls, ${Math.round((r.shadow.precision ?? 0) * 100)}% right. Going live means it acts on its own, at most ${r.max_blast_radius} targets per sweep.`}
+                          onConfirm={async (reason) => {
+                            await updateOperatorAutopilot(r.rule, { mode: 'live' }, reason)
+                            toast({ message: `${r.label} is live`, variant: 'success' })
+                            await loadAutopilot()
+                          }}
+                        />
+                      )}
+                      <ReasonAction
+                        label={r.enabled ? 'Disable' : 'Enable live'}
+                        description={
+                          r.enabled
+                            ? `Stop ${r.label}. In-flight ledger rows stand; the rule simply stops acting.`
+                            : `Enable ${r.label} live, skipping shadow. Acts on at most ${r.max_blast_radius} targets per sweep, no more than once every ${r.cooldown_minutes}m.`
+                        }
+                        onConfirm={async (reason) => {
+                          await updateOperatorAutopilot(r.rule, { enabled: !r.enabled }, reason)
+                          toast({
+                            message: `${r.label} ${r.enabled ? 'disabled' : 'enabled'}`,
+                            variant: 'success',
+                          })
+                          await loadAutopilot()
+                        }}
+                      />
+                    </div>
                   </div>
-                  <ReasonAction
-                    label={r.enabled ? 'Disable' : 'Enable'}
-                    description={
-                      r.enabled
-                        ? `Stop ${r.label}. In-flight ledger rows stand; the rule simply stops acting.`
-                        : `Enable ${r.label}. Acts on at most ${r.max_blast_radius} targets per sweep, no more than once every ${r.cooldown_minutes}m.`
-                    }
-                    onConfirm={async (reason) => {
-                      await updateOperatorAutopilot(r.rule, { enabled: !r.enabled }, reason)
-                      toast({
-                        message: `${r.label} ${r.enabled ? 'disabled' : 'enabled'}`,
-                        variant: 'success',
-                      })
-                      await loadAutopilot()
-                    }}
-                  />
+                  <p className="mt-0.5 text-xs text-ink-tertiary">{r.description}</p>
+                  <p className="mt-0.5 text-[10px] text-ink-tertiary">
+                    ≤{r.max_blast_radius}/sweep · cooldown {r.cooldown_minutes}m
+                    {r.last_run_at && <> · last ran {new Date(r.last_run_at).toLocaleString()}</>}
+                    {r.updated_by && <> · set by {r.updated_by}</>}
+                  </p>
+                  {shadowing && r.shadow && (
+                    <div className="mt-2 rounded-lg border border-warning/20 bg-warning/[0.04] p-3">
+                      <p className="text-xs text-ink-secondary">
+                        Shadow record: {r.shadow.total} logged · {r.shadow.reviewed} reviewed (need{' '}
+                        {need.min_reviewed}) ·{' '}
+                        {r.shadow.precision === null
+                          ? 'no verdicts yet'
+                          : `${Math.round(r.shadow.precision * 100)}% right (need ${Math.round(need.min_precision * 100)}%)`}
+                      </p>
+                      {pending.slice(0, 5).map((a) => (
+                        <div key={a.id} className="mt-2 flex items-center justify-between gap-3">
+                          <p
+                            className="min-w-0 truncate text-xs text-ink-primary"
+                            title={a.would_do ?? a.reason}
+                          >
+                            {a.would_do ?? a.reason}
+                          </p>
+                          <div className="flex shrink-0 gap-1.5">
+                            {(['right', 'wrong'] as const).map((verdict) => (
+                              <button
+                                key={verdict}
+                                onClick={async () => {
+                                  try {
+                                    await reviewShadowAction(
+                                      a.id,
+                                      verdict,
+                                      `Shadow review: ${verdict}`,
+                                    )
+                                    await loadAutopilot()
+                                  } catch (err) {
+                                    toast({
+                                      message: err instanceof Error ? err.message : 'Review failed',
+                                      variant: 'error',
+                                    })
+                                  }
+                                }}
+                                className="rounded-lg border border-tint/[0.1] px-2.5 py-1 text-[11px] text-ink-secondary hover:text-ink-primary"
+                              >
+                                Would be {verdict}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                      {pending.length === 0 && r.shadow.total === 0 && (
+                        <p className="mt-1 text-[11px] text-ink-tertiary">
+                          Nothing logged yet — the sweep runs hourly.
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <p className="mt-0.5 text-xs text-ink-tertiary">{r.description}</p>
-                <p className="mt-0.5 text-[10px] text-ink-tertiary">
-                  ≤{r.max_blast_radius}/sweep · cooldown {r.cooldown_minutes}m
-                  {r.last_run_at && <> · last ran {new Date(r.last_run_at).toLocaleString()}</>}
-                  {r.updated_by && <> · set by {r.updated_by}</>}
-                </p>
-              </div>
-            ))}
+              )
+            })}
           </div>
           {autopilot.recent_actions.some(
             (a) => a.status === 'proposed' || a.status === 'approved',

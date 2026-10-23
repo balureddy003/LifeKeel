@@ -4445,6 +4445,8 @@ export interface PlatformConfig {
   maintenance_mode: boolean
   signups_enabled: boolean
   marketing_paused: boolean
+  /** Kill switch: while true the autopilot sweep (shadow and live) does nothing. */
+  autopilot_paused: boolean
   maintenance_window: MaintenanceWindow | null
   llm_provider_override: LlmProviderId | null
 }
@@ -4708,11 +4710,24 @@ export async function setOperatorAiTaskState(
 
 // ── Operator: autopilot ───────────────────────────────────────────────────
 
+export interface ShadowStats {
+  total: number
+  reviewed: number
+  right: number
+  /** right / reviewed; null until a row is reviewed. */
+  precision: number | null
+  promotable: boolean
+}
+
 export interface AutopilotRule {
   rule: string
   label: string
   description: string
   enabled: boolean
+  /** shadow = logs "would do" only; live = acts. */
+  mode: 'shadow' | 'live'
+  /** Present only while the rule is shadowing. */
+  shadow?: ShadowStats | null
   max_blast_radius: number
   cooldown_minutes: number
   last_run_at?: string
@@ -4726,8 +4741,10 @@ export interface AutopilotAction {
   target_type: string
   target_id: string
   reason: string
-  status: 'executed' | 'failed' | 'proposed' | 'approved' | 'rejected'
+  status: 'executed' | 'failed' | 'proposed' | 'approved' | 'rejected' | 'shadow'
   result?: string
+  would_do?: string
+  review?: 'right' | 'wrong'
   proposal?: {
     kind: string
     required_permission: string
@@ -4742,13 +4759,20 @@ export function fetchOperatorAutopilot(): Promise<{
   rules: AutopilotRule[]
   recent_actions: AutopilotAction[]
   never_autonomous: string[]
+  paused: boolean
+  shadow_promotion: { min_reviewed: number; min_precision: number }
 }> {
   return operatorRequest('/operator/autopilot')
 }
 
 export function updateOperatorAutopilot(
   rule: string,
-  update: { enabled?: boolean; max_blast_radius?: number; cooldown_minutes?: number },
+  update: {
+    enabled?: boolean
+    mode?: 'shadow' | 'live'
+    max_blast_radius?: number
+    cooldown_minutes?: number
+  },
   reason: string,
 ): Promise<{ rule: AutopilotRule }> {
   const base = getApiBase()
@@ -4784,6 +4808,86 @@ export function resolveAutopilotProposal(
   }).then(async (res) => {
     const data = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error((data.error as string) || `Proposal ${decision} failed`)
+    return data
+  })
+}
+
+/** Verdict on one shadow row — "would that have been the right call?". */
+export function reviewShadowAction(
+  id: string,
+  verdict: 'right' | 'wrong',
+  reason: string,
+): Promise<{ ok: boolean; shadow: ShadowStats }> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  return credFetch(`${base}/operator/autopilot/shadow/${encodeURIComponent(id)}/review`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ verdict, reason }),
+  }).then(async (res) => {
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error((data.error as string) || 'Review failed')
+    return data
+  })
+}
+
+// ── Operator: Mission Control ─────────────────────────────────────────────
+
+export interface MissionDecision {
+  id: string
+  kind:
+    | 'proposal'
+    | 'alert'
+    | 'support_case'
+    | 'post_draft'
+    | 'post_failed'
+    | 'campaign_draft'
+    | 'dual_approval'
+  severity: 'danger' | 'warning' | 'info'
+  title: string
+  why: string
+  effect: string
+  undo: string
+  href: string
+  required_permission: string
+  /** Only proposals and alerts — everything else opens its own page. */
+  batchable: boolean
+  created_at: string
+}
+
+export function fetchMissionControl(): Promise<{
+  decisions: MissionDecision[]
+  autopilot_paused: boolean
+}> {
+  return operatorRequest('/operator/mission-control')
+}
+
+export interface MissionBatchResult {
+  id: string
+  ok: boolean
+  status: number
+  error?: string
+}
+
+export function batchMissionControl(
+  items: { id: string; action: 'approve' | 'reject' | 'ack' }[],
+  reason: string,
+): Promise<{ results: MissionBatchResult[] }> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  return credFetch(`${base}/operator/mission-control/batch`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ items, reason }),
+  }).then(async (res) => {
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error((data.error as string) || 'Batch failed')
     return data
   })
 }
