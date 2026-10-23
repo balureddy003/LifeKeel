@@ -8,6 +8,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { openPrefixes, publicRoutes } from '../public-routes.js'
+import { isOriginAllowedForCookieAuth } from '../../auth/session-cookie.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const serverSrc = readFileSync(path.resolve(here, '../../server.ts'), 'utf8')
@@ -70,5 +71,33 @@ describe('public route inventory', () => {
   it('server.ts takes its open list from this module, not a local literal', () => {
     expect(serverSrc).toContain('openPrefixes({ docsEnabled: DOCS_ENABLED })')
     expect(serverSrc).not.toMatch(/const open = \[/)
+  })
+})
+
+
+describe('cookie-only mutation CSRF policy', () => {
+  const originAllowed = (method: string, origin?: string) =>
+    isOriginAllowedForCookieAuth({
+      method,
+      headers: origin ? { origin } : {},
+    } as Parameters<typeof isOriginAllowedForCookieAuth>[0])
+
+  it('denies state changes with no Origin', () => {
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+      expect(originAllowed(method)).toBe(false)
+    }
+  })
+
+  it('denies untrusted origins but permits safe reads', () => {
+    expect(originAllowed('POST', 'https://untrusted.example')).toBe(false)
+    expect(originAllowed('GET')).toBe(true)
+    expect(originAllowed('HEAD')).toBe(true)
+  })
+
+  it('applies the cookie CSRF gate before the public-route bypass', () => {
+    const gate = serverSrc.indexOf('!isOriginAllowedForCookieAuth(request)')
+    const publicBypass = serverSrc.indexOf('if (OPEN_ROUTE_PREFIXES.some(')
+    expect(gate).toBeGreaterThan(0)
+    expect(gate).toBeLessThan(publicBypass)
   })
 })
