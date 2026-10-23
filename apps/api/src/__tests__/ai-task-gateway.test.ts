@@ -134,7 +134,7 @@ describe('AI task gateway — no bypass paths', () => {
     }
   })
 
-  it('family-content tasks that a local model can serve allow only the self-hosted processor', () => {
+  it('non-sensitive tasks may run on approved hosted processors; only quarantine/device paths keep hosted providers out', () => {
     const registry = parseTaskRegistry(
       loadYaml(fs.readFileSync(path.join(repoRoot(), 'definitions', 'ai-tasks.yaml'), 'utf8')),
     )
@@ -149,6 +149,21 @@ describe('AI task gateway — no bypass paths', () => {
       'support.reply_draft.v1',
     ]) {
       const t = registry.get(id)!
+      expect(t.data_boundary, id).toBe('approved_hosted_provider')
+      expect(t.allowed_processors, id).toEqual([
+        'ollama',
+        'anthropic',
+        'openai',
+        'azure',
+        'vertex',
+        'groq',
+        'xai',
+      ])
+      expect(t.provider_retention_class, id).toBe('limited_abuse_log')
+    }
+    for (const id of ['assistant.answer.sensitive.v1', 'assistant.youth_answer.v1']) {
+      const t = registry.get(id)!
+      expect(t.data_boundary, id).toBe('lifekeel_infra_required')
       expect(t.allowed_processors, id).toEqual(['ollama'])
       expect(t.provider_retention_class, id).toBe('none')
     }
@@ -327,7 +342,10 @@ describe('AI processor registry (PRD-142)', () => {
 
     it('a lifekeel_infra task falls back to the hosted provider when the local model is off', () => {
       process.env['OPENAI_API_KEY'] = 'k'
-      const t = tasks().get('assistant.answer.v1')!
+      // answer_verified is the one remaining lifekeel_infra entry — it makes
+      // no model call, so the boundary is descriptive only.
+      const t = tasks().get('assistant.answer_verified.v1')!
+      expect(t.data_boundary).toBe('lifekeel_infra')
       expect(resolveServingProcessor(t)).toBe('openai')
       process.env['LOCAL_JUDGE_BASE_URL'] = 'http://local'
       process.env['LOCAL_TEXT_ENABLED'] = 'true'
@@ -357,10 +375,11 @@ describe('AI processor registry (PRD-142)', () => {
       expect(resolveServingProcessor(t)).toBe('vertex')
     })
 
-    it('with the shipped registries, the hosted fallback for a self-hosted-only task is flagged, and the self-hosted path is clean', () => {
+    it('with the shipped registries, an unreviewed hosted pick is flagged, and the required-local path is clean', () => {
       process.env['ANTHROPIC_API_KEY'] = 'k'
       const reg = processors()
       const classify = tasks().get('document.classify.v1')!
+      // anthropic is on classify's allowlist but stays unreviewed → flagged.
       const hosted = checkProcessorForTask(
         reg,
         classify,
@@ -368,24 +387,12 @@ describe('AI processor registry (PRD-142)', () => {
         'tier:fast',
         new Date(),
       )
-      expect(hosted?.reason).toBe('processor_not_allowed_for_task')
-      const answer = tasks().get('assistant.answer.v1')!
+      expect(hosted?.reason).toBe('processor_unreviewed')
+      const youth = tasks().get('assistant.youth_answer.v1')!
+      // A required-local task resolves to the self-hosted processor and is clean.
       expect(
-        checkProcessorForTask(
-          reg,
-          answer,
-          resolveServingProcessor(answer)!,
-          'tier:fast',
-          new Date(),
-        )?.reason,
-      ).toBe('processor_unreviewed')
-      process.env['LOCAL_JUDGE_BASE_URL'] = 'http://local'
-      process.env['LOCAL_TEXT_ENABLED'] = 'true'
-      for (const t of [classify, answer]) {
-        expect(
-          checkProcessorForTask(reg, t, resolveServingProcessor(t)!, 'tier:fast', new Date()),
-        ).toBeNull()
-      }
+        checkProcessorForTask(reg, youth, resolveServingProcessor(youth)!, 'tier:fast', new Date()),
+      ).toBeNull()
     })
   })
 
@@ -424,7 +431,10 @@ describe('AI processor registry (PRD-142)', () => {
       delete process.env['LOCAL_JUDGE_BASE_URL']
       delete process.env['LOCAL_TEXT_ENABLED']
       process.env['AI_HOSTED_FALLBACK'] = 'deny'
-      expect(() => taskLlm('assistant.answer.v1', 'tenant-1')).toThrow(/hosted fallback is denied/)
+      // answer_verified is the remaining lifekeel_infra entry.
+      expect(() => taskLlm('assistant.answer_verified.v1', 'tenant-1')).toThrow(
+        /hosted fallback is denied/,
+      )
     } finally {
       for (const [k, v] of [
         ['LOCAL_JUDGE_BASE_URL', saved.base],
@@ -466,7 +476,8 @@ describe('AI processor registry (PRD-142)', () => {
     const where = Object.fromEntries(d.tasks.map((t) => [t.task_id, t.where]))
     expect(where['draft.crisis_on_device.v1']).toBe('device')
     expect(where['assistant.youth_answer.v1']).toBe('lifekeel')
-    expect(where['assistant.answer.v1']).toBe('lifekeel_or_hosted')
+    expect(where['assistant.answer.v1']).toBe('hosted')
+    expect(where['assistant.answer_verified.v1']).toBe('lifekeel_or_hosted')
     expect(where['marketing.social_draft.v1']).toBe('hosted')
     expect(JSON.stringify(d)).not.toMatch(
       /dpa_date|breach_notice|terms_ref|not_reviewed|LOCAL_JUDGE/,

@@ -169,8 +169,10 @@ Detail on what each check catches (and cannot):
   generation (Ask Keel, drafts) runs on a small hosted processor behind the
   gateway — never the CPU-local model. CPU-local serving of interactive
   generation was measured (50s p50 vs a 30s deadline) and is closed. Local
-  serving remains for quarantined tasks (`lifekeel_infra_required`) and
-  batch work. See ARCHITECTURE.md §8.4b and
+  serving remains only for quarantined tasks (`lifekeel_infra_required`)
+  and `device_only` work — non-sensitive batch tasks moved to
+  `approved_hosted_provider` on 2026-10-24 when the GCP Ollama service was
+  decommissioned for cost. See ARCHITECTURE.md §8.4b and
   `docs/reviews/decision-local-interactive-closed-2026-10.md` — do not
   re-propose `LOCAL_TEXT_ENABLED` for general interactive traffic.
 
