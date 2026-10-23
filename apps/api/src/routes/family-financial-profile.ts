@@ -33,12 +33,11 @@ import {
 } from '../life-events/detect-unreported-change.js'
 import { rewardReferralIfPending } from './referrals.js'
 import { recordInsightAction } from '../insights/insight-attribution.js'
-import { ageFromDob } from '../family/family-permissions.js'
+import { ageFromDob , isHouseholdEditor } from '../family/family-permissions.js'
 import type { FamilyGroupDoc } from './family-group.js'
 import { monthlyEquivalentMinor, type CashflowEntryDoc } from './family-cashflow.js'
 import { buildEstateSignal } from '../legacy/estate-signal.js'
 import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
-import { isHouseholdEditor } from '../family/family-permissions.js'
 
 const FAMILY_DETECTOR_IDS = [
   'family_protection_gap',
@@ -1041,7 +1040,14 @@ export async function registerFamilyFinancialProfileRoutes(
   // so they don't have to re-enter anything to see their gaps. Tier 0:
   // informational insights only, nothing is sent or executed anywhere.
   app.post('/family/financial-profile/evaluate', async (req, reply) => {
-    if (!(await isHouseholdEditor(db, req.authContext.tenant_id, req.authContext.user_id, req.authContext.roles)))
+    if (
+      !(await isHouseholdEditor(
+        db,
+        req.authContext.tenant_id,
+        req.authContext.user_id,
+        req.authContext.roles,
+      ))
+    )
       return reply.status(403).send({ error: 'Only household editors can change shared records' })
     const { tenant_id } = req.authContext
     const doc = await profileFor(tenant_id).findOne({})
@@ -1201,7 +1207,14 @@ export async function registerFamilyFinancialProfileRoutes(
   app.post<{ Body: { action?: 'confirm' | 'later' } }>(
     '/family/financial-profile/review',
     async (req, reply) => {
-      if (!(await isHouseholdEditor(db, req.authContext.tenant_id, req.authContext.user_id, req.authContext.roles)))
+      if (
+        !(await isHouseholdEditor(
+          db,
+          req.authContext.tenant_id,
+          req.authContext.user_id,
+          req.authContext.roles,
+        ))
+      )
         return reply.status(403).send({ error: 'Only household editors can change shared records' })
       const { tenant_id } = req.authContext
       const doc = await profileFor(tenant_id).findOne({})
@@ -1240,7 +1253,14 @@ export async function registerFamilyFinancialProfileRoutes(
   app.post<{ Body: FinancialProfile & { generate_insights?: boolean; version?: number } }>(
     '/family/financial-profile',
     async (req, reply) => {
-      if (!(await isHouseholdEditor(db, req.authContext.tenant_id, req.authContext.user_id, req.authContext.roles)))
+      if (
+        !(await isHouseholdEditor(
+          db,
+          req.authContext.tenant_id,
+          req.authContext.user_id,
+          req.authContext.roles,
+        ))
+      )
         return reply.status(403).send({ error: 'Only household editors can change shared records' })
       const { generate_insights, version: clientVersion, ...body } = req.body
       const parsed = FinancialProfileSchema.safeParse(body)
@@ -1290,7 +1310,9 @@ export async function registerFamilyFinancialProfileRoutes(
         const current = previousDoc.version ?? 0
         if (clientVersion !== current) return conflict(current)
         const result = await profileFor(tenant_id).findOneAndUpdate(
-          previousDoc.version === undefined ? { version: { $exists: false } } : { version: current },
+          previousDoc.version === undefined
+            ? { version: { $exists: false } }
+            : { version: current },
           { $set: fields, $inc: { version: 1 } },
           { returnDocument: 'after' },
         )
@@ -1389,13 +1411,15 @@ export async function registerFamilyFinancialProfileRoutes(
         toChangeSnapshot(profile),
         db,
       )
-      // PRD-112: "first-ever final submit" is the referral reward's
-      // meaningful-action milestone — real use has started, not just an
-      // account existing. No-op for every submit after the first, and a
-      // silent no-op when there's no pending referral (the common case).
-      if (!previousDoc) {
-        await rewardReferralIfPending(db, tenant_id)
-      }
+      // PRD-112: a *final* submit (generate_insights, reached above) is the
+      // referral reward's meaningful-action milestone — real use has
+      // started, not just an account existing. This must NOT be gated on
+      // `!previousDoc`: the wizard autosaves after every step, so a profile
+      // document already exists by the time the final submit arrives and the
+      // reward would never fire for a real user. rewardReferralIfPending is
+      // idempotent (its own atomic `status: 'pending'` guard pays out once)
+      // and a silent no-op when there is no pending referral.
+      await rewardReferralIfPending(db, tenant_id)
       return reply.send({ ok: true, insights_generated: insightsGenerated, version: newVersion })
     },
   )
