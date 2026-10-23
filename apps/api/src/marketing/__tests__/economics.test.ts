@@ -161,6 +161,26 @@ describe('findings read honestly', () => {
     expect(r.finding).toMatch(/2 paid, £15\.98 revenue, CAC £25, payback ≈ 3\.1 months/)
   })
 
+  it('reads naturally at a count of one', () => {
+    const r = row({ visits: m({ bluesky: 1 }), signups: m({ bluesky: 1 }) })
+    expect(r.finding).toMatch(/1 visit → 1 signup so far/)
+    expect(r.finding).not.toMatch(/1 signups|1 visits/)
+  })
+
+  it('names the untagged bucket in words', () => {
+    const r = buildRows({
+      visits: m({ none: 10 }),
+      signups: m({ none: 1 }),
+      profiles: m({}),
+      activated: m({}),
+      paid: m({}),
+      revenue: m({}),
+      arpu_pence: null,
+    })[0]!
+    expect(r.finding.startsWith('(no campaign):')).toBe(true)
+    expect(r.key).toBe('none')
+  })
+
   it('never uses recommendation language', () => {
     for (const r of [row({}), row({ paid: m({ bluesky: 9 }), revenue: m({ bluesky: 9999 }) })])
       expect(r.finding).not.toMatch(/\b(should|must|invest|stop|scale|increase|cut)\b/i)

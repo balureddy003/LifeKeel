@@ -114,9 +114,13 @@ const gbp = (pence: number) =>
 const pct = (r: number) => `${(r * 100).toFixed(r < 0.1 ? 1 : 0)}%`
 
 export function describeRow(row: Omit<EconomicsRow, 'finding'>): string {
-  const label = row.key
+  // 'none' is the rollup's bucket for a visit or signup with no campaign tag.
+  const label = row.key === 'none' ? '(no campaign)' : row.key
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
   const traffic =
-    row.visits === null ? `${row.signups} signups` : `${row.visits} visits → ${row.signups} signups`
+    row.visits === null
+      ? plural(row.signups, 'signup')
+      : `${plural(row.visits, 'visit')} → ${plural(row.signups, 'signup')}`
   if (row.confidence === 'insufficient')
     return `${label}: ${traffic} so far — too early to compare with other channels.`
   const v = row.visit_to_signup
