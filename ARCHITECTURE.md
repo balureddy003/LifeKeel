@@ -1540,9 +1540,10 @@ Remaining debt:
    (`roles/aiplatform.user`) or `VERTEX_SERVICE_ACCOUNT_JSON` off-GCP;
    `LIFEKEEL_LLM_PROVIDER` overrides first-configured-key provider detection,
    and the audited `platform_config.llm_provider_override` (operator
-   `/operator/configuration` switch) overrides both at runtime — still
-   bounded by the same per-task processor check, so a disallowed pick
-   refuses rather than reroutes. A
+   `/operator/configuration` switch) overrides all of it at runtime —
+   including model-name detection, so `tier:*` governed calls follow the
+   pick too. Still bounded by the per-task processor check, so a disallowed
+   pick refuses rather than reroutes. A
    `lifekeel_infra` task still falls back to hosted when the local model is
    off; the check flags that fallback, it does not stop it in `warn`.
    Subprocessor and terms review stays a human/legal process. A read-only
