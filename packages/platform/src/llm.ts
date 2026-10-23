@@ -343,12 +343,14 @@ function resolveProvider(cfg: LlmConfig, model: string): LlmProvider {
   if (fromModel) return fromModel
   const override = envProviderOverride()
   if (override) return override
-  // Fall back to whichever API key is available
+  // Fall back to whichever API key is available. New providers go last so a
+  // newly-configured key never silently flips an existing deployment — use
+  // the operator override or LIFEKEEL_LLM_PROVIDER to promote one.
   if (process.env['ANTHROPIC_API_KEY']) return 'anthropic'
   if (process.env['OPENAI_API_KEY']) return 'openai'
-  if (process.env['GROQ_API_KEY']) return 'groq'
   if (process.env['AZURE_OPENAI_ENDPOINT']) return 'azure'
   if (process.env['VERTEX_PROJECT']) return 'vertex'
+  if (process.env['GROQ_API_KEY']) return 'groq'
   if (
     process.env['OLLAMA_BASE_URL'] ||
     model.startsWith('llama') ||
@@ -987,7 +989,10 @@ export function createLlmRouterFromEnv(cfg: LlmConfig = {}): LlmFn {
     log.info({ provider: provider ?? 'none' }, 'Active LLM provider')
     loggedEnvProvider = true
   }
-  return createLlmRouter({ ...cfg, provider: cfg.provider ?? provider ?? 'anthropic' })
+  // 'auto' leaves resolution dynamic per call — providerOverride → model
+  // name → LIFEKEEL_LLM_PROVIDER → env scan. Baking the detected provider in
+  // here would shadow the runtime override for every call on this router.
+  return createLlmRouter({ ...cfg, provider: cfg.provider ?? 'auto' })
 }
 
 /** The provider createLlmRouterFromEnv would pick right now, from the environment. */
@@ -996,9 +1001,9 @@ export function detectActiveProvider(): LlmProvider | null {
   if (override) return override
   if (process.env['ANTHROPIC_API_KEY']) return 'anthropic'
   if (process.env['OPENAI_API_KEY']) return 'openai'
-  if (process.env['GROQ_API_KEY']) return 'groq'
   if (process.env['AZURE_OPENAI_ENDPOINT']) return 'azure'
   if (process.env['VERTEX_PROJECT']) return 'vertex'
+  if (process.env['GROQ_API_KEY']) return 'groq'
   if (process.env['OLLAMA_BASE_URL']) return 'ollama'
   return null
 }

@@ -1534,8 +1534,12 @@ Remaining debt:
    approved** (owner decisions, 2026-10-22, conservative `limited_abuse_log`
    retention recorded on both — Azure until modified abuse monitoring is
    granted, Vertex until the deployment's data-governance configuration is
-   confirmed); anthropic, openai and groq remain `unreviewed` and are refused
-   under `enforce`. Vertex auth is OAuth2 only — `VERTEX_PROJECT` +
+   confirmed); Groq is approved (2026-10-23 — no default inference retention,
+   self-serve ZDR via Console → Data Controls; recorded as `limited_abuse_log`
+   until that toggle is on, and chat/completions only — the /batches and
+   /fine_tunings surfaces retain by design). Anthropic and openai remain
+   `unreviewed` and are refused under `enforce`. Vertex auth is OAuth2 only —
+   `VERTEX_PROJECT` +
    `VERTEX_LOCATION`, credentials via the Cloud Run service account
    (`roles/aiplatform.user`) or `VERTEX_SERVICE_ACCOUNT_JSON` off-GCP;
    `LIFEKEEL_LLM_PROVIDER` overrides first-configured-key provider detection,

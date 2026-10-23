@@ -267,17 +267,19 @@ describe('AI processor registry (PRD-142)', () => {
     // If this fails because you approved a processor: good, update the list here
     // and make sure the entry carries real terms (the loader already insists).
     const approved = [...processors().values()].filter((e) => e.status === 'approved')
-    expect(approved.map((e) => e.id)).toEqual(['azure', 'vertex'])
+    expect(approved.map((e) => e.id)).toEqual(['azure', 'vertex', 'groq'])
     for (const e of processors().values()) {
-      if (e.hosting === 'hosted' && e.id !== 'azure' && e.id !== 'vertex')
+      if (e.hosting === 'hosted' && !['azure', 'vertex', 'groq'].includes(e.id))
         expect(e.status).toBe('unreviewed')
     }
   })
 
-  it('a self-hosted-only task never lists a hosted processor, and groq is listed nowhere', () => {
+  it('a self-hosted-only task never lists a hosted processor, and sensitive tasks keep groq out', () => {
     const p = processors()
     for (const [id, t] of tasks()) {
-      expect(t.allowed_processors ?? [], `${id} lists groq`).not.toContain('groq')
+      if (t.data_boundary !== 'approved_hosted_provider' && t.data_boundary !== 'lifekeel_infra') {
+        expect(t.allowed_processors ?? [], `${id} lists groq`).not.toContain('groq')
+      }
       if (t.data_boundary === 'lifekeel_infra_required') {
         for (const proc of t.allowed_processors ?? [])
           expect(p.get(proc)!.hosting, `${id} lists hosted ${proc}`).toBe('self_hosted')
@@ -442,11 +444,15 @@ describe('AI processor registry (PRD-142)', () => {
       sub_processors: null,
       review_due: null,
     })
-    // Azure and Vertex are owner-approved (2026-10-22); the rest of hosted stays unreviewed.
+    // Azure/Vertex owner-approved 2026-10-22, Groq 2026-10-23; the rest of
+    // hosted stays unreviewed.
     expect(byId['azure']?.status).toBe('approved')
     expect(byId['vertex']?.status).toBe('approved')
+    expect(byId['groq']?.status).toBe('approved')
     expect(
-      d.processors.every((p) => p.id === 'azure' || p.id === 'vertex' || p.status !== 'approved'),
+      d.processors.every(
+        (p) => ['azure', 'vertex', 'groq'].includes(p.id) || p.status !== 'approved',
+      ),
     ).toBe(true)
     const where = Object.fromEntries(d.tasks.map((t) => [t.task_id, t.where]))
     expect(where['draft.crisis_on_device.v1']).toBe('device')

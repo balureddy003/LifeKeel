@@ -139,16 +139,35 @@ processors:
   groq:
     name: Groq API
     hosting: hosted
-    status: unreviewed
+    status: approved
     endpoint: https://api.groq.com
-    region: not_reviewed
-    terms_ref: not_reviewed
-    no_training_basis: not_reviewed
+    # Inference runs on Groq's US LPUs; any retained data lands in US GCP
+    # buckets (console.groq.com/docs/your-data).
+    region: US
+    terms_ref: >-
+      console.groq.com/docs/your-data + Groq Services Agreement +
+      GroqCloud DPA (effective 2025-10-15)
+    # DPA §2.3 limits processing to providing the Cloud Services; inference
+    # customer data is NOT retained by default — nothing to train on.
+    no_training_basis: >-
+      GroqCloud DPA §2.3 purpose limitation; inference customer data not
+      retained by default (console.groq.com/docs/your-data)
+    # Default: up-to-30-day reliability/abuse logs — self-serve ZDR via
+    # Console → Data Controls (no application needed, unlike Azure). Flip to
+    # zero_data_retention once the org admin enables it. Never use /batches
+    # or /fine_tunings — those endpoints retain by design.
     retention:
       '*': limited_abuse_log
-    sub_processors: [not_reviewed]
-    transfer_mechanism: not_reviewed
-    dpa_date: not_reviewed
-    breach_notice_sla: not_reviewed
-    reviewed_at: not_reviewed
-    review_due: not_reviewed
+    # Live list: trust.groq.com/subprocessors (DPA §7.2). Retention host is
+    # GCP. Third-party model terms still apply on top — Llama carries Meta's
+    # AI Model Terms per Services Agreement §4.1.
+    sub_processors:
+      [
+        Google LLC — GCP hosts retained data (console.groq.com/docs/your-data); full list at trust.groq.com/subprocessors,
+      ]
+    transfer_mechanism: EU SCCs (Commission Implementing Decision 2021/914) per GroqCloud DPA §8
+    dpa_date: '2026-10-23'
+    # DPA §6 — without undue delay, at most 72 hours.
+    breach_notice_sla: within 72 hours per GroqCloud DPA §6
+    reviewed_at: '2026-10-23'
+    review_due: '2027-10-23'
