@@ -44,6 +44,9 @@ import {
   getAutopilotRule,
   NEVER_AUTONOMOUS,
   PROPOSAL_HANDLERS,
+  SHADOW_PROMOTION,
+  reviewShadowRow,
+  shadowStats,
   type AutopilotActionDoc,
 } from '../operator/autopilot.js'
 import { runWeeklyDigest } from '../operator/weekly-digest.js'
@@ -2940,6 +2943,9 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   const autopilotActions = db.collection('autopilot_actions')
   const AutopilotUpdateSchema = z.object({
     enabled: z.boolean().optional(),
+    /** shadow = log "would do" only; live = act. shadow → live is gated on
+     *  the rule's reviewed precision (SHADOW_PROMOTION). */
+    mode: z.enum(['shadow', 'live']).optional(),
     max_blast_radius: z.number().int().min(1).max(500).optional(),
     cooldown_minutes: z.number().int().min(5).max(10080).optional(),
     reason: z.string().trim().min(5).max(500),
@@ -2949,15 +2955,28 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     '/operator/autopilot',
     { preHandler: requireOperator(db, 'operations.read') },
     async () => {
-      const [ruleRows, recent] = await Promise.all([
+      const [ruleRows, recent, paused] = await Promise.all([
         listAutopilotRules(db),
         autopilotActions
           .find({}, { projection: { _id: 0 } })
           .sort({ created_at: -1 })
           .limit(50)
           .toArray(),
+        getPlatformConfig(db).then((c) => c.autopilot_paused),
       ])
-      return { rules: ruleRows, recent_actions: recent, never_autonomous: NEVER_AUTONOMOUS }
+      const rules = await Promise.all(
+        ruleRows.map(async (r) => ({
+          ...r,
+          shadow: r.mode === 'shadow' ? await shadowStats(db, r.rule) : null,
+        })),
+      )
+      return {
+        rules,
+        recent_actions: recent,
+        never_autonomous: NEVER_AUTONOMOUS,
+        paused,
+        shadow_promotion: SHADOW_PROMOTION,
+      }
     },
   )
 
@@ -2973,19 +2992,40 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         return reply
           .status(404)
           .send({ error: 'Unknown autopilot rule — not in the automatable registry' })
-      const { enabled, max_blast_radius, cooldown_minutes, reason } = parsed.data
+      const { enabled, mode, max_blast_radius, cooldown_minutes, reason } = parsed.data
       if (
         enabled === undefined &&
+        mode === undefined &&
         max_blast_radius === undefined &&
         cooldown_minutes === undefined
       ) {
         return reply.status(400).send({ error: 'Nothing to update' })
+      }
+      if (mode === 'live') {
+        // Promotion gate: a rule that has been shadowing only goes live once
+        // an operator has verified enough of its "would do" rows as right.
+        const current = (await listAutopilotRules(db)).find((r) => r.rule === rule.id)
+        if (current?.mode === 'shadow') {
+          const stats = await shadowStats(db, rule.id)
+          if (!stats.promotable) {
+            return reply.status(409).send({
+              error:
+                `Shadow track record too thin to go live: ${stats.reviewed} reviewed ` +
+                `(need ${SHADOW_PROMOTION.min_reviewed}), ` +
+                `${stats.precision === null ? 'no' : Math.round(stats.precision * 100)}% right ` +
+                `(need ${SHADOW_PROMOTION.min_precision * 100}%)`,
+              code: 'shadow_not_promotable',
+              shadow: stats,
+            })
+          }
+        }
       }
       const set: Record<string, unknown> = {
         updated_by: request.operatorContext?.user_id,
         updated_at: new Date(),
       }
       if (enabled !== undefined) set['enabled'] = enabled
+      if (mode !== undefined) set['mode'] = mode
       if (max_blast_radius !== undefined) set['max_blast_radius'] = max_blast_radius
       if (cooldown_minutes !== undefined) set['cooldown_minutes'] = cooldown_minutes
       await autopilotRules.updateOne(
@@ -2993,13 +3033,48 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         { $set: set, $setOnInsert: { rule: rule.id } },
         { upsert: true },
       )
-      await audit.log(request, 'operator.autopilot.update', 'autopilot_rule', rule.id, reason, {
-        changes: { enabled, max_blast_radius, cooldown_minutes },
-      })
+      await audit.log(
+        request,
+        mode !== undefined ? 'operator.autopilot.mode' : 'operator.autopilot.update',
+        'autopilot_rule',
+        rule.id,
+        reason,
+        { changes: { enabled, mode, max_blast_radius, cooldown_minutes } },
+      )
       const updated = await autopilotRules.findOne({ rule: rule.id }, { projection: { _id: 0 } })
       return {
         rule: { ...rule.defaults, ...updated, label: rule.label, description: rule.description },
       }
+    },
+  )
+
+  /** Operator's verdict on one shadow row — "would that have been right?".
+   *  These verdicts are the only thing that can unlock shadow → live. */
+  app.post<{ Params: { id: string } }>(
+    '/operator/autopilot/shadow/:id/review',
+    { preHandler: requireOperator(db, 'operations.manage') },
+    async (request, reply) => {
+      const parsed = z
+        .object({ verdict: z.enum(['right', 'wrong']), reason: z.string().trim().min(5).max(500) })
+        .safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid review', issues: parsed.error.issues })
+      const reviewed = await reviewShadowRow(
+        db,
+        request.params.id,
+        parsed.data.verdict,
+        request.operatorContext?.user_id ?? 'unknown',
+      )
+      if (!reviewed) return reply.status(404).send({ error: 'Shadow row not found' })
+      await audit.log(
+        request,
+        'operator.autopilot.shadow_review',
+        'autopilot_action',
+        request.params.id,
+        parsed.data.reason,
+        { rule: reviewed.rule, verdict: parsed.data.verdict },
+      )
+      return { ok: true, shadow: await shadowStats(db, reviewed.rule) }
     },
   )
 
@@ -3925,6 +4000,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     maintenance_mode: z.boolean().optional(),
     signups_enabled: z.boolean().optional(),
     marketing_paused: z.boolean().optional(),
+    autopilot_paused: z.boolean().optional(),
     /** null clears a scheduled window; object sets/replaces it. */
     maintenance_window: MaintenanceWindowSchema.nullable().optional(),
     /** Runtime LLM provider pick; 'auto'/null clears back to router detection. */
@@ -3953,6 +4029,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         maintenance_mode: changes.maintenance_mode ?? before.maintenance_mode,
         signups_enabled: changes.signups_enabled ?? before.signups_enabled,
         marketing_paused: changes.marketing_paused ?? before.marketing_paused,
+        autopilot_paused: changes.autopilot_paused ?? before.autopilot_paused,
         maintenance_window:
           changes.maintenance_window === undefined
             ? before.maintenance_window

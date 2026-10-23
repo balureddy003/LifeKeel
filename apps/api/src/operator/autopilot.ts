@@ -18,12 +18,22 @@ import type { Db } from 'mongodb'
 import { queueManager } from '../queue/QueueManager.js'
 import { WEBHOOK_INGEST_QUEUE } from '../queue/WebhookQueue.js'
 import { rolesWithPermission, type PlatformRole } from './operator-auth.js'
+import { getPlatformConfig } from './platform-config.js'
 import { draftBlogPromoPost } from '../routes/marketing-posts.js'
 import type { LlmFn } from '@lifekeel/platform'
+
+export type AutopilotMode = 'shadow' | 'live'
+
+/** Earned-precision bar a rule must clear before shadow → live is allowed. */
+export const SHADOW_PROMOTION = { min_reviewed: 20, min_precision: 0.9 } as const
 
 export interface AutopilotRuleConfig {
   rule: string
   enabled: boolean
+  /** `shadow` = collect and log "would do" only — no act, alert, proposal or
+   *  external call. Absent means `live` so rules enabled before shadow mode
+   *  existed behave exactly as they did. */
+  mode?: AutopilotMode
   /** Max targets acted on in a single sweep — the circuit breaker. */
   max_blast_radius: number
   /** Minimum minutes between this rule's sweeps. */
@@ -42,8 +52,14 @@ export interface AutopilotActionDoc {
   target_id: string
   reason: string
   /** proposed → approved (claimed) → executed | failed; rejected is terminal. */
-  status: 'executed' | 'failed' | 'proposed' | 'approved' | 'rejected'
+  status: 'executed' | 'failed' | 'proposed' | 'approved' | 'rejected' | 'shadow'
   result?: string
+  /** shadow rows only: what the rule would have done had it been live. */
+  would_do?: string
+  /** shadow rows only: an operator's verdict on whether that was right. */
+  review?: 'right' | 'wrong'
+  reviewed_by?: string
+  reviewed_at?: Date
   /** Tier-2 proposals carry the intended mutation here — the approve
    *  route executes it server-side; the client never supplies it. */
   proposal?: {
@@ -496,9 +512,79 @@ export function ensureAutopilotIndexes(db: Db): void {
   actionsCol(db)
     .createIndex({ created_at: -1 })
     .catch(() => {})
+  // Shadow rows are a trial record, not a ledger of effects — expire them.
+  actionsCol(db)
+    .createIndex(
+      { created_at: 1 },
+      {
+        name: 'shadow_ttl_30d',
+        expireAfterSeconds: 30 * 24 * 3600,
+        partialFilterExpression: { status: 'shadow' },
+      },
+    )
+    .catch(() => {})
   db.collection('operator_digests')
     .createIndex({ created_at: -1 })
     .catch(() => {})
+}
+
+export interface ShadowStats {
+  total: number
+  reviewed: number
+  right: number
+  /** right / reviewed, null until something is reviewed. */
+  precision: number | null
+  /** True once the rule has earned the right to go live. */
+  promotable: boolean
+}
+
+export function meetsPromotion(reviewed: number, right: number): boolean {
+  return (
+    reviewed >= SHADOW_PROMOTION.min_reviewed && right / reviewed >= SHADOW_PROMOTION.min_precision
+  )
+}
+
+/** Shadow track record for one rule — what the operator has verified. */
+export async function shadowStats(db: Db, rule: string): Promise<ShadowStats> {
+  const [row] = await actionsCol(db)
+    .aggregate<{ total: number; reviewed: number; right: number }>([
+      { $match: { rule, status: 'shadow' } },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          reviewed: { $sum: { $cond: [{ $ifNull: ['$review', false] }, 1, 0] } },
+          right: { $sum: { $cond: [{ $eq: ['$review', 'right'] }, 1, 0] } },
+        },
+      },
+    ])
+    .toArray()
+  const total = row?.total ?? 0
+  const reviewed = row?.reviewed ?? 0
+  const right = row?.right ?? 0
+  return {
+    total,
+    reviewed,
+    right,
+    precision: reviewed > 0 ? right / reviewed : null,
+    promotable: reviewed > 0 && meetsPromotion(reviewed, right),
+  }
+}
+
+/** Record an operator's verdict on a shadow row. False when the row is not
+ *  a (still-present) shadow row. */
+export async function reviewShadowRow(
+  db: Db,
+  id: string,
+  verdict: 'right' | 'wrong',
+  operatorId: string,
+): Promise<{ rule: string } | null> {
+  const row = await actionsCol(db).findOneAndUpdate(
+    { id, status: 'shadow' },
+    { $set: { review: verdict, reviewed_by: operatorId, reviewed_at: new Date() } },
+    { projection: { rule: 1 } },
+  )
+  return row ? { rule: row.rule } : null
 }
 
 /** Config merged over registry defaults — a rule with no stored doc is
@@ -512,6 +598,7 @@ export async function listAutopilotRules(
     label: r.label,
     description: r.description,
     enabled: stored.get(r.id)?.enabled ?? false,
+    mode: stored.get(r.id)?.mode ?? ('live' as AutopilotMode),
     max_blast_radius: stored.get(r.id)?.max_blast_radius ?? r.defaults.max_blast_radius,
     cooldown_minutes: stored.get(r.id)?.cooldown_minutes ?? r.defaults.cooldown_minutes,
     ...(stored.get(r.id)?.last_run_at ? { last_run_at: stored.get(r.id)!.last_run_at } : {}),
@@ -525,6 +612,8 @@ export async function listAutopilotRules(
  *  sweeps (multi-replica, or manual + cron) can't double-act. Returns the
  *  ledger rows written this sweep. */
 export async function runAutopilotSweep(db: Db): Promise<AutopilotActionDoc[]> {
+  // Kill switch — human-set platform config; nothing, shadow included, runs.
+  if ((await getPlatformConfig(db)).autopilot_paused) return []
   const rules = await listAutopilotRules(db)
   const now = Date.now()
   const executed: AutopilotActionDoc[] = []
@@ -542,6 +631,30 @@ export async function runAutopilotSweep(db: Db): Promise<AutopilotActionDoc[]> {
       // Ledger insert first — the unique dedup_key makes "already acted
       // or proposed" atomic, so the act is only attempted once per target.
       const isProposal = c.proposal !== undefined
+      if (cfg.mode === 'shadow') {
+        // Shadow: log what a live rule would do and stop. Its own dedup
+        // namespace means going live later still acts on these targets.
+        const shadowRow: AutopilotActionDoc = {
+          id: randomUUID(),
+          rule: cfg.rule,
+          dedup_key: `shadow:${c.dedup_key}`,
+          target_type: c.target_type,
+          target_id: c.target_id,
+          reason: c.reason,
+          status: 'shadow',
+          would_do: c.proposal ? `Would propose: ${c.proposal.summary}` : `Would act: ${c.reason}`,
+          ...(c.proposal ? { proposal: c.proposal } : {}),
+          created_at: new Date(),
+        }
+        try {
+          await actionsCol(db).insertOne(shadowRow)
+        } catch {
+          continue // already logged for this target
+        }
+        acted += 1
+        executed.push(shadowRow)
+        continue
+      }
       const row: AutopilotActionDoc = {
         id: randomUUID(),
         rule: cfg.rule,

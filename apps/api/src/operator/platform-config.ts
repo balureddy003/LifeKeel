@@ -35,6 +35,9 @@ export interface PlatformConfig {
   maintenance_mode: boolean
   signups_enabled: boolean
   marketing_paused: boolean
+  /** Kill switch for the autopilot sweep — nothing (shadow or live) runs while
+   *  true. Human-set only: configuration.update is never autonomous. */
+  autopilot_paused: boolean
   /** Scheduled maintenance notice — surfaced publicly via /status so the
    *  product can warn users before maintenance_mode actually engages. */
   maintenance_window: MaintenanceWindow | null
@@ -62,6 +65,7 @@ const DEFAULTS: PlatformConfig = {
   maintenance_mode: false,
   signups_enabled: true,
   marketing_paused: false,
+  autopilot_paused: false,
   maintenance_window: null,
   ai_disabled_tasks: [],
   llm_provider_override: null,
@@ -93,6 +97,7 @@ export async function getPlatformConfig(db: Db): Promise<PlatformConfig> {
     maintenance_mode: doc?.['maintenance_mode'] === true,
     signups_enabled: doc?.['signups_enabled'] !== false,
     marketing_paused: doc?.['marketing_paused'] === true,
+    autopilot_paused: doc?.['autopilot_paused'] === true,
     maintenance_window: parseWindow(doc?.['maintenance_window']),
     ai_disabled_tasks: Array.isArray(doc?.['ai_disabled_tasks'])
       ? (doc['ai_disabled_tasks'] as unknown[]).filter(

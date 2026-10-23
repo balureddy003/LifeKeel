@@ -2118,6 +2118,126 @@ describe('security monitoring', () => {
     await app.close()
   })
 
+  it('keeps a shadowing rule from going live until its reviewed precision clears the bar', async () => {
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    const app = await buildApp()
+    const put = (payload: Record<string, unknown>) =>
+      app.inject({ method: 'PUT', url: '/operator/autopilot/auto_unlock_expired', payload })
+
+    const shadow = await put({ enabled: true, mode: 'shadow', reason: 'Trial in shadow first' })
+    expect(shadow.statusCode).toBe(200)
+    expect(shadow.json().rule.mode).toBe('shadow')
+
+    const rows = Array.from({ length: 20 }, (_, i) => ({
+      id: `sh-${i}`,
+      rule: 'auto_unlock_expired',
+      dedup_key: `shadow:k${i}`,
+      target_type: 'user',
+      target_id: `u${i}`,
+      reason: 'r',
+      status: 'shadow',
+      created_at: new Date(),
+    }))
+    await db.collection('autopilot_actions').insertMany(rows)
+
+    // Nothing reviewed yet → refused, with the track record in the body.
+    const early = await put({ mode: 'live', reason: 'Skip the trial please' })
+    expect(early.statusCode).toBe(409)
+    expect(early.json().code).toBe('shadow_not_promotable')
+    expect(early.json().shadow).toMatchObject({ reviewed: 0, promotable: false })
+
+    // 17 of 20 right (85%) — enough reviews, not enough precision.
+    for (let i = 0; i < 20; i++) {
+      const r = await app.inject({
+        method: 'POST',
+        url: `/operator/autopilot/shadow/sh-${i}/review`,
+        payload: { verdict: i < 17 ? 'right' : 'wrong', reason: 'Checked against the user' },
+      })
+      expect(r.statusCode).toBe(200)
+    }
+    expect((await put({ mode: 'live', reason: 'Close but not there' })).statusCode).toBe(409)
+
+    // Fix one verdict → 18/20 = 90% → promotable.
+    await app.inject({
+      method: 'POST',
+      url: '/operator/autopilot/shadow/sh-17/review',
+      payload: { verdict: 'right', reason: 'Re-checked, it was right' },
+    })
+    const live = await put({ mode: 'live', reason: 'Earned it: 90% over 20 rows' })
+    expect(live.statusCode).toBe(200)
+    expect(live.json().rule.mode).toBe('live')
+
+    const modeAudits = await db
+      .collection('operator_audit_log')
+      .countDocuments({ action: 'operator.autopilot.mode' })
+    expect(modeAudits).toBe(2) // shadow + live; the refused promotions are not audited as changes
+    expect(
+      await db
+        .collection('operator_audit_log')
+        .countDocuments({ action: 'operator.autopilot.shadow_review' }),
+    ).toBe(21)
+    await app.close()
+  })
+
+  it('exposes shadow stats and the kill switch on GET /operator/autopilot', async () => {
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    const app = await buildApp()
+    await app.inject({
+      method: 'PUT',
+      url: '/operator/autopilot/auto_unlock_expired',
+      payload: { enabled: true, mode: 'shadow', reason: 'Trial in shadow first' },
+    })
+    const before = await app.inject({ method: 'GET', url: '/operator/autopilot' })
+    expect(before.json().paused).toBe(false)
+    expect(before.json().shadow_promotion).toEqual({ min_reviewed: 20, min_precision: 0.9 })
+    const rule = (before.json().rules as { rule: string; shadow: unknown }[]).find(
+      (r) => r.rule === 'auto_unlock_expired',
+    )
+    expect(rule?.shadow).toMatchObject({ total: 0, reviewed: 0, promotable: false })
+
+    const pause = await app.inject({
+      method: 'PUT',
+      url: '/operator/configuration',
+      payload: { autopilot_paused: true, reason: 'Kill switch drill' },
+    })
+    expect(pause.statusCode).toBe(200)
+    expect((await app.inject({ method: 'GET', url: '/operator/autopilot' })).json().paused).toBe(
+      true,
+    )
+    await app.close()
+  })
+
+  it('reviewing a shadow row needs operations.manage and an existing shadow row', async () => {
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    const app = await buildApp()
+    const denied = await app.inject({
+      method: 'POST',
+      url: '/operator/autopilot/shadow/anything/review',
+      payload: { verdict: 'right', reason: 'Support cannot judge rules' },
+    })
+    expect(denied.statusCode).toBe(403)
+    await app.close()
+
+    await db.collection('platform_operators').deleteMany({})
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
+    const ops = await buildApp()
+    const missing = await ops.inject({
+      method: 'POST',
+      url: '/operator/autopilot/shadow/nope/review',
+      payload: { verdict: 'right', reason: 'No such row exists' },
+    })
+    expect(missing.statusCode).toBe(404)
+    await ops.close()
+  })
+
   it('approves a suspend proposal — executes the mutation, audits, and cannot be re-approved', async () => {
     // platform_admin carries both operations.read and users.manage.
     await db

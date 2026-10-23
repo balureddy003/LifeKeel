@@ -51,6 +51,8 @@ export type OperatorAuditAction =
   | 'operator.autopilot.update'
   | 'operator.autopilot.approve'
   | 'operator.autopilot.reject'
+  | 'operator.autopilot.mode'
+  | 'operator.autopilot.shadow_review'
   | 'operator.digest.send'
   | 'operator.ai_task.disable'
   | 'operator.ai_task.enable'
