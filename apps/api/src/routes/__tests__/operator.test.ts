@@ -1275,6 +1275,44 @@ describe('leads detail, funnel, connectors, configuration, infrastructure', () =
     await app.close()
   })
 
+  it('switches the LLM provider override at runtime with audit', async () => {
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    const app = await buildApp()
+
+    const set = await app.inject({
+      method: 'PUT',
+      url: '/operator/configuration',
+      payload: { llm_provider_override: 'vertex', reason: 'Failover to Vertex' },
+    })
+    expect(set.statusCode).toBe(200)
+    expect(set.json().config.llm_provider_override).toBe('vertex')
+    const doc = await db.collection('platform_config').findOne({ key: 'global' })
+    expect(doc?.['llm_provider_override']).toBe('vertex')
+
+    const invalid = await app.inject({
+      method: 'PUT',
+      url: '/operator/configuration',
+      payload: { llm_provider_override: 'not-a-provider', reason: 'Bad value' },
+    })
+    expect(invalid.statusCode).toBe(400)
+
+    // 'auto' stores null — back to router detection.
+    const clear = await app.inject({
+      method: 'PUT',
+      url: '/operator/configuration',
+      payload: { llm_provider_override: 'auto', reason: 'Back to auto' },
+    })
+    expect(clear.statusCode).toBe(200)
+    expect(clear.json().config.llm_provider_override).toBeNull()
+
+    const history = await db.collection('platform_config_history').find({}).toArray()
+    expect(history).toHaveLength(2)
+    expect(history[1]?.['after'].llm_provider_override).toBeNull()
+    await app.close()
+  })
+
   it('denies configuration changes to roles without configuration.manage', async () => {
     await db
       .collection('platform_operators')

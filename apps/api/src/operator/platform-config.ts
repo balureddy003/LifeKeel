@@ -10,6 +10,12 @@
  *                        TaskDisabledError → callers' honest fallback path
  *                        (PRD-217 operator switch, audited via the operator
  *                        route; never written directly)
+ *  - llm_provider_override → the LLM router's provider pick — the runtime
+ *                        equivalent of LIFEKEEL_LLM_PROVIDER, switchable
+ *                        without a redeploy. Still bounded by the processor
+ *                        registry: a provider named here that the task may
+ *                        not use fails the processor check, it does not
+ *                        silently reroute.
  *
  * Values are cached briefly in-process so the auth middleware doesn't add
  * a Mongo round-trip per request; writes go through the operator route,
@@ -17,6 +23,7 @@
  */
 
 import type { Db } from 'mongodb'
+import type { LlmProvider } from '@lifekeel/platform'
 
 export interface MaintenanceWindow {
   starts_at: string
@@ -34,7 +41,20 @@ export interface PlatformConfig {
   /** AI task_ids the gateway refuses (PRD-217 disable→fallback switch).
    *  Written only through the audited operator route. */
   ai_disabled_tasks: string[]
+  /** Operator-selected hosted provider (runtime LIFEKEEL_LLM_PROVIDER).
+   *  null = router decides from model name / configured credentials. */
+  llm_provider_override: LlmProvider | null
 }
+
+/** Providers a runtime override may name — must stay inside LlmProvider. */
+const VALID_PROVIDER_OVERRIDES = new Set<string>([
+  'anthropic',
+  'openai',
+  'azure',
+  'vertex',
+  'ollama',
+  'groq',
+])
 
 export const CONFIG_DOC_KEY = 'global'
 const DEFAULTS: PlatformConfig = {
@@ -43,10 +63,17 @@ const DEFAULTS: PlatformConfig = {
   marketing_paused: false,
   maintenance_window: null,
   ai_disabled_tasks: [],
+  llm_provider_override: null,
 }
 const CACHE_TTL_MS = 10_000
 
 let cache: { config: PlatformConfig; at: number } | null = null
+/**
+ * The last override read — warmed by every getPlatformConfig call so
+ * synchronous resolution sites (the router's resolveProvider,
+ * resolveServingProcessor) can read it without a Mongo round-trip.
+ */
+let lastLlmProviderOverride: LlmProvider | null = null
 
 function parseWindow(raw: unknown): MaintenanceWindow | null {
   if (!raw || typeof raw !== 'object') return null
@@ -71,9 +98,25 @@ export async function getPlatformConfig(db: Db): Promise<PlatformConfig> {
           (t): t is string => typeof t === 'string' && t.length > 0,
         )
       : [],
+    llm_provider_override:
+      typeof doc?.['llm_provider_override'] === 'string' &&
+      VALID_PROVIDER_OVERRIDES.has(doc['llm_provider_override'] as string)
+        ? (doc['llm_provider_override'] as LlmProvider)
+        : null,
   }
+  lastLlmProviderOverride = config.llm_provider_override
   cache = { config, at: Date.now() }
   return config
+}
+
+/**
+ * The operator's runtime provider pick, synchronously — warmed by every
+ * getPlatformConfig call (the gateway already makes one per governed call
+ * for ai_disabled_tasks, so the value is at most ~10s stale). Returns null
+ * until the first config read.
+ */
+export function currentLlmProviderOverride(): LlmProvider | null {
+  return lastLlmProviderOverride
 }
 
 export function invalidatePlatformConfigCache(): void {
