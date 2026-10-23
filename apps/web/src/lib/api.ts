@@ -5174,6 +5174,83 @@ export async function adjustTenantCredits(
   return (data as { credits_balance: number }).credits_balance
 }
 
+// ── Operator: Billing setup (Stripe config as code) ───────────────────────
+
+export interface StripeSetupAction {
+  object: 'product' | 'price' | 'webhook' | 'portal'
+  key: string
+  op: 'create' | 'update' | 'replace' | 'noop' | 'skipped'
+  details: string[]
+}
+
+export interface StripeSetupReconcile {
+  mode: 'test' | 'live' | 'unknown'
+  applied: boolean
+  drift: boolean
+  actions: StripeSetupAction[]
+  errors: Array<{ object: string; key: string; message: string }>
+  ids: { product?: string; prices: Record<string, string>; webhook?: string; portal?: string }
+}
+
+export interface StripeSetupStatus {
+  configured: boolean
+  mode: 'test' | 'live' | 'unknown'
+  key_kind: 'restricted' | 'secret' | 'none'
+  key_warning: string | null
+  webhook: {
+    last_event_at: string | null
+    last_event_type: string | null
+    completed_24h: number
+    failed_24h: number
+    recent_failures: Array<{
+      event_id: string
+      event_type: string
+      failed_at?: string
+      error?: string
+    }>
+  }
+  reconcile: StripeSetupReconcile | null
+}
+
+/** Thrown for 409s that ask the operator to confirm something explicitly. */
+export class StripeSetupConfirmError extends Error {
+  constructor(
+    message: string,
+    readonly code: 'confirm_live_required' | 'confirm_price_change_required' | string,
+    readonly reconcile?: StripeSetupReconcile,
+  ) {
+    super(message)
+  }
+}
+
+export function fetchStripeSetup(): Promise<StripeSetupStatus> {
+  return operatorRequest('/operator/billing/stripe')
+}
+
+export async function reconcileStripeSetup(input: {
+  reason: string
+  apply: boolean
+  confirm_live?: boolean
+  confirm_price_change?: boolean
+}): Promise<StripeSetupReconcile> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await credFetch(`${base}/operator/billing/stripe/reconcile`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(input),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (res.status === 409 && typeof data.code === 'string') {
+    throw new StripeSetupConfirmError(data.error as string, data.code, data.reconcile)
+  }
+  if (!res.ok) throw new Error((data.error as string) || 'Stripe setup request failed')
+  return data as StripeSetupReconcile
+}
+
 // ── Public lead capture ───────────────────────────────────────────────────
 
 export async function captureLead(input: {

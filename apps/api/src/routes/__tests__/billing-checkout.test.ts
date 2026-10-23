@@ -18,12 +18,15 @@ import Fastify from 'fastify'
 const stripeMocks = vi.hoisted(() => ({
   subscriptionsRetrieve: vi.fn(),
   checkoutCreate: vi.fn(),
+  // The plan's price is found by lookup_key (definitions/stripe-config.yaml).
+  pricesList: vi.fn(async () => ({ data: [{ id: 'price_from_lookup_key' }] })),
 }))
 
 vi.mock('stripe', () => ({
   default: vi.fn().mockImplementation(function FakeStripe() {
     return {
       subscriptions: { retrieve: stripeMocks.subscriptionsRetrieve },
+      prices: { list: stripeMocks.pricesList },
       checkout: { sessions: { create: stripeMocks.checkoutCreate } },
       billingPortal: { sessions: { create: vi.fn() } },
       webhooks: { constructEvent: vi.fn() },
@@ -32,10 +35,13 @@ vi.mock('stripe', () => ({
 }))
 
 const { registerBillingRoutes } = await import('../billing.js')
+const { clearStripePriceCache } = await import('../../billing/stripe-price.js')
 
 const TENANT = 'tenant-billing-checkout-test'
 
-function makeDb(tenant: Record<string, unknown> = { tenant_id: TENANT, billing: { currency: 'GBP' } }) {
+function makeDb(
+  tenant: Record<string, unknown> = { tenant_id: TENANT, billing: { currency: 'GBP' } },
+) {
   const tenantCol = {
     createIndex: async () => ({}),
     findOne: async () => tenant,
@@ -83,7 +89,11 @@ describe('POST /billing/checkout — dormant-tier guard', () => {
 
   it('still rejects free with its own message', async () => {
     const app = await buildApp(makeDb())
-    const res = await app.inject({ method: 'POST', url: '/billing/checkout', payload: { plan: 'free' } })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/billing/checkout',
+      payload: { plan: 'free' },
+    })
     expect(res.statusCode).toBe(400)
     expect(res.json().error).toMatch(/does not require checkout/)
   })
@@ -98,6 +108,8 @@ describe('POST /billing/checkout — existing subscription guard', () => {
     stripeMocks.subscriptionsRetrieve.mockReset()
     stripeMocks.checkoutCreate.mockReset()
     stripeMocks.checkoutCreate.mockResolvedValue({ url: 'https://checkout.stripe.test/session' })
+    stripeMocks.pricesList.mockClear()
+    clearStripePriceCache()
   })
 
   afterEach(() => {
@@ -107,13 +119,19 @@ describe('POST /billing/checkout — existing subscription guard', () => {
 
   it('returns 409 when the stored subscription is still live in Stripe', async () => {
     stripeMocks.subscriptionsRetrieve.mockResolvedValue({ status: 'active' })
-    const app = await buildApp(makeDb({
-      tenant_id: TENANT,
-      stripe_subscription_id: 'sub_live',
-      billing: { currency: 'GBP' },
-    }))
+    const app = await buildApp(
+      makeDb({
+        tenant_id: TENANT,
+        stripe_subscription_id: 'sub_live',
+        billing: { currency: 'GBP' },
+      }),
+    )
 
-    const res = await app.inject({ method: 'POST', url: '/billing/checkout', payload: { plan: 'starter' } })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/billing/checkout',
+      payload: { plan: 'starter' },
+    })
 
     expect(res.statusCode).toBe(409)
     expect(res.json().code).toBe('ALREADY_SUBSCRIBED')
@@ -130,7 +148,11 @@ describe('POST /billing/checkout — existing subscription guard', () => {
     })
     const app = await buildApp(db)
 
-    const res = await app.inject({ method: 'POST', url: '/billing/checkout', payload: { plan: 'starter' } })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/billing/checkout',
+      payload: { plan: 'starter' },
+    })
 
     expect(res.statusCode).toBe(200)
     expect(res.json().checkout_url).toBe('https://checkout.stripe.test/session')
@@ -143,14 +165,20 @@ describe('POST /billing/checkout — existing subscription guard', () => {
   })
 
   it('reuses the existing Stripe customer and attaches tenant metadata to the subscription', async () => {
-    const app = await buildApp(makeDb({
-      tenant_id: TENANT,
-      stripe_customer_id: 'cus_existing',
-      contact_email: 'user@example.com',
-      billing: { currency: 'GBP' },
-    }))
+    const app = await buildApp(
+      makeDb({
+        tenant_id: TENANT,
+        stripe_customer_id: 'cus_existing',
+        contact_email: 'user@example.com',
+        billing: { currency: 'GBP' },
+      }),
+    )
 
-    const res = await app.inject({ method: 'POST', url: '/billing/checkout', payload: { plan: 'starter' } })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/billing/checkout',
+      payload: { plan: 'starter' },
+    })
 
     expect(res.statusCode).toBe(200)
     const createArgs = stripeMocks.checkoutCreate.mock.calls[0]?.[0] as Record<string, unknown>
@@ -163,5 +191,41 @@ describe('POST /billing/checkout — existing subscription guard', () => {
     expect(createArgs['subscription_data']).toEqual({
       metadata: { tenant_id: TENANT, plan: 'starter' },
     })
+  })
+  it('sells the price found by its lookup_key, not a hard-coded id', async () => {
+    const app = await buildApp(
+      makeDb({ tenant_id: TENANT, contact_email: 'u@example.com', billing: { currency: 'GBP' } }),
+    )
+    const res = await app.inject({
+      method: 'POST',
+      url: '/billing/checkout',
+      payload: { plan: 'starter' },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(stripeMocks.pricesList).toHaveBeenCalledWith({
+      lookup_keys: ['keel_plus_gbp_monthly'],
+      active: true,
+      limit: 1,
+    })
+    const args = stripeMocks.checkoutCreate.mock.calls[0]?.[0] as {
+      line_items: Array<{ price: string }>
+    }
+    expect(args.line_items[0]!.price).toBe('price_from_lookup_key')
+  })
+
+  it('answers 503 (not a Stripe 500) when no price carries the lookup_key and the key is live', async () => {
+    process.env['STRIPE_SECRET_KEY'] = 'sk_live_fake_for_guard_test'
+    stripeMocks.pricesList.mockResolvedValueOnce({ data: [] })
+    const app = await buildApp(
+      makeDb({ tenant_id: TENANT, contact_email: 'u@example.com', billing: { currency: 'GBP' } }),
+    )
+    const res = await app.inject({
+      method: 'POST',
+      url: '/billing/checkout',
+      payload: { plan: 'starter' },
+    })
+    expect(res.statusCode).toBe(503)
+    expect(res.json().error).toContain('not set up')
+    expect(stripeMocks.checkoutCreate).not.toHaveBeenCalled()
   })
 })
