@@ -925,8 +925,13 @@ interactive generation from the CPU-local model. The split is now fixed:
   ("this answer was computed entirely on LifeKeel's servers"); it never
   crosses to a hosted processor.
 - **Batch/generation-free work** (email classification, extraction, judge,
-  OCR) stays local and is progressively de-generated: encoder/extractor +
-  templates first, generative model only for unresolved cases (PRD-215).
+  OCR) moved to `approved_hosted_provider` on 2026-10-24 after the GCP
+  Ollama service was decommissioned for cost (~$12/day always-on): these
+  tasks now serve on the approved hosted processors, still through the
+  gateway with the same guards, and are still progressively de-generated:
+  encoder/extractor + templates first, generative model only for
+  unresolved cases (PRD-215). Only `lifekeel_infra_required` quarantine
+  tasks and `device_only` remain bound to local/on-device paths.
 
 The inverse is added to the cascade for the assistant path: a **verified
 answer** tier (`assistant.answer_verified.v1`, PRD-212) resolves factual
