@@ -37,6 +37,7 @@ import { projectScenario } from '../scenarios/project.js'
 import { ScenarioStepSchema } from './family-scenarios.js'
 import { isUnsetTarget } from './family-financial-profile.js'
 import { getMemberTwin, type MemberTwinResult } from './member-twin.js'
+import { loadEstateReadinessInputs } from './family-readiness.js'
 import {
   isFamilyAdult,
   isFamilyOrganizer,
@@ -615,6 +616,16 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
           })
         }
         if (intent?.kind === 'operation') {
+          // The readiness composite needs the same vault-side estate inputs
+          // /family/readiness uses — computing without them gates that
+          // component and re-weights the rest, so the verified answer could
+          // quote a different score than Home for the same family. Loaded
+          // here (adult-gated inside the helper) and only for readiness
+          // asks; a load failure degrades to the previous gated behavior.
+          const estateInputs =
+            intent.operation === 'readiness' && !member_id && profileDoc
+              ? await loadEstateReadinessInputs(db, tenant_id, user_id).catch(() => undefined)
+              : undefined
           // The renderers compute from real profile sections — a sparse or
           // unusual profile can still throw. A verified tier that 500s an ask
           // is worse than generation, so a render failure degrades honestly.
@@ -625,6 +636,7 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
                 family: familyDoc,
                 memberId: member_id,
                 twin,
+                estateInputs,
               })
             } catch (err) {
               req.log.warn(

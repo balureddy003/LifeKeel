@@ -24,6 +24,7 @@ import { formatScenarioResult } from '../scenarios/format.js'
 import { computeReadiness } from '../readiness/score.js'
 import { ungroundedNumbers } from '../local-model.js'
 import type { MemberTwinResult } from '../routes/member-twin.js'
+import type { EstateSignalData } from '../legacy/estate-signal.js'
 
 // ── Data shapes (structural mirrors of the route's profile/roster docs) ──
 
@@ -66,6 +67,17 @@ export interface VerifiedAnswerData {
   memberId?: string
   /** The member twin — loaded by the caller only for member-scoped asks. */
   twin?: MemberTwinResult | null
+  /**
+   * The same vault-side estate inputs /family/readiness computes with —
+   * loaded by the caller via loadEstateReadinessInputs for readiness asks
+   * (the vault is adult-gated, so the caller resolves gated-vs-scored).
+   * Without them the composite silently re-weights the other four
+   * components and the verified answer can disagree with the home score.
+   */
+  estateInputs?: {
+    estateDocTypes: string[] | null
+    estateSignal: EstateSignalData | null
+  }
 }
 
 // ── Intent classification ────────────────────────────────────────────────
@@ -312,7 +324,11 @@ function renderReadiness(data: VerifiedAnswerData): RenderedAnswer | null {
     readiness = data.twin.readiness
   } else if (data.profile) {
     try {
-      readiness = computeReadiness(data.profile as never, null)
+      readiness = computeReadiness(
+        data.profile as never,
+        data.estateInputs?.estateDocTypes ?? null,
+        data.estateInputs?.estateSignal ?? null,
+      )
     } catch {
       // A partial profile (e.g. no retirement section yet) can make a
       // component crash — decline to the generative path, never 500.

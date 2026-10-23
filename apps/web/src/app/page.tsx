@@ -36,7 +36,6 @@ import { HealthSummary } from '@/components/HealthSummary'
 import { ReadinessSparkline } from '@/components/ReadinessSparkline'
 import { ReadinessFeed } from '@/components/ReadinessFeed'
 import { PerceivedProtectionCard } from '@/components/PerceivedProtectionCard'
-import { InstallPrompt } from '@/components/InstallPrompt'
 import { useMode } from '@/lib/mode-context'
 import { useFamilyReadinessScore, useFamilyTimeline, useFamilyInsights } from '@/lib/useFamilyData'
 import { useAppStore } from '@/lib/store'
@@ -55,6 +54,7 @@ import { elderlyHomeCopy } from '@/lib/elderlyHomeCopy'
 import { childHomeCopy } from '@/lib/childHomeCopy'
 import { simpleHomeCopy } from '@/lib/simpleHomeCopy'
 import { firstVisitSubline } from '@/lib/firstVisitCopy'
+import { formatRelativeDate } from '@/lib/format'
 
 function ChildHome() {
   const { user } = useAuth()
@@ -858,7 +858,12 @@ function ChildDobPrompt() {
 export default function HomePage() {
   const { config } = useMode()
   const { family } = useAuth()
-  const { score: readinessScore, hasLiveData, loading: scoreLoading } = useFamilyReadinessScore()
+  const {
+    score: readinessScore,
+    hasLiveData,
+    computedAt: scoreComputedAt,
+    loading: scoreLoading,
+  } = useFamilyReadinessScore()
   const { events: timelineEvents, hasData: hasTimelineData, hasChildren } = useFamilyTimeline()
   const { insights, loading: insightsLoading } = useFamilyInsights()
   const detectorDismissals = useAppStore((s) => s.detectorDismissals)
@@ -916,7 +921,12 @@ export default function HomePage() {
       />
       <LifeChangeNudge />
       <UrgencyBanner />
-      <InstallPrompt />
+      {/* No inline install prompt here — the app-level InstallHint in
+          AppShell already covers "add to home screen" on every page (with
+          its own 90-day dismissal). Two prompts used to show at once, and
+          dismissing this card's separate snooze key never stopped the
+          other — which is exactly the "keeps reappearing" experience it
+          was supposed to avoid. */}
 
       {!hasLiveData && !scoreLoading && <GettingStarted />}
 
@@ -965,6 +975,18 @@ export default function HomePage() {
                         ? simpleHomeCopy({ hasLiveData, onTrack: onTrack }).body
                         : 'Your readiness score reflects the gaps found in your profile so far — it gets more accurate as the profile fills in.'}
                     </p>
+                    {/* Freshness, not just a number: the score recomputes
+                        on every read, so "unchanged" means "checked just
+                        now" — without this line a stable score after a
+                        profile edit reads as broken, not right. Roster
+                        and asset additions aren't score inputs; the feed
+                        below narrates those changes instead. */}
+                    {scoreComputedAt && (
+                      <p className="text-xs text-ink-tertiary mt-2">
+                        Recalculated {formatRelativeDate(scoreComputedAt).toLowerCase()} from your
+                        profile and vault
+                      </p>
+                    )}
                     {profileCompleteness > 0 && profileCompleteness < 100 && (
                       <Link
                         href="/financial-profile"

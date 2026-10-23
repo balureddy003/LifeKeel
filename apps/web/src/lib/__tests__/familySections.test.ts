@@ -30,13 +30,17 @@ function makePolicy(overrides: Partial<FinancialProfilePolicy> = {}): FinancialP
 
 describe('KEEL-013: getMemberSections surfaces the soonest policy renewal', () => {
   it('appends a renewal badge when a policy renews within 60 days', () => {
-    const sections = getMemberSections(makeMember(), [makePolicy({ renewal_date: daysFromNow(10) })])
+    const sections = getMemberSections(makeMember(), [
+      makePolicy({ renewal_date: daysFromNow(10) }),
+    ])
     const protection = sections.find((s) => s.label === 'Protection')
     expect(protection?.story).toContain('renews in 10 days')
   })
 
   it('does not append a renewal badge when no policy renews within 60 days', () => {
-    const sections = getMemberSections(makeMember(), [makePolicy({ renewal_date: daysFromNow(120) })])
+    const sections = getMemberSections(makeMember(), [
+      makePolicy({ renewal_date: daysFromNow(120) }),
+    ])
     const protection = sections.find((s) => s.label === 'Protection')
     expect(protection?.story).not.toContain('renews in')
   })
@@ -61,6 +65,26 @@ describe('KEEL-013: getMemberSections surfaces the soonest policy renewal', () =
 
   it('says no policies are on file, rather than claiming cover, when there are none', () => {
     const sections = getMemberSections(makeMember(), [])
+    const protection = sections.find((s) => s.label === 'Protection')
+    expect(protection?.story).toBe('No policies on file yet')
+  })
+
+  it('distinguishes "cover amounts entered" from "no policy details" when the wizard totals exist', () => {
+    const sections = getMemberSections(makeMember(), [], {
+      lifeCoverMinor: 300_000_00,
+      incomeProtectionMonthlyMinor: 2_000_00,
+    })
+    const protection = sections.find((s) => s.label === 'Protection')
+    expect(protection?.story).toBe(
+      '£300,000 life cover + £2,000/mo income protection on file — no policy details recorded yet',
+    )
+  })
+
+  it('still reports the full empty state when neither totals nor policies exist', () => {
+    const sections = getMemberSections(makeMember(), [], {
+      lifeCoverMinor: 0,
+      incomeProtectionMonthlyMinor: 0,
+    })
     const protection = sections.find((s) => s.label === 'Protection')
     expect(protection?.story).toBe('No policies on file yet')
   })
@@ -103,8 +127,12 @@ describe('Digital Twin gap audit (Phase 3): getMemberSections scopes person-spec
       makePolicy({ type: 'health', member_id: 'sam' }),
       makePolicy({ type: 'car' }),
     ]
-    const alexProtection = getMemberSections(makeMember({ id: 'alex' }), shared).find((s) => s.label === 'Protection')
-    const samProtection = getMemberSections(makeMember({ id: 'sam' }), shared).find((s) => s.label === 'Protection')
+    const alexProtection = getMemberSections(makeMember({ id: 'alex' }), shared).find(
+      (s) => s.label === 'Protection',
+    )
+    const samProtection = getMemberSections(makeMember({ id: 'sam' }), shared).find(
+      (s) => s.label === 'Protection',
+    )
     expect(alexProtection?.story).toContain('Life')
     expect(alexProtection?.story).toContain('Car')
     expect(alexProtection?.story).not.toContain('Health')
