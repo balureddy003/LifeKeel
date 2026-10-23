@@ -84,7 +84,27 @@ export interface DualApprovalSpec {
 }
 
 export type DualGateResult =
-  { kind: 'proceed' } | { kind: 'respond'; status: number; body: Record<string, unknown> }
+  | {
+      kind: 'proceed'
+      /** Hand the spent approval back (consumed → confirmed) when the action
+       *  failed before taking effect, so a transient failure — email provider
+       *  down, queue unavailable — doesn't force a fresh four-eyes round.
+       *  Call it only from the failure path; the approval still expires on its
+       *  original TTL. Undefined when nothing was consumed. */
+      release: () => Promise<void>
+    }
+  | { kind: 'respond'; status: number; body: Record<string, unknown> }
+
+function releaser(db: Db, id: string): () => Promise<void> {
+  return async () => {
+    await db
+      .collection<DualApprovalDoc>('operator_dual_approvals')
+      .updateOne(
+        { id, status: 'consumed' },
+        { $set: { status: 'confirmed' }, $unset: { consumed_at: '' } },
+      )
+  }
+}
 
 /**
  * Call inside a gated handler after input validation, before any mutation.
@@ -107,7 +127,7 @@ export async function checkDualApproval(
     // Retry path: the requester's own confirmed approval for this exact
     // action+target+payload is spent automatically — the UI loop stays
     // "click once → second operator confirms → click again".
-    const spent = await approvals.updateOne(
+    const spent = await approvals.findOneAndUpdate(
       {
         requested_by: operatorId,
         action: spec.action,
@@ -117,8 +137,9 @@ export async function checkDualApproval(
         expires_at: { $gt: new Date() },
       },
       { $set: { status: 'consumed', consumed_at: new Date() } },
+      { projection: { id: 1 } },
     )
-    if (spent.modifiedCount > 0) return { kind: 'proceed' }
+    if (spent) return { kind: 'proceed', release: releaser(db, spent.id) }
 
     // Idempotent initiation: a retry before confirmation returns the SAME
     // pending approval instead of stacking duplicates.
@@ -219,5 +240,5 @@ export async function checkDualApproval(
   if (consumed.modifiedCount === 0) {
     return { kind: 'respond', status: 409, body: { error: 'Approval already consumed' } }
   }
-  return { kind: 'proceed' }
+  return { kind: 'proceed', release: releaser(db, doc.id) }
 }

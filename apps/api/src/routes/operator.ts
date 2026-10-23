@@ -16,6 +16,7 @@ import {
   hashState,
   type DualApprovalDoc,
 } from '../operator/dual-control.js'
+import { SUPPORT_DRAFT_SYSTEM_PROMPT } from '../operator/support-draft.js'
 import { sendPasswordResetEmail } from '../auth-email.js'
 import { hashAuthToken } from './auth-users.js'
 import { recordLedgerEntry, getLedgerHistory } from '../billing/credit-ledger.js'
@@ -2329,8 +2330,10 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         { id: campaign.id, status: 'draft' },
         { $set: { status: 'sending' } },
       )
-      if (claimed.modifiedCount === 0)
+      if (claimed.modifiedCount === 0) {
+        await gate.release()
         return reply.status(409).send({ error: `Campaign already ${campaign.status}` })
+      }
       try {
         const stats = await queueCampaignSend(db, campaign)
         const after = await campaigns.findOne({ id: campaign.id })
@@ -2350,6 +2353,11 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         // state it can't leave — pending claims are skipped by a retry's
         // claimSend only if the recipient was already settled.
         await campaigns.updateOne({ id: campaign.id }, { $set: { status: 'draft' } })
+        // Hand the four-eyes approval back too — the campaign is a draft again,
+        // so the same confirmed approval can be retried once the cause
+        // (email provider, queue) is fixed instead of re-requesting a second
+        // operator.
+        await gate.release()
         throw err
       }
     },
@@ -2785,7 +2793,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         `Case subject: ${doc['subject']}\n\nThread so far:\n${thread}\n\nDraft a reply for the operator.`
       try {
         const draft = await taskLlm('support.reply_draft.v1', doc['tenant_id'] as string)(
-          `You draft support replies for LifeKeel operators. Write a helpful, honest reply to the customer's latest message. Never give financial/investment/insurance/legal advice or recommend specific providers. If the request needs an account change (billing, deletion, reset), say the team will handle it — never promise specifics you can't verify. Plain text, 2–5 sentences, no greeting sign-off boilerplate beyond a name placeholder if needed.`,
+          SUPPORT_DRAFT_SYSTEM_PROMPT,
           prompt,
         )
         return { draft }
