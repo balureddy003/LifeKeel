@@ -217,6 +217,7 @@ jobs:
             LIFEKEEL_STRIPE_WEBHOOK_SECRET=lifekeel-stripe-webhook-secret:latest
             OPENAI_API_KEY=lifekeel-openai-api-key:latest
             GROQ_API_KEY=lifekeel-groq-api-key:latest
+            XAI_API_KEY=lifekeel-xai-api-key:latest
             VAPID_PUBLIC_KEY=lifekeel-vapid-public-key:latest
             VAPID_PRIVATE_KEY=lifekeel-vapid-private-key:latest
             VAPID_SUBJECT=lifekeel-vapid-subject:latest

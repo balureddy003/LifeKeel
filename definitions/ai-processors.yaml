@@ -171,3 +171,42 @@ processors:
     breach_notice_sla: within 72 hours per GroqCloud DPA §6
     reviewed_at: '2026-10-23'
     review_due: '2027-10-23'
+
+  xai:
+    # Approved 2026-10-23 (owner decision) — CONDITIONAL: the xAI DPA
+    # (Sept 2026 update) requires Personal Data to be processed ONLY via the
+    # ZDR-enabled API; non-ZDR use is a material breach of the agreement.
+    # Zero Data Retention must be enabled in the xAI Console (Team Settings →
+    # Zero Data Retention) BEFORE any governed task routes here — verify the
+    # x-zero-data-retention:true response header. ZDR is self-serve and
+    # team-wide; it disables xAI-side storage features (Files, Collections,
+    # Batch, stateful Responses) which we do not use. Note: xAI retains a
+    # perpetual licence to prompts/outputs for safety research under the
+    # Enterprise ToS — not model training, but flagged for the annual review.
+    # The default endpoint has no guaranteed processing region; a US
+    # regional endpoint exists at a ~10% premium if residency is needed.
+    name: xAI (Grok) API
+    hosting: hosted
+    status: approved
+    endpoint: https://api.x.ai
+    region: us — global endpoint, region not contractually pinned (US regional endpoint available)
+    terms_ref: xAI Enterprise Terms of Service + SpaceXSI Data Processing Addendum (ZDR required for Personal Data, Sept 2026)
+    no_training_basis: xAI Enterprise ToS — User Content is not used to train foundation models or develop new products; ZDR additionally prevents persistence of prompts/outputs
+    retention:
+      # Recorded at zero_data_retention on the condition that ZDR is enabled
+      # on the team — the DPA requires it for Personal Data. The default
+      # 30-day encrypted audit log exists only when ZDR is off.
+      '*': zero_data_retention
+    sub_processors:
+      [
+        maintained list at https://x.ai/legal/subprocessor-list — AWS,
+        Google Cloud,
+        Oracle,
+        MongoDB and others,
+        all US plus a UK subsidiary,
+      ]
+    transfer_mechanism: EU Standard Contractual Clauses per the SpaceXSI Data Processing Addendum
+    dpa_date: '2026-09-22'
+    breach_notice_sla: without undue delay and, where feasible, within 48 hours per the SpaceXSI Data Processing Addendum
+    reviewed_at: '2026-10-23'
+    review_due: '2027-10-23'

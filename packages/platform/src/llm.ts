@@ -11,6 +11,7 @@
  *                                                VERTEX_SERVICE_ACCOUNT_JSON or ADC)
  *   ollama     — local models via Ollama HTTP API  (OLLAMA_BASE_URL)
  *   groq       — Llama 3 / Mixtral via Groq        (GROQ_API_KEY)
+ *   xai        — Grok via xAI                      (XAI_API_KEY)
  *
  * Usage:
  *   const llm = createLlmRouter()          // reads env vars automatically
@@ -26,7 +27,8 @@ import { vertexAccessTokenProvider } from './vertex-auth.js'
 
 const log = createLogger({ service: 'llm', version: '0.0.0' })
 
-export type LlmProvider = 'anthropic' | 'openai' | 'azure' | 'vertex' | 'ollama' | 'groq' | 'auto'
+export type LlmProvider =
+  'anthropic' | 'openai' | 'azure' | 'vertex' | 'ollama' | 'groq' | 'xai' | 'auto'
 
 // ── Azure Endpoint Validation ─────────────────────────────────────────────────────
 
@@ -106,6 +108,13 @@ export const DEFAULT_TIER_MODELS: Record<LlmProvider, Record<ReasoningTier, stri
     fast: 'llama-3.1-8b-instant',
     balanced: 'llama-3.1-70b-versatile',
     powerful: 'llama-3.1-70b-versatile', // Groq doesn't have o-series yet
+  },
+  xai: {
+    // grok-4.3 is the floor of the current lineup (the grok-4-fast-* slugs
+    // retired May 2026 and now redirect to grok-4.3).
+    fast: 'grok-4.3',
+    balanced: 'grok-4.3',
+    powerful: 'grok-4.7',
   },
   azure: {
     fast: 'gpt-4o-mini',
@@ -304,6 +313,11 @@ const MODEL_PROVIDER_MAP: Record<string, LlmProvider> = {
   'gemini-3.8-flash': 'vertex',
   'gemini-4-argon': 'vertex',
   'gemini-3.1-pro': 'vertex',
+  // xAI Grok — grok-4-fast-* retired May 2026 → redirect to grok-4.3
+  'grok-4.3': 'xai',
+  'grok-4.5': 'xai',
+  'grok-4.6': 'xai',
+  'grok-4.7': 'xai',
 }
 
 function detectProviderFromModel(model: string): LlmProvider | null {
@@ -315,6 +329,7 @@ function detectProviderFromModel(model: string): LlmProvider | null {
   if (model.startsWith('llama') || model.startsWith('mixtral') || model.startsWith('gemma'))
     return 'groq'
   if (model.startsWith('gemini') || model.startsWith('google/gemini')) return 'vertex'
+  if (model.startsWith('grok')) return 'xai'
   return null
 }
 
@@ -327,7 +342,15 @@ function detectProviderFromModel(model: string): LlmProvider | null {
 function envProviderOverride(): LlmProvider | null {
   const name = process.env['LIFEKEEL_LLM_PROVIDER']
   if (!name || name === 'auto') return null
-  const providers: readonly string[] = ['anthropic', 'openai', 'azure', 'vertex', 'ollama', 'groq']
+  const providers: readonly string[] = [
+    'anthropic',
+    'openai',
+    'azure',
+    'vertex',
+    'ollama',
+    'groq',
+    'xai',
+  ]
   return providers.includes(name) ? (name as LlmProvider) : null
 }
 
@@ -351,6 +374,7 @@ function resolveProvider(cfg: LlmConfig, model: string): LlmProvider {
   if (process.env['AZURE_OPENAI_ENDPOINT']) return 'azure'
   if (process.env['VERTEX_PROJECT']) return 'vertex'
   if (process.env['GROQ_API_KEY']) return 'groq'
+  if (process.env['XAI_API_KEY']) return 'xai'
   if (
     process.env['OLLAMA_BASE_URL'] ||
     model.startsWith('llama') ||
@@ -633,6 +657,54 @@ async function callGroq(
         output_tokens: response.usage.completion_tokens,
         model,
         provider: 'groq',
+        latency_ms: Date.now() - t0,
+      })
+    }
+    return response.choices[0]?.message.content ?? ''
+  }, signal)
+}
+
+/**
+ * xAI Grok — OpenAI-compatible at api.x.ai/v1. The DPA requires Personal
+ * Data to be processed only via the ZDR-enabled API: the team's Zero Data
+ * Retention toggle must be on in the xAI Console before any governed task
+ * routes here (response header x-zero-data-retention confirms it).
+ */
+async function callXai(
+  system: string,
+  prompt: string,
+  model: string,
+  apiKey: string,
+  maxTokens: number,
+  temperature: number,
+  onUsage?: LlmUsageCallback,
+  signal?: AbortSignal,
+): Promise<string> {
+  const { default: OpenAI } = await import('openai')
+  const client = getCachedClient(
+    `xai:${apiKey}`,
+    () => new OpenAI({ apiKey, baseURL: 'https://api.x.ai/v1' }),
+  )
+  return withRetry(async () => {
+    const t0 = Date.now()
+    const response = await client.chat.completions.create(
+      {
+        model,
+        max_tokens: maxTokens as number | null,
+        temperature,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: prompt },
+        ],
+      },
+      { signal },
+    )
+    if (response.usage) {
+      onUsage?.({
+        input_tokens: response.usage.prompt_tokens,
+        output_tokens: response.usage.completion_tokens,
+        model,
+        provider: 'xai',
         latency_ms: Date.now() - t0,
       })
     }
@@ -950,6 +1022,21 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
           )
         }
 
+        case 'xai': {
+          const apiKey = cfg.apiKey ?? process.env['XAI_API_KEY'] ?? ''
+          if (!apiKey) throw new Error('XAI_API_KEY not set')
+          return await callXai(
+            system,
+            prompt,
+            resolvedModel,
+            apiKey,
+            maxTokens,
+            temperature,
+            cfg.onUsage,
+            signal,
+          )
+        }
+
         case 'ollama': {
           const baseUrl =
             cfg.ollamaBaseUrl ?? process.env['OLLAMA_BASE_URL'] ?? 'http://localhost:11434'
@@ -1004,6 +1091,7 @@ export function detectActiveProvider(): LlmProvider | null {
   if (process.env['AZURE_OPENAI_ENDPOINT']) return 'azure'
   if (process.env['VERTEX_PROJECT']) return 'vertex'
   if (process.env['GROQ_API_KEY']) return 'groq'
+  if (process.env['XAI_API_KEY']) return 'xai'
   if (process.env['OLLAMA_BASE_URL']) return 'ollama'
   return null
 }
@@ -1015,6 +1103,7 @@ export const DEFAULT_MODELS: Record<LlmProvider, string> = {
   azure: 'gpt-4o',
   vertex: 'gemini-3.5-flash',
   groq: 'llama-3.1-70b-versatile',
+  xai: 'grok-4.3',
   ollama: 'llama3.1',
   auto: 'claude-haiku-4-5',
 }

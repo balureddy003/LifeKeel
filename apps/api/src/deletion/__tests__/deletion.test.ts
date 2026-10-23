@@ -171,14 +171,18 @@ describe('POST /account/delete', () => {
     expect(receipt.backups).toMatchObject({ retention_days: 35 })
     expect(receipt.backups.statement).toMatch(/up to 35 days/)
     expect(receipt.processors.length).toBeGreaterThan(0)
-    // azure + vertex are the approved processors (PRD-211) — their retention
-    // terms are stated for real; every other hosted processor stays "Not confirmed".
+    // Approved processors state their real retention terms (PRD-211);
+    // unreviewed ones stay "Not confirmed".
+    const expected: Record<string, RegExp> = {
+      azure: /abuse monitoring/,
+      vertex: /abuse monitoring/,
+      groq: /abuse monitoring/, // limited_abuse_log until ZDR is enabled
+      xai: /keeps no copy/, // zero_data_retention — DPA requires ZDR
+      anthropic: /Not confirmed/,
+      openai: /Not confirmed/,
+    }
     for (const p of receipt.processors as { id: string; stated_retention: string }[]) {
-      if (p.id === 'azure' || p.id === 'vertex') {
-        expect(p.stated_retention).toMatch(/abuse monitoring/)
-      } else {
-        expect(p.stated_retention).toMatch(/Not confirmed/)
-      }
+      expect(p.stated_retention, p.id).toMatch(expected[p.id] ?? /Not confirmed/)
     }
     expect(receipt.kept.join(' ')).toMatch(/7 years/)
     expect(receipt).not.toHaveProperty('tenant_id')

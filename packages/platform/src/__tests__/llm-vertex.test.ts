@@ -11,6 +11,7 @@ const ENV_KEYS = [
   'ANTHROPIC_API_KEY',
   'OPENAI_API_KEY',
   'GROQ_API_KEY',
+  'XAI_API_KEY',
   'AZURE_OPENAI_ENDPOINT',
   'OLLAMA_BASE_URL',
 ]
@@ -95,6 +96,17 @@ describe('vertex provider routing', () => {
     await router('s', 'p', 'tier:fast')
     const [url] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(url).toContain('ollama.test:11434')
+  })
+
+  it('routes to api.x.ai with the grok-4.3 tier model when the override selects xai', async () => {
+    process.env['XAI_API_KEY'] = 'k'
+    const fetchMock = vi.fn().mockResolvedValue(okResponse(completion('hi')))
+    vi.stubGlobal('fetch', fetchMock)
+    const router = createLlmRouter({ providerOverride: () => 'xai' })
+    await router('sys', 'hello', 'tier:fast')
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toContain('api.x.ai')
+    expect(JSON.parse(init.body as string).model).toBe('grok-4.3')
   })
 
   it('calls the global openapi endpoint with the google/ model prefix and low effort', async () => {

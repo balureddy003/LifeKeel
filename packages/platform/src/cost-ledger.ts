@@ -44,6 +44,10 @@ const DEFAULT_PRICING: Record<string, ModelPricing> = {
   // Groq (significantly cheaper — open models via inference API)
   'llama-3.1-8b-instant': { input_per_1k: 5, output_per_1k: 8 },
   'llama-3.1-70b-versatile': { input_per_1k: 59, output_per_1k: 79 },
+  // xAI Grok — grok-4.3 $1.25/$2.50 and grok-4.7 $2/$6 per 1M (short-context
+  // global rates; the US regional endpoint adds ~10%).
+  'grok-4.3': { input_per_1k: 125, output_per_1k: 250 },
+  'grok-4.7': { input_per_1k: 200, output_per_1k: 600 },
   // Vertex AI Gemini — micro-dollars per 1K. flash-lite $0.10/$0.40 per 1M,
   // flash $0.30/$2.50, argon estimated flagship-class; reasoning tokens count
   // as output. Override via LIFEKEEL_LLM_PRICING_JSON as prices shift.
@@ -135,7 +139,6 @@ export class CostLedger {
   }
 
   async record(record: Omit<LlmUsageRecord, '_id' | 'created_at'>): Promise<void> {
-     
     await (this.col as any).insertOne({
       ...record,
       created_at: new Date(),

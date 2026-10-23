@@ -118,13 +118,17 @@ scorer warm-start can use it.
   `limited_abuse_log` retention recorded conservatively on both, tolerated on
   non-sensitive tasks only); Groq is also approved (2026-10-23 — no default
   inference retention, self-serve ZDR via Console → Data Controls; keep to
-  `limited_abuse_log` in the registry until that toggle is on). Anthropic and
+  `limited_abuse_log` in the registry until that toggle is on); xAI is approved
+  **conditional on ZDR being enabled** — its Sept-2026 DPA makes non-ZDR
+  processing of Personal Data a material breach, so the Console team toggle
+  must be on before any task routes there (`x-zero-data-retention:true`
+  response header confirms). Anthropic and
   openai stay `unreviewed` and are refused in a non-dev deployment. The active provider picks in order:
   explicit provider config, then the operator's audited
   `platform_config.llm_provider_override` (the `/operator/configuration`
   switch — runtime, no redeploy), then model-name match, then
   `LIFEKEEL_LLM_PROVIDER`, then the first configured credential (anthropic →
-  openai → azure → vertex → groq → ollama — newest providers scan last so a
+  openai → azure → vertex → groq → xai → ollama — newest providers scan last so a
   new key can't silently flip a live deployment). The override is global: it also
   wins for `tier:*` calls, and a model that doesn't exist on the picked
   provider fails there rather than rerouting. A runtime pick still passes

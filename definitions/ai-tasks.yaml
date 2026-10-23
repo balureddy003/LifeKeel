@@ -33,7 +33,7 @@ tasks:
     processor_terms_ref: anthropic/openai API terms, Microsoft Products and Services DPA — not used for training
     provider_retention_class: limited_abuse_log
     allowed_models: [tier:fast]
-    allowed_processors: [ollama, anthropic, openai, azure, vertex, groq]
+    allowed_processors: [ollama, anthropic, openai, azure, vertex, groq, xai]
     primary_model: tier:fast
     preferred_execution: hosted_sync
     deadline_ms: 30000
@@ -189,7 +189,7 @@ tasks:
     processor_terms_ref: anthropic/openai API terms, Microsoft Products and Services DPA — not used for training
     provider_retention_class: limited_abuse_log
     allowed_models: [tier:balanced]
-    allowed_processors: [anthropic, openai, azure, vertex, groq]
+    allowed_processors: [anthropic, openai, azure, vertex, groq, xai]
     primary_model: tier:balanced
     preferred_execution: hosted_sync
     deadline_ms: 30000
@@ -226,7 +226,7 @@ tasks:
     processor_terms_ref: anthropic/openai API terms, Microsoft Products and Services DPA — not used for training
     provider_retention_class: limited_abuse_log
     allowed_models: [tier:fast]
-    allowed_processors: [ollama, anthropic, openai, azure, vertex, groq]
+    allowed_processors: [ollama, anthropic, openai, azure, vertex, groq, xai]
     primary_model: tier:fast
     # Device-first: the feature prefers the on-device path
     # (draft.crisis_on_device.v1); each server-side call is an authorized
@@ -283,7 +283,7 @@ tasks:
     processor_terms_ref: anthropic/openai API terms, Microsoft Products and Services DPA — not used for training
     provider_retention_class: limited_abuse_log
     allowed_models: [tier:fast]
-    allowed_processors: [anthropic, openai, azure, vertex, groq]
+    allowed_processors: [anthropic, openai, azure, vertex, groq, xai]
     primary_model: tier:fast
     preferred_execution: hosted_sync
     deadline_ms: 30000
