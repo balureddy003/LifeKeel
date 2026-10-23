@@ -73,6 +73,7 @@ const ConfigSchema = z.object({
     'vertex',
     'ollama',
     'groq',
+    'xai',
     'auto',
   ]),
   OLLAMA_BASE_URL: z.string().optional(),

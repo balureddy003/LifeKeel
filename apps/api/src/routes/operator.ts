@@ -3921,7 +3921,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     maintenance_window: MaintenanceWindowSchema.nullable().optional(),
     /** Runtime LLM provider pick; 'auto'/null clears back to router detection. */
     llm_provider_override: z
-      .enum(['auto', 'anthropic', 'openai', 'azure', 'vertex', 'ollama', 'groq'])
+      .enum(['auto', 'anthropic', 'openai', 'azure', 'vertex', 'ollama', 'groq', 'xai'])
       .nullable()
       .optional(),
     reason: z.string().min(5).max(500),
