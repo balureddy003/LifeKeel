@@ -119,6 +119,9 @@ jobs:
         uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
         with:
           image-ref: ${{ env.IMAGE_REF }}
+          # The action's default (v0.65.0) no longer resolves to a real
+          # release — pin a known-good version explicitly.
+          version: 'v0.75.0'
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: '1'
