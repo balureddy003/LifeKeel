@@ -19,7 +19,10 @@ const TENANT_ID = 'tenant-churn-test'
 
 function signStripePayload(payload: string, secret: string): string {
   const timestamp = Math.floor(Date.now() / 1000)
-  const signature = crypto.createHmac('sha256', secret).update(`${timestamp}.${payload}`).digest('hex')
+  const signature = crypto
+    .createHmac('sha256', secret)
+    .update(`${timestamp}.${payload}`)
+    .digest('hex')
   return `t=${timestamp},v1=${signature}`
 }
 
@@ -28,7 +31,10 @@ async function postEvent(app: ReturnType<typeof Fastify>, event: Record<string, 
   return app.inject({
     method: 'POST',
     url: '/billing/webhook',
-    headers: { 'content-type': 'application/json', 'stripe-signature': signStripePayload(payload, WEBHOOK_SECRET) },
+    headers: {
+      'content-type': 'application/json',
+      'stripe-signature': signStripePayload(payload, WEBHOOK_SECRET),
+    },
     payload,
   })
 }
@@ -83,7 +89,10 @@ describe('churn-reason capture', () => {
       type: 'customer.subscription.updated',
       data: {
         object: {
-          id: 'sub_churn', status: 'active', cancel_at_period_end: true, metadata: {},
+          id: 'sub_churn',
+          status: 'active',
+          cancel_at_period_end: true,
+          metadata: {},
           cancellation_details: { reason: 'too_expensive', feedback: 'Not using it enough' },
         },
       },
@@ -95,13 +104,78 @@ describe('churn-reason capture', () => {
     expect(tenant?.['billing']?.['cancel_at_period_end']).toBe(true)
   })
 
+  it('a real portal cancellation (cancel_at set, boolean false) is recorded as will-not-renew, keyed by the survey answer', async () => {
+    // Shape captured from Stripe's current API: cancel_at_period_end stays
+    // false, cancel_at is the end of the period, reason is generic and the
+    // survey answer is in feedback.
+    const res = await postEvent(app, {
+      id: 'evt_portal_cancel',
+      type: 'customer.subscription.updated',
+      data: {
+        object: {
+          id: 'sub_churn',
+          status: 'active',
+          cancel_at_period_end: false,
+          cancel_at: 1795459081,
+          metadata: {},
+          cancellation_details: {
+            reason: 'cancellation_requested',
+            feedback: 'too_expensive',
+            comment: 'Price rise',
+          },
+        },
+      },
+    })
+    expect(res.statusCode).toBe(200)
+    const tenant = await db.collection('tenants').findOne({ tenant_id: TENANT_ID })
+    expect(tenant?.['billing']?.['cancel_at_period_end']).toBe(true)
+    expect(tenant?.['billing']?.['churn_reason']).toBe('too_expensive')
+    expect(tenant?.['billing']?.['churn_feedback']).toBe('Price rise')
+  })
+
+  it('resuming a cancelled subscription clears the will-not-renew flag', async () => {
+    await postEvent(app, {
+      id: 'evt_cancel_then',
+      type: 'customer.subscription.updated',
+      data: {
+        object: {
+          id: 'sub_churn',
+          status: 'active',
+          cancel_at_period_end: false,
+          cancel_at: 1795459081,
+          metadata: {},
+          cancellation_details: { reason: 'cancellation_requested', feedback: 'unused' },
+        },
+      },
+    })
+    const resumed = await postEvent(app, {
+      id: 'evt_resumed',
+      type: 'customer.subscription.updated',
+      data: {
+        object: {
+          id: 'sub_churn',
+          status: 'active',
+          cancel_at_period_end: false,
+          cancel_at: null,
+          metadata: {},
+          cancellation_details: { reason: null, feedback: null, comment: null },
+        },
+      },
+    })
+    expect(resumed.statusCode).toBe(200)
+    const tenant = await db.collection('tenants').findOne({ tenant_id: TENANT_ID })
+    expect(tenant?.['billing']?.['cancel_at_period_end']).toBe(false)
+  })
+
   it('captures the reason on subscription.deleted even if .updated never arrived', async () => {
     const res = await postEvent(app, {
       id: 'evt_deleted_reason',
       type: 'customer.subscription.deleted',
       data: {
         object: {
-          id: 'sub_churn', status: 'canceled', metadata: {},
+          id: 'sub_churn',
+          status: 'canceled',
+          metadata: {},
           cancellation_details: { reason: 'missing_features' },
         },
       },
@@ -114,15 +188,29 @@ describe('churn-reason capture', () => {
   })
 
   it('aggregates churn reasons on /operator/billing', async () => {
-    await db.collection('platform_operators').insertOne({ user_id: 'operator-1', status: 'active', roles: ['super_admin'] })
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['super_admin'] })
     await db.collection('users').insertOne({
-      id: 'operator-1', tenant_id: 'op-t', email: 'op@x.com', roles: ['admin'], status: 'active', created_at: new Date(),
+      id: 'operator-1',
+      tenant_id: 'op-t',
+      email: 'op@x.com',
+      roles: ['admin'],
+      status: 'active',
+      created_at: new Date(),
     })
 
     await postEvent(app, {
       id: 'evt_deleted_reason2',
       type: 'customer.subscription.deleted',
-      data: { object: { id: 'sub_churn', status: 'canceled', metadata: {}, cancellation_details: { reason: 'too_expensive' } } },
+      data: {
+        object: {
+          id: 'sub_churn',
+          status: 'canceled',
+          metadata: {},
+          cancellation_details: { reason: 'too_expensive' },
+        },
+      },
     })
 
     const opApp = Fastify()

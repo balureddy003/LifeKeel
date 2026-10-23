@@ -3,10 +3,10 @@
  *
  * Separate from delivery/channels.ts's EmailChannel, which is tightly
  * coupled to insight-notification copy (buildEmailHtml(InsightNotification)).
- * This is generic account mail, sent the same way (SendGrid, same env vars)
- * but with its own templates.
+ * This is generic account mail, sent through whichever provider
+ * email/transport.ts selects (SendGrid or Resend) but with its own templates.
  *
- * Gracefully no-ops when SENDGRID_API_KEY isn't configured — matching the
+ * Gracefully no-ops when no email provider is configured — matching the
  * OCR extraction pattern (apps/api/src/ocr/extract.ts): the request still
  * succeeds, a warning is logged, and nothing crashes for users running
  * without an email provider configured.
@@ -14,12 +14,13 @@
 
 import sgMail from '@sendgrid/mail'
 import { createLogger } from '@lifekeel/platform'
-import { escapeHtml, p, renderEmail } from './email/layout.js'
+import { emailConfigured, emailFromAddress } from './email/transport.js'
+import { EMAIL_COLORS, EMAIL_FONTS, escapeHtml, p, renderEmail } from './email/layout.js'
 
 const log = createLogger({ service: 'auth-email', version: '0.0.0' })
 
 function getFromEmail(): string {
-  return process.env['SENDGRID_FROM_EMAIL'] ?? 'accounts@lifekeel.co.uk'
+  return emailFromAddress() ?? 'accounts@lifekeel.co.uk'
 }
 
 // Sent on signup, email change, and resend-verification. The token-bearing
@@ -30,13 +31,13 @@ export async function sendEmailVerificationEmail(
   name: string,
   verifyUrl: string,
 ): Promise<void> {
-  const apiKey = process.env['SENDGRID_API_KEY']
-  if (!apiKey) {
-    log.warn({ to }, 'No SENDGRID_API_KEY — skipping email verification email')
+  if (!emailConfigured()) {
+    log.warn({ to }, 'No email provider configured — skipping email verification email')
     return
   }
 
-  sgMail.setApiKey(apiKey)
+  const apiKey = process.env['SENDGRID_API_KEY']
+  if (apiKey) sgMail.setApiKey(apiKey)
   const firstName = name.split(' ')[0] || 'there'
 
   try {
@@ -65,18 +66,124 @@ export async function sendEmailVerificationEmail(
   }
 }
 
+// ── Email one-time code (CLOUDFLARE_INTEGRATION.md §6.8) ────────────────────
+
+export type OtpDelivery = 'sent' | 'failed' | 'unknown'
+export type OtpPurpose = 'signup' | 'login'
+
+const OTP_SEND_TIMEOUT_MS = 5000
+
+/** The code, large and monospaced, built from the same table primitives as button(). */
+function codeBlock(spaced: string): string {
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:8px 0 16px;">
+  <tr><td align="center" bgcolor="${EMAIL_COLORS.page}" style="background:${EMAIL_COLORS.page};border:1px solid ${EMAIL_COLORS.line};border-radius:12px;padding:18px 12px;">
+    <span style="font-family:${EMAIL_FONTS.mono};font-size:32px;font-weight:600;letter-spacing:6px;color:${EMAIL_COLORS.ink};">${escapeHtml(spaced)}</span>
+  </td></tr>
+</table>`
+}
+
+export function otpEmailContent(name: string, code: string, purpose: OtpPurpose) {
+  const firstName = name.split(' ')[0] || 'there'
+  const spaced = `${code.slice(0, 3)} ${code.slice(3)}`
+  const action = purpose === 'signup' ? 'confirm your email address' : 'sign in'
+  const subject =
+    purpose === 'signup' ? `Confirm your email: ${spaced}` : `Your LifeKeel code: ${spaced}`
+  const text = [
+    `Hi ${firstName},`,
+    '',
+    `Your LifeKeel ${purpose === 'signup' ? 'confirmation' : 'sign-in'} code is:`,
+    '',
+    `    ${spaced}`,
+    '',
+    'It expires in 10 minutes. Enter it on the LifeKeel page you just used.',
+    '',
+    'LifeKeel will never ask you for this code by phone, chat or email.',
+    `If you didn't try to ${purpose === 'signup' ? 'create an account' : 'sign in'}, ignore this message. Your account is safe, and no one can sign in without this code. If you keep getting these, change your password.`,
+  ].join('\n')
+  const html = renderEmail({
+    preheader: `Your code is ${spaced}. It expires in 10 minutes.`,
+    eyebrow: purpose === 'signup' ? 'Confirm your email' : 'Sign in',
+    title: 'Your one-time code',
+    bodyHtml:
+      p(`Hi ${escapeHtml(firstName)},`) +
+      p(`Use this code to ${action}:`) +
+      codeBlock(spaced) +
+      p('This code expires in <strong>10 minutes</strong> and works once.'),
+    note: "LifeKeel will never ask you for this code by phone, chat or email. If you didn't request it, you can ignore this message. No one can sign in without it.",
+    footer: { reason: 'You got this because this address was used on LifeKeel.' },
+  })
+  return { subject, text, html }
+}
+
+/**
+ * Sends the code and reports an outcome instead of throwing (§6.8):
+ * `sent` = provider accepted; `failed` = definite rejection, safe to resend at
+ * once; `unknown` = timed out or the connection dropped after the request
+ * left, so the code may still arrive. The code is never logged outside dev.
+ */
+export async function sendOtpEmail(
+  to: string,
+  name: string,
+  code: string,
+  purpose: OtpPurpose,
+): Promise<OtpDelivery> {
+  if (!emailConfigured()) {
+    const isDev = !process.env['NODE_ENV'] || ['development', 'test'].includes(process.env['NODE_ENV'])
+    if (isDev) {
+      log.warn({ to, purpose, code }, 'No email provider configured — dev only: OTP code logged instead of sent')
+      return 'sent'
+    }
+    log.error({ to, purpose }, 'No email provider configured — OTP email not sent')
+    return 'failed'
+  }
+  const apiKey = process.env['SENDGRID_API_KEY']
+  if (apiKey) sgMail.setApiKey(apiKey)
+  const { subject, text, html } = otpEmailContent(name, code, purpose)
+  const send = sgMail.send({
+    to,
+    from: { email: getFromEmail(), name: 'LifeKeel' },
+    subject,
+    text,
+    html,
+    trackingSettings: { clickTracking: { enable: false }, openTracking: { enable: false } },
+  })
+  let timer: NodeJS.Timeout | undefined
+  const timeout = new Promise<'timeout'>((resolve) => {
+    timer = setTimeout(() => resolve('timeout'), OTP_SEND_TIMEOUT_MS)
+  })
+  try {
+    const outcome = await Promise.race([send.then(() => 'ok' as const), timeout])
+    if (outcome === 'timeout') {
+      send.catch(() => {})
+      log.warn({ to, purpose }, 'OTP email send timed out — delivery unknown')
+      return 'unknown'
+    }
+    log.info({ to, purpose }, 'OTP email sent')
+    return 'sent'
+  } catch (err) {
+    // SendGrid errors with an HTTP status are definite rejections; anything
+    // else (socket reset, DNS) may have left after the request was written.
+    const status = (err as { code?: unknown }).code
+    const definite = typeof status === 'number' && status >= 400
+    log.error({ to, purpose, status }, 'OTP email send failed')
+    return definite ? 'failed' : 'unknown'
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export async function sendPasswordResetEmail(
   to: string,
   name: string,
   resetUrl: string,
 ): Promise<void> {
-  const apiKey = process.env['SENDGRID_API_KEY']
-  if (!apiKey) {
-    log.warn({ to }, 'No SENDGRID_API_KEY — skipping password reset email')
+  if (!emailConfigured()) {
+    log.warn({ to }, 'No email provider configured — skipping password reset email')
     return
   }
 
-  sgMail.setApiKey(apiKey)
+  const apiKey = process.env['SENDGRID_API_KEY']
+  if (apiKey) sgMail.setApiKey(apiKey)
   const firstName = name.split(' ')[0] || 'there'
 
   try {
@@ -114,13 +221,13 @@ export async function sendFamilyInviteEmail(
   familyName: string,
   inviteUrl: string,
 ): Promise<void> {
-  const apiKey = process.env['SENDGRID_API_KEY']
-  if (!apiKey) {
-    log.warn({ to }, 'No SENDGRID_API_KEY — skipping family invite email')
+  if (!emailConfigured()) {
+    log.warn({ to }, 'No email provider configured — skipping family invite email')
     return
   }
 
-  sgMail.setApiKey(apiKey)
+  const apiKey = process.env['SENDGRID_API_KEY']
+  if (apiKey) sgMail.setApiKey(apiKey)
   const firstName = name.split(' ')[0] || 'there'
 
   try {
@@ -161,12 +268,12 @@ export async function sendContinuityCheckInEmail(
   daysInactive: number,
   appUrl: string,
 ): Promise<void> {
-  const apiKey = process.env['SENDGRID_API_KEY']
-  if (!apiKey) {
-    log.warn({ to }, 'No SENDGRID_API_KEY — skipping continuity check-in email')
+  if (!emailConfigured()) {
+    log.warn({ to }, 'No email provider configured — skipping continuity check-in email')
     return
   }
-  sgMail.setApiKey(apiKey)
+  const apiKey = process.env['SENDGRID_API_KEY']
+  if (apiKey) sgMail.setApiKey(apiKey)
   const firstName = name.split(' ')[0] || 'there'
   try {
     await sgMail.send({
@@ -205,12 +312,12 @@ export async function sendContinuityAlertEmail(
   daysInactive: number,
   appUrl: string,
 ): Promise<void> {
-  const apiKey = process.env['SENDGRID_API_KEY']
-  if (!apiKey) {
-    log.warn({ to }, 'No SENDGRID_API_KEY — skipping continuity alert email')
+  if (!emailConfigured()) {
+    log.warn({ to }, 'No email provider configured — skipping continuity alert email')
     return
   }
-  sgMail.setApiKey(apiKey)
+  const apiKey = process.env['SENDGRID_API_KEY']
+  if (apiKey) sgMail.setApiKey(apiKey)
   const firstName = memberName.split(' ')[0] || 'there'
   try {
     await sgMail.send({
@@ -295,12 +402,12 @@ export async function sendHeartbeatEmail(
    *  List-Unsubscribe + List-Unsubscribe-Post (RFC 8058) and in the footer. */
   unsubscribeUrl?: string,
 ): Promise<HeartbeatDeliveryResult> {
-  const apiKey = process.env['SENDGRID_API_KEY']
-  if (!apiKey) {
-    log.warn({ to }, 'No SENDGRID_API_KEY — skipping heartbeat email')
+  if (!emailConfigured()) {
+    log.warn({ to }, 'No email provider configured — skipping heartbeat email')
     return { ok: false, reason: 'no_api_key' }
   }
-  sgMail.setApiKey(apiKey)
+  const apiKey = process.env['SENDGRID_API_KEY']
+  if (apiKey) sgMail.setApiKey(apiKey)
   const firstName = name.split(' ')[0] || 'there'
   try {
     await sgMail.send(buildHeartbeatMessage(to, firstName, rendered, unsubscribeUrl))

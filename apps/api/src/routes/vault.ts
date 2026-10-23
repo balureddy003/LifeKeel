@@ -13,14 +13,18 @@
  * Every route here requires an authenticated adult family member's own
  * explicit request — nothing here ever runs on its own.
  *
- * Storage: same GridFS bucket + 'documents' collection general uploads
- * use (documents.ts) — distinguished by category: 'estate_vault', which
+ * Storage: the 'documents' collection general uploads use (documents.ts),
+ * distinguished by category: 'estate_vault', which
  * documents.ts's own routes explicitly exclude so a vault file is only
  * ever reachable through the routes below. File bytes are encrypted with
  * encryptBuffer/decryptBuffer (packages/platform/src/crypto.ts, the same
  * AES-256-GCM key material already used for social_connections /
- * connector_credentials) before they ever reach GridFS — unlike general
- * documents, which are stored as plain bytes.
+ * connector_credentials) before they ever reach the byte store — GridFS,
+ * or the private `lifekeel-vault` R2 bucket with VAULT_STORAGE=r2
+ * (CLOUDFLARE_INTEGRATION.md §7.10). The vault never uses presigned upload
+ * or download: the API validates, envelope-encrypts and stores ciphertext,
+ * and decrypts on the way out. R2's own at-rest encryption is an extra
+ * layer, not a replacement. Bytes go through documents/storage.ts.
  *
  * PRD-134: `?sealed=1` uploads carry a client-side-encrypted envelope
  * (AES-256-GCM under a family passphrase — see apps/web/src/lib/
@@ -36,17 +40,19 @@
 
 import type { FastifyInstance } from 'fastify'
 import type { Engine, Insight } from '@lifekeel/engine'
-import { GridFSBucket, type Db, type ObjectId } from 'mongodb'
+import type { Db } from 'mongodb'
 import { randomUUID } from 'node:crypto'
 import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { encryptBufferForTenant, decryptBufferEnveloped } from '../crypto/envelope.js'
 import { isFamilyAdult } from '../family/family-permissions.js'
+import { MAX_FILE_SIZE, ESTATE_VAULT_CATEGORY } from './documents.js'
+import { VAULT_ALLOWED_MIME_TYPES as ALLOWED_MIME_TYPES, sanitizeFilename } from '../documents/formats.js'
 import {
-  ALLOWED_MIME_TYPES,
-  MAX_FILE_SIZE,
-  ESTATE_VAULT_CATEGORY,
-  checkUploadBudget,
-} from './documents.js'
+  deleteVaultObject,
+  readDocumentBytes,
+  writeVaultCiphertext,
+} from '../documents/storage.js'
+import { commitReservation, releaseReservation, reserveUpload } from '../documents/quota.js'
 import { signatureMatchesMime } from '../extraction/file-signature.js'
 import { evaluateEstate } from '../legacy/evaluate-estate.js'
 
@@ -80,8 +86,6 @@ export function registerVaultRoutes(
   // Reuses documents.ts's own bucket name — see this file's module doc for
   // why a second bucket isn't warranted (account.ts's tenant-deletion sweep
   // and email-scan.ts already address this same bucket by name elsewhere).
-  const bucket = new GridFSBucket(db, { bucketName: 'documents' })
-
   // Re-evaluate estate readiness after any vault mutation. Runs inside a
   // vault-only path so the mutation itself never fails on a detector
   // hiccup — the insight is best-effort, the document write is not.
@@ -141,8 +145,6 @@ export function registerVaultRoutes(
       if (fileBuffer.length > MAX_FILE_SIZE) {
         return reply.status(413).send({ error: 'File too large (max 50 MB)' })
       }
-      const budget = await checkUploadBudget(db, tenant_id, fileBuffer.length)
-      if (budget) return reply.status(budget.status).send({ error: budget.error })
       // Unsealed uploads get the same magic-byte check as /documents —
       // the declared type is client-supplied. Sealed blobs are client-
       // encrypted by design, so there are no readable bytes to sniff.
@@ -154,7 +156,7 @@ export function registerVaultRoutes(
       }
 
       const documentId = randomUUID()
-      const filename = data.filename || `estate-document-${documentId}`
+      const filename = sanitizeFilename(data.filename || `estate-document-${documentId}`)
       const mimeType = sealed ? declaredMime! : data.mimetype
       const encrypted = await encryptBufferForTenant(db, tenant_id, fileBuffer)
 
@@ -163,24 +165,37 @@ export function registerVaultRoutes(
         'Uploading estate vault document',
       )
 
+      // Vault files count toward the same tenant quota (section 7.12).
+      const refusal = await reserveUpload(db, tenant_id, encrypted.length)
+      if (refusal) return reply.status(refusal.status).send({ error: refusal.message })
+
       try {
-        const uploadStream = bucket.openUploadStream(filename, {
-          metadata: {
-            tenant_id,
-            document_id: documentId,
-            mime_type: mimeType,
-            uploaded_at: new Date(),
-            category: ESTATE_VAULT_CATEGORY,
-            ...(sealed ? { sealed: true } : {}),
-            ...(docType ? { doc_type: docType } : {}),
-          },
-        })
-        const fileId = uploadStream.id as ObjectId
-        await new Promise<void>((resolve, reject) => {
-          uploadStream.once('finish', () => resolve())
-          uploadStream.once('error', reject)
-          uploadStream.end(encrypted)
-        })
+        let stored: Awaited<ReturnType<typeof writeVaultCiphertext>>
+        try {
+          stored = await writeVaultCiphertext(
+            db,
+            {
+              tenantId: tenant_id,
+              documentId,
+              filename,
+              metadata: {
+                tenant_id,
+                document_id: documentId,
+                mime_type: mimeType,
+                uploaded_at: new Date(),
+                category: ESTATE_VAULT_CATEGORY,
+                ...(sealed ? { sealed: true } : {}),
+                ...(docType ? { doc_type: docType } : {}),
+              },
+            },
+            encrypted,
+          )
+        } catch (err) {
+          await db
+            .collection('tenant_quota')
+            .updateOne({ tenant_id }, { $inc: { bytes_reserved: -encrypted.length, inflight: -1 } })
+          throw err
+        }
 
         const documents = getTenantCollection<VaultDocumentRecord>(db, 'documents', tenant_id)
         try {
@@ -193,22 +208,21 @@ export function registerVaultRoutes(
             status: 'stored',
             uploaded_at: new Date(),
             uploaded_by: req.authContext.user_id,
-            file_id: fileId,
+            ...stored,
             encrypted: true,
+            reservation: { size: encrypted.length, state: 'held' },
             ...(sealed ? { sealed: true } : {}),
             ...(docType ? { doc_type: docType } : {}),
           })
         } catch (metaErr) {
-          await bucket
-            .delete(fileId)
-            .catch((cleanupErr) =>
-              log.error(
-                { cleanupErr, fileId, documentId },
-                'Failed to clean up orphaned GridFS blob after metadata insert failure',
-              ),
-            )
+          if (!(await deleteVaultObject(db, stored).catch(() => false)))
+            log.error({ documentId }, 'Failed to clean up orphaned vault object after metadata insert failure')
+          await db
+            .collection('tenant_quota')
+            .updateOne({ tenant_id }, { $inc: { bytes_reserved: -encrypted.length, inflight: -1 } })
           throw metaErr
         }
+        await commitReservation(db, tenant_id, documentId, encrypted.length)
 
         await reevaluateEstate(tenant_id)
 
@@ -255,12 +269,10 @@ export function registerVaultRoutes(
     const { tenant_id } = req.authContext
     const documents = getTenantCollection<VaultDocumentRecord>(db, 'documents', tenant_id)
     const doc = await documents.findOne({ id: req.params.id, category: ESTATE_VAULT_CATEGORY })
-    if (!doc || !doc['file_id']) return reply.status(404).send({ error: 'Document not found' })
-
-    const chunks: Buffer[] = []
-    for await (const chunk of bucket.openDownloadStream(doc['file_id'] as ObjectId))
-      chunks.push(chunk as Buffer)
-    const plaintext = await decryptBufferEnveloped(db, Buffer.concat(chunks))
+    if (!doc) return reply.status(404).send({ error: 'Document not found' })
+    const ciphertext = await readDocumentBytes(db, doc)
+    if (!ciphertext) return reply.status(404).send({ error: 'Document not found' })
+    const plaintext = await decryptBufferEnveloped(db, ciphertext)
     reply.header('Content-Type', String(doc['mime_type'] ?? 'application/octet-stream'))
     reply.header(
       'Content-Disposition',
@@ -277,11 +289,8 @@ export function registerVaultRoutes(
     const doc = await documents.findOne({ id: req.params.id, category: ESTATE_VAULT_CATEGORY })
     if (!doc) return reply.status(404).send({ error: 'Document not found' })
 
-    if (doc['file_id']) {
-      await bucket.delete(doc['file_id'] as ObjectId).catch(() => {
-        // File may already be deleted — not critical.
-      })
-    }
+    await deleteVaultObject(db, doc).catch(() => false) // may already be gone
+    await releaseReservation(db, tenant_id, req.params.id)
     await documents.deleteOne({ id: req.params.id })
     await reevaluateEstate(tenant_id)
     return { ok: true }

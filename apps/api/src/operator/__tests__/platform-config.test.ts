@@ -39,6 +39,7 @@ describe('getPlatformConfig', () => {
       maintenance_window: null,
       signups_enabled: true,
       marketing_paused: false,
+      autopilot_paused: false,
       ai_disabled_tasks: [],
       llm_provider_override: null,
     })

@@ -6,8 +6,9 @@
  * GET    /documents/:id       — single document with extracted data
  * DELETE /documents/:id       — delete a document
  *
- * Files are stored in MongoDB (GridFS bucket 'documents') with metadata
- * in the 'documents' collection. Upload and storage are free on every
+ * Bytes live in MongoDB GridFS (legacy) or Cloudflare R2 (quarantine →
+ * scan → clean, CLOUDFLARE_INTEGRATION.md §7), always read through
+ * documents/storage.ts, with metadata in the 'documents' collection. Upload and storage are free on every
  * plan; AI field extraction (GPT-4o vision, via processDocument) is
  * gated behind the 'document_ai_extraction' entitlement — free-plan
  * documents are stored with status 'stored' and never billed for OCR.
@@ -18,13 +19,33 @@
 import { getAuditLogger } from '../audit/audit-log.js'
 import { closeReceipt, openReceipt, publicReceipt, saveReceipt } from '../deletion/receipt.js'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import { GridFSBucket, type Db, type ObjectId } from 'mongodb'
+import type { Db } from 'mongodb'
 import { randomUUID } from 'node:crypto'
 import type { Engine, Insight } from '@lifekeel/engine'
 import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { processDocument } from '../ocr/extract.js'
 import { mayParse, scanUpload } from '../extraction/scan.js'
 import { signatureMatchesMime } from '../extraction/file-signature.js'
+import {
+  ALLOWED_UPLOAD_MIME_TYPES,
+  VAULT_ALLOWED_MIME_TYPES,
+  checkDeclaredType,
+  sanitizeFilename,
+  signatureMatches,
+} from '../documents/formats.js'
+import {
+  deleteGridfs,
+  documentStorageMode,
+  gridfsExists,
+  locate,
+  presignDocumentGet,
+  readDocumentBytes,
+  writeGridfs,
+} from '../documents/storage.js'
+import { commitReservation, releaseReservation, reserveUpload } from '../documents/quota.js'
+import { createAwaitingUpload, markScanQueued, READABLE_STATUSES, wakeScanWorker } from '../documents/pipeline.js'
+import { beginFencedDelete, isPipelineRow } from '../documents/deletion.js'
+import { objectStore, attachmentDisposition } from '../documents/r2.js'
 import { CATEGORIES } from '../extraction/schema.js'
 import {
   applyReview,
@@ -95,17 +116,10 @@ type DocumentRecord = Record<string, unknown> & {
   processing_completed_at?: Date
 }
 
-// Exported for vault.ts (Digital Estate Vault) — same allowed types/size
-// limit apply to an uploaded will/PoA as to any other document.
-export const ALLOWED_MIME_TYPES = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/gif',
-  'image/heic',
-  'image/heif',
-  'application/pdf',
-])
+// The multipart route's list when bytes go to GridFS: no DOCX there, since
+// only the R2 pipeline runs the zip structure checks DOCX needs. Kept equal
+// to the vault's own list (documents/formats.ts is the source of truth).
+export const ALLOWED_MIME_TYPES: ReadonlySet<string> = VAULT_ALLOWED_MIME_TYPES
 
 export const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 MB — matches multipart limit in server.ts
 
@@ -116,38 +130,12 @@ export const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 MB — matches multipart lim
 // Exported so vault.ts uses the exact same literal, not a copy that could drift.
 export const ESTATE_VAULT_CATEGORY = 'estate_vault'
 
-// Aggregate intake limits (R25), on top of the 50 MB per-file cap.
-// Overridable per deployment; the defaults suit one household.
-const MAX_TENANT_STORAGE_BYTES = Number(process.env['MAX_TENANT_STORAGE_BYTES'] ?? 2 * 1024 ** 3)
-const MAX_UPLOADS_PER_DAY = Number(process.env['MAX_TENANT_UPLOADS_PER_DAY'] ?? 200)
-const MAX_CONCURRENT_UPLOADS_PER_TENANT = 3
-const uploadsInFlight = new Map<string, number>()
+// Aggregate intake limits (R25), on top of the 50 MB per-file cap: shared
+// atomic reservations across instances (documents/quota.ts), replacing the
+// per-instance Map and the GridFS-only usage sum.
 
-/** Exported for vault.ts. Returns a refusal, or null when the upload fits. */
-export async function checkUploadBudget(
-  db: Db,
-  tenantId: string,
-  incomingBytes: number,
-): Promise<{ status: 413 | 429; error: string } | null> {
-  const files = db.collection('documents.files')
-  const [usage] = await files
-    .aggregate<{ bytes: number }>([
-      { $match: { 'metadata.tenant_id': tenantId } },
-      { $group: { _id: null, bytes: { $sum: '$length' } } },
-    ])
-    .toArray()
-  if ((usage?.bytes ?? 0) + incomingBytes > MAX_TENANT_STORAGE_BYTES) {
-    return { status: 413, error: 'Your household has reached its storage limit. Remove some documents first.' }
-  }
-  const today = await files.countDocuments({
-    'metadata.tenant_id': tenantId,
-    uploadDate: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-  })
-  if (today >= MAX_UPLOADS_PER_DAY) {
-    return { status: 429, error: 'Daily upload limit reached. Try again tomorrow.' }
-  }
-  return null
-}
+/** Statuses the general list and detail routes never show. */
+const HIDDEN_STATUSES = ['awaiting_upload', 'deleting']
 
 export function registerDocumentRoutes(
   fastify: FastifyInstance,
@@ -155,8 +143,6 @@ export function registerDocumentRoutes(
   engine?: Engine,
   onInsightsGenerated?: (insights: Insight[], tenantId: string) => Promise<void>,
 ): void {
-  const bucket = new GridFSBucket(db, { bucketName: 'documents' })
-
   // Applying extracted data is an explicit, user-reviewed profile mutation —
   // the document-detail card makes the user confirm every suggestion before
   // it lands. The remediation review flagged that the mutation used to stop
@@ -253,26 +239,15 @@ export function registerDocumentRoutes(
     return { ok: true, fields: usable, candidates }
   }
 
-  // Per-tenant concurrency on this instance (R25); the storage and daily
-  // budgets below are shared across instances because they're read from
-  // the database.
+  // Legacy multipart upload (CLOUDFLARE_INTEGRATION.md §7.4): kept for one
+  // release for older clients. For tenants on R2 it writes to quarantine and
+  // follows the same scan job as the direct upload — one pipeline, not two.
+  // Concurrency, storage and daily limits are the shared reservations.
   fastify.post(
     '/documents/upload',
     { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
-    async (req, reply) => {
-    const { tenant_id: uploadTenant } = req.authContext
-    if ((uploadsInFlight.get(uploadTenant) ?? 0) >= MAX_CONCURRENT_UPLOADS_PER_TENANT) {
-      return reply.status(429).send({ error: 'Too many uploads at once. Wait for one to finish.' })
-    }
-    uploadsInFlight.set(uploadTenant, (uploadsInFlight.get(uploadTenant) ?? 0) + 1)
-    try {
-      return await handleUpload(req, reply)
-    } finally {
-      const left = (uploadsInFlight.get(uploadTenant) ?? 1) - 1
-      if (left <= 0) uploadsInFlight.delete(uploadTenant)
-      else uploadsInFlight.set(uploadTenant, left)
-    }
-  })
+    async (req, reply) => handleUpload(req, reply),
+  )
 
   async function handleUpload(req: FastifyRequest, reply: FastifyReply) {
     const { tenant_id } = req.authContext
@@ -280,6 +255,8 @@ export function registerDocumentRoutes(
     if (!data) {
       return reply.status(400).send({ error: 'No file uploaded' })
     }
+    const r2 = documentStorageMode(tenant_id) === 'r2'
+    if (r2) return handleQuarantineUpload(req, reply, data)
 
     // Validate MIME type
     if (!ALLOWED_MIME_TYPES.has(data.mimetype)) {
@@ -313,9 +290,6 @@ export function registerDocumentRoutes(
       return reply.status(413).send({ error: 'File too large (max 50 MB)' })
     }
 
-    const budget = await checkUploadBudget(db, tenant_id, fileBuffer.length)
-    if (budget) return reply.status(budget.status).send({ error: budget.error })
-
     // The declared MIME type is client-supplied — check the bytes match
     // it before storing (UAT D3: an executable renamed .pdf sailed
     // through the allowlist).
@@ -327,7 +301,7 @@ export function registerDocumentRoutes(
     }
 
     const documentId = randomUUID()
-    const filename = data.filename || `document-${documentId}`
+    const filename = sanitizeFilename(data.filename || `document-${documentId}`)
     const mimeType = data.mimetype
 
     // Never log the filename: it can carry names ("Dad's will.pdf").
@@ -348,26 +322,25 @@ export function registerDocumentRoutes(
         .send({ error: 'This file was blocked by a security scan and was not stored.' })
     }
 
+    const refusal = await reserveUpload(db, tenant_id, fileBuffer.length)
+    if (refusal) return reply.status(refusal.status).send({ error: refusal.message })
+
     try {
-      // Store file in GridFS. KEEL-019: previously `.end(fileBuffer)` wasn't
-      // awaited at all — the metadata insert below could race ahead of the
-      // GridFS write actually completing. Waiting on 'finish' (the
-      // documented way to know a GridFS write has fully landed) closes
-      // that race.
-      const uploadStream = bucket.openUploadStream(filename, {
-        metadata: {
-          tenant_id,
-          document_id: documentId,
-          mime_type: mimeType,
-          uploaded_at: new Date(),
-        },
-      })
-      const fileId = uploadStream.id as ObjectId
-      await new Promise<void>((resolve, reject) => {
-        uploadStream.once('finish', () => resolve())
-        uploadStream.once('error', reject)
-        uploadStream.end(fileBuffer)
-      })
+      // Store file in GridFS (KEEL-019: the seam waits for 'finish').
+      let fileId: unknown
+      try {
+        fileId = await writeGridfs(
+          db,
+          filename,
+          { tenant_id, document_id: documentId, mime_type: mimeType, uploaded_at: new Date() },
+          fileBuffer,
+        )
+      } catch (err) {
+        await db
+          .collection('tenant_quota')
+          .updateOne({ tenant_id }, { $inc: { bytes_reserved: -fileBuffer.length, inflight: -1 } })
+        throw err
+      }
 
       // Create document metadata record
       const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
@@ -383,6 +356,7 @@ export function registerDocumentRoutes(
           uploaded_at: new Date(),
           file_id: fileId,
           scan: { ...scan, at: new Date() },
+          reservation: { size: fileBuffer.length, state: 'held' },
         })
       } catch (metaErr) {
         // KEEL-019: the GridFS write above already succeeded — without this,
@@ -390,16 +364,14 @@ export function registerDocumentRoutes(
         // `documents` row exists to ever look it up by again). Best-effort:
         // if the cleanup delete itself fails, log and still surface the
         // original error rather than masking it.
-        await bucket
-          .delete(fileId)
-          .catch((cleanupErr) =>
-            log.error(
-              { cleanupErr, fileId, documentId },
-              'Failed to clean up orphaned GridFS blob after metadata insert failure',
-            ),
-          )
+        if (!(await deleteGridfs(db, fileId)))
+          log.error({ fileId, documentId }, 'Failed to clean up orphaned GridFS blob after metadata insert failure')
+        await db
+          .collection('tenant_quota')
+          .updateOne({ tenant_id }, { $inc: { bytes_reserved: -fileBuffer.length, inflight: -1 } })
         throw metaErr
       }
+      await commitReservation(db, tenant_id, documentId, fileBuffer.length)
       emitDocumentEvent(db, tenant_id, documentId, filename, 'uploaded')
 
       // Upload and storage are free on every plan — AI field extraction
@@ -463,6 +435,59 @@ export function registerDocumentRoutes(
     }
   }
 
+  /** R2 tenants: the multipart bytes go to quarantine and join the scan pipeline. */
+  async function handleQuarantineUpload(
+    req: FastifyRequest,
+    reply: FastifyReply,
+    data: NonNullable<Awaited<ReturnType<FastifyRequest['file']>>>,
+  ) {
+    const { tenant_id, user_id } = req.authContext
+    const filename = sanitizeFilename(data.filename || 'document')
+    const type = checkDeclaredType(filename, data.mimetype)
+    if (!type.ok || !ALLOWED_UPLOAD_MIME_TYPES.has(data.mimetype))
+      return reply.status(422).send({
+        error: 'Unsupported file type. Allowed: PDF, Word (.docx), and images (JPEG, PNG, WebP, GIF, HEIC).',
+      })
+    const bytes = await data.toBuffer()
+    if (bytes.length === 0 || bytes.length > MAX_FILE_SIZE)
+      return reply.status(413).send({ error: 'File too large (max 50 MB)' })
+    if (!signatureMatches(bytes, type.mime))
+      return reply.status(422).send({ error: "The file's contents don't match its type." })
+    const refusal = await reserveUpload(db, tenant_id, bytes.length)
+    if (refusal) return reply.status(refusal.status).send({ error: refusal.message })
+    const row = await createAwaitingUpload(db, {
+      tenantId: tenant_id,
+      userId: user_id ?? 'unknown',
+      filename,
+      mime: type.mime,
+      kind: type.kind,
+      size: bytes.length,
+      category: 'other',
+      source: 'legacy_upload',
+    })
+    try {
+      await objectStore('presign').put('quarantine', row.quarantine.key, bytes, type.mime)
+    } catch (err) {
+      await db
+        .collection('documents')
+        .updateOne({ tenant_id, id: row.id }, { $set: { status: 'failed', error_message: 'quarantine_write_failed' } })
+      await releaseReservation(db, tenant_id, row.id)
+      throw err
+    }
+    const head = await objectStore('presign').head('quarantine', row.quarantine.key)
+    await markScanQueued(db, tenant_id, row.id, head?.etag)
+    void wakeScanWorker()
+    emitDocumentEvent(db, tenant_id, row.id, filename, 'uploaded')
+    return reply.status(201).send({
+      id: row.id,
+      filename,
+      category: 'other',
+      status: 'scan_queued',
+      uploadedAt: row.uploaded_at.toISOString(),
+      aiExtractionEnabled: false,
+    })
+  }
+
   // ── GET /documents ──────────────────────────────────────────────────────
   fastify.get<{ Querystring: { category?: string; status?: string; limit?: string } }>(
     '/documents',
@@ -472,11 +497,15 @@ export function registerDocumentRoutes(
       // Estate Vault documents are encrypted and adult-gated (see vault.ts)
       // — never surfaced through the general, ungated document list even
       // if someone explicitly requests that category.
-      const filter: Record<string, unknown> = { category: { $ne: ESTATE_VAULT_CATEGORY } }
+      const filter: Record<string, unknown> = {
+        category: { $ne: ESTATE_VAULT_CATEGORY },
+        status: { $nin: HIDDEN_STATUSES },
+      }
 
       if (req.query.category && req.query.category !== ESTATE_VAULT_CATEGORY)
         filter['category'] = req.query.category
-      if (req.query.status) filter['status'] = req.query.status
+      if (typeof req.query.status === 'string' && !HIDDEN_STATUSES.includes(req.query.status))
+        filter['status'] = req.query.status
 
       // A finite integer in [1, 100] (R26): 0, negatives and NaN would
       // otherwise reach MongoDB, where limit(0) means "no limit".
@@ -511,7 +540,12 @@ export function registerDocumentRoutes(
       id: req.params.id,
     })
 
-    if (!doc || doc['category'] === ESTATE_VAULT_CATEGORY) {
+    if (
+      !doc ||
+      doc['category'] === ESTATE_VAULT_CATEGORY ||
+      // The uploader polls an awaiting_upload row; a deleting one is gone.
+      doc['status'] === 'deleting'
+    ) {
       return reply.status(404).send({ error: 'Document not found' })
     }
 
@@ -542,28 +576,52 @@ export function registerDocumentRoutes(
   })
 
   // ── GET /documents/:id/file ──────────────────────────────────────────────
-  // Streams the original uploaded bytes back from GridFS — added for the AI
-  // Memory review drawer (show the source PDF/JPEG next to what Keel
-  // extracted from it), which had no way to display the document itself
-  // before this. Same tenant-scoped lookup and GridFS read `/reprocess`
-  // already uses; this just returns the bytes instead of re-running OCR.
-  fastify.get<{ Params: { id: string } }>('/documents/:id/file', async (req, reply) => {
-    const { tenant_id } = req.authContext
-    const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
-    const doc = await documents.findOne({ id: req.params.id })
-    if (!doc || !doc['file_id'] || doc['category'] === ESTATE_VAULT_CATEGORY)
-      return reply.status(404).send({ error: 'Document not found' })
+  // Original bytes for the AI Memory review drawer (source next to what Keel
+  // extracted). Two modes (CLOUDFLARE_INTEGRATION.md §7.4):
+  //   ?mode=url  → { url, expires_at }: a 60 s presigned attachment GET
+  //                from the clean bucket (R2 rows only; GridFS rows answer
+  //                409 not_in_object_store and the client uses bytes mode)
+  //   (default)  → the bytes, streamed through the API: today's contract,
+  //                kept for released mobile builds until they age out.
+  // Nothing is readable before its scan says clean.
+  fastify.get<{ Params: { id: string }; Querystring: { mode?: string } }>(
+    '/documents/:id/file',
+    async (req, reply) => {
+      const { tenant_id } = req.authContext
+      const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
+      const doc = await documents.findOne({ id: req.params.id })
+      if (!doc || doc['category'] === ESTATE_VAULT_CATEGORY || !locate(doc))
+        return reply.status(doc && !locate(doc) ? 409 : 404).send(
+          doc && !locate(doc) ? { error: 'not_ready' } : { error: 'Document not found' },
+        )
+      if (!READABLE_STATUSES.has(String(doc['status'] ?? 'uploaded')))
+        return reply.status(409).send({ error: 'not_ready', status: doc['status'] })
 
-    const chunks: Buffer[] = []
-    for await (const chunk of bucket.openDownloadStream(doc['file_id'] as ObjectId))
-      chunks.push(chunk as Buffer)
-    reply.header('Content-Type', String(doc['mime_type'] ?? 'application/octet-stream'))
-    reply.header(
-      'Content-Disposition',
-      `inline; filename="${String(doc['filename'] ?? 'document').replace(/"/g, '')}"`,
-    )
-    return reply.send(Buffer.concat(chunks))
-  })
+      getAuditLogger()?.fromRequest(req, 'document.accessed', 'document', req.params.id, {
+        mode: req.query.mode === 'url' ? 'url' : 'bytes',
+      })
+      reply.header('Cache-Control', 'no-store')
+      reply.header('X-Content-Type-Options', 'nosniff')
+
+      if (req.query.mode === 'url') {
+        const signed = await presignDocumentGet(doc)
+        if (!signed) return reply.status(409).send({ error: 'not_in_object_store' })
+        return reply.send(signed)
+      }
+
+      const bytes = await readDocumentBytes(db, doc)
+      if (!bytes) return reply.status(404).send({ error: 'Document not found' })
+      reply.header(
+        'Content-Type',
+        String((doc['storage'] as { mime?: string } | undefined)?.mime ?? doc['mime_type'] ?? 'application/octet-stream'),
+      )
+      reply.header(
+        'Content-Disposition',
+        attachmentDisposition(String(doc['filename'] ?? 'document')).replace(/^attachment/, 'inline'),
+      )
+      return reply.send(bytes)
+    },
+  )
 
   // ── GET /documents/:id/profile-suggestions ──────────────────────────────
   // extractDocumentFields() pulls structured fields out of a document, but
@@ -597,18 +655,19 @@ export function registerDocumentRoutes(
     const { tenant_id } = req.authContext
     const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
     const doc = await documents.findOne({ id: req.params.id })
-    if (!doc || !doc['file_id'] || doc['category'] === ESTATE_VAULT_CATEGORY)
+    if (!doc || !locate(doc) || doc['category'] === ESTATE_VAULT_CATEGORY)
       return reply.status(404).send({ error: 'Document not found' })
+    if (!READABLE_STATUSES.has(String(doc['status'] ?? 'uploaded')))
+      return reply.status(409).send({ error: 'not_ready', status: doc['status'] })
 
-    const chunks: Buffer[] = []
-    for await (const chunk of bucket.openDownloadStream(doc['file_id'] as ObjectId))
-      chunks.push(chunk as Buffer)
+    const bytes = await readDocumentBytes(db, doc)
+    if (!bytes) return reply.status(404).send({ error: 'Document not found' })
     await processDocument(
       db,
       req.params.id,
       tenant_id,
-      Buffer.concat(chunks),
-      String(doc['mime_type'] ?? ''),
+      bytes,
+      String((doc['storage'] as { mime?: string } | undefined)?.mime ?? doc['mime_type'] ?? ''),
       String(doc['filename'] ?? 'document'),
       taskDecide('document.extract.v1', tenant_id, localDecisionFromEnv('ocr')),
       await taskVision('document.extract.v1', tenant_id),
@@ -974,14 +1033,27 @@ export function registerDocumentRoutes(
       receipt_id: receipt.id,
     })
 
-    // Delete file from GridFS
-    let fileRemoved = 0
-    try {
-      await bucket.delete(doc['file_id'] as ObjectId)
-      fileRemoved = 1
-    } catch {
-      // File may already be deleted — not critical
+    // R2 pipeline rows: fenced delete (§7.7). The receipt stays in progress
+    // until the reconciler's second purge, after every presigned URL for the
+    // object has expired.
+    if (isPipelineRow(doc)) {
+      const first = await beginFencedDelete(db, tenant_id, req.params.id, receipt)
+      const pending = {
+        ...receipt,
+        removed: first?.removed ?? [],
+        kept: [
+          'If you saved details from this document to your profile, they stay there until you change them.',
+          'A note of which document a saved value came from stays with that value. It holds no content.',
+        ],
+      }
+      await saveReceipt(db, pending)
+      log.info({ documentId: req.params.id, tenant_id }, 'Document deletion started (fenced)')
+      return { success: true, receipt: publicReceipt(pending) }
     }
+
+    // Delete file from GridFS
+    const fileRemoved = (await deleteGridfs(db, doc['file_id'])) ? 1 : 0
+    await releaseReservation(db, tenant_id, req.params.id)
 
     // Delete metadata: this record also holds what was read from the document
     // (extracted fields and its text), so they go with it.
@@ -1005,12 +1077,7 @@ export function registerDocumentRoutes(
         category: 'document record',
         count: await db.collection('documents').countDocuments({ tenant_id, id: req.params.id }),
       },
-      {
-        category: 'document file',
-        count: await db
-          .collection('documents.files')
-          .countDocuments({ _id: doc['file_id'] as ObjectId }),
-      },
+      { category: 'document file', count: (await gridfsExists(db, doc['file_id'])) ? 1 : 0 },
     ]
     const closed = closeReceipt(receipt, {
       removed: [

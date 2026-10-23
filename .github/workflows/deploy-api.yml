@@ -202,6 +202,15 @@ jobs:
             VERTEX_LOCATION=${{ vars.VERTEX_LOCATION }}
             VERTEX_REASONING_EFFORT=${{ vars.VERTEX_REASONING_EFFORT }}
             LIFEKEEL_LLM_PROVIDER=${{ vars.LIFEKEEL_LLM_PROVIDER }}
+            TURNSTILE_MODE=${{ vars.TURNSTILE_MODE }}
+            TURNSTILE_ALLOWED_HOSTNAMES=${{ vars.TURNSTILE_ALLOWED_HOSTNAMES }}
+            AUTH_OTP_MODE=${{ vars.AUTH_OTP_MODE }}
+            DOCUMENTS_STORAGE=${{ vars.DOCUMENTS_STORAGE }}
+            DOCUMENTS_R2_TENANTS=${{ vars.DOCUMENTS_R2_TENANTS }}
+            VAULT_STORAGE=${{ vars.VAULT_STORAGE }}
+            R2_ACCOUNT_ID=${{ vars.R2_ACCOUNT_ID }}
+            R2_JURISDICTION=${{ vars.R2_JURISDICTION }}
+            EMAIL_FROM=${{ vars.EMAIL_FROM }}
           # NOTE: no comments inside this block — deploy-cloudrun feeds every
           # line to gcloud verbatim. Web push: without the VAPID secrets,
           # /push/vapid-key 503s and no browser can subscribe. Values come from
@@ -216,9 +225,20 @@ jobs:
             STRIPE_SECRET_KEY=lifekeel-stripe-secret-key:latest
             LIFEKEEL_STRIPE_WEBHOOK_SECRET=lifekeel-stripe-webhook-secret:latest
             OPENAI_API_KEY=lifekeel-openai-api-key:latest
+            GROQ_API_KEY=lifekeel-groq-api-key:latest
+            XAI_API_KEY=lifekeel-xai-api-key:latest
             VAPID_PUBLIC_KEY=lifekeel-vapid-public-key:latest
             VAPID_PRIVATE_KEY=lifekeel-vapid-private-key:latest
             VAPID_SUBJECT=lifekeel-vapid-subject:latest
+            METRICS_SCRAPE_TOKEN=lifekeel-metrics-scrape-token:latest
+            OTP_PEPPER=lifekeel-otp-pepper:latest
+            RESEND_API_KEY=lifekeel-resend-api-key:latest
+            RESEND_WEBHOOK_SECRET=lifekeel-resend-webhook-secret:latest
+            # TURNSTILE_SECRET_KEY and SENDGRID_API_KEY are deliberately NOT bound. This deployment runs with
+            # TURNSTILE_MODE=off and AUTH_OTP_MODE=off (repository variables), and the boot guards only require
+            # those two keys when the matching mode is on; Resend is the email transport (auth-email.ts
+            # no-ops without any provider key). To turn Turnstile on later, create the secret, bind it here,
+            # and set the mode variable (docs/runbooks/cloudflare-integration.md).
           secrets_update_strategy: overwrite
 
       # Step 3 of 4. Test the new revision at its tagged URL before any user reaches it. If this fails, production

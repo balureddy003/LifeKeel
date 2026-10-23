@@ -13,6 +13,7 @@ import {
   fetchMyReferralCode,
   fetchReferralSummary,
   uploadDocument,
+  fetchFinancialProfileWithVersion,
   RESOLVED_INSIGHT_STATES,
 } from '../api'
 import { clearAllCaches } from '../fetch-cache'
@@ -113,7 +114,7 @@ describe('fetchFamilyReadinessScore', () => {
       insights: [],
     })
     const result = await fetchFamilyReadinessScore()
-    expect(result).toEqual({ score: 72, hasLiveData: true })
+    expect(result).toEqual({ score: 72, hasLiveData: true, computedAt: '2026-09-20T00:00:00Z' })
   })
 
   it('treats server has_live_data=false as unknown — never a flattering 100', async () => {
@@ -125,7 +126,7 @@ describe('fetchFamilyReadinessScore', () => {
       insights: [],
     })
     const result = await fetchFamilyReadinessScore()
-    expect(result).toEqual({ score: 0, hasLiveData: false })
+    expect(result).toEqual({ score: 0, hasLiveData: false, computedAt: '2026-09-20T00:00:00Z' })
   })
 
   it('scores 0 with hasLiveData when the server ran but could not compute', async () => {
@@ -137,7 +138,7 @@ describe('fetchFamilyReadinessScore', () => {
       insights: [],
     })
     const result = await fetchFamilyReadinessScore()
-    expect(result).toEqual({ score: 0, hasLiveData: true })
+    expect(result).toEqual({ score: 0, hasLiveData: true, computedAt: '2026-09-20T00:00:00Z' })
   })
 
   // Fallback path: /family/readiness unreachable → legacy insight-penalty
@@ -149,7 +150,9 @@ describe('fetchFamilyReadinessScore', () => {
       { body: { profile: { household: {}, insights_evaluated_at: '2026-09-20T00:00:00Z' } } },
     )
     const result = await fetchFamilyReadinessScore()
-    expect(result).toEqual({ score: 100, hasLiveData: true })
+    // insights_evaluated_at stands in as the honest "when was this data
+    // checked" timestamp when /family/readiness is unreachable.
+    expect(result).toEqual({ score: 100, hasLiveData: true, computedAt: '2026-09-20T00:00:00Z' })
   })
 
   it('does not score a saved-but-never-evaluated profile as 100 in the fallback — zero insights there means unknown, not on track', async () => {
@@ -159,7 +162,7 @@ describe('fetchFamilyReadinessScore', () => {
       { body: { profile: { household: {} } } },
     )
     const result = await fetchFamilyReadinessScore()
-    expect(result).toEqual({ score: 0, hasLiveData: false })
+    expect(result).toEqual({ score: 0, hasLiveData: false, computedAt: null })
   })
 
   it('scores 0 without live data when the fallback finds no insights and no profile', async () => {
@@ -169,7 +172,7 @@ describe('fetchFamilyReadinessScore', () => {
       { body: { profile: null } },
     )
     const result = await fetchFamilyReadinessScore()
-    expect(result).toEqual({ score: 0, hasLiveData: false })
+    expect(result).toEqual({ score: 0, hasLiveData: false, computedAt: null })
   })
 
   it('subtracts a confidence-weighted penalty per open (unresolved) insight in the fallback', async () => {
@@ -197,7 +200,7 @@ describe('fetchFamilyReadinessScore', () => {
     )
     const result = await fetchFamilyReadinessScore()
     // 100 - (0.5 * 10) = 95
-    expect(result).toEqual({ score: 95, hasLiveData: true })
+    expect(result).toEqual({ score: 95, hasLiveData: true, computedAt: expect.any(String) })
   })
 
   it('does not penalize resolved insights in the fallback', async () => {
@@ -225,7 +228,7 @@ describe('fetchFamilyReadinessScore', () => {
     )
     expect(RESOLVED_INSIGHT_STATES).toContain('dismissed')
     const result = await fetchFamilyReadinessScore()
-    expect(result).toEqual({ score: 100, hasLiveData: true })
+    expect(result).toEqual({ score: 100, hasLiveData: true, computedAt: expect.any(String) })
   })
 })
 
@@ -467,20 +470,53 @@ describe('PRD-111: fetchLifeChangeNudge / dismissLifeChangeNudge', () => {
 })
 
 describe('uploadDocument on-device screen', () => {
+  // Households not on the direct-to-R2 path get 409 direct_upload_unavailable
+  // from POST /documents/uploads and fall back to the multipart route.
+  const notDirect = () => ({
+    ok: false,
+    status: 409,
+    json: () => Promise.resolve({ error: 'direct_upload_unavailable' }),
+  })
+  const ok = (body: unknown) => ({ ok: true, status: 200, json: () => Promise.resolve(body) })
+
   it('sends the client screen outcome as a form field — and only the outcome', async () => {
-    const fn = mockFetchSequence({ body: { id: 'd1' } })
+    const fn = vi.fn().mockResolvedValueOnce(notDirect()).mockResolvedValueOnce(ok({ id: 'd1' }))
+    vi.stubGlobal('fetch', fn)
     const file = new File([new Uint8Array(8)], 'letter.png', { type: 'image/png' })
     await uploadDocument(file, 'flagged')
-    const form = (fn.mock.calls[0]?.[1] as RequestInit).body as FormData
+    const form = (fn.mock.calls[1]?.[1] as RequestInit).body as FormData
     expect(form.get('clientScreen')).toBe('flagged')
     expect(form.get('file')).toBe(file)
   })
 
   it('omits the field when no screen ran', async () => {
-    const fn = mockFetchSequence({ body: { id: 'd1' } })
+    const fn = vi.fn().mockResolvedValueOnce(notDirect()).mockResolvedValueOnce(ok({ id: 'd1' }))
+    vi.stubGlobal('fetch', fn)
     await uploadDocument(new File([new Uint8Array(8)], 'doc.pdf', { type: 'application/pdf' }))
-    const form = (fn.mock.calls[0]?.[1] as RequestInit).body as FormData
+    const form = (fn.mock.calls[1]?.[1] as RequestInit).body as FormData
     expect(form.get('clientScreen')).toBeNull()
+  })
+
+  it('direct path: init with the screen, PUT to the presigned URL, then complete (§7.4)', async () => {
+    const fn = vi
+      .fn()
+      .mockResolvedValueOnce(
+        ok({
+          document_id: 'd9',
+          upload: { url: 'https://acct.eu.r2.cloudflarestorage.com/q/t/d9?sig', headers: { 'Content-Type': 'application/pdf' } },
+        }),
+      )
+      .mockResolvedValueOnce({ ok: true, status: 200 })
+      .mockResolvedValueOnce(ok({ status: 'scan_queued' }))
+    vi.stubGlobal('fetch', fn)
+    const file = new File([new Uint8Array(8)], 'policy.pdf', { type: 'application/pdf' })
+    const doc = await uploadDocument(file, 'clear')
+    const init = JSON.parse(String((fn.mock.calls[0]?.[1] as RequestInit).body))
+    expect(init).toMatchObject({ filename: 'policy.pdf', mime: 'application/pdf', size: 8, client_screen: 'clear' })
+    expect(fn.mock.calls[1]?.[0]).toContain('r2.cloudflarestorage.com')
+    expect((fn.mock.calls[1]?.[1] as RequestInit).method).toBe('PUT')
+    expect(fn.mock.calls[2]?.[0]).toContain('/documents/d9/complete')
+    expect(doc).toMatchObject({ id: 'd9', status: 'scan_queued' })
   })
 })
 
@@ -498,5 +534,30 @@ describe('PRD-112: fetchMyReferralCode / fetchReferralSummary', () => {
   it('fetchReferralSummary returns pending/rewarded counts', async () => {
     mockFetchOnce({ pending: 2, rewarded: 3 })
     expect(await fetchReferralSummary()).toEqual({ pending: 2, rewarded: 3 })
+  })
+})
+
+describe('fetchFinancialProfileWithVersion', () => {
+  it('returns the profile and version on success', async () => {
+    mockFetchOnce({ profile: { household: {} }, version: 3 })
+    expect(await fetchFinancialProfileWithVersion()).toEqual({
+      profile: { household: {} },
+      version: 3,
+    })
+  })
+
+  it('returns null profile when none is on file', async () => {
+    mockFetchOnce({ profile: null })
+    expect(await fetchFinancialProfileWithVersion()).toEqual({ profile: null, version: 0 })
+  })
+
+  it('rejects on a failed response — never silently reports "no profile"', async () => {
+    mockFetchOnce({ error: 'server error' }, false)
+    await expect(fetchFinancialProfileWithVersion()).rejects.toThrow('500')
+  })
+
+  it('rejects on a network failure — the wizard must not render an empty form', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')))
+    await expect(fetchFinancialProfileWithVersion()).rejects.toThrow('network down')
   })
 })

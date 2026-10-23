@@ -1,5 +1,6 @@
 import type { Db } from 'mongodb'
 import { recordJobRun } from './job-runs.js'
+import { sweepPendingRegistrations } from './pending-registrations.js'
 
 export interface DataRetention {
   events_days: number
@@ -71,6 +72,8 @@ export class RetentionWorker {
       }
     }
     Object.assign(deleted, await this.sweepPlatformRecords())
+    // Unverified email-OTP signups older than 7 days (docs/data-retention.md).
+    Object.assign(deleted, await sweepPendingRegistrations(this.db))
     // Evidence that a sweep ran and what it removed (counts only; PRD-146).
     await recordJobRun(this.db, 'retention', deleted)
     return deleted

@@ -52,6 +52,10 @@ export type AuditAction =
   | 'billing.plan_downgraded'
   | 'billing.payment_failed'
   | 'billing.payment_succeeded'
+  | 'billing.checkout_expired'
+  | 'billing.charge_refunded'
+  | 'billing.dispute_opened'
+  | 'billing.dispute_closed'
   | 'billing.promo_redeemed'
   | 'billing.credits_adjusted'
   | 'billing.credit_reversed'
@@ -102,6 +106,14 @@ export type AuditAction =
   | 'marketing.profile_edit'
   | 'marketing.profile_apply'
   | 'legacy.document.read'
+  // CLOUDFLARE_INTEGRATION.md §8.2 A09
+  | 'auth.otp_issued'
+  | 'auth.otp_failed'
+  | 'auth.otp_locked'
+  | 'auth.otp_succeeded'
+  | 'document.uploaded'
+  | 'document.scan_result'
+  | 'document.accessed'
 
 export interface AuditEntry {
   tenant_id: string

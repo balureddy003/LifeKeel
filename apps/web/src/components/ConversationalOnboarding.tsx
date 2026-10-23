@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { Send, Bot, User, Baby, Sparkles, PartyPopper, Plus } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
+import { Turnstile, useTurnstile } from '@/components/security/Turnstile'
 import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
 import { ONBOARDING_QUESTIONS } from '@/lib/onboarding-data'
@@ -221,6 +222,9 @@ export function ConversationalOnboarding() {
   const textInputRef = useRef<HTMLInputElement>(null)
   const { user, family, isLoading, signUp, createFamily, inviteMember, updateEmail } = useAuth()
   const router = useRouter()
+  // Only the pre-auth path creates an account here, so only it needs the
+  // bot check (CLOUDFLARE_INTEGRATION.md §4.1 group B).
+  const captcha = useTurnstile()
 
   // Resume after a signup-collision detour through /login: the draft saved
   // just before redirecting is still in sessionStorage. If the signed-in
@@ -443,7 +447,12 @@ export function ConversationalOnboarding() {
       // above and the existing password-reset flow.
       const email = allAnswers.email?.trim() ?? ''
       const generatedPassword = crypto.randomUUID()
-      const outcome = await attemptOnboardingSignup(name, email, generatedPassword, signUp)
+      const outcome = await attemptOnboardingSignup(name, email, generatedPassword, (n, e, pw) =>
+        signUp(n, e, pw, undefined, {
+          turnstileToken: captcha.consume(),
+          next: '/family-setup',
+        }),
+      )
       if (!outcome.ok) {
         if (outcome.reason === 'collision') {
           // Keep the chat state — signing in resumes right here instead of
@@ -460,7 +469,20 @@ export function ConversationalOnboarding() {
         setSubmitting(false)
         return
       }
-      owner = outcome.user
+      if (outcome.user.otp) {
+        // Email OTP: the account exists but isn't signed in until the
+        // emailed code is entered. The draft resumes setup afterwards, the
+        // same path as the collision detour above.
+        saveOnboardingDraft({ answers: allAnswers, members: allMembers })
+        addAIMessage(
+          `We just emailed a 6-digit code to ${email}. Enter it on the next screen and we'll pick up right here.`,
+        )
+        setTimeout(() => router.push('/verify-otp'), 2000)
+        submittingRef.current = false
+        setSubmitting(false)
+        return
+      }
+      owner = outcome.user.user
     } else {
       const recoveryEmail = onboardingRecoveryEmailToLink(owner, allAnswers.email)
       if (recoveryEmail) {
@@ -727,7 +749,7 @@ export function ConversationalOnboarding() {
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={handleTextSubmit}
-              disabled={!textValue.trim() || submitting}
+              disabled={!textValue.trim() || submitting || (!user && !captcha.ready)}
               aria-label="Send answer"
               className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 disabled:opacity-30"
               style={{ background: 'rgb(var(--family-500))' }}
@@ -735,6 +757,15 @@ export function ConversationalOnboarding() {
               <Send size={18} color="rgb(var(--on-cta))" />
             </motion.button>
           </div>
+        )}
+        {!user && (
+          <Turnstile
+            ref={captcha.ref}
+            action="signup"
+            appearance="interaction-only"
+            onToken={captcha.onToken}
+            onExpire={captcha.onExpire}
+          />
         )}
       </div>
     </div>

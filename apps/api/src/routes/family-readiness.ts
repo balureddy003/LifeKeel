@@ -27,7 +27,7 @@ import { getTenantCollection } from '@lifekeel/platform'
 import { isFamilyAdult } from '../family/family-permissions.js'
 import { ESTATE_VAULT_CATEGORY } from './documents.js'
 import { computeReadiness, type ReadinessComponentKey } from '../readiness/score.js'
-import { buildEstateSignal } from '../legacy/estate-signal.js'
+import { buildEstateSignal, type EstateSignalData } from '../legacy/estate-signal.js'
 import { FinancialProfileSchema, type FinancialProfile } from './family-financial-profile.js'
 import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
 
@@ -77,6 +77,41 @@ interface ExplainingInsight {
   confidence: number
 }
 
+/**
+ * The vault-side estate inputs the composite needs beyond the profile: the
+ * vault's doc_type list plus the PRD-137 enriched signal — adult-gated in
+ * both cases (children get the gated component; the signal builder's
+ * hiccup degrades to the vault-boolean path, never breaks the caller).
+ * Shared by this route and the assistant's verified readiness answer so
+ * Home and Ask Keel compute one score from the same inputs — computing
+ * without them gates the estate component out and silently re-weights the
+ * other four, which is how the two surfaces quoted different composites.
+ */
+export async function loadEstateReadinessInputs(
+  db: Db,
+  tenantId: string,
+  userId: string,
+): Promise<{
+  estateDocTypes: string[] | null
+  estateSignal: EstateSignalData | null
+}> {
+  const isAdult = await isFamilyAdult(db, tenantId, userId)
+  if (!isAdult) return { estateDocTypes: null, estateSignal: null }
+  const estateDocTypes = (
+    (await db
+      .collection('documents')
+      .find(
+        { tenant_id: tenantId, category: ESTATE_VAULT_CATEGORY },
+        { projection: { _id: 0, doc_type: 1 } },
+      )
+      .toArray()) as { doc_type?: string }[]
+  )
+    .map((d) => d.doc_type)
+    .filter((t): t is string => typeof t === 'string')
+  const estateSignal = await buildEstateSignal(db, tenantId).catch(() => null)
+  return { estateDocTypes, estateSignal }
+}
+
 export function registerFamilyReadinessRoutes(app: FastifyInstance, db: Db): void {
   app.get('/family/readiness', async (req) => {
     const { tenant_id, user_id } = req.authContext
@@ -85,25 +120,7 @@ export function registerFamilyReadinessRoutes(app: FastifyInstance, db: Db): voi
       FinancialProfile & { insights_evaluated_at?: Date }
     >(db, 'family_financial_profile', tenant_id).findOne({})
 
-    const isAdult = await isFamilyAdult(db, tenant_id, user_id)
-    const estateDocTypes = isAdult
-      ? (
-          (await db
-            .collection('documents')
-            .find(
-              { tenant_id, category: ESTATE_VAULT_CATEGORY },
-              { projection: { _id: 0, doc_type: 1 } },
-            )
-            .toArray()) as { doc_type?: string }[]
-        )
-          .map((d) => d.doc_type)
-          .filter((t): t is string => typeof t === 'string')
-      : null
-    // PRD-137: the enriched estate signal drives the legacy-aware estate
-    // component. Adult-gated like the vault doc types — children get the
-    // gated component. Best-effort: a builder hiccup degrades to the
-    // vault-boolean path, never breaks the route.
-    const estateSignal = isAdult ? await buildEstateSignal(db, tenant_id).catch(() => null) : null
+    const { estateDocTypes, estateSignal } = await loadEstateReadinessInputs(db, tenant_id, user_id)
 
     const openInsights = (await db
       .collection('insights')

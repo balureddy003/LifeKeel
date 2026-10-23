@@ -139,16 +139,74 @@ processors:
   groq:
     name: Groq API
     hosting: hosted
-    status: unreviewed
+    status: approved
     endpoint: https://api.groq.com
-    region: not_reviewed
-    terms_ref: not_reviewed
-    no_training_basis: not_reviewed
+    # Inference runs on Groq's US LPUs; any retained data lands in US GCP
+    # buckets (console.groq.com/docs/your-data).
+    region: US
+    terms_ref: >-
+      console.groq.com/docs/your-data + Groq Services Agreement +
+      GroqCloud DPA (effective 2025-10-15)
+    # DPA §2.3 limits processing to providing the Cloud Services; inference
+    # customer data is NOT retained by default — nothing to train on.
+    no_training_basis: >-
+      GroqCloud DPA §2.3 purpose limitation; inference customer data not
+      retained by default (console.groq.com/docs/your-data)
+    # Default: up-to-30-day reliability/abuse logs — self-serve ZDR via
+    # Console → Data Controls (no application needed, unlike Azure). Flip to
+    # zero_data_retention once the org admin enables it. Never use /batches
+    # or /fine_tunings — those endpoints retain by design.
     retention:
       '*': limited_abuse_log
-    sub_processors: [not_reviewed]
-    transfer_mechanism: not_reviewed
-    dpa_date: not_reviewed
-    breach_notice_sla: not_reviewed
-    reviewed_at: not_reviewed
-    review_due: not_reviewed
+    # Live list: trust.groq.com/subprocessors (DPA §7.2). Retention host is
+    # GCP. Third-party model terms still apply on top — Llama carries Meta's
+    # AI Model Terms per Services Agreement §4.1.
+    sub_processors:
+      [
+        Google LLC — GCP hosts retained data (console.groq.com/docs/your-data); full list at trust.groq.com/subprocessors,
+      ]
+    transfer_mechanism: EU SCCs (Commission Implementing Decision 2021/914) per GroqCloud DPA §8
+    dpa_date: '2026-10-23'
+    # DPA §6 — without undue delay, at most 72 hours.
+    breach_notice_sla: within 72 hours per GroqCloud DPA §6
+    reviewed_at: '2026-10-23'
+    review_due: '2027-10-23'
+
+  xai:
+    # Approved 2026-10-23 (owner decision) — CONDITIONAL: the xAI DPA
+    # (Sept 2026 update) requires Personal Data to be processed ONLY via the
+    # ZDR-enabled API; non-ZDR use is a material breach of the agreement.
+    # Zero Data Retention must be enabled in the xAI Console (Team Settings →
+    # Zero Data Retention) BEFORE any governed task routes here — verify the
+    # x-zero-data-retention:true response header. ZDR is self-serve and
+    # team-wide; it disables xAI-side storage features (Files, Collections,
+    # Batch, stateful Responses) which we do not use. Note: xAI retains a
+    # perpetual licence to prompts/outputs for safety research under the
+    # Enterprise ToS — not model training, but flagged for the annual review.
+    # The default endpoint has no guaranteed processing region; a US
+    # regional endpoint exists at a ~10% premium if residency is needed.
+    name: xAI (Grok) API
+    hosting: hosted
+    status: approved
+    endpoint: https://api.x.ai
+    region: us — global endpoint, region not contractually pinned (US regional endpoint available)
+    terms_ref: xAI Enterprise Terms of Service + SpaceXSI Data Processing Addendum (ZDR required for Personal Data, Sept 2026)
+    no_training_basis: xAI Enterprise ToS — User Content is not used to train foundation models or develop new products; ZDR additionally prevents persistence of prompts/outputs
+    retention:
+      # Recorded at zero_data_retention on the condition that ZDR is enabled
+      # on the team — the DPA requires it for Personal Data. The default
+      # 30-day encrypted audit log exists only when ZDR is off.
+      '*': zero_data_retention
+    sub_processors:
+      [
+        maintained list at https://x.ai/legal/subprocessor-list — AWS,
+        Google Cloud,
+        Oracle,
+        MongoDB and others,
+        all US plus a UK subsidiary,
+      ]
+    transfer_mechanism: EU Standard Contractual Clauses per the SpaceXSI Data Processing Addendum
+    dpa_date: '2026-09-22'
+    breach_notice_sla: without undue delay and, where feasible, within 48 hours per the SpaceXSI Data Processing Addendum
+    reviewed_at: '2026-10-23'
+    review_due: '2027-10-23'

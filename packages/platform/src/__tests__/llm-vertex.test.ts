@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createLlmRouter, detectActiveProvider } from '../llm.js'
+import { createLlmRouter, createLlmRouterFromEnv, detectActiveProvider } from '../llm.js'
 import { vertexAccessTokenProvider } from '../vertex-auth.js'
 
 const ENV_KEYS = [
@@ -11,6 +11,7 @@ const ENV_KEYS = [
   'ANTHROPIC_API_KEY',
   'OPENAI_API_KEY',
   'GROQ_API_KEY',
+  'XAI_API_KEY',
   'AZURE_OPENAI_ENDPOINT',
   'OLLAMA_BASE_URL',
 ]
@@ -63,7 +64,7 @@ describe('vertex provider routing', () => {
     expect(detectActiveProvider()).toBe('openai') // invalid value ignored
   })
 
-  it('a runtime providerOverride beats LIFEKEEL_LLM_PROVIDER and env keys', async () => {
+  it('a runtime providerOverride beats LIFEKEEL_LLM_PROVIDER, env keys and tier defaults', async () => {
     process.env['OPENAI_API_KEY'] = 'k'
     process.env['LIFEKEEL_LLM_PROVIDER'] = 'openai'
     const fetchMock = vi.fn().mockResolvedValue(okResponse(completion('hi')))
@@ -72,9 +73,40 @@ describe('vertex provider routing', () => {
       providerOverride: () => 'ollama',
       ollamaBaseUrl: 'http://ollama.test:11434',
     })
-    await router('s', 'p', 'no-provider-prefix')
+    // 'tier:fast' is the governed-task call shape — the override must win over
+    // the default model name's own provider mapping.
+    await router('s', 'p', 'tier:fast')
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toContain('ollama.test:11434')
+    expect(JSON.parse(init.body as string).model).toBe('llama3.2:3b')
+  })
+
+  it('createLlmRouterFromEnv keeps resolution dynamic — the override survives env detection', async () => {
+    // Regression: FromEnv used to bake detectActiveProvider() into
+    // cfg.provider, which resolves before providerOverride — the operator
+    // override never fired on the path the API actually uses.
+    process.env['AZURE_OPENAI_ENDPOINT'] = 'https://example.openai.azure.com'
+    process.env['AZURE_OPENAI_API_KEY'] = 'k'
+    const fetchMock = vi.fn().mockResolvedValue(okResponse(completion('hi')))
+    vi.stubGlobal('fetch', fetchMock)
+    const router = createLlmRouterFromEnv({
+      providerOverride: () => 'ollama',
+      ollamaBaseUrl: 'http://ollama.test:11434',
+    })
+    await router('s', 'p', 'tier:fast')
     const [url] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(url).toContain('ollama.test:11434')
+  })
+
+  it('routes to api.x.ai with the grok-4.3 tier model when the override selects xai', async () => {
+    process.env['XAI_API_KEY'] = 'k'
+    const fetchMock = vi.fn().mockResolvedValue(okResponse(completion('hi')))
+    vi.stubGlobal('fetch', fetchMock)
+    const router = createLlmRouter({ providerOverride: () => 'xai' })
+    await router('sys', 'hello', 'tier:fast')
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toContain('api.x.ai')
+    expect(JSON.parse(init.body as string).model).toBe('grok-4.3')
   })
 
   it('calls the global openapi endpoint with the google/ model prefix and low effort', async () => {

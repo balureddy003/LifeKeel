@@ -40,6 +40,7 @@ import { getGrowthEventsCollection } from '../db.js'
 import { utmQuery } from './utm.js'
 import { excludeMinorUsers } from '../family/family-permissions.js'
 import { recordSpend, spendCost } from '../spend-ledger.js'
+import { activeEmailProvider, emailConfigured, emailFromAddress } from '../email/transport.js'
 import { button, escapeHtml, renderEmail } from '../email/layout.js'
 
 const log = createLogger({ service: 'lifecycle', version: '0.0.0' })
@@ -131,10 +132,10 @@ function unsubUrl(base: string, leadId: string): string {
 // ── Sending ────────────────────────────────────────────────────────────────
 
 function getFromEmail(): string {
-  return process.env['SENDGRID_FROM_EMAIL'] ?? 'hello@lifekeel.co.uk'
+  return emailFromAddress() ?? 'hello@lifekeel.co.uk'
 }
 
-/** 'sent' = SendGrid accepted the message; 'skipped' = deliberately not
+/** 'sent' = the provider accepted the message; 'skipped' = deliberately not
  *  sent. Provider rejections throw — the caller settles the ledger row
  *  to 'failed'. Callers must record the outcome; a bare success return
  *  without a provider call is the bug this signature exists to prevent. */
@@ -145,16 +146,17 @@ export async function sendEmail(
   subject: string,
   html: string,
   unsubLink?: string,
-  /** `lk` = the lifecycle_sends ledger key; SendGrid echoes it back on every
-   *  event webhook so opens/clicks/bounces join to the exact send. */
+  /** `lk` = the lifecycle_sends ledger key; the provider echoes it back on
+   *  every event webhook (SendGrid custom arg, Resend tag) so opens/clicks/
+   *  bounces join to the exact send. */
   customArgs?: Record<string, string>,
 ): Promise<SendOutcome> {
-  const apiKey = process.env['SENDGRID_API_KEY']
-  if (!apiKey) {
-    log.warn({ to, subject }, 'No SENDGRID_API_KEY — skipping lifecycle email')
+  if (!emailConfigured()) {
+    log.warn({ to, subject }, 'No email provider configured — skipping lifecycle email')
     return 'skipped'
   }
-  sgMail.setApiKey(apiKey)
+  const apiKey = process.env['SENDGRID_API_KEY']
+  if (apiKey) sgMail.setApiKey(apiKey)
   await sgMail.send({
     to,
     from: { email: getFromEmail(), name: 'LifeKeel' },
@@ -753,8 +755,8 @@ export async function runLifecycleSweep(
     log.info({}, 'marketing_paused — lifecycle sweep skipped')
     return []
   }
-  if (!process.env['SENDGRID_API_KEY']) {
-    log.warn({}, 'No SENDGRID_API_KEY — lifecycle sweep skipped, nothing claimed')
+  if (!emailConfigured()) {
+    log.warn({}, 'No email provider configured — lifecycle sweep skipped, nothing claimed')
     return []
   }
   const appUrl = (opts.appUrl ?? process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(
@@ -792,7 +794,7 @@ export async function runLifecycleSweep(
         db,
         job.key,
         outcome,
-        outcome === 'skipped' ? 'sendgrid_not_configured' : undefined,
+        outcome === 'skipped' ? 'email_not_configured' : undefined,
       )
       row.status = outcome
       if (outcome === 'sent') {
@@ -810,16 +812,16 @@ export async function runLifecycleSweep(
           meta: { sequence: job.sequence, step: job.step },
           created_at: new Date(),
         })
-        // Lifecycle mail is platform-paid SendGrid spend; leads carry no
-        // tenant, so 'platform' keeps the ledger honest about whose bill
-        // it lands on.
+        // Lifecycle mail is platform-paid spend; leads carry no tenant, so
+        // 'platform' keeps the ledger honest about whose bill it lands on.
+        const provider = activeEmailProvider() ?? 'sendgrid'
         void recordSpend(db, {
           tenant_id: 'platform',
           service: 'marketing',
-          provider: 'sendgrid',
+          provider,
           unit: 'email',
           units: 1,
-          cost_microdollars: spendCost('sendgrid', 'email'),
+          cost_microdollars: spendCost(provider, 'email'),
           meta: { sequence: job.sequence, step: job.step },
         }).catch(() => {})
       }

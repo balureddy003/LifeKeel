@@ -18,6 +18,16 @@ import { credFetch } from './http'
 import { purgeClientData } from './session-purge'
 import { unregisterAllPush } from './push'
 import { getAttribution } from './attribution'
+import { turnstileErrorMessage, turnstileHeaders } from './turnstile'
+import {
+  clearPendingOtp,
+  isOtpChallenge,
+  readPendingOtp,
+  savePendingOtp,
+  updatePendingOtp,
+  type OtpChallenge,
+  type PendingOtp,
+} from './otp-pending'
 import {
   clearSessionToken,
   dropTokenIfCookieWorks,
@@ -25,15 +35,39 @@ import {
   storeSessionToken,
 } from '@/lib/session-token'
 
+/** Outcome of signUp: a session, or the email-code step first (§6.4). */
+export type SignUpResult = { user: User; otp?: undefined } | { otp: OtpChallenge; user?: undefined }
+
+export interface SignInResult {
+  mfaRequired?: boolean
+  /** The account's emailed code is next; the challenge is saved for /verify-otp. */
+  otpRequired?: boolean
+}
+
 interface AuthContextValue {
   user: User | null
   family: FamilyGroup | null
   isAuthenticated: boolean
   isLoading: boolean
-  signUp: (name: string, email: string, password: string, ref?: string) => Promise<User>
+  signUp: (
+    name: string,
+    email: string,
+    password: string,
+    ref?: string,
+    opts?: { turnstileToken?: string | null; next?: string },
+  ) => Promise<SignUpResult>
   /** Resolves with mfaRequired:true when the account has TOTP on — the
-   *  login page then calls verifyMfaCode() with the authenticator code. */
-  signIn: (email: string, password: string) => Promise<{ mfaRequired?: boolean }>
+   *  login page then calls verifyMfaCode() with the authenticator code —
+   *  or otpRequired:true when an emailed code is the second step. */
+  signIn: (
+    email: string,
+    password: string,
+    opts?: { turnstileToken?: string | null; rememberMe?: boolean },
+  ) => Promise<SignInResult>
+  /** Email OTP: exchanges the pending challenge plus the code for a session. */
+  verifyEmailOtp: (code: string) => Promise<PendingOtp>
+  /** Email OTP: a new code in the same chain (same pending token). */
+  resendEmailOtp: (turnstileToken: string | null) => Promise<PendingOtp>
   /** Second login step — TOTP or recovery code against the pending token.
    *  OAuth callbacks carry the pending token across a redirect, so the
    *  login page passes it explicitly rather than relying on the ref. */
@@ -102,14 +136,31 @@ interface AuthResponse {
   user?: ApiUser
   mfa_required?: boolean
   mfa_token?: string
+  otp_required?: boolean
 }
 
-async function apiAuthRequest(path: string, body: Record<string, unknown>): Promise<AuthResponse> {
+/** A refusal the server explained: `code` is its machine-readable error. */
+export class AuthRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code: string | undefined,
+    readonly body: Record<string, unknown>,
+  ) {
+    super(message)
+  }
+}
+
+async function apiAuthRequest(
+  path: string,
+  body: Record<string, unknown>,
+  headers: Record<string, string> = {},
+): Promise<AuthResponse & Record<string, unknown>> {
   let res: Response
   try {
     res = await credFetch(`${getApiBase()}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...headers },
       body: JSON.stringify(body),
     })
   } catch {
@@ -126,7 +177,13 @@ async function apiAuthRequest(path: string, body: Record<string, unknown>): Prom
     // A response the server did send but without a specific message is
     // rarer, but still shouldn't read as data loss — distinct wording
     // from the network-failure case above.
-    throw new Error(data.error || "That didn't go through — try again in a moment.")
+    const code = typeof data.error === 'string' ? data.error : undefined
+    throw new AuthRequestError(
+      turnstileErrorMessage(code) ?? (code || "That didn't go through — try again in a moment."),
+      res.status,
+      code,
+      data,
+    )
   }
   return data
 }
@@ -232,16 +289,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const signUp = async (name: string, email: string, password: string, ref?: string) => {
+  const signUp = async (
+    name: string,
+    email: string,
+    password: string,
+    ref?: string,
+    opts: { turnstileToken?: string | null; next?: string } = {},
+  ): Promise<SignUpResult> => {
     const attribution = getAttribution()
-    const { token, user: apiUser } = await apiAuthRequest('/auth/signup', {
-      name,
-      email,
-      password,
-      workspace: uniqueWorkspaceSlug(name || email),
-      ...(ref ? { ref } : {}),
-      ...(attribution ? { attribution } : {}),
-    })
+    const data = await apiAuthRequest(
+      '/auth/signup',
+      {
+        name,
+        email,
+        password,
+        workspace: uniqueWorkspaceSlug(name || email),
+        ...(ref ? { ref } : {}),
+        ...(attribution ? { attribution } : {}),
+      },
+      turnstileHeaders(opts.turnstileToken),
+    )
+    // Email-OTP signup: no session yet; /verify-otp finishes it.
+    if (isOtpChallenge(data)) {
+      savePendingOtp({ ...data, purpose: 'signup', ...(opts.next ? { next: opts.next } : {}) })
+      return { otp: data }
+    }
+    const { token, user: apiUser } = data
     // The httpOnly cookie set on the response is the session; the token is
     // still stored as the Bearer fallback for cookie-blocked browsers —
     // see lib/http.ts for when it can go away.
@@ -255,7 +328,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       emailVerified: apiUser.email_verified,
     }
     persist(u, null)
-    return u
+    return { user: u }
   }
 
   // PUT /auth/profile accepts name and/or email — the backend has
@@ -325,13 +398,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     persist(u, f)
   }
 
-  const signIn = async (email: string, password: string) => {
-    const {
-      token,
-      user: apiUser,
-      mfa_required,
-      mfa_token,
-    } = await apiAuthRequest('/auth/login', { email, password })
+  const signIn = async (
+    email: string,
+    password: string,
+    opts: { turnstileToken?: string | null; rememberMe?: boolean } = {},
+  ): Promise<SignInResult> => {
+    const data = await apiAuthRequest(
+      '/auth/login',
+      { email, password, ...(opts.rememberMe ? { rememberMe: true } : {}) },
+      turnstileHeaders(opts.turnstileToken),
+    )
+    if (isOtpChallenge(data)) {
+      // A pending signup that signs in finishes its email check, so the
+      // purpose comes from the server's chain, not from this page.
+      savePendingOtp({ ...data, purpose: 'login' })
+      return { otpRequired: true }
+    }
+    const { token, user: apiUser, mfa_required, mfa_token } = data
     if (mfa_required) {
       mfaTokenRef.current = mfa_token ?? null
       return { mfaRequired: true }
@@ -353,6 +436,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     storeSessionToken(token)
     if (!apiUser) throw new Error('Verification failed. Please try again.')
     await finishSignIn(apiUser)
+  }
+
+  const verifyEmailOtp = async (code: string): Promise<PendingOtp> => {
+    const pending = readPendingOtp()
+    if (!pending) throw new Error('That sign-in expired — start again.')
+    const { token, user: apiUser } = await apiAuthRequest('/auth/otp/verify', {
+      otp_token: pending.otp_token,
+      code,
+    })
+    clearPendingOtp()
+    storeSessionToken(token)
+    if (!apiUser) throw new Error('Verification failed. Please try again.')
+    await finishSignIn(apiUser)
+    return pending
+  }
+
+  const resendEmailOtp = async (turnstileToken: string | null): Promise<PendingOtp> => {
+    const pending = readPendingOtp()
+    if (!pending) throw new Error('That sign-in expired — start again.')
+    const data = await apiAuthRequest(
+      '/auth/otp/resend',
+      { otp_token: pending.otp_token },
+      turnstileHeaders(turnstileToken),
+    )
+    return (
+      updatePendingOtp({
+        delivery: data['delivery'] as PendingOtp['delivery'],
+        code_expires_at: data['code_expires_at'] as string,
+        chain_expires_at: data['chain_expires_at'] as string,
+        resend_available_at: data['resend_available_at'] as string,
+      }) ?? pending
+    )
   }
 
   // Accepting a per-member invite is both account creation/linking AND the
@@ -543,6 +658,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signUp,
         signIn,
         verifyMfaCode,
+        verifyEmailOtp,
+        resendEmailOtp,
         acceptFamilyInvite,
         updateEmail,
         updateProfile,

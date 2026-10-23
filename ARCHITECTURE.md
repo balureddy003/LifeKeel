@@ -630,7 +630,7 @@ architecture, not a property of today's task set.
 | Local judge/classifier/OCR | Implemented and optional | Guarded CPU Ollama service with IAM and measured capacity |
 | On-device generation | Implemented and bounded | Opt-in crisis-contact drafting via multi-provider probe (Capacitor native plugin, Chrome `LanguageModel`, WebLLM + schema-constrained output); client output checks + verified deterministic template fallback. Opted-in users never egress on failure; non-opted-in users keep the hosted path |
 | Reversible PII curtain | Implemented primitive | `redactForCloudEgress`/`restore` shipped and tested (nonce placeholders, URL-safe restore, UK PII recognizers); no production client-context egress path consumes it yet — mandatory wiring pending |
-| Exact response cache | Implemented, partially adopted | Tenant/task/system/prompt/model hash; scorer path |
+| Exact response cache | Implemented | Tenant/task/system/prompt/model hash; scorer path plus governed calls on tasks declaring `cache_ttl_seconds` (repeatable batch/classification tasks only — conversational and `lifekeel_infra_required`/`device_only` boundaries never cache; a hit records an `ai_task_calls` row with `outcome: 'cache_hit'` and zero usage) |
 | Prompt version registry | Implemented primitive, limited adoption | Candidate/A-B/production/retired lifecycle and spans |
 | Model output guards | Implemented | Advice/provider/ungrounded-number checks + symmetric input/output guards on cloud, local and vision paths via the task gateway |
 | Budget and cost ledger | Implemented | Per-tenant limits checked pre-call; every provider (incl. Azure/Ollama) records usage to CostLedger per task/tenant; atomic reservation still debt (§8.15) |
@@ -1534,15 +1534,25 @@ Remaining debt:
    approved** (owner decisions, 2026-10-22, conservative `limited_abuse_log`
    retention recorded on both — Azure until modified abuse monitoring is
    granted, Vertex until the deployment's data-governance configuration is
-   confirmed); anthropic, openai and groq remain `unreviewed` and are refused
-   under `enforce`. Vertex auth is OAuth2 only — `VERTEX_PROJECT` +
+   confirmed); Groq is approved (2026-10-23 — no default inference retention,
+   self-serve ZDR via Console → Data Controls; recorded as `limited_abuse_log`
+   until that toggle is on, and chat/completions only — the /batches and
+   /fine_tunings surfaces retain by design); xAI is approved (2026-10-23)
+   **conditional on ZDR** — its Sept-2026 DPA requires Personal Data to go
+   through the ZDR-enabled API only, so Console → Team Settings → Zero Data
+   Retention must be on before use (xAI keeps a perpetual safety-research
+   licence on prompts/outputs — reviewed at approval, not model training).
+   Anthropic and openai remain
+   `unreviewed` and are refused under `enforce`. Vertex auth is OAuth2 only —
+   `VERTEX_PROJECT` +
    `VERTEX_LOCATION`, credentials via the Cloud Run service account
    (`roles/aiplatform.user`) or `VERTEX_SERVICE_ACCOUNT_JSON` off-GCP;
    `LIFEKEEL_LLM_PROVIDER` overrides first-configured-key provider detection,
    and the audited `platform_config.llm_provider_override` (operator
-   `/operator/configuration` switch) overrides both at runtime — still
-   bounded by the same per-task processor check, so a disallowed pick
-   refuses rather than reroutes. A
+   `/operator/configuration` switch) overrides all of it at runtime —
+   including model-name detection, so `tier:*` governed calls follow the
+   pick too. Still bounded by the per-task processor check, so a disallowed
+   pick refuses rather than reroutes. A
    `lifekeel_infra` task still falls back to hosted when the local model is
    off; the check flags that fallback, it does not stop it in `warn`.
    Subprocessor and terms review stays a human/legal process. A read-only
@@ -1741,9 +1751,49 @@ models**. The implementation already separates several important boundaries:
   narrower account context rather than the full financial profile.
 - Email/document content is treated as untrusted data, bounded to task fields,
   and routed to a configured hosted model or a local/self-hosted path.
-- Vault documents are encrypted before GridFS, excluded from ordinary document
-  routes and OCR, and can be additionally sealed in the browser so the service
-  cannot read the plaintext.
+- Vault documents are envelope-encrypted before they reach the byte store
+  (GridFS, or the private `lifekeel-vault` R2 bucket), excluded from ordinary
+  document routes and OCR, and can be additionally sealed in the browser so the
+  service cannot read the plaintext.
+- Document bytes can live in Cloudflare R2 (CLOUDFLARE_INTEGRATION.md §7):
+  browser uploads go to a private quarantine bucket, a separate scan worker
+  checks type, structure and malware in a credential-less parser child, and
+  only then promotes bytes to a private clean bucket served by 60-second
+  presigned URLs. Cloudflare is a **storage sub-processor**, not a model
+  processor: no Cloudflare content-inspection or AI feature is enabled on these
+  buckets and no R2 event pipeline may point at a model. Every read goes
+  through `documents/storage.ts` (dual-read GridFS + R2).
+
+### Edge and account protection (CLOUDFLARE_INTEGRATION.md)
+
+- **Turnstile** guards every human-initiated public mutation (signup, login,
+  password reset, verification resend, OTP resend, lead capture, family join)
+  via `config.turnstile` on the route; rate limits run first. It sends visitor
+  signals to Cloudflare on pre-login pages only.
+- **Email OTP** after signup and after password login for accounts without
+  TOTP. It is mailbox verification and a second step against password-only
+  attacks, **not** phishing-resistant MFA (the pending token is a bearer
+  credential). Passkeys are the future answer.
+- **Public surface inventory**: `security/public-routes.ts` lists every
+  session-less prefix with its protection group; a snapshot test pins it.
+- **Boot guards** refuse to start outside dev with demo tokens, API docs
+  without a recorded exception, `/metrics` without a scrape token, Turnstile
+  or OTP enabled without their secrets, or R2 enabled without its keys.
+
+```mermaid
+flowchart LR
+  B[Browser] -->|presigned PUT 5 min| Q[(R2 quarantine)]
+  B -->|init / complete| A[API]
+  A -->|HEAD, presign| Q
+  A -->|wake-up| R[(Redis)]
+  W[Scan worker] -->|claim lease| M[(MongoDB rows = outbox)]
+  W -->|GET| Q
+  W -->|INSTREAM| C[ClamAV]
+  W -->|parser child, no creds| P[structure + WebP]
+  W -->|PUT verified bytes| CL[(R2 clean)]
+  B -->|presigned GET 60 s| CL
+  A -->|ciphertext only| V[(R2 vault)]
+```
 - The exact-match LLM cache is tenant/task/input keyed with TTL; semantic
   response caching remains prohibited for sensitive household content.
 - Prompt/completion telemetry is off by default; model tracing should carry

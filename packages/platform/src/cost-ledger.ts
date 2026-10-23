@@ -44,12 +44,18 @@ const DEFAULT_PRICING: Record<string, ModelPricing> = {
   // Groq (significantly cheaper — open models via inference API)
   'llama-3.1-8b-instant': { input_per_1k: 5, output_per_1k: 8 },
   'llama-3.1-70b-versatile': { input_per_1k: 59, output_per_1k: 79 },
-  // Vertex AI Gemini — micro-dollars per 1K. flash-lite $0.10/$0.40 per 1M,
-  // flash $0.30/$2.50, argon estimated flagship-class; reasoning tokens count
-  // as output. Override via LIFEKEEL_LLM_PRICING_JSON as prices shift.
-  'gemini-3.5-flash-lite': { input_per_1k: 10, output_per_1k: 40 },
-  'gemini-3.5-flash': { input_per_1k: 30, output_per_1k: 250 },
-  'gemini-4-argon': { input_per_1k: 125, output_per_1k: 1000 },
+  // xAI Grok — grok-4.3 $1.25/$2.50 and grok-4.7 $2/$6 per 1M (short-context
+  // global rates; the US regional endpoint adds ~10%).
+  'grok-4.3': { input_per_1k: 125, output_per_1k: 250 },
+  'grok-4.7': { input_per_1k: 200, output_per_1k: 600 },
+  // Vertex AI Gemini — global-endpoint list prices ($/1M: flash-lite
+  // $0.30/$2.50, flash $1.50/$9.00, argon $2/$10 intro until 2026-12-01 then
+  // $4/$20). Regional endpoints run ~10% higher; Flex/batch ~50% lower.
+  // Reasoning tokens count as output. Override via LIFEKEEL_LLM_PRICING_JSON
+  // as prices shift.
+  'gemini-3.5-flash-lite': { input_per_1k: 30, output_per_1k: 250 },
+  'gemini-3.5-flash': { input_per_1k: 150, output_per_1k: 900 },
+  'gemini-4-argon': { input_per_1k: 200, output_per_1k: 1000 },
   // Ollama — local, zero cost
   'llama3.2:3b': { input_per_1k: 0, output_per_1k: 0 },
   'qwen2.5:7b': { input_per_1k: 0, output_per_1k: 0 },
@@ -135,7 +141,6 @@ export class CostLedger {
   }
 
   async record(record: Omit<LlmUsageRecord, '_id' | 'created_at'>): Promise<void> {
-     
     await (this.col as any).insertOne({
       ...record,
       created_at: new Date(),

@@ -12,6 +12,7 @@ import { AuthShell } from '@/components/landing/AuthShell'
 import { currentUtm, track } from '@/lib/growth-track'
 import { trackConversion } from '@/lib/ad-track'
 import { fetchPublicStatus } from '@/lib/api'
+import { Turnstile, useTurnstile } from '@/components/security/Turnstile'
 
 export default function SignUpPage() {
   const [name, setName] = useState('')
@@ -23,6 +24,7 @@ export default function SignUpPage() {
   const [signupsOpen, setSignupsOpen] = useState<boolean | null>(null)
   const { signUp, signInWithProvider } = useAuth()
   const router = useRouter()
+  const captcha = useTurnstile()
 
   // PRD-112: carried through from a friend's referral link
   // (/signup?ref=<code>), same window.location.search convention as
@@ -62,11 +64,16 @@ export default function SignUpPage() {
     setLoading(true)
     setError(null)
     try {
-      await signUp(name, email, password, refCode)
+      const result = await signUp(name, email, password, refCode, {
+        turnstileToken: captcha.consume(),
+        next: '/family-setup',
+      })
       haptic('success')
       track('signup_completed', { method: 'password' })
       trackConversion('signup')
-      router.push('/family-setup')
+      // With email OTP the account is created but not yet signed in: the
+      // code from the email finishes it (CLOUDFLARE_INTEGRATION.md §6.4).
+      router.push(result.otp ? '/verify-otp' : '/family-setup')
     } catch (err) {
       haptic('warning')
       setError(err instanceof Error ? err.message : 'Sign up failed. Please try again.')
@@ -192,11 +199,18 @@ export default function SignUpPage() {
           </div>
         </div>
 
+        <Turnstile
+          ref={captcha.ref}
+          action="signup"
+          onToken={captcha.onToken}
+          onExpire={captcha.onExpire}
+        />
+
         <div role="alert" className="lk-err">
           {error ?? ''}
         </div>
 
-        <button type="submit" className="lk-btn" disabled={loading}>
+        <button type="submit" className="lk-btn" disabled={loading || !captcha.ready}>
           {loading ? 'Creating...' : 'Create your free account'}
         </button>
       </form>

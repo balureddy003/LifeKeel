@@ -7,6 +7,7 @@
  * posture) rather than fabricated data.
  */
 
+import { turnstileErrorMessage, turnstileHeaders } from './turnstile'
 import { AI_RESPONSES } from './life-data'
 import type { InboxItem } from './onboarding-data'
 import { getApiBase } from './env'
@@ -402,14 +403,19 @@ export async function fetchReadinessHistory(): Promise<ReadinessHistoryPoint[]> 
 export async function fetchFamilyReadinessScore(): Promise<{
   score: number
   hasLiveData: boolean
+  /** When this number was last computed — the server recomputes on every
+   *  read and says so via computed_at; surfaced on the score card so a
+   *  stable score reads as "just checked, unchanged" rather than stale. */
+  computedAt: string | null
 }> {
   const server = await fetchFamilyReadiness()
   if (server && server.has_live_data && server.score !== null) {
-    return { score: server.score, hasLiveData: true }
+    return { score: server.score, hasLiveData: true, computedAt: server.computed_at }
   }
-  if (server && !server.has_live_data) return { score: 0, hasLiveData: false }
+  if (server && !server.has_live_data)
+    return { score: 0, hasLiveData: false, computedAt: server.computed_at }
   if (server && server.has_live_data && server.score === null)
-    return { score: 0, hasLiveData: true }
+    return { score: 0, hasLiveData: true, computedAt: server.computed_at }
 
   const insights = await fetchFamilyInsights()
   if (insights.length === 0) {
@@ -419,8 +425,8 @@ export async function fetchFamilyReadinessScore(): Promise<{
     // also has zero insights — scoring that 100 told a family with a
     // £400k mortgage and no life cover they were "on track".
     return profile?.insights_evaluated_at
-      ? { score: 100, hasLiveData: true }
-      : { score: 0, hasLiveData: false }
+      ? { score: 100, hasLiveData: true, computedAt: profile.insights_evaluated_at }
+      : { score: 0, hasLiveData: false, computedAt: null }
   }
   const openPenalty = insights
     .filter((i) => !RESOLVED_INSIGHT_STATES.includes(i.state))
@@ -428,6 +434,7 @@ export async function fetchFamilyReadinessScore(): Promise<{
   return {
     score: Math.round(Math.max(0, Math.min(100, 100 - openPenalty * 10))),
     hasLiveData: true,
+    computedAt: new Date().toISOString(),
   }
 }
 
@@ -1330,16 +1337,127 @@ export interface FamilyDocument {
   category: string
   // 'stored' = uploaded and scanned (free, every plan), AI field
   // extraction not run. 'uploaded'/'processing'/'extracted'/'error' cover
-  // the paid AI-extraction pipeline.
-  status: 'uploaded' | 'processing' | 'extracted' | 'stored' | 'error'
+  // the paid AI-extraction pipeline. The R2 upload pipeline adds the scan
+  // stages before any of those (CLOUDFLARE_INTEGRATION.md §7.3).
+  status:
+    | 'uploaded'
+    | 'processing'
+    | 'extracted'
+    | 'stored'
+    | 'error'
+    | 'awaiting_upload'
+    | 'scan_queued'
+    | 'scanning'
+    | 'scan_error'
+    | 'clean'
+    | 'applied'
+    | 'infected'
+    | 'rejected'
+    | 'failed'
   uploadedAt: string
   extractedData?: Record<string, string>
+}
+
+/** Accepted by the upload pipeline; the server enforces the same list. */
+export const UPLOAD_ACCEPT =
+  'application/pdf,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.heic,.heif'
+
+/** Browsers often leave HEIC/DOCX types blank: fall back to the extension. */
+function uploadMime(file: File): string {
+  if (file.type) return file.type
+  const ext = file.name.toLowerCase().split('.').pop()
+  return (
+    {
+      pdf: 'application/pdf',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      heic: 'image/heic',
+      heif: 'image/heif',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      png: 'image/png',
+      webp: 'image/webp',
+      gif: 'image/gif',
+    }[ext ?? ''] ?? 'application/octet-stream'
+  )
+}
+
+async function sha256Hex(file: File): Promise<string | undefined> {
+  try {
+    const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer())
+    return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('')
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Direct upload (CLOUDFLARE_INTEGRATION.md §7.4): ask the API for a 5-minute
+ * presigned PUT, send the bytes straight to the private quarantine bucket,
+ * then tell the API it's done. Returns null when this household isn't on
+ * the direct path yet, so the caller falls back to the multipart route.
+ */
+async function uploadDocumentDirect(
+  file: File,
+  clientScreen?: 'clear' | 'flagged' | 'unscreened',
+): Promise<FamilyDocument | null> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const auth: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {}
+  const mime = uploadMime(file)
+  const init = await credFetch(`${base}/documents/uploads`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...auth },
+    body: JSON.stringify({
+      filename: file.name,
+      mime,
+      size: file.size,
+      sha256: await sha256Hex(file),
+      ...(clientScreen ? { client_screen: clientScreen } : {}),
+    }),
+  })
+  if (init.status === 409) {
+    const body = await init.json().catch(() => ({}))
+    if (body.error === 'direct_upload_unavailable') return null
+  }
+  if (!init.ok) {
+    const body = await init.json().catch(() => ({}))
+    throw new Error(body.message || body.error || `Upload failed: ${init.status}`)
+  }
+  const { document_id, upload } = (await init.json()) as {
+    document_id: string
+    upload: { url: string; headers: Record<string, string> }
+  }
+  // The browser sets Content-Length from the Blob; scripts may not. One retry.
+  const put = () =>
+    fetch(upload.url, { method: 'PUT', headers: upload.headers, body: file }).then((r) => {
+      if (!r.ok) throw new Error(`Storage refused the upload (${r.status})`)
+    })
+  try {
+    await put()
+  } catch {
+    await put()
+  }
+  const done = await credFetch(`${base}/documents/${document_id}/complete`, {
+    method: 'POST',
+    headers: auth,
+  })
+  if (!done.ok) throw new Error(`Upload failed: ${done.status}`)
+  const { status } = (await done.json()) as { status: FamilyDocument['status'] }
+  return {
+    id: document_id,
+    filename: file.name,
+    category: 'other',
+    status,
+    uploadedAt: new Date().toISOString(),
+  }
 }
 
 export async function uploadDocument(
   file: File,
   clientScreen?: 'clear' | 'flagged' | 'unscreened',
 ): Promise<FamilyDocument> {
+  const direct = await uploadDocumentDirect(file, clientScreen)
+  if (direct) return direct
   const base = getApiBase()
   const token = getAuthToken()
   const formData = new FormData()
@@ -1478,6 +1596,10 @@ export async function fetchDocument(id: string): Promise<FamilyDocumentDetail | 
  * for the AI Memory review drawer's side-by-side preview — auth is a Bearer
  * header, so this can't just be an <img src> pointed at the API directly.
  * Caller is responsible for URL.revokeObjectURL when done with it.
+ *
+ * R2-stored documents come from a 60-second presigned URL (§7.4 mode=url),
+ * straight from object storage; GridFS-era documents (409) and any failure
+ * fall back to the bytes-through-the-API route.
  */
 export async function fetchDocumentFileUrl(
   id: string,
@@ -1487,6 +1609,15 @@ export async function fetchDocumentFileUrl(
     const token = getAuthToken()
     const headers: Record<string, string> = {}
     if (token) headers['Authorization'] = `Bearer ${token}`
+    const signed = await credFetch(`${base}/documents/${id}/file?mode=url`, { headers })
+    if (signed.ok) {
+      const { url } = (await signed.json()) as { url: string }
+      const obj = await fetch(url, { cache: 'no-store' })
+      if (obj.ok) {
+        const blob = await obj.blob()
+        return { url: URL.createObjectURL(blob), mimeType: blob.type }
+      }
+    }
     const res = await credFetch(`${base}/documents/${id}/file`, { headers })
     if (!res.ok) return null
     const blob = await res.blob()
@@ -2277,15 +2408,19 @@ export async function joinFamily(
   name: string,
   email: string,
   password: string,
+  turnstileToken?: string | null,
 ): Promise<{ familyName: string }> {
   const base = getApiBase()
   const res = await credFetch(`${base}/family/join`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...turnstileHeaders(turnstileToken) },
     body: JSON.stringify({ invite_code: inviteCode, name, email, password }),
   })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || "Couldn't submit your request")
+  if (!res.ok)
+    throw new Error(
+      turnstileErrorMessage(data.error) ?? (data.error || "Couldn't submit your request"),
+    )
   return { familyName: data.family_name as string }
 }
 
@@ -3082,7 +3217,24 @@ export async function fetchFinancialProfileWithVersion(): Promise<{
   profile: FinancialProfile | null
   version: number
 }> {
-  return fetchFinancialProfileRaw()
+  // Deliberately NOT apiFetch's silent-fallback path: a failed load must
+  // reach the wizard as an error, because rendering EMPTY_FORM after a
+  // transient failure reads as "your saved answers were lost" — and the
+  // next autosave would then overwrite the real profile with blanks
+  // (KEEL-006's version check only guards that once the doc has a nonzero
+  // version; a first-failure save carries none).
+  const base = getApiBase()
+  const token = getAuthToken()
+  const headers: Record<string, string> = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  const res = await credFetch(`${base}/family/financial-profile`, { headers })
+  if (!res.ok) {
+    const err = new Error(`Profile load failed (${res.status})`)
+    reportError(err, { path: '/family/financial-profile' })
+    throw err
+  }
+  const data = (await res.json()) as { profile?: FinancialProfile | null; version?: number }
+  return { profile: data.profile ?? null, version: data.version ?? 0 }
 }
 
 // generateInsights defaults to false — most calls are the wizard's per-step
@@ -3440,9 +3592,16 @@ export async function fetchScopeContracts(): Promise<ScopeContract[]> {
 // need right now — a raw browser network error ("Failed to fetch") leaking
 // straight into that moment is the wrong kind of scary. Distinguish "we
 // couldn't even reach the server" from "the server said no."
-async function authPostRequest(path: string, body: Record<string, unknown>): Promise<void> {
+async function authPostRequest(
+  path: string,
+  body: Record<string, unknown>,
+  turnstileToken?: string | null,
+): Promise<void> {
   const token = getAuthToken()
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...turnstileHeaders(turnstileToken),
+  }
   // resend-verification is dual-mode server-side: an Authorization header
   // resolves the user, otherwise the email in the body does.
   if (token) headers['Authorization'] = `Bearer ${token}`
@@ -3457,15 +3616,34 @@ async function authPostRequest(path: string, body: Record<string, unknown>): Pro
     throw new Error("Couldn't reach LifeKeel — check your connection and try again.")
   }
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || "That didn't go through — try again in a moment.")
+  if (!res.ok)
+    throw new Error(
+      turnstileErrorMessage(data.error) ??
+        (data.error || "That didn't go through — try again in a moment."),
+    )
 }
 
-export async function requestPasswordReset(email: string): Promise<void> {
-  return authPostRequest('/auth/request-password-reset', { email, app: 'family' })
+export async function requestPasswordReset(
+  email: string,
+  turnstileToken?: string | null,
+): Promise<void> {
+  return authPostRequest(
+    '/auth/request-password-reset',
+    { email, app: 'family' },
+    turnstileToken,
+  )
 }
 
-export async function confirmPasswordReset(token: string, newPassword: string): Promise<void> {
-  return authPostRequest('/auth/reset-password', { token, new_password: newPassword })
+export async function confirmPasswordReset(
+  token: string,
+  newPassword: string,
+  turnstileToken?: string | null,
+): Promise<void> {
+  return authPostRequest(
+    '/auth/reset-password',
+    { token, new_password: newPassword },
+    turnstileToken,
+  )
 }
 
 export async function verifyEmail(token: string): Promise<void> {
@@ -4439,12 +4617,14 @@ export function fetchOperatorReferrals(): Promise<OperatorReferrals> {
 
 // ── Operator: configuration ───────────────────────────────────────────────
 
-export type LlmProviderId = 'anthropic' | 'openai' | 'azure' | 'vertex' | 'ollama' | 'groq'
+export type LlmProviderId = 'anthropic' | 'openai' | 'azure' | 'vertex' | 'ollama' | 'groq' | 'xai'
 
 export interface PlatformConfig {
   maintenance_mode: boolean
   signups_enabled: boolean
   marketing_paused: boolean
+  /** Kill switch: while true the autopilot sweep (shadow and live) does nothing. */
+  autopilot_paused: boolean
   maintenance_window: MaintenanceWindow | null
   llm_provider_override: LlmProviderId | null
 }
@@ -4708,11 +4888,24 @@ export async function setOperatorAiTaskState(
 
 // ── Operator: autopilot ───────────────────────────────────────────────────
 
+export interface ShadowStats {
+  total: number
+  reviewed: number
+  right: number
+  /** right / reviewed; null until a row is reviewed. */
+  precision: number | null
+  promotable: boolean
+}
+
 export interface AutopilotRule {
   rule: string
   label: string
   description: string
   enabled: boolean
+  /** shadow = logs "would do" only; live = acts. */
+  mode: 'shadow' | 'live'
+  /** Present only while the rule is shadowing. */
+  shadow?: ShadowStats | null
   max_blast_radius: number
   cooldown_minutes: number
   last_run_at?: string
@@ -4726,8 +4919,10 @@ export interface AutopilotAction {
   target_type: string
   target_id: string
   reason: string
-  status: 'executed' | 'failed' | 'proposed' | 'approved' | 'rejected'
+  status: 'executed' | 'failed' | 'proposed' | 'approved' | 'rejected' | 'shadow'
   result?: string
+  would_do?: string
+  review?: 'right' | 'wrong'
   proposal?: {
     kind: string
     required_permission: string
@@ -4742,13 +4937,20 @@ export function fetchOperatorAutopilot(): Promise<{
   rules: AutopilotRule[]
   recent_actions: AutopilotAction[]
   never_autonomous: string[]
+  paused: boolean
+  shadow_promotion: { min_reviewed: number; min_precision: number }
 }> {
   return operatorRequest('/operator/autopilot')
 }
 
 export function updateOperatorAutopilot(
   rule: string,
-  update: { enabled?: boolean; max_blast_radius?: number; cooldown_minutes?: number },
+  update: {
+    enabled?: boolean
+    mode?: 'shadow' | 'live'
+    max_blast_radius?: number
+    cooldown_minutes?: number
+  },
   reason: string,
 ): Promise<{ rule: AutopilotRule }> {
   const base = getApiBase()
@@ -4784,6 +4986,86 @@ export function resolveAutopilotProposal(
   }).then(async (res) => {
     const data = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error((data.error as string) || `Proposal ${decision} failed`)
+    return data
+  })
+}
+
+/** Verdict on one shadow row — "would that have been the right call?". */
+export function reviewShadowAction(
+  id: string,
+  verdict: 'right' | 'wrong',
+  reason: string,
+): Promise<{ ok: boolean; shadow: ShadowStats }> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  return credFetch(`${base}/operator/autopilot/shadow/${encodeURIComponent(id)}/review`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ verdict, reason }),
+  }).then(async (res) => {
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error((data.error as string) || 'Review failed')
+    return data
+  })
+}
+
+// ── Operator: Mission Control ─────────────────────────────────────────────
+
+export interface MissionDecision {
+  id: string
+  kind:
+    | 'proposal'
+    | 'alert'
+    | 'support_case'
+    | 'post_draft'
+    | 'post_failed'
+    | 'campaign_draft'
+    | 'dual_approval'
+  severity: 'danger' | 'warning' | 'info'
+  title: string
+  why: string
+  effect: string
+  undo: string
+  href: string
+  required_permission: string
+  /** Only proposals and alerts — everything else opens its own page. */
+  batchable: boolean
+  created_at: string
+}
+
+export function fetchMissionControl(): Promise<{
+  decisions: MissionDecision[]
+  autopilot_paused: boolean
+}> {
+  return operatorRequest('/operator/mission-control')
+}
+
+export interface MissionBatchResult {
+  id: string
+  ok: boolean
+  status: number
+  error?: string
+}
+
+export function batchMissionControl(
+  items: { id: string; action: 'approve' | 'reject' | 'ack' }[],
+  reason: string,
+): Promise<{ results: MissionBatchResult[] }> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  return credFetch(`${base}/operator/mission-control/batch`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ items, reason }),
+  }).then(async (res) => {
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error((data.error as string) || 'Batch failed')
     return data
   })
 }
@@ -5174,20 +5456,100 @@ export async function adjustTenantCredits(
   return (data as { credits_balance: number }).credits_balance
 }
 
+// ── Operator: Billing setup (Stripe config as code) ───────────────────────
+
+export interface StripeSetupAction {
+  object: 'product' | 'price' | 'webhook' | 'portal'
+  key: string
+  op: 'create' | 'update' | 'replace' | 'noop' | 'skipped'
+  details: string[]
+}
+
+export interface StripeSetupReconcile {
+  mode: 'test' | 'live' | 'unknown'
+  applied: boolean
+  drift: boolean
+  actions: StripeSetupAction[]
+  errors: Array<{ object: string; key: string; message: string }>
+  ids: { product?: string; prices: Record<string, string>; webhook?: string; portal?: string }
+}
+
+export interface StripeSetupStatus {
+  configured: boolean
+  mode: 'test' | 'live' | 'unknown'
+  key_kind: 'restricted' | 'secret' | 'none'
+  key_warning: string | null
+  webhook: {
+    last_event_at: string | null
+    last_event_type: string | null
+    completed_24h: number
+    failed_24h: number
+    recent_failures: Array<{
+      event_id: string
+      event_type: string
+      failed_at?: string
+      error?: string
+    }>
+  }
+  reconcile: StripeSetupReconcile | null
+}
+
+/** Thrown for 409s that ask the operator to confirm something explicitly. */
+export class StripeSetupConfirmError extends Error {
+  constructor(
+    message: string,
+    readonly code: 'confirm_live_required' | 'confirm_price_change_required' | string,
+    readonly reconcile?: StripeSetupReconcile,
+  ) {
+    super(message)
+  }
+}
+
+export function fetchStripeSetup(): Promise<StripeSetupStatus> {
+  return operatorRequest('/operator/billing/stripe')
+}
+
+export async function reconcileStripeSetup(input: {
+  reason: string
+  apply: boolean
+  confirm_live?: boolean
+  confirm_price_change?: boolean
+}): Promise<StripeSetupReconcile> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await credFetch(`${base}/operator/billing/stripe/reconcile`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(input),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (res.status === 409 && typeof data.code === 'string') {
+    throw new StripeSetupConfirmError(data.error as string, data.code, data.reconcile)
+  }
+  if (!res.ok) throw new Error((data.error as string) || 'Stripe setup request failed')
+  return data as StripeSetupReconcile
+}
+
 // ── Public lead capture ───────────────────────────────────────────────────
 
-export async function captureLead(input: {
-  email: string
-  name?: string
-  source: string
-  score_band?: string
-}): Promise<boolean> {
+export async function captureLead(
+  input: {
+    email: string
+    name?: string
+    source: string
+    score_band?: string
+  },
+  turnstileToken?: string | null,
+): Promise<boolean> {
   try {
     captureAttribution()
     const attribution = getAttribution()
     const res = await credFetch(`${getApiBase()}/leads`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...turnstileHeaders(turnstileToken) },
       body: JSON.stringify({
         ...input,
         consent_marketing: true,

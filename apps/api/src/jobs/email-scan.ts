@@ -14,7 +14,8 @@
 
 import { randomUUID } from 'node:crypto'
 import { decryptEnveloped, encryptForTenant } from '../crypto/envelope.js'
-import { GridFSBucket, type Db } from 'mongodb'
+import type { Db } from 'mongodb'
+import { writeGridfs } from '../documents/storage.js'
 import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import {
   fetchRecentEmails,
@@ -236,7 +237,6 @@ export async function scanTenantInbox(
   const encoderCfg = emailEncoderFromEnv()
   const encoder = encoderCfg ? { ...encoderCfg, onOutcome: recordEmailEncoderOutcome } : undefined
   const inboxItems = db.collection<InboxItemDoc>('inbox_items')
-  const bucket = new GridFSBucket(db, { bucketName: 'documents' })
   const documents = getTenantCollection<Record<string, unknown>>(db, 'documents', tenantId)
 
   // Emails the model could not classify. The cursor is held just before the
@@ -348,16 +348,19 @@ export async function scanTenantInbox(
       const parseAllowed = docExtractionEnabled && mayParse(scan)
 
       const documentId = randomUUID()
-      const uploadStream = bucket.openUploadStream(attachment.filename, {
-        metadata: {
+      // Known gap (CLOUDFLARE_INTEGRATION.md §7.13): mailbox attachments still
+      // go to GridFS, not the R2 quarantine + scan job; dual-read covers them.
+      const fileId = await writeGridfs(
+        db,
+        attachment.filename,
+        {
           tenant_id: tenantId,
           document_id: documentId,
           mime_type: attachment.contentType,
           uploaded_at: new Date(),
         },
-      })
-      uploadStream.end(attachment.content)
-      const fileId = uploadStream.id
+        attachment.content,
+      )
 
       await documents.insertOne({
         id: documentId,

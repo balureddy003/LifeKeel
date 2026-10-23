@@ -57,6 +57,9 @@ jobs:
     env:
       NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL || secrets.NEXT_PUBLIC_API_URL }}
       NEXT_PUBLIC_SENTRY_DSN: ${{ vars.NEXT_PUBLIC_SENTRY_DSN || secrets.NEXT_PUBLIC_SENTRY_DSN }}
+      # Cloudflare Turnstile site key — public by design. Empty = no widget
+      # (only valid while the API runs TURNSTILE_MODE=off).
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ vars.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}
       FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID || secrets.FIREBASE_PROJECT_ID || 'dyocense-502208' }}
       # RFC 9116 security.txt contact — override via repo Variable; the
       # build skips the file entirely when this is empty, so keep the
@@ -84,6 +87,7 @@ jobs:
           NEXT_PUBLIC_API_URL: ${{ env.NEXT_PUBLIC_API_URL }}
           NEXT_PUBLIC_SAME_ORIGIN_API: ${{ github.event.inputs.same_origin_api == 'true' && '1' || '' }}
           NEXT_PUBLIC_SENTRY_DSN: ${{ env.NEXT_PUBLIC_SENTRY_DSN }}
+          NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ env.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}
 
       # The CSP (script-src 'self') blocks the inline <script> bodies Next.js
       # emits for hydration. Move them to content-addressed files so the

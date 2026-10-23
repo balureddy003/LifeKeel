@@ -54,3 +54,11 @@
 .landing .lk-slide-title { margin: 6px 0 0; font: 400 28px / 1.1 var(--display); text-wrap: balance; }
 .lk-slide-text { margin: 0; color: var(--muted); max-width: 44ch; }
 .landing .lk-auth-card h1 { margin: 0; }
+
+/* Email one-time code (verify-otp). Six boxes, one row, fits a 320px screen. */
+.lk-otp { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.lk-otp-box { text-align: center; font: 600 22px / 1 var(--mono, ui-monospace, Menlo, monospace); padding-inline: 0; min-width: 0; }
+.lk-otp[disabled] .lk-otp-box { opacity: 0.6; }
+.lk-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.lk-turnstile { display: grid; justify-items: center; gap: 4px; min-height: 0; }
+.lk-turnstile .lk-hint:empty { display: none; }

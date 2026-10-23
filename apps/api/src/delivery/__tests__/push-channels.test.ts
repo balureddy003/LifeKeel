@@ -483,4 +483,68 @@ describe('router: dead devices and the email floor (real MongoDB)', () => {
     await db.collection('delivery_preferences').deleteMany({})
     expect((await getChannelState(db, T)).first_channel).toBe('none')
   })
+
+  it('email is available without a delivery_preferences row — resolved from the roster organizer', async () => {
+    // The common case: nothing in signup writes email_to, but the account
+    // clearly has an email — the "no email on file" state was a bug, not a
+    // missing preference.
+    await db.collection('family_groups').insertOne({
+      tenant_id: T,
+      members: [
+        {
+          id: 'm1',
+          name: 'Org',
+          email: 'organizer@x.test',
+          role: 'organizer',
+          status: 'active',
+        },
+      ],
+    })
+    const state = await getChannelState(db, T)
+    expect(state.email.available).toBe(true)
+    expect(state.first_channel).toBe('email')
+    expect(JSON.stringify(state)).not.toMatch(/organizer@x\.test/)
+  })
+
+  it('falls back to the account user record when no family doc exists yet', async () => {
+    await db.collection('users').insertOne({ tenant_id: T, email: 'acct@x.test' })
+    expect((await getChannelState(db, T)).email.available).toBe(true)
+  })
+
+  it('a pending child member does not satisfy the email floor', async () => {
+    await db.collection('family_groups').insertOne({
+      tenant_id: T,
+      members: [{ id: 'm1', name: 'Kid', email: 'kid@x.test', role: 'child', status: 'pending' }],
+    })
+    const state = await getChannelState(db, T)
+    expect(state.email.available).toBe(false)
+    expect(state.first_channel).toBe('none')
+  })
+
+  it('deliver() reaches the email floor for a tenant that never touched notification settings', async () => {
+    await db.collection('family_groups').insertOne({
+      tenant_id: T,
+      members: [
+        {
+          id: 'm1',
+          name: 'Org',
+          email: 'organizer@x.test',
+          role: 'organizer',
+          status: 'active',
+        },
+      ],
+    })
+    const router = new DeliveryRouter(db as never)
+    const emails: string[] = []
+    const r = router as unknown as Record<string, unknown>
+    r['email'] = { send: async () => (emails.push('email'), ok) }
+    const result = await router.deliver(insight('i-floor'), T)
+    expect(result?.channel).toBe('email')
+    expect(emails).toHaveLength(1)
+  })
+
+  it('deliver() still returns early without prefs when no email can be resolved at all', async () => {
+    const router = new DeliveryRouter(db as never)
+    expect(await router.deliver(insight('i-nope'), T)).toBeNull()
+  })
 })

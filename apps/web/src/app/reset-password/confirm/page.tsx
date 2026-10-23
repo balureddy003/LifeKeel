@@ -8,6 +8,7 @@ import { confirmPasswordReset } from '@/lib/api'
 import { haptic } from '@/lib/haptics'
 import { AuthShell } from '@/components/landing/AuthShell'
 import { readLinkToken } from '@/lib/link-token'
+import { Turnstile, useTurnstile } from '@/components/security/Turnstile'
 
 export default function ConfirmPasswordResetPage() {
   const router = useRouter()
@@ -18,6 +19,7 @@ export default function ConfirmPasswordResetPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
+  const captcha = useTurnstile()
 
   // Read the token from the query string on the client, same pattern as
   // /auth/callback — avoids the useSearchParams Suspense requirement that
@@ -43,7 +45,7 @@ export default function ConfirmPasswordResetPage() {
     setLoading(true)
     setError(null)
     try {
-      await confirmPasswordReset(token, password)
+      await confirmPasswordReset(token, password, captcha.consume())
       haptic('success')
       setDone(true)
       setTimeout(() => router.push('/login'), 2000)
@@ -124,10 +126,17 @@ export default function ConfirmPasswordResetPage() {
             describedBy="confirm-error"
           />
         </div>
+        <Turnstile
+          ref={captcha.ref}
+          action="reset_password"
+          appearance="interaction-only"
+          onToken={captcha.onToken}
+          onExpire={captcha.onExpire}
+        />
         <div id="confirm-error" role="alert" className="lk-err">
           {error ?? ''}
         </div>
-        <button type="submit" className="lk-btn" disabled={loading}>
+        <button type="submit" className="lk-btn" disabled={loading || !captcha.ready}>
           {loading ? 'Updating...' : 'Update password'}
         </button>
       </form>

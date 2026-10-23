@@ -61,6 +61,7 @@ const DEFAULT_UNIT_COSTS: Record<string, number> = {
   'twilio.sms': 7500, // ~$0.0075/segment US/UK average
   'twilio.whatsapp': 5000, // ~$0.005 utility/service message
   'sendgrid.email': 60, // ~$0.0006/message at Essentials volume
+  'resend.email': 40, // ~$0.0004/message at Pro volume; free tier is $0
   'expo.push': 0,
 }
 

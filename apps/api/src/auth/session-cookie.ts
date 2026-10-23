@@ -56,9 +56,10 @@ export function readSessionCookie(request: FastifyRequest): string | null {
  * SameSite=None the browser attaches the cookie to cross-site requests, so
  * the Origin header is the CSRF boundary — a request authenticated only by
  * cookie (no Bearer) and mutating state must come from a known app origin.
- * Browsers always send Origin on cross-origin fetch POSTs; non-browser
- * clients (curl, server-to-server) omit it and are unaffected — they can't
- * have been given the cookie by a hostile page anyway.
+ * Cookie-authenticated mutations require an allowed Origin. A missing Origin
+ * is not proof of a non-browser client: browsers can omit or suppress it in
+ * some navigation, redirect, sandbox, or privacy scenarios. Server-to-server
+ * clients should use Authorization: Bearer instead of a browser session cookie.
  */
 // Localhost defaults exist only outside production: in a cloud deployment an
 // Origin allowlist that includes localhost would let a local page (or anything
@@ -87,6 +88,6 @@ export function isOriginAllowedForCookieAuth(request: FastifyRequest): boolean {
   const method = request.method.toUpperCase()
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return true
   const origin = request.headers.origin
-  if (!origin) return true // non-browser client — CSRF doesn't apply
+  if (!origin) return false // fail closed for cookie-only state changes
   return ALLOWED_ORIGINS.has(origin.replace(/\/$/, ''))
 }

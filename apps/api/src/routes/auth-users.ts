@@ -10,7 +10,7 @@
  */
 
 import type { FastifyInstance, FastifyRequest } from 'fastify'
-import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto'
 import { AuthService, getCurrencyForCountry, getLocaleForCountry } from '@lifekeel/platform'
 import { getDb, getLoginEventsCollection } from '../db.js'
 import { checkInviteCode, consumeInviteCode } from '../invite-codes.js'
@@ -30,6 +30,9 @@ import {
 import { decryptEnveloped, encryptForTenant } from '../crypto/envelope.js'
 import { sessionsRevokedAt } from '../auth/session-revocation.js'
 import { displayNameError } from '../validation/display-name.js'
+import { deploymentConfig } from '../config/deployment.js'
+import { authOtpMode, otpRequiredFor } from '../auth/otp.js'
+import { startOtpChallenge } from './auth-otp.js'
 
 // Pragmatic (not full RFC 5322) format check for signup specifically —
 // unlike login/reset-request, which only ever do a lookup and return a
@@ -91,6 +94,16 @@ export interface User {
   mfa_last_step?: number | undefined
   mfa_failed_attempts?: number | undefined
   mfa_locked_until?: Date | undefined
+  /**
+   * Email-OTP signup (CLOUDFLARE_INTEGRATION.md §6.2.3). Absent on legacy
+   * rows. 'pending' until the emailed code verifies; the version is replaced
+   * on every re-signup so an older code can never activate newer credentials.
+   */
+  registration_status?: 'pending' | 'active' | undefined
+  registration_version?: string | undefined
+  registration_created_at?: Date | undefined
+  /** Validated at signup, consumed only when the code verifies. */
+  registration_invite_code?: string | undefined
 }
 
 // `ref` (PRD-112, friend referral) is deliberately separate from
@@ -271,7 +284,7 @@ export async function registerAuthUserRoutes(
     // that without meaningfully stopping a determined attacker. This
     // route-level limit raises the cost of a bulk enumeration sweep
     // without changing the honest per-request error message.
-    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' }, turnstile: 'signup' } },
     async (request, reply) => {
       const {
         email,
@@ -315,10 +328,44 @@ export async function registerAuthUserRoutes(
       }
 
       const col = await getUsersCollection()
+      const otpSignup = otpRequiredFor(authOtpMode(process.env, deploymentConfig.mode), 'signup')
+      const normalizedInvite = invite_code?.trim() ? invite_code.trim() : undefined
 
       // Check for existing user by email or external ID before consuming the invite code.
       const existingByEmail = await col.findOne({ email: email.toLowerCase() })
-      if (existingByEmail) return reply.status(409).send({ error: 'Email already registered' })
+      if (existingByEmail) {
+        // A pending (never verified) registration may be re-submitted: the
+        // credentials and the registration version are replaced in one
+        // atomic write, so every earlier code dies with the old version
+        // (§6.3.2). Verified and legacy rows keep the KEEL-025 409.
+        if (otpSignup && existingByEmail.registration_status === 'pending') {
+          const salt = randomBytes(16).toString('hex')
+          const registration_version = randomUUID()
+          const replaced = await col.findOneAndUpdate(
+            {
+              email: email.toLowerCase(),
+              registration_status: 'pending',
+              email_verified: false,
+            },
+            {
+              $set: {
+                password_hash: hashPassword(password, salt),
+                salt,
+                name: name.trim(),
+                registration_version,
+                registration_created_at: new Date(),
+                ...(normalizedInvite ? { registration_invite_code: normalizedInvite } : {}),
+              },
+              ...(normalizedInvite ? {} : { $unset: { registration_invite_code: '' } }),
+            },
+            { returnDocument: 'after' },
+          )
+          if (replaced) {
+            return startOtpChallenge(request, reply, replaced, 'signup', { registration_version })
+          }
+        }
+        return reply.status(409).send({ error: 'Email already registered' })
+      }
 
       if (external_id && external_provider) {
         const existingByExternal = await col.findOne({ external_id, external_provider })
@@ -363,8 +410,12 @@ export async function registerAuthUserRoutes(
         }
       }
 
-      // Now that the signup is valid, consume the invite code.
-      const invite = await consumeInviteCode(db, invite_code)
+      // Now that the signup is valid, consume the invite code. With email
+      // OTP the code is only validated here and consumed when the emailed
+      // code verifies (§6.9), so an unverified signup can't burn an invite.
+      const invite = otpSignup
+        ? { ok: true as const, grant_credits: inviteCheck.grant_credits, reason: undefined }
+        : await consumeInviteCode(db, invite_code)
       if (!invite.ok) {
         return reply.status(400).send({ error: invite.reason ?? 'Invalid invite code' })
       }
@@ -387,7 +438,9 @@ export async function registerAuthUserRoutes(
         locked_until: undefined,
         external_id,
         external_provider,
-        email_verified: !EMAIL_VERIFICATION_ENABLED, // Auto-verify if verification disabled
+        // With OTP the emailed code is the verification; without it, the
+        // optional link flow below.
+        email_verified: otpSignup ? false : !EMAIL_VERIFICATION_ENABLED,
         email_verification_token: undefined,
         email_verification_expires: undefined,
         password_reset_token: undefined,
@@ -395,17 +448,29 @@ export async function registerAuthUserRoutes(
         updated_at: undefined,
         attribution: sanitizeAttribution(attribution),
       }
+      if (otpSignup) {
+        user.registration_status = 'pending'
+        user.registration_version = randomUUID()
+        user.registration_created_at = new Date()
+        if (normalizedInvite) user.registration_invite_code = normalizedInvite
+      }
 
-      // Generate email verification token if enabled
-      const verificationToken = EMAIL_VERIFICATION_ENABLED
-        ? generateEmailVerificationToken()
-        : undefined
+      // Generate email verification token if enabled (link flow; OTP replaces it)
+      const verificationToken =
+        EMAIL_VERIFICATION_ENABLED && !otpSignup ? generateEmailVerificationToken() : undefined
       if (verificationToken) {
         user.email_verification_token_hash = hashAuthToken(verificationToken)
         user.email_verification_expires = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
       }
 
-      await col.insertOne(user)
+      try {
+        await col.insertOne(user)
+      } catch (err) {
+        // Two concurrent signups for one address: the unique index decides.
+        if ((err as { code?: number }).code === 11000)
+          return reply.status(409).send({ error: 'Email already registered' })
+        throw err
+      }
 
       // Send only after the account exists — a failed insert must not
       // leave a recipient holding a token that can never verify.
@@ -435,6 +500,9 @@ export async function registerAuthUserRoutes(
         country: country?.trim().toUpperCase() || 'GB',
         locale: getLocaleForCountry(country),
         status: 'active',
+        // Lets the pending-registration sweep remove a tenant that only an
+        // unverified signup ever created (§6.9).
+        ...(otpSignup ? { created_by_registration: user.id } : {}),
         created_at: new Date(),
         updated_at: new Date(),
       })
@@ -452,6 +520,13 @@ export async function registerAuthUserRoutes(
           reason: `Trial credits granted at signup${invite.grant_credits ? ' + invite code bonus' : ''}`,
           actor: 'system',
         }).catch(() => {})
+      }
+
+      // No session until the emailed code verifies (§6.4).
+      if (otpSignup) {
+        return startOtpChallenge(request, reply, user, 'signup', {
+          registration_version: user.registration_version ?? null,
+        })
       }
 
       const token = await auth.sign({ sub: user.id, tenant_id: user.tenant_id, roles: user.roles })
@@ -484,7 +559,7 @@ export async function registerAuthUserRoutes(
    *  account lock can't see across many accounts. */
   app.post<{ Body: LoginBody }>(
     '/auth/login',
-    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' }, turnstile: 'login' } },
     async (request, reply) => {
       const { rememberMe } = request.body
       const email = str(request.body.email, 320)
@@ -549,6 +624,26 @@ export async function registerAuthUserRoutes(
         return reply.status(403).send({ error: 'User suspended' })
       }
 
+      const otpMode = authOtpMode(process.env, deploymentConfig.mode)
+
+      // An unverified signup finishes its email check here instead of
+      // getting a session (§6.3.2). With OTP off the password alone
+      // completes it, as before this feature existed.
+      if (user.registration_status === 'pending') {
+        if (otpRequiredFor(otpMode, 'signup') && user.registration_version) {
+          return startOtpChallenge(request, reply, user, 'signup', {
+            registration_version: user.registration_version,
+          })
+        }
+        await col.updateOne(
+          { id: user.id, registration_status: 'pending' },
+          {
+            $set: { registration_status: 'active' },
+            $unset: { registration_version: '', registration_invite_code: '' },
+          },
+        )
+      }
+
       recordLoginEvent(request, {
         email: emailKey,
         success: true,
@@ -571,6 +666,12 @@ export async function registerAuthUserRoutes(
           '5m',
         )
         return reply.send({ mfa_required: true, mfa_token: mfaToken })
+      }
+
+      // Email OTP as the second step for accounts without TOTP (D8): TOTP
+      // users took the branch above and never receive an email code.
+      if (otpRequiredFor(otpMode, 'login')) {
+        return startOtpChallenge(request, reply, user, 'login', { remember_me: rememberMe === true })
       }
 
       // "Remember me" controls actual session length, not just UI copy: checked
@@ -671,7 +772,7 @@ export async function registerAuthUserRoutes(
   /** POST /auth/resend-verification — resend verification email (public endpoint) */
   app.post<{ Body: { email?: unknown } }>(
     '/auth/resend-verification',
-    { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
+    { config: { rateLimit: { max: 5, timeWindow: '1 minute' }, turnstile: 'resend_verification' } },
     async (request, reply) => {
       const col = await getUsersCollection()
 
@@ -840,7 +941,12 @@ export async function registerAuthUserRoutes(
   /** POST /auth/request-password-reset — request password reset (public endpoint) */
   app.post<{ Body: RequestResetBody }>(
     '/auth/request-password-reset',
-    { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
+    {
+      config: {
+        rateLimit: { max: 5, timeWindow: '1 minute' },
+        turnstile: 'password_reset_request',
+      },
+    },
     async (request, reply) => {
     const { app: originApp } = request.body
     const email = str(request.body.email, 320)
@@ -893,7 +999,7 @@ export async function registerAuthUserRoutes(
   /** POST /auth/reset-password — reset password with token (public endpoint) */
   app.post<{ Body: ResetPasswordBody }>(
     '/auth/reset-password',
-    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' }, turnstile: 'reset_password' } },
     async (request, reply) => {
       const token = str(request.body?.token, 256)
       const new_password = str(request.body?.new_password, 1024)

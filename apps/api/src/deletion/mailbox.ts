@@ -11,7 +11,8 @@
  * Profile details a family saved from a message or attachment are the
  * family's own entries by then and are not touched.
  */
-import { GridFSBucket, type Db } from 'mongodb'
+import type { Db } from 'mongodb'
+import { deleteGridfs } from '../documents/storage.js'
 
 export const MAILBOX_CONNECTOR_IDS = ['email', 'gmail'] as const
 
@@ -46,17 +47,8 @@ export async function deleteMailboxData(
   const candidates = await db
     .collection('extraction_candidates')
     .deleteMany({ tenant_id: tenantId, document_id: { $in: docs.map((d) => String(d.id)) } })
-  const bucket = new GridFSBucket(db, { bucketName: 'documents' })
   let blobs = 0
-  for (const d of docs) {
-    if (!d.file_id) continue
-    try {
-      await bucket.delete(d.file_id)
-      blobs++
-    } catch {
-      /* blob may already be gone */
-    }
-  }
+  for (const d of docs) if (await deleteGridfs(db, d.file_id)) blobs++
   const docResult = await db
     .collection('documents')
     .deleteMany({ tenant_id: tenantId, source: 'email' })

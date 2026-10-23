@@ -53,6 +53,7 @@ const ConfigSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   GROQ_API_KEY: z.string().optional(),
+  XAI_API_KEY: z.string().optional(),
   AZURE_OPENAI_ENDPOINT: z.string().optional(),
   AZURE_OPENAI_API_KEY: z.string().optional(),
   AZURE_OPENAI_DEPLOYMENT: z.string().optional(),
@@ -72,6 +73,7 @@ const ConfigSchema = z.object({
     'vertex',
     'ollama',
     'groq',
+    'xai',
     'auto',
   ]),
   OLLAMA_BASE_URL: z.string().optional(),
@@ -108,6 +110,10 @@ const ConfigSchema = z.object({
   LIFEKEEL_SLACK_BOT_TOKEN: z.string().optional(),
   SENDGRID_API_KEY: z.string().optional(),
   SENDGRID_FROM_EMAIL: z.string().optional(),
+  RESEND_API_KEY: z.string().optional(),
+  RESEND_API_BASE: z.string().optional(),
+  RESEND_WEBHOOK_SECRET: z.string().optional(),
+  EMAIL_FROM: z.string().optional(),
 
   // URLs
   STUDIO_URL: z.string().default('http://localhost:3000'),

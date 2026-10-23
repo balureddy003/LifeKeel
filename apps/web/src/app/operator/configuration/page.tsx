@@ -12,7 +12,8 @@ import {
 } from '@/lib/api'
 import { ReasonAction } from '../_components/ReasonAction'
 
-type BooleanFlagKey = 'maintenance_mode' | 'signups_enabled' | 'marketing_paused'
+type BooleanFlagKey =
+  'maintenance_mode' | 'signups_enabled' | 'marketing_paused' | 'autopilot_paused'
 
 const FLAGS: Array<{ key: BooleanFlagKey; label: string; description: string; whenOn: string }> = [
   {
@@ -34,6 +35,13 @@ const FLAGS: Array<{ key: BooleanFlagKey; label: string; description: string; wh
       'Approvals and auto-publish stop dispatching to channels; posts stay approved for retry.',
     whenOn: 'No posts are being dispatched',
   },
+  {
+    key: 'autopilot_paused',
+    label: 'Autopilot kill switch',
+    description:
+      'Stops the autopilot sweep entirely — shadow and live rules do nothing until you turn it off. Only a person can resume it.',
+    whenOn: 'Autopilot is stopped; nothing is being checked or acted on',
+  },
 ]
 
 const PROVIDER_OPTIONS: Array<{ value: LlmProviderId | 'auto'; label: string; disabled?: string }> =
@@ -52,10 +60,10 @@ const PROVIDER_OPTIONS: Array<{ value: LlmProviderId | 'auto'; label: string; di
       label: 'OpenAI (unreviewed — processor gate will refuse)',
       disabled: 'Processor terms not reviewed',
     },
+    { value: 'groq', label: 'Groq (approved — enable ZDR in Data Controls for zero retention)' },
     {
-      value: 'groq',
-      label: 'Groq (unreviewed — processor gate will refuse)',
-      disabled: 'Processor terms not reviewed',
+      value: 'xai',
+      label: 'xAI Grok (approved — ZDR REQUIRED: enable in xAI Console Team Settings first)',
     },
   ]
 

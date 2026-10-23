@@ -97,3 +97,40 @@ export function scanUpload(
     })
   })
 }
+
+/**
+ * Age of clamd's signature database, from `VERSION`
+ * ("ClamAV 1.4.1/27431/Thu Oct 23 08:21:52 2026"). Null when no scanner is
+ * configured or it did not answer. The scan worker treats definitions older
+ * than 48 h as a scanner error, so a stale engine never reports `clean`
+ * (CLOUDFLARE_INTEGRATION.md §8.3).
+ */
+export function clamdDefinitionsAgeSeconds(
+  opts: { host?: string; port?: number; timeoutMs?: number; now?: Date } = {},
+): Promise<number | null> {
+  const host = opts.host ?? process.env['CLAMD_HOST']
+  if (!host) return Promise.resolve(null)
+  const port = opts.port ?? Number(process.env['CLAMD_PORT'] ?? 3310)
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host, port })
+    let reply = ''
+    const done = (v: number | null) => {
+      socket.destroy()
+      resolve(v)
+    }
+    socket.setTimeout(opts.timeoutMs ?? 5000, () => done(null))
+    socket.on('error', () => done(null))
+    socket.on('data', (d) => {
+      reply += d.toString()
+    })
+    socket.on('end', () => done(parseDefinitionsAge(reply, opts.now ?? new Date())))
+    socket.on('connect', () => socket.write('zVERSION\0'))
+  })
+}
+
+export function parseDefinitionsAge(versionReply: string, now: Date): number | null {
+  const parts = versionReply.replace(/\0/g, '').trim().split('/')
+  const stamp = parts[2] ? Date.parse(parts[2]) : NaN
+  if (Number.isNaN(stamp)) return null
+  return Math.max(0, Math.round((now.getTime() - stamp) / 1000))
+}

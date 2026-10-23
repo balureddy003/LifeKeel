@@ -17,6 +17,7 @@ import twilio from 'twilio'
 import sgMail from '@sendgrid/mail'
 import { formatMoney } from '@lifekeel/platform'
 import { buildAlertPushPayload } from './push-payload.js'
+import { emailFromAddress } from '../email/transport.js'
 import {
   EMAIL_COLORS,
   EMAIL_FONTS,
@@ -407,7 +408,7 @@ export class EmailChannel {
   ): Promise<DeliveryResult> {
     try {
       const { subject, html, text } = buildEmailHtml(notification)
-      const fromEmail = process.env['SENDGRID_FROM_EMAIL'] ?? 'insights@lifekeel.dev'
+      const fromEmail = emailFromAddress() ?? 'insights@lifekeel.dev'
       await sgMail.send({
         to,
         from: { email: fromEmail, name: fromName || 'LifeKeel' },

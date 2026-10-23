@@ -39,6 +39,7 @@ import { excludeMinorUsers } from '../family/family-permissions.js'
 import { recordSpend, spendCost } from '../spend-ledger.js'
 import { queueManager } from '../queue/QueueManager.js'
 import { checkCopy, describeViolations } from './copy-guard.js'
+import { activeEmailProvider, emailConfigured } from '../email/transport.js'
 import { escapeHtml } from '../email/layout.js'
 
 const log = createLogger({ service: 'campaigns', version: '0.0.0' })
@@ -273,9 +274,11 @@ export async function queueCampaignSend(
   // Provider unconfigured → refuse before any claims: the route rolls the
   // campaign back to draft, nothing is recorded as sent, and a configured
   // retry loses nothing.
-  if (!process.env['SENDGRID_API_KEY']) {
+  if (!emailConfigured()) {
     throw Object.assign(
-      new Error('SENDGRID_API_KEY is not configured — campaign sends are halted'),
+      new Error(
+        'No email provider configured (RESEND_API_KEY or SENDGRID_API_KEY) — campaign sends are halted',
+      ),
       { statusCode: 503 },
     )
   }
@@ -345,7 +348,7 @@ export async function runCampaignSendJob(db: Db, job: CampaignSendJob): Promise<
       db,
       job.key,
       outcome,
-      outcome === 'skipped' ? 'sendgrid_not_configured' : undefined,
+      outcome === 'skipped' ? 'email_not_configured' : undefined,
     )
     await campaignsCol(db).updateOne(
       { id: campaign.id },
@@ -354,13 +357,14 @@ export async function runCampaignSendJob(db: Db, job: CampaignSendJob): Promise<
     if (outcome === 'sent') {
       // Campaign mail is platform-paid spend; user recipients could carry
       // their tenant but leads can't — 'platform' is the honest bucket.
+      const provider = activeEmailProvider() ?? 'sendgrid'
       void recordSpend(db, {
         tenant_id: 'platform',
         service: 'marketing',
-        provider: 'sendgrid',
+        provider,
         unit: 'email',
         units: 1,
-        cost_microdollars: spendCost('sendgrid', 'email'),
+        cost_microdollars: spendCost(provider, 'email'),
         meta: { campaign_id: campaign.id },
       }).catch(() => {})
     }
