@@ -53,6 +53,8 @@ import { runWeeklyDigest } from '../operator/weekly-digest.js'
 import { approveProposal, rejectProposal } from '../operator/proposal-resolution.js'
 import { buildDecisions } from '../operator/mission-control.js'
 import { readRevenueSnapshot, readonlyStripeFromEnv, syncRevenue } from '../marketing/revenue.js'
+import { addSpend, deleteSpend, listSpend, validateSpend } from '../marketing/spend.js'
+import { readEconomics } from '../marketing/economics.js'
 import {
   campaignsCol,
   resolveAudience,
@@ -3201,6 +3203,104 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         request.log.error({ err }, 'Revenue sync failed')
         return reply.status(502).send({ error: 'Stripe revenue sync failed' })
       }
+    },
+  )
+
+  // ── Marketing economics — which channels bring paying families ──────────
+  // Aggregate-only: counts by source / campaign / content item with plausible
+  // ranges and a confidence label. Spend is typed in by an operator (no
+  // ad-platform API); revenue comes from the read-only Stripe sync above.
+
+  const EconomicsQuerySchema = z.object({
+    days: z.coerce.number().int().min(7).max(365).default(90),
+    model: z.enum(['first', 'last']).default('first'),
+  })
+
+  app.get(
+    '/operator/marketing/economics',
+    { preHandler: requireOperator(db, 'marketing.read') },
+    async (request, reply) => {
+      const parsed = EconomicsQuerySchema.safeParse(request.query)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues })
+      const snapshot = await readRevenueSnapshot(db)
+      const arpu =
+        snapshot.synced && snapshot.active_subscriptions > 0
+          ? Math.round(snapshot.mrr_pence / snapshot.active_subscriptions)
+          : null
+      const view = await readEconomics(db, { ...parsed.data, arpu_pence: arpu })
+      return {
+        ...view,
+        revenue: {
+          synced: snapshot.synced,
+          last_sync_at: snapshot.last_sync_at,
+          mrr_pence: snapshot.synced ? snapshot.mrr_pence : null,
+          livemode: snapshot.livemode,
+        },
+        rollup_ready: await isRollupReady(db),
+      }
+    },
+  )
+
+  const SpendCreateSchema = z.object({
+    month: z.string(),
+    channel: z.string().trim().toLowerCase(),
+    amount_pence: z.number(),
+    note: z.string().trim().max(200).optional(),
+    reason: z.string().trim().min(5).max(500),
+  })
+
+  app.get(
+    '/operator/marketing/spend',
+    { preHandler: requireOperator(db, 'marketing.read') },
+    async () => ({ entries: await listSpend(db) }),
+  )
+
+  app.post(
+    '/operator/marketing/spend',
+    { preHandler: requireOperator(db, 'marketing.manage') },
+    async (request, reply) => {
+      const parsed = SpendCreateSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid spend entry', issues: parsed.error.issues })
+      const { reason, ...input } = parsed.data
+      const problem = validateSpend(input)
+      if (problem) return reply.status(400).send({ error: problem })
+      const entry = await addSpend(db, input, request.operatorContext?.user_id ?? 'unknown')
+      await audit.log(
+        request,
+        'operator.marketing.spend_add',
+        'marketing_spend',
+        entry.id,
+        reason,
+        {
+          month: entry.month,
+          channel: entry.channel,
+          amount_pence: entry.amount_pence,
+        },
+      )
+      return reply.status(201).send({ entry })
+    },
+  )
+
+  app.delete<{ Params: { id: string } }>(
+    '/operator/marketing/spend/:id',
+    { preHandler: requireOperator(db, 'marketing.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const removed = await deleteSpend(db, request.params.id)
+      if (!removed) return reply.status(404).send({ error: 'Spend entry not found' })
+      await audit.log(
+        request,
+        'operator.marketing.spend_delete',
+        'marketing_spend',
+        removed.id,
+        parsed.data.reason,
+        { month: removed.month, channel: removed.channel, amount_pence: removed.amount_pence },
+      )
+      return { ok: true }
     },
   )
 
