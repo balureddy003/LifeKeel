@@ -3012,7 +3012,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
               error:
                 `Shadow track record too thin to go live: ${stats.reviewed} reviewed ` +
                 `(need ${SHADOW_PROMOTION.min_reviewed}), ` +
-                `${stats.precision === null ? 'no' : Math.round(stats.precision * 100)}% right ` +
+                `${stats.precision === null ? 'no verdicts yet' : `${Math.round(stats.precision * 100)}% right`} ` +
                 `(need ${SHADOW_PROMOTION.min_precision * 100}%)`,
               code: 'shadow_not_promotable',
               shadow: stats,
