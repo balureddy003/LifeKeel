@@ -67,6 +67,12 @@ WORKDIR /app
 # without these.
 RUN apk add --no-cache tesseract-ocr tesseract-ocr-data-eng fontconfig ttf-dejavu
 
+# The base image's bundled npm ships vulnerable transitive deps (pacote,
+# sigstore, brace-expansion, ip-address, picomatch) that Trivy gates on.
+# Nothing invokes npm at runtime — CMD is plain `node` — so refresh it to
+# a release whose bundled deps are patched.
+RUN npm install -g npm@11.21.1 && npm cache clean --force
+
 COPY --from=prod-deps /app ./
 COPY --from=builder /app/category-table.yaml ./category-table.yaml
 
