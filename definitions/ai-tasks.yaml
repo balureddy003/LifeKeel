@@ -11,8 +11,13 @@
 # may serve a task. `ollama` is the self-hosted model; the rest are hosted and
 # are only usable once that processor is approved. A hosted fallback is listed
 # only where the task's own terms say one is acceptable; `[]` is for a
-# device_only task, which has no server-side processor at all. Groq is
-# deliberately not listed for any task.
+# device_only task, which has no server-side processor at all.
+#
+# 2026-10-24: the GCP Ollama service (lifekeel-local-judge) was decommissioned
+# for cost (~$12/day always-on). Non-sensitive `lifekeel_infra` tasks moved to
+# `approved_hosted_provider` so they serve on the approved hosted processors.
+# Only `lifekeel_infra_required` (special-category/youth quarantine) and
+# `device_only` tasks still demand the self-hosted/on-device path.
 #
 # Fields are the enforceable subset of the full AiTaskPolicy interface.
 # Terms/retention/review fields stay documentation until the processor-
@@ -26,7 +31,7 @@ tasks:
     purpose: Ask Keel — answer a question from the family's own records
     risk: user_visible
     authority: language_only
-    data_boundary: lifekeel_infra
+    data_boundary: approved_hosted_provider
     # Azure (approved 2026-10-22) is on default abuse-monitoring terms —
     # limited_abuse_log tolerated for this non-sensitive task until modified
     # abuse monitoring is approved on the subscription.
@@ -68,13 +73,13 @@ tasks:
     purpose: Narrate a deterministic scenario-simulator result in plain English
     risk: user_visible
     authority: language_only
-    data_boundary: lifekeel_infra
-    processor_terms_ref: self-hosted Ollama — data stays in LifeKeel infra
-    provider_retention_class: none
+    data_boundary: approved_hosted_provider
+    processor_terms_ref: approved hosted processors — anthropic/openai API terms, Microsoft Products and Services DPA, Groq/xAI DPAs — not used for training
+    provider_retention_class: limited_abuse_log
     allowed_models: [tier:fast]
-    allowed_processors: [ollama]
+    allowed_processors: [ollama, anthropic, openai, azure, vertex, groq, xai]
     primary_model: tier:fast
-    preferred_execution: local_cpu
+    preferred_execution: hosted_sync
     deadline_ms: 30000
     max_input_tokens: 8000
     max_output_tokens: 1500
@@ -85,13 +90,13 @@ tasks:
     purpose: Classify an uploaded document (statement, letter, bill, other)
     risk: internal
     authority: candidate_for_review
-    data_boundary: lifekeel_infra
-    processor_terms_ref: self-hosted Ollama — data stays in LifeKeel infra
-    provider_retention_class: none
+    data_boundary: approved_hosted_provider
+    processor_terms_ref: approved hosted processors — anthropic/openai API terms, Microsoft Products and Services DPA, Groq/xAI DPAs — not used for training
+    provider_retention_class: limited_abuse_log
     allowed_models: [tier:fast]
-    allowed_processors: [ollama]
+    allowed_processors: [ollama, anthropic, openai, azure, vertex, groq, xai]
     primary_model: tier:fast
-    preferred_execution: local_cpu
+    preferred_execution: hosted_sync
     deadline_ms: 120000
     max_input_tokens: 4000
     max_output_tokens: 200
@@ -105,13 +110,13 @@ tasks:
     purpose: Extract structured fields from an uploaded document
     risk: internal
     authority: candidate_for_review
-    data_boundary: lifekeel_infra
-    processor_terms_ref: self-hosted Ollama — data stays in LifeKeel infra
-    provider_retention_class: none
+    data_boundary: approved_hosted_provider
+    processor_terms_ref: approved hosted processors — anthropic/openai API terms, Microsoft Products and Services DPA, Groq/xAI DPAs — not used for training
+    provider_retention_class: limited_abuse_log
     allowed_models: [tier:balanced]
-    allowed_processors: [ollama]
+    allowed_processors: [ollama, anthropic, openai, azure, vertex, groq, xai]
     primary_model: tier:balanced
-    preferred_execution: local_cpu
+    preferred_execution: hosted_sync
     deadline_ms: 120000
     max_input_tokens: 8000
     max_output_tokens: 2000
@@ -123,13 +128,13 @@ tasks:
     purpose: Suggest financial-profile fields from an extracted document
     risk: internal
     authority: candidate_for_review
-    data_boundary: lifekeel_infra
-    processor_terms_ref: self-hosted Ollama — data stays in LifeKeel infra
-    provider_retention_class: none
+    data_boundary: approved_hosted_provider
+    processor_terms_ref: approved hosted processors — anthropic/openai API terms, Microsoft Products and Services DPA, Groq/xAI DPAs — not used for training
+    provider_retention_class: limited_abuse_log
     allowed_models: [tier:balanced]
-    allowed_processors: [ollama]
+    allowed_processors: [ollama, anthropic, openai, azure, vertex, groq, xai]
     primary_model: tier:balanced
-    preferred_execution: local_cpu
+    preferred_execution: hosted_sync
     deadline_ms: 120000
     max_input_tokens: 8000
     max_output_tokens: 2000
@@ -141,13 +146,13 @@ tasks:
     purpose: Decide whether an inbox email relates to the family's protection
     risk: internal
     authority: candidate_for_review
-    data_boundary: lifekeel_infra
-    processor_terms_ref: self-hosted Ollama — data stays in LifeKeel infra
-    provider_retention_class: none
+    data_boundary: approved_hosted_provider
+    processor_terms_ref: approved hosted processors — anthropic/openai API terms, Microsoft Products and Services DPA, Groq/xAI DPAs — not used for training
+    provider_retention_class: limited_abuse_log
     allowed_models: [tier:fast]
-    allowed_processors: [ollama]
+    allowed_processors: [ollama, anthropic, openai, azure, vertex, groq, xai]
     primary_model: tier:fast
-    preferred_execution: local_cpu
+    preferred_execution: hosted_sync
     # PRD-215: batch deadline — a scanned email is retried on the next run if
     # this one times out, so waiting for a slow CPU model beats failing fast.
     deadline_ms: 120000
@@ -163,13 +168,13 @@ tasks:
     purpose: Summarise a policy-relevant email for the inbox card
     risk: user_visible
     authority: language_only
-    data_boundary: lifekeel_infra
-    processor_terms_ref: self-hosted Ollama — data stays in LifeKeel infra
-    provider_retention_class: none
+    data_boundary: approved_hosted_provider
+    processor_terms_ref: approved hosted processors — anthropic/openai API terms, Microsoft Products and Services DPA, Groq/xAI DPAs — not used for training
+    provider_retention_class: limited_abuse_log
     allowed_models: [tier:fast]
-    allowed_processors: [ollama]
+    allowed_processors: [ollama, anthropic, openai, azure, vertex, groq, xai]
     primary_model: tier:fast
-    preferred_execution: local_cpu
+    preferred_execution: hosted_sync
     # PRD-215: batch deadline (see email.policy_relevance.v1).
     deadline_ms: 120000
     max_input_tokens: 4000
@@ -202,13 +207,13 @@ tasks:
     purpose: Local judge — should this insight be delivered or held
     risk: workflow_affecting
     authority: bounded_decision
-    data_boundary: lifekeel_infra
-    processor_terms_ref: self-hosted Ollama — data stays in LifeKeel infra
-    provider_retention_class: none
+    data_boundary: approved_hosted_provider
+    processor_terms_ref: approved hosted processors — anthropic/openai API terms, Microsoft Products and Services DPA, Groq/xAI DPAs — not used for training
+    provider_retention_class: limited_abuse_log
     allowed_models: [tier:fast]
-    allowed_processors: [ollama]
+    allowed_processors: [ollama, anthropic, openai, azure, vertex, groq, xai]
     primary_model: tier:fast
-    preferred_execution: local_cpu
+    preferred_execution: hosted_sync
     deadline_ms: 120000
     max_input_tokens: 4000
     max_output_tokens: 300
@@ -219,7 +224,7 @@ tasks:
     purpose: Draft outreach/prep-note text for a Tier-1 prepare action
     risk: user_visible
     authority: candidate_for_review
-    data_boundary: lifekeel_infra
+    data_boundary: approved_hosted_provider
     # Azure (approved 2026-10-22) is on default abuse-monitoring terms —
     # limited_abuse_log tolerated for this non-sensitive task until modified
     # abuse monitoring is approved on the subscription.
@@ -259,13 +264,13 @@ tasks:
     purpose: Draft a support reply from the tenant's own account context
     risk: user_visible
     authority: candidate_for_review
-    data_boundary: lifekeel_infra
-    processor_terms_ref: self-hosted Ollama — data stays in LifeKeel infra
-    provider_retention_class: none
+    data_boundary: approved_hosted_provider
+    processor_terms_ref: approved hosted processors — anthropic/openai API terms, Microsoft Products and Services DPA, Groq/xAI DPAs — not used for training
+    provider_retention_class: limited_abuse_log
     allowed_models: [tier:fast]
-    allowed_processors: [ollama]
+    allowed_processors: [ollama, anthropic, openai, azure, vertex, groq, xai]
     primary_model: tier:fast
-    preferred_execution: local_cpu
+    preferred_execution: hosted_sync
     deadline_ms: 30000
     max_input_tokens: 6000
     max_output_tokens: 1500
