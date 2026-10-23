@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createLlmRouter, detectActiveProvider } from '../llm.js'
+import { createLlmRouter, createLlmRouterFromEnv, detectActiveProvider } from '../llm.js'
 import { vertexAccessTokenProvider } from '../vertex-auth.js'
 
 const ENV_KEYS = [
@@ -78,6 +78,23 @@ describe('vertex provider routing', () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(url).toContain('ollama.test:11434')
     expect(JSON.parse(init.body as string).model).toBe('llama3.2:3b')
+  })
+
+  it('createLlmRouterFromEnv keeps resolution dynamic — the override survives env detection', async () => {
+    // Regression: FromEnv used to bake detectActiveProvider() into
+    // cfg.provider, which resolves before providerOverride — the operator
+    // override never fired on the path the API actually uses.
+    process.env['AZURE_OPENAI_ENDPOINT'] = 'https://example.openai.azure.com'
+    process.env['AZURE_OPENAI_API_KEY'] = 'k'
+    const fetchMock = vi.fn().mockResolvedValue(okResponse(completion('hi')))
+    vi.stubGlobal('fetch', fetchMock)
+    const router = createLlmRouterFromEnv({
+      providerOverride: () => 'ollama',
+      ollamaBaseUrl: 'http://ollama.test:11434',
+    })
+    await router('s', 'p', 'tier:fast')
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toContain('ollama.test:11434')
   })
 
   it('calls the global openapi endpoint with the google/ model prefix and low effort', async () => {

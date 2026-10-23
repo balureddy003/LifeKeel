@@ -989,7 +989,10 @@ export function createLlmRouterFromEnv(cfg: LlmConfig = {}): LlmFn {
     log.info({ provider: provider ?? 'none' }, 'Active LLM provider')
     loggedEnvProvider = true
   }
-  return createLlmRouter({ ...cfg, provider: cfg.provider ?? provider ?? 'anthropic' })
+  // 'auto' leaves resolution dynamic per call — providerOverride → model
+  // name → LIFEKEEL_LLM_PROVIDER → env scan. Baking the detected provider in
+  // here would shadow the runtime override for every call on this router.
+  return createLlmRouter({ ...cfg, provider: cfg.provider ?? 'auto' })
 }
 
 /** The provider createLlmRouterFromEnv would pick right now, from the environment. */
