@@ -476,6 +476,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/family-setup') ||
     pathname.startsWith('/reset-password') ||
     pathname.startsWith('/verify-email') ||
+    pathname.startsWith('/verify-otp') ||
     pathname.startsWith('/account-deleted') ||
     pathname.startsWith('/auth/callback') ||
     pathname.startsWith('/terms') ||
@@ -723,6 +724,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/family-setup') ||
     pathname.startsWith('/reset-password') ||
     pathname.startsWith('/verify-email') ||
+    pathname.startsWith('/verify-otp') ||
     pathname.startsWith('/account-deleted') ||
     pathname.startsWith('/auth/callback') ||
     pathname.startsWith('/terms') ||

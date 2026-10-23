@@ -78,6 +78,9 @@ async function seedEverything(tenant: string) {
   await db
     .collection('login_events')
     .insertOne({ user_id: uid, email: `${tenant}@x.test`, ip: '203.0.113.9' })
+  // Keyed by id prefix, not tenant_id (CLOUDFLARE_INTEGRATION.md §6.2.2, §7.12).
+  await db.collection('otp_send_windows').insertOne({ _id: `${uid}:cool` as never, expires_at: new Date() })
+  await db.collection('tenant_quota_days').insertOne({ _id: `${tenant}:20261023` as never, uploads: 1 })
   await blob(tenant)
 }
 const countFor = async (tenant: string) => {

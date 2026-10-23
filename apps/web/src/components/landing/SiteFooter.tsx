@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { captureLead } from '@/lib/api'
+import { Turnstile, useTurnstile } from '@/components/security/Turnstile'
 import { Brand } from './Brand'
 import './landing.css'
 import './hero.css'
@@ -11,6 +12,10 @@ import './bands.css'
 function Newsletter() {
   const [email, setEmail] = useState('')
   const [state, setState] = useState<'idle' | 'busy' | 'done' | 'error' | 'empty'>('idle')
+  // The challenge script loads only once someone starts typing, so plain
+  // page views of every marketing page never fetch it.
+  const [engaged, setEngaged] = useState(false)
+  const captcha = useTurnstile()
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -19,9 +24,13 @@ function Newsletter() {
       setState('empty')
       return
     }
+    if (!captcha.ready) return
     setState('busy')
     try {
-      const ok = await captureLead({ email: email.trim(), source: 'landing_newsletter' })
+      const ok = await captureLead(
+        { email: email.trim(), source: 'landing_newsletter' },
+        captcha.consume(),
+      )
       setState(ok ? 'done' : 'error')
     } catch {
       setState('error')
@@ -47,15 +56,28 @@ function Newsletter() {
           inputMode="email"
           autoComplete="email"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(e) => {
+            setEmail(e.target.value)
+            setEngaged(true)
+          }}
+          onFocus={() => setEngaged(true)}
           placeholder="you@example.com"
           maxLength={320}
           aria-describedby="lk-news-consent"
         />
-        <button type="submit" disabled={state === 'busy'}>
+        <button type="submit" disabled={state === 'busy' || (engaged && !captcha.ready)}>
           {state === 'busy' ? '...' : 'Join'}
         </button>
       </div>
+      {engaged && (
+        <Turnstile
+          ref={captcha.ref}
+          action="lead"
+          appearance="interaction-only"
+          onToken={captcha.onToken}
+          onExpire={captcha.onExpire}
+        />
+      )}
       {(state === 'error' || state === 'empty') && (
         <p className="lk-fine" role="alert">
           {state === 'empty' ? 'Enter your email address.' : 'Could not subscribe. Try again.'}

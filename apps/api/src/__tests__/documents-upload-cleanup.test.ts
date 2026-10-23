@@ -52,6 +52,7 @@ function makeDb() {
       return { insertedId: doc['id'] }
     },
     updateOne: async () => ({ modifiedCount: 1 }),
+    findOneAndUpdate: async () => null,
     findOne: async (filter: Record<string, unknown>) =>
       documents.find((d) => Object.entries(filter).every(([k, v]) => d[k] === v)) ?? null,
     find: () => ({
@@ -63,11 +64,18 @@ function makeDb() {
       }),
     }),
   }
+  // Shared upload reservations (documents/quota.ts): always room.
+  const quotaCol = {
+    findOne: async () => ({ tenant_id: 'stub', inflight: 0 }),
+    updateOne: async () => ({ modifiedCount: 1, matchedCount: 1 }),
+  }
   const tenantsCol = { findOne: async () => ({ tenant_id: 'tenant-1', plan: 'free' }) }
   const growthEventsCol = { insertOne: async () => ({ insertedId: 'ge-1' }) }
   return {
     collection: (name: string) =>
-      name === 'documents.files'
+      name === 'tenant_quota' || name === 'tenant_quota_days'
+        ? quotaCol
+        : name === 'documents.files'
         ? { aggregate: () => ({ toArray: async () => [] }), countDocuments: async () => 0 }
         : name === 'documents'
           ? documentsCol

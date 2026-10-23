@@ -38,8 +38,8 @@ export async function registerLeadRoutes(app: FastifyInstance, db: Db): Promise<
   app.post(
     '/leads',
     // Same ceiling as the quiz: unauthenticated, so the global limiter keys
-    // off req.ip. Keeps casual abuse down without a CAPTCHA.
-    { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
+    // off req.ip, then Turnstile (§4.1 group G).
+    { config: { rateLimit: { max: 5, timeWindow: '1 minute' }, turnstile: 'lead' } },
     async (req, reply) => {
       const parsed = LeadSchema.safeParse(req.body)
       if (!parsed.success) {

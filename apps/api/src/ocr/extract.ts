@@ -16,6 +16,7 @@
  * pipelines. The interface (extractDocumentFields) stays the same.
  */
 
+import { DOCX_MIME } from '../documents/formats.js'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import {
@@ -244,6 +245,9 @@ export async function extractDocumentFieldsLocal(
       text = await extractPdfText(fileBuffer)
       if (!text)
         return { category: 'other', fields: {}, rawText: 'Scanned PDF — no text layer to read' }
+    } else if (mimeType === DOCX_MIME) {
+      text = await extractDocxText(fileBuffer)
+      if (!text) return { category: 'other', fields: {}, rawText: 'Word document has no text' }
     } else if (isOcrableImage(mimeType)) {
       text = await ocrImageToText(fileBuffer, mimeType)
       if (!text)
@@ -327,6 +331,8 @@ export async function screenDocumentForSpecialCategory(
   try {
     if (mimeType === 'application/pdf') {
       text = await extractPdfText(fileBuffer)
+    } else if (mimeType === DOCX_MIME) {
+      text = await extractDocxText(fileBuffer)
     } else if (isOcrableImage(mimeType)) {
       text = await ocrImageToText(fileBuffer, mimeType)
     }
@@ -337,6 +343,24 @@ export async function screenDocumentForSpecialCategory(
   const match = text.match(DOCUMENT_SPECIAL_CATEGORY_RE)
   if (!match) return { outcome: 'clear' }
   return { outcome: 'flagged', marker: match[0].toLowerCase().slice(0, 40) }
+}
+
+/**
+ * Plain text of a .docx (CLOUDFLARE_INTEGRATION.md §7.2), capped like the
+ * PDF path. Only ever called on bytes the scan worker already validated (zip
+ * limits, no macros or embedded objects, real decompressed size checked).
+ * mammoth's extractRawText follows no external relationships and renders no
+ * images. The text then goes through the same governed task as PDF text.
+ */
+export async function extractDocxText(docx: Buffer): Promise<string> {
+  try {
+    const mammoth = await import('mammoth')
+    const { value } = await mammoth.extractRawText({ buffer: docx })
+    return value.replace(/\s+\n/g, '\n').trim().slice(0, PDF_TEXT_LIMIT)
+  } catch (err) {
+    log.warn({ err: (err as Error).message }, 'DOCX text extraction failed')
+    return ''
+  }
 }
 
 /** Text layer of a PDF (first pages), trimmed for the prompt; '' when there is none. */
@@ -374,10 +398,11 @@ export async function extractDocumentFields(
   // their extracted text instead.
   let userContent: Parameters<VisionFn>[0]
   let text: string | null = null
-  if (mimeType === 'application/pdf') {
-    text = await extractPdfText(fileBuffer)
+  if (mimeType === 'application/pdf' || mimeType === DOCX_MIME) {
+    text =
+      mimeType === DOCX_MIME ? await extractDocxText(fileBuffer) : await extractPdfText(fileBuffer)
     if (!text) {
-      log.warn({}, 'PDF has no extractable text (likely a scan) — skipping extraction')
+      log.warn({}, 'Document has no extractable text (likely a scan) — skipping extraction')
       return { category: 'other', fields: {}, rawText: 'Scanned PDF — no text layer to read' }
     }
     userContent = [{ type: 'text', text: `${CATEGORY_PROMPT}\n\nDocument text:\n${text}` }]

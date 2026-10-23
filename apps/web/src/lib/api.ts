@@ -7,6 +7,7 @@
  * posture) rather than fabricated data.
  */
 
+import { turnstileErrorMessage, turnstileHeaders } from './turnstile'
 import { AI_RESPONSES } from './life-data'
 import type { InboxItem } from './onboarding-data'
 import { getApiBase } from './env'
@@ -1330,16 +1331,127 @@ export interface FamilyDocument {
   category: string
   // 'stored' = uploaded and scanned (free, every plan), AI field
   // extraction not run. 'uploaded'/'processing'/'extracted'/'error' cover
-  // the paid AI-extraction pipeline.
-  status: 'uploaded' | 'processing' | 'extracted' | 'stored' | 'error'
+  // the paid AI-extraction pipeline. The R2 upload pipeline adds the scan
+  // stages before any of those (CLOUDFLARE_INTEGRATION.md §7.3).
+  status:
+    | 'uploaded'
+    | 'processing'
+    | 'extracted'
+    | 'stored'
+    | 'error'
+    | 'awaiting_upload'
+    | 'scan_queued'
+    | 'scanning'
+    | 'scan_error'
+    | 'clean'
+    | 'applied'
+    | 'infected'
+    | 'rejected'
+    | 'failed'
   uploadedAt: string
   extractedData?: Record<string, string>
+}
+
+/** Accepted by the upload pipeline; the server enforces the same list. */
+export const UPLOAD_ACCEPT =
+  'application/pdf,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.heic,.heif'
+
+/** Browsers often leave HEIC/DOCX types blank: fall back to the extension. */
+function uploadMime(file: File): string {
+  if (file.type) return file.type
+  const ext = file.name.toLowerCase().split('.').pop()
+  return (
+    {
+      pdf: 'application/pdf',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      heic: 'image/heic',
+      heif: 'image/heif',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      png: 'image/png',
+      webp: 'image/webp',
+      gif: 'image/gif',
+    }[ext ?? ''] ?? 'application/octet-stream'
+  )
+}
+
+async function sha256Hex(file: File): Promise<string | undefined> {
+  try {
+    const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer())
+    return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('')
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Direct upload (CLOUDFLARE_INTEGRATION.md §7.4): ask the API for a 5-minute
+ * presigned PUT, send the bytes straight to the private quarantine bucket,
+ * then tell the API it's done. Returns null when this household isn't on
+ * the direct path yet, so the caller falls back to the multipart route.
+ */
+async function uploadDocumentDirect(
+  file: File,
+  clientScreen?: 'clear' | 'flagged' | 'unscreened',
+): Promise<FamilyDocument | null> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const auth: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {}
+  const mime = uploadMime(file)
+  const init = await credFetch(`${base}/documents/uploads`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...auth },
+    body: JSON.stringify({
+      filename: file.name,
+      mime,
+      size: file.size,
+      sha256: await sha256Hex(file),
+      ...(clientScreen ? { client_screen: clientScreen } : {}),
+    }),
+  })
+  if (init.status === 409) {
+    const body = await init.json().catch(() => ({}))
+    if (body.error === 'direct_upload_unavailable') return null
+  }
+  if (!init.ok) {
+    const body = await init.json().catch(() => ({}))
+    throw new Error(body.message || body.error || `Upload failed: ${init.status}`)
+  }
+  const { document_id, upload } = (await init.json()) as {
+    document_id: string
+    upload: { url: string; headers: Record<string, string> }
+  }
+  // The browser sets Content-Length from the Blob; scripts may not. One retry.
+  const put = () =>
+    fetch(upload.url, { method: 'PUT', headers: upload.headers, body: file }).then((r) => {
+      if (!r.ok) throw new Error(`Storage refused the upload (${r.status})`)
+    })
+  try {
+    await put()
+  } catch {
+    await put()
+  }
+  const done = await credFetch(`${base}/documents/${document_id}/complete`, {
+    method: 'POST',
+    headers: auth,
+  })
+  if (!done.ok) throw new Error(`Upload failed: ${done.status}`)
+  const { status } = (await done.json()) as { status: FamilyDocument['status'] }
+  return {
+    id: document_id,
+    filename: file.name,
+    category: 'other',
+    status,
+    uploadedAt: new Date().toISOString(),
+  }
 }
 
 export async function uploadDocument(
   file: File,
   clientScreen?: 'clear' | 'flagged' | 'unscreened',
 ): Promise<FamilyDocument> {
+  const direct = await uploadDocumentDirect(file, clientScreen)
+  if (direct) return direct
   const base = getApiBase()
   const token = getAuthToken()
   const formData = new FormData()
@@ -1478,6 +1590,10 @@ export async function fetchDocument(id: string): Promise<FamilyDocumentDetail | 
  * for the AI Memory review drawer's side-by-side preview — auth is a Bearer
  * header, so this can't just be an <img src> pointed at the API directly.
  * Caller is responsible for URL.revokeObjectURL when done with it.
+ *
+ * R2-stored documents come from a 60-second presigned URL (§7.4 mode=url),
+ * straight from object storage; GridFS-era documents (409) and any failure
+ * fall back to the bytes-through-the-API route.
  */
 export async function fetchDocumentFileUrl(
   id: string,
@@ -1487,6 +1603,15 @@ export async function fetchDocumentFileUrl(
     const token = getAuthToken()
     const headers: Record<string, string> = {}
     if (token) headers['Authorization'] = `Bearer ${token}`
+    const signed = await credFetch(`${base}/documents/${id}/file?mode=url`, { headers })
+    if (signed.ok) {
+      const { url } = (await signed.json()) as { url: string }
+      const obj = await fetch(url, { cache: 'no-store' })
+      if (obj.ok) {
+        const blob = await obj.blob()
+        return { url: URL.createObjectURL(blob), mimeType: blob.type }
+      }
+    }
     const res = await credFetch(`${base}/documents/${id}/file`, { headers })
     if (!res.ok) return null
     const blob = await res.blob()
@@ -2277,15 +2402,19 @@ export async function joinFamily(
   name: string,
   email: string,
   password: string,
+  turnstileToken?: string | null,
 ): Promise<{ familyName: string }> {
   const base = getApiBase()
   const res = await credFetch(`${base}/family/join`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...turnstileHeaders(turnstileToken) },
     body: JSON.stringify({ invite_code: inviteCode, name, email, password }),
   })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || "Couldn't submit your request")
+  if (!res.ok)
+    throw new Error(
+      turnstileErrorMessage(data.error) ?? (data.error || "Couldn't submit your request"),
+    )
   return { familyName: data.family_name as string }
 }
 
@@ -3440,9 +3569,16 @@ export async function fetchScopeContracts(): Promise<ScopeContract[]> {
 // need right now — a raw browser network error ("Failed to fetch") leaking
 // straight into that moment is the wrong kind of scary. Distinguish "we
 // couldn't even reach the server" from "the server said no."
-async function authPostRequest(path: string, body: Record<string, unknown>): Promise<void> {
+async function authPostRequest(
+  path: string,
+  body: Record<string, unknown>,
+  turnstileToken?: string | null,
+): Promise<void> {
   const token = getAuthToken()
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...turnstileHeaders(turnstileToken),
+  }
   // resend-verification is dual-mode server-side: an Authorization header
   // resolves the user, otherwise the email in the body does.
   if (token) headers['Authorization'] = `Bearer ${token}`
@@ -3457,15 +3593,34 @@ async function authPostRequest(path: string, body: Record<string, unknown>): Pro
     throw new Error("Couldn't reach LifeKeel — check your connection and try again.")
   }
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || "That didn't go through — try again in a moment.")
+  if (!res.ok)
+    throw new Error(
+      turnstileErrorMessage(data.error) ??
+        (data.error || "That didn't go through — try again in a moment."),
+    )
 }
 
-export async function requestPasswordReset(email: string): Promise<void> {
-  return authPostRequest('/auth/request-password-reset', { email, app: 'family' })
+export async function requestPasswordReset(
+  email: string,
+  turnstileToken?: string | null,
+): Promise<void> {
+  return authPostRequest(
+    '/auth/request-password-reset',
+    { email, app: 'family' },
+    turnstileToken,
+  )
 }
 
-export async function confirmPasswordReset(token: string, newPassword: string): Promise<void> {
-  return authPostRequest('/auth/reset-password', { token, new_password: newPassword })
+export async function confirmPasswordReset(
+  token: string,
+  newPassword: string,
+  turnstileToken?: string | null,
+): Promise<void> {
+  return authPostRequest(
+    '/auth/reset-password',
+    { token, new_password: newPassword },
+    turnstileToken,
+  )
 }
 
 export async function verifyEmail(token: string): Promise<void> {
@@ -5176,18 +5331,21 @@ export async function adjustTenantCredits(
 
 // ── Public lead capture ───────────────────────────────────────────────────
 
-export async function captureLead(input: {
-  email: string
-  name?: string
-  source: string
-  score_band?: string
-}): Promise<boolean> {
+export async function captureLead(
+  input: {
+    email: string
+    name?: string
+    source: string
+    score_band?: string
+  },
+  turnstileToken?: string | null,
+): Promise<boolean> {
   try {
     captureAttribution()
     const attribution = getAttribution()
     const res = await credFetch(`${getApiBase()}/leads`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...turnstileHeaders(turnstileToken) },
       body: JSON.stringify({
         ...input,
         consent_marketing: true,

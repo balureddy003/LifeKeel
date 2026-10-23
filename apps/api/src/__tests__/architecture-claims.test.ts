@@ -53,6 +53,8 @@ const KNOWN_ERASURE_GAPS = new Set<string>([])
 // per-tenant wipe, with the reason each is exempt. Membership in this set
 // is a decision — keep the reason accurate.
 const EXEMPT_COLLECTIONS = new Set([
+  // platform-wide markers (e.g. the documents schema floor, §7.9): no tenant data
+  'platform_markers',
   // audit + security trail (7-yr retention stated in account.ts header)
   'audit_log',
   // PRD-146: proof that a deletion ran (counts by category, no content), kept 7 years like audit_log
@@ -298,9 +300,14 @@ describe('architecture claims: session, login, and signed-link hardening', () =>
     expect(opportunistic).not.toBeNull()
     const block = opportunistic![0]
     expect(block).toContain('ctx.mfa_pending')
-    expect(block).toContain('sessions_revoked_at')
-    expect(block).toContain("'suspended'")
-    expect(block).toContain("status: { $in: ['active', 'trial'] }")
+    // The checks live in one shared function (auth/liveness.ts), also used
+    // by the email-OTP verify step, so the two paths can't drift.
+    expect(block).toContain('checkAccountLiveness(')
+    expect(block).toContain('issuedAtSeconds: ctx.iat')
+    const liveness = readSrc('apps/api/src/auth/liveness.ts')
+    expect(liveness).toContain('sessions_revoked_at')
+    expect(liveness).toContain("'suspended'")
+    expect(liveness).toContain("status: { $in: ['active', 'trial'] }")
   })
 
   it('delivery signing has no weak secret fallback — missing secret fails closed', () => {

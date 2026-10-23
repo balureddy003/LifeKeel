@@ -467,20 +467,53 @@ describe('PRD-111: fetchLifeChangeNudge / dismissLifeChangeNudge', () => {
 })
 
 describe('uploadDocument on-device screen', () => {
+  // Households not on the direct-to-R2 path get 409 direct_upload_unavailable
+  // from POST /documents/uploads and fall back to the multipart route.
+  const notDirect = () => ({
+    ok: false,
+    status: 409,
+    json: () => Promise.resolve({ error: 'direct_upload_unavailable' }),
+  })
+  const ok = (body: unknown) => ({ ok: true, status: 200, json: () => Promise.resolve(body) })
+
   it('sends the client screen outcome as a form field — and only the outcome', async () => {
-    const fn = mockFetchSequence({ body: { id: 'd1' } })
+    const fn = vi.fn().mockResolvedValueOnce(notDirect()).mockResolvedValueOnce(ok({ id: 'd1' }))
+    vi.stubGlobal('fetch', fn)
     const file = new File([new Uint8Array(8)], 'letter.png', { type: 'image/png' })
     await uploadDocument(file, 'flagged')
-    const form = (fn.mock.calls[0]?.[1] as RequestInit).body as FormData
+    const form = (fn.mock.calls[1]?.[1] as RequestInit).body as FormData
     expect(form.get('clientScreen')).toBe('flagged')
     expect(form.get('file')).toBe(file)
   })
 
   it('omits the field when no screen ran', async () => {
-    const fn = mockFetchSequence({ body: { id: 'd1' } })
+    const fn = vi.fn().mockResolvedValueOnce(notDirect()).mockResolvedValueOnce(ok({ id: 'd1' }))
+    vi.stubGlobal('fetch', fn)
     await uploadDocument(new File([new Uint8Array(8)], 'doc.pdf', { type: 'application/pdf' }))
-    const form = (fn.mock.calls[0]?.[1] as RequestInit).body as FormData
+    const form = (fn.mock.calls[1]?.[1] as RequestInit).body as FormData
     expect(form.get('clientScreen')).toBeNull()
+  })
+
+  it('direct path: init with the screen, PUT to the presigned URL, then complete (§7.4)', async () => {
+    const fn = vi
+      .fn()
+      .mockResolvedValueOnce(
+        ok({
+          document_id: 'd9',
+          upload: { url: 'https://acct.eu.r2.cloudflarestorage.com/q/t/d9?sig', headers: { 'Content-Type': 'application/pdf' } },
+        }),
+      )
+      .mockResolvedValueOnce({ ok: true, status: 200 })
+      .mockResolvedValueOnce(ok({ status: 'scan_queued' }))
+    vi.stubGlobal('fetch', fn)
+    const file = new File([new Uint8Array(8)], 'policy.pdf', { type: 'application/pdf' })
+    const doc = await uploadDocument(file, 'clear')
+    const init = JSON.parse(String((fn.mock.calls[0]?.[1] as RequestInit).body))
+    expect(init).toMatchObject({ filename: 'policy.pdf', mime: 'application/pdf', size: 8, client_screen: 'clear' })
+    expect(fn.mock.calls[1]?.[0]).toContain('r2.cloudflarestorage.com')
+    expect((fn.mock.calls[1]?.[1] as RequestInit).method).toBe('PUT')
+    expect(fn.mock.calls[2]?.[0]).toContain('/documents/d9/complete')
+    expect(doc).toMatchObject({ id: 'd9', status: 'scan_queued' })
   })
 })
 

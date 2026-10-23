@@ -333,3 +333,60 @@ describe('AuthProvider.signOut', () => {
     expect(result.current.isAuthenticated).toBe(true)
   })
 })
+
+describe('AuthProvider email OTP (CLOUDFLARE_INTEGRATION.md §6)', () => {
+  const challenge = {
+    otp_required: true,
+    otp_token: 'pending-1',
+    email_hint: 'a***@b.com',
+    delivery: 'sent',
+    code_expires_at: new Date(Date.now() + 600_000).toISOString(),
+    chain_expires_at: new Date(Date.now() + 1_800_000).toISOString(),
+    resend_available_at: new Date(Date.now() + 60_000).toISOString(),
+  }
+
+  beforeEach(() => sessionStorage.clear())
+
+  it('signIn returns otpRequired, keeps the challenge in sessionStorage and stores no session', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.endsWith('/auth/me')) return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({}) })
+      if (url.endsWith('/auth/login')) {
+        expect((init?.headers as Record<string, string>)['cf-turnstile-token']).toBe('cf-tok')
+        return jsonResponse(challenge)
+      }
+      return jsonResponse({})
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    let out: { otpRequired?: boolean } = {}
+    await act(async () => {
+      out = await result.current.signIn('a@b.com', 'password123', { turnstileToken: 'cf-tok' })
+    })
+    expect(out.otpRequired).toBe(true)
+    expect(JSON.parse(sessionStorage.getItem('lifekeel_otp_pending')!).otp_token).toBe('pending-1')
+    expect(localStorage.getItem('lifekeel_token')).toBeNull()
+  })
+
+  it('verifyEmailOtp posts the pending token with the code, then signs in and clears the challenge', async () => {
+    sessionStorage.setItem('lifekeel_otp_pending', JSON.stringify({ ...challenge, purpose: 'login' }))
+    const bodies: Record<string, unknown>[] = []
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.endsWith('/auth/me')) return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({}) })
+      if (url.endsWith('/auth/otp/verify')) {
+        bodies.push(JSON.parse(String(init?.body)))
+        return jsonResponse({ token: 'tok_otp', user: { id: 'u1', email: 'a@b.com', name: 'A', tenant_id: 't1' } })
+      }
+      return jsonResponse({ id: 'f1', name: 'Fam', members: [] })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    await act(async () => {
+      await result.current.verifyEmailOtp('123456')
+    })
+    expect(bodies[0]).toEqual({ otp_token: 'pending-1', code: '123456' })
+    expect(sessionStorage.getItem('lifekeel_otp_pending')).toBeNull()
+    expect(result.current.isAuthenticated).toBe(true)
+  })
+})

@@ -93,6 +93,12 @@ function makeDb() {
       return { deletedCount: i >= 0 ? 1 : 0 }
     },
     updateOne: async () => ({ modifiedCount: 1 }),
+    findOneAndUpdate: async () => null,
+  }
+  // Shared upload reservations (documents/quota.ts): always room.
+  const quotaCol = {
+    findOne: async () => ({ tenant_id: 'stub', inflight: 0 }),
+    updateOne: async () => ({ modifiedCount: 1, matchedCount: 1 }),
   }
   const familyGroupsCol = { findOne: async () => ({ tenant_id: TENANT, members: familyMembers }) }
   const tenantsCol = { findOne: async () => ({ tenant_id: TENANT, plan: 'free' }) }
@@ -127,6 +133,7 @@ function makeDb() {
   return {
     collection: (name: string) => {
       if (name === 'documents.files') return filesCol
+      if (name === 'tenant_quota' || name === 'tenant_quota_days') return quotaCol
       if (name === 'documents') return documentsCol
       if (name === 'family_groups') return familyGroupsCol
       if (name === 'signals') return signalsCol
