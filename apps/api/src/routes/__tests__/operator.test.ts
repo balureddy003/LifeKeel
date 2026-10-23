@@ -12,6 +12,7 @@ vi.mock('@sendgrid/mail', () => ({
 
 import { registerOperatorRoutes } from '../operator.js'
 import { hashAuthToken } from '../auth-users.js'
+import { invalidatePlatformConfigCache } from '../../operator/platform-config.js'
 
 let mongod: MongoMemoryServer
 let client: MongoClient
@@ -90,6 +91,9 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   process.env['SENDGRID_API_KEY'] = 'test-key'
+  // platform_config is cached for 10s — a flag set by one test must not leak
+  // into the next after the database is dropped.
+  invalidatePlatformConfigCache()
   await db.dropDatabase()
   await db.collection('users').insertMany([
     {
@@ -2236,6 +2240,200 @@ describe('security monitoring', () => {
     })
     expect(missing.statusCode).toBe(404)
     await ops.close()
+  })
+
+  describe('mission control', () => {
+    const proposal = (id: string, kind: string, perm: string) => ({
+      id,
+      rule: 'propose_suspend_brute_force',
+      dedup_key: `k-${id}`,
+      target_type: 'user',
+      target_id: 'user-2',
+      reason: 'Credential stuffing',
+      status: 'proposed',
+      proposal: {
+        kind,
+        required_permission: perm,
+        summary: `Do ${id}`,
+        payload: { user_id: 'user-2' },
+      },
+      created_at: new Date(),
+    })
+
+    it('lists decisions for the caller and reports the kill switch', async () => {
+      await db
+        .collection('platform_operators')
+        .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+      await db
+        .collection('autopilot_actions')
+        .insertOne(proposal('p1', 'user.suspend', 'users.manage'))
+      await db
+        .collection('operator_alerts')
+        .insertOne({
+          dedup_key: 'dead_letters',
+          title: 'Dead jobs',
+          severity: 'danger',
+          status: 'open',
+          updated_at: new Date(),
+        })
+      const app = await buildApp()
+      const res = await app.inject({ method: 'GET', url: '/operator/mission-control' })
+      expect(res.statusCode).toBe(200)
+      expect(res.json().autopilot_paused).toBe(false)
+      const ids = (res.json().decisions as { id: string }[]).map((d) => d.id)
+      expect(ids).toContain('alert:dead_letters')
+      expect(ids).not.toContain('proposal:p1') // support lacks users.manage
+      await app.close()
+    })
+
+    it('denies mission control to non-operators', async () => {
+      const app = await buildApp('user-2')
+      expect(
+        (await app.inject({ method: 'GET', url: '/operator/mission-control' })).statusCode,
+      ).toBe(403)
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url: '/operator/mission-control/batch',
+            payload: { items: [{ id: 'alert:x', action: 'ack' }], reason: 'nope nope' },
+          })
+        ).statusCode,
+      ).toBe(403)
+      await app.close()
+    })
+
+    it('batch acks alerts and rejects proposals, one audit row per item plus a batch row', async () => {
+      await db
+        .collection('platform_operators')
+        .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+      await db
+        .collection('autopilot_actions')
+        .insertMany([
+          proposal('p1', 'user.suspend', 'users.manage'),
+          proposal('p2', 'user.suspend', 'users.manage'),
+        ])
+      const app = await buildApp()
+      const res = await app.inject({
+        method: 'POST',
+        url: '/operator/mission-control/batch',
+        payload: {
+          reason: 'Triage sweep',
+          items: [
+            { id: 'proposal:p1', action: 'reject' },
+            { id: 'proposal:p2', action: 'reject' },
+            { id: 'alert:dead_letters', action: 'ack' },
+          ],
+        },
+      })
+      expect(res.statusCode).toBe(200)
+      expect((res.json().results as { ok: boolean }[]).every((r) => r.ok)).toBe(true)
+      expect(await db.collection('autopilot_actions').countDocuments({ status: 'rejected' })).toBe(
+        2,
+      )
+      expect(
+        (await db.collection('operator_alerts').findOne({ dedup_key: 'dead_letters' }))?.['status'],
+      ).toBe('ack')
+      const audits = db.collection('operator_audit_log')
+      expect(await audits.countDocuments({ action: 'operator.autopilot.reject' })).toBe(2)
+      expect(await audits.countDocuments({ action: 'operator.alert.ack' })).toBe(1)
+      expect(await audits.countDocuments({ action: 'operator.mission_control.batch' })).toBe(1)
+      await app.close()
+    })
+
+    it('refuses a batch containing anything not batchable, applying none of it', async () => {
+      await db
+        .collection('platform_operators')
+        .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+      await db
+        .collection('autopilot_actions')
+        .insertOne(proposal('p1', 'user.suspend', 'users.manage'))
+      const app = await buildApp()
+      for (const bad of [
+        { id: 'post_draft:m1', action: 'approve' },
+        { id: 'campaign_draft:k1', action: 'approve' },
+        { id: 'dual_approval:d1', action: 'approve' },
+        { id: 'proposal:p1', action: 'ack' },
+        { id: 'alert:x', action: 'approve' },
+      ]) {
+        const res = await app.inject({
+          method: 'POST',
+          url: '/operator/mission-control/batch',
+          payload: {
+            reason: 'Should be refused',
+            items: [{ id: 'proposal:p1', action: 'reject' }, bad],
+          },
+        })
+        expect(res.statusCode, JSON.stringify(bad)).toBe(400)
+      }
+      // The valid first item must not have been applied by any refused batch.
+      expect((await db.collection('autopilot_actions').findOne({ id: 'p1' }))?.['status']).toBe(
+        'proposed',
+      )
+      await app.close()
+    })
+
+    it("enforces each item's own permission without aborting the rest", async () => {
+      // operations carries operations.manage (reject ok) but not marketing.manage (approve the draft proposal).
+      await db
+        .collection('platform_operators')
+        .insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
+      await db
+        .collection('autopilot_actions')
+        .insertMany([
+          proposal('p-draft', 'marketing.blog_draft', 'marketing.manage'),
+          proposal('p-other', 'user.suspend', 'users.manage'),
+        ])
+      const app = await buildApp()
+      const res = await app.inject({
+        method: 'POST',
+        url: '/operator/mission-control/batch',
+        payload: {
+          reason: 'Mixed permissions',
+          items: [
+            { id: 'proposal:p-draft', action: 'approve' },
+            { id: 'proposal:p-other', action: 'reject' },
+          ],
+        },
+      })
+      expect(res.statusCode).toBe(200)
+      const byId = Object.fromEntries(
+        (res.json().results as { id: string; ok: boolean; status: number }[]).map((r) => [r.id, r]),
+      )
+      expect(byId['proposal:p-draft']).toMatchObject({ ok: false, status: 403 })
+      expect(byId['proposal:p-other']).toMatchObject({ ok: true })
+      expect(
+        (await db.collection('autopilot_actions').findOne({ id: 'p-draft' }))?.['status'],
+      ).toBe('proposed')
+      await app.close()
+    })
+
+    it('requires a recent login (step-up) and caps the batch size', async () => {
+      await db
+        .collection('platform_operators')
+        .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+      const stale = await buildApp('operator-1', Math.floor(Date.now() / 1000) - 3600)
+      const res = await stale.inject({
+        method: 'POST',
+        url: '/operator/mission-control/batch',
+        payload: { reason: 'Old session', items: [{ id: 'alert:x', action: 'ack' }] },
+      })
+      expect(res.statusCode).toBe(403)
+      expect(res.json().code).toBe('step_up_required')
+      await stale.close()
+
+      const app = await buildApp()
+      const tooMany = await app.inject({
+        method: 'POST',
+        url: '/operator/mission-control/batch',
+        payload: {
+          reason: 'Too many',
+          items: Array.from({ length: 21 }, (_, i) => ({ id: `alert:a${i}`, action: 'ack' })),
+        },
+      })
+      expect(tooMany.statusCode).toBe(400)
+      await app.close()
+    })
   })
 
   it('approves a suspend proposal — executes the mutation, audits, and cannot be re-approved', async () => {

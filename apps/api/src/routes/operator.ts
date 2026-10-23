@@ -50,6 +50,8 @@ import {
   type AutopilotActionDoc,
 } from '../operator/autopilot.js'
 import { runWeeklyDigest } from '../operator/weekly-digest.js'
+import { approveProposal, rejectProposal } from '../operator/proposal-resolution.js'
+import { buildDecisions } from '../operator/mission-control.js'
 import {
   campaignsCol,
   resolveAudience,
@@ -3115,67 +3117,15 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
         return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-      const action = await autopilotActions.findOne({ id: request.params.id })
-      if (!action || action['status'] !== 'proposed' || !action['proposal']) {
-        return reply.status(404).send({ error: 'Proposal not found or already resolved' })
-      }
-      const proposal = action['proposal'] as NonNullable<AutopilotActionDoc['proposal']>
-      const roles = (request.operatorContext?.roles ?? []) as PlatformRole[]
-      if (!hasOperatorPermission(roles, proposal.required_permission as OperatorPermission)) {
-        return reply
-          .status(403)
-          .send({ error: `This proposal requires ${proposal.required_permission}` })
-      }
-      const handler = PROPOSAL_HANDLERS[proposal.kind]
-      if (!handler)
-        return reply.status(400).send({ error: `Unknown proposal kind: ${proposal.kind}` })
-
-      // Claim first: proposed → approved is atomic, so two racing approvers
-      // can't both execute the underlying mutation. A crash mid-handler
-      // leaves 'approved' — visible as stuck, never silently re-run.
-      const claim = await autopilotActions.updateOne(
-        { id: action['id'], status: 'proposed' },
-        {
-          $set: {
-            status: 'approved',
-            resolved_by: request.operatorContext?.user_id,
-            resolved_at: new Date(),
-          },
-        },
-      )
-      if (claim.modifiedCount === 0)
-        return reply.status(409).send({ error: 'Proposal already resolved' })
-
-      let result: string
-      let finalStatus: 'executed' | 'failed' = 'executed'
-      try {
-        result = await handler(db, proposal.payload, {
-          llmFor: taskLlmFor('marketing.social_draft.v1'),
-        })
-      } catch (err) {
-        finalStatus = 'failed'
-        result = String(err).slice(0, 300)
-      }
-      await autopilotActions.updateOne(
-        { id: action['id'] },
-        { $set: { status: finalStatus, result } },
-      )
-      await audit.log(
+      const out = await approveProposal(
+        db,
+        audit,
         request,
-        'operator.autopilot.approve',
-        'autopilot_action',
-        action['id'] as string,
+        request.params.id,
         parsed.data.reason,
-        {
-          kind: proposal.kind,
-          target: action['target_id'],
-          status: finalStatus,
-          result,
-        },
+        taskLlmFor('marketing.social_draft.v1'),
       )
-      if (finalStatus === 'failed')
-        return reply.status(502).send({ error: `Proposal execution failed: ${result}` })
-      return { ok: true, result }
+      return reply.status(out.status).send(out.body)
     },
   )
 
@@ -3188,27 +3138,145 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
         return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-      const result = await autopilotActions.updateOne(
-        { id: request.params.id, status: 'proposed' },
-        {
-          $set: {
-            status: 'rejected',
-            result: parsed.data.reason,
-            resolved_by: request.operatorContext?.user_id,
-            resolved_at: new Date(),
-          },
-        },
+      const out = await rejectProposal(db, audit, request, request.params.id, parsed.data.reason)
+      return reply.status(out.status).send(out.body)
+    },
+  )
+
+  // ── Mission Control — one ranked list of decisions waiting on a human ───
+  // Read-only aggregation (operator/mission-control.ts) plus a batch endpoint
+  // that is deliberately narrow: only autopilot proposals (approve/reject) and
+  // alert acknowledgements. Posts, campaigns, four-eyes approvals and erasure
+  // are never batched — they publish or destroy, so each keeps its own click
+  // (intent 03; CLAUDE.md trust tiers). Every item goes through the same
+  // permission check, atomic claim and audit row as its single-item route.
+
+  app.get(
+    '/operator/mission-control',
+    { preHandler: requireOperator(db, 'overview.read') },
+    async (request) => {
+      const operator = request.operatorContext!
+      const [decisions, config] = await Promise.all([
+        buildDecisions(db, { user_id: operator.user_id, roles: operator.roles }),
+        getPlatformConfig(db),
+      ])
+      return { decisions, autopilot_paused: config.autopilot_paused }
+    },
+  )
+
+  const BatchSchema = z.object({
+    items: z
+      .array(
+        z.object({
+          id: z.string().min(3).max(200),
+          action: z.enum(['approve', 'reject', 'ack']),
+        }),
       )
-      if (result.matchedCount === 0)
-        return reply.status(404).send({ error: 'Proposal not found or already resolved' })
+      .min(1)
+      .max(20),
+    reason: z.string().trim().min(5).max(500),
+  })
+
+  app.post(
+    '/operator/mission-control/batch',
+    { preHandler: requireOperator(db, 'overview.read', { stepUp: true }) },
+    async (request, reply) => {
+      const parsed = BatchSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid batch', issues: parsed.error.issues })
+      const { items, reason } = parsed.data
+      if (new Set(items.map((i) => i.id)).size !== items.length)
+        return reply.status(400).send({ error: 'Duplicate items in batch' })
+
+      // Validate the whole batch's shape before touching anything — a
+      // non-batchable item rejects the request rather than half-applying it.
+      const parsedItems = items.map((item) => {
+        const cut = item.id.indexOf(':')
+        return { ...item, kind: item.id.slice(0, cut), rawId: item.id.slice(cut + 1) }
+      })
+      for (const item of parsedItems) {
+        const ok =
+          (item.kind === 'proposal' && (item.action === 'approve' || item.action === 'reject')) ||
+          (item.kind === 'alert' && item.action === 'ack')
+        if (!ok)
+          return reply.status(400).send({
+            error: `Not batchable: ${item.id} (${item.action}). Only proposal approve/reject and alert ack are.`,
+          })
+      }
+
+      const roles = (request.operatorContext?.roles ?? []) as PlatformRole[]
+      const results: { id: string; ok: boolean; status: number; error?: string }[] = []
+      for (const item of parsedItems) {
+        try {
+          if (item.kind === 'proposal' && item.action === 'approve') {
+            const out = await approveProposal(
+              db,
+              audit,
+              request,
+              item.rawId,
+              reason,
+              taskLlmFor('marketing.social_draft.v1'),
+            )
+            results.push({
+              id: item.id,
+              ok: out.status === 200,
+              status: out.status,
+              ...(out.status === 200 ? {} : { error: String(out.body['error']) }),
+            })
+          } else if (item.kind === 'proposal') {
+            if (!hasOperatorPermission(roles, 'operations.manage')) {
+              results.push({
+                id: item.id,
+                ok: false,
+                status: 403,
+                error: 'Missing operator permission: operations.manage',
+              })
+              continue
+            }
+            const out = await rejectProposal(db, audit, request, item.rawId, reason)
+            results.push({
+              id: item.id,
+              ok: out.status === 200,
+              status: out.status,
+              ...(out.status === 200 ? {} : { error: String(out.body['error']) }),
+            })
+          } else {
+            const now = new Date()
+            await alerts.updateOne(
+              { dedup_key: item.rawId },
+              {
+                $set: {
+                  status: 'ack',
+                  updated_by: request.operatorContext?.user_id,
+                  updated_at: now,
+                  snoozed_until: null,
+                },
+                $setOnInsert: { dedup_key: item.rawId, created_at: now },
+              },
+              { upsert: true },
+            )
+            await audit.log(request, 'operator.alert.ack', 'alert', item.rawId, reason)
+            results.push({ id: item.id, ok: true, status: 200 })
+          }
+        } catch (err) {
+          // One item failing must not abort the rest — report it per item.
+          request.log.error({ err, id: item.id }, 'Mission Control batch item failed')
+          results.push({ id: item.id, ok: false, status: 500, error: 'Unexpected error' })
+        }
+      }
       await audit.log(
         request,
-        'operator.autopilot.reject',
-        'autopilot_action',
-        request.params.id,
-        parsed.data.reason,
+        'operator.mission_control.batch',
+        'mission_control',
+        'batch',
+        reason,
+        {
+          requested: items.length,
+          succeeded: results.filter((r) => r.ok).length,
+          failed: results.filter((r) => !r.ok).length,
+        },
       )
-      return { ok: true }
+      return { results }
     },
   )
 
