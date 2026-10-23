@@ -28,6 +28,8 @@ export interface Guide {
   kind: 'detector' | 'life-stage'
   /** SEO title + on-page h1 (kept identical so SERP matches the page). */
   title: string
+  /** Short name for the guides sidebar. */
+  navLabel: string
   /** Meta description + index-card blurb. */
   description: string
   tagline: string
@@ -36,14 +38,17 @@ export interface Guide {
   faq: GuideFaq[]
 }
 
-const SIGNUP_CTA = 'Put your family on the chart — free to start, no credit card — and see which of these areas look light for your household.'
+const SIGNUP_CTA =
+  'Put your family on the chart — free to start, no credit card — and see which of these areas look light for your household.'
 
 export const GUIDES: Guide[] = [
   {
     slug: 'emergency-fund-how-much',
+    navLabel: 'Emergency fund',
     kind: 'detector',
     title: 'How Much Should a Family Emergency Fund Be?',
-    description: 'The 3-6 month guideline, how to compute your household number, and what to consider when savings sit far above — or below — the target.',
+    description:
+      'The 3-6 month guideline, how to compute your household number, and what to consider when savings sit far above — or below — the target.',
     tagline: 'The first buffer between a bad month and a bad year',
     intro: [
       'An emergency fund is money set aside for expenses you cannot plan for: a lost job, a medical bill, a car that dies the week before a trip. The most commonly cited guideline is three to six months of essential household expenses — enough to keep the household running while income resumes or alternatives are arranged.',
@@ -97,12 +102,14 @@ export const GUIDES: Guide[] = [
   },
   {
     slug: 'family-protection-gap',
+    navLabel: 'Family protection gap',
     kind: 'detector',
     title: 'The Family Protection Gap: What If a Household Income Stops?',
-    description: 'How families estimate the coverage gap — mortgage, education costs, and living expenses — and what the gap looks like in real numbers.',
+    description:
+      'How families estimate the coverage gap — mortgage, education costs, and living expenses — and what the gap looks like in real numbers.',
     tagline: 'The difference between what is covered and what the household would need',
     intro: [
-      'A protection gap is the difference between what a household would need if an earner\'s income stopped, and the coverage actually in place. It is one of the least visible financial risks a family carries — nothing about it shows up in a bank balance until the day it matters.',
+      "A protection gap is the difference between what a household would need if an earner's income stopped, and the coverage actually in place. It is one of the least visible financial risks a family carries — nothing about it shows up in a bank balance until the day it matters.",
       'The estimate is arithmetic, not guesswork: outstanding mortgage, remaining education costs, and several years of household living expenses, minus whatever life or income cover is already listed.',
     ],
     sections: [
@@ -129,14 +136,14 @@ export const GUIDES: Guide[] = [
       {
         heading: 'How Keel checks this',
         paragraphs: [
-          'Keel computes the same need estimate — mortgage plus education gap plus five years of living expenses — against the cover in a family\'s profile, and flags when listed cover falls below it, when no income protection is listed, and when a policy renewal window is approaching.',
+          "Keel computes the same need estimate — mortgage plus education gap plus five years of living expenses — against the cover in a family's profile, and flags when listed cover falls below it, when no income protection is listed, and when a policy renewal window is approaching.",
         ],
       },
     ],
     faq: [
       {
         q: 'How much life insurance does a family need?',
-        a: 'A common estimate is outstanding mortgage plus remaining education costs plus several years of living expenses, minus existing cover. The right figure depends on dependents, debts, and goals — a licensed insurance professional can evaluate your household\'s need.',
+        a: "A common estimate is outstanding mortgage plus remaining education costs plus several years of living expenses, minus existing cover. The right figure depends on dependents, debts, and goals — a licensed insurance professional can evaluate your household's need.",
       },
       {
         q: 'What is the difference between life insurance and income protection?',
@@ -148,16 +155,19 @@ export const GUIDES: Guide[] = [
       },
       {
         q: 'How do we fill a gap if we find one?',
-        a: 'Compare quotes from multiple insurers and consider speaking with a licensed insurance broker who can assess the household\'s coverage needs. Product and provider choices are individual — Keel surfaces the gap; licensed professionals advise on filling it.',
+        a: "Compare quotes from multiple insurers and consider speaking with a licensed insurance broker who can assess the household's coverage needs. Product and provider choices are individual — Keel surfaces the gap; licensed professionals advise on filling it.",
       },
     ],
   },
   {
     slug: 'retirement-gap-check',
+    navLabel: 'Retirement gap check',
     kind: 'detector',
     title: 'Is Your Retirement Savings on Track? The Gap Check',
-    description: 'How to compare your projected retirement age against your target, what the contribution math looks like, and when contributions alone are not the answer.',
-    tagline: 'Two numbers decide everything: when you want to stop, and when the savings say you can',
+    description:
+      'How to compare your projected retirement age against your target, what the contribution math looks like, and when contributions alone are not the answer.',
+    tagline:
+      'Two numbers decide everything: when you want to stop, and when the savings say you can',
     intro: [
       'Retirement planning reduces to a comparison most households have never made: the age the savings project to, versus the age the household wants. When the projected age lands after the target, the difference is the retirement gap.',
       'The gap has a price — the extra monthly contribution that would close it. Sometimes that number is manageable. Sometimes it exceeds what contributions alone can do, and that case deserves different thinking.',
@@ -186,7 +196,7 @@ export const GUIDES: Guide[] = [
       {
         heading: 'How Keel checks this',
         paragraphs: [
-          'Keel projects the retirement age from the pension balance, contribution rate, and target in a family\'s profile — then flags when the projection lands late, when the required contribution would exceed half of monthly income (the contributions-alone-are-not-enough case), and when no retirement savings are listed at all.',
+          "Keel projects the retirement age from the pension balance, contribution rate, and target in a family's profile — then flags when the projection lands late, when the required contribution would exceed half of monthly income (the contributions-alone-are-not-enough case), and when no retirement savings are listed at all.",
         ],
       },
     ],
@@ -211,9 +221,11 @@ export const GUIDES: Guide[] = [
   },
   {
     slug: 'education-savings-plan',
+    navLabel: 'Education savings',
     kind: 'detector',
-    title: 'Saving for a Child\'s Education: How Far Ahead Should You Be?',
-    description: 'How to measure progress toward an education savings target, why years remaining matter more than the balance, and what starting from zero looks like.',
+    title: "Saving for a Child's Education: How Far Ahead Should You Be?",
+    description:
+      'How to measure progress toward an education savings target, why years remaining matter more than the balance, and what starting from zero looks like.',
     tagline: 'The target is fixed; the runway is what changes',
     intro: [
       'Education saving has a deadline most goals lack: the child turns eighteen on schedule whether the fund is ready or not. That makes progress measurable — current savings against target, divided by the runway left.',
@@ -237,13 +249,13 @@ export const GUIDES: Guide[] = [
       {
         heading: 'How Keel checks this',
         paragraphs: [
-          'For each child in a family\'s profile, Keel compares current education savings against the target and the years remaining — flagging funds below half-target inside five years, and funds not started for children under sixteen, so the runway shrinks visibly rather than silently.',
+          "For each child in a family's profile, Keel compares current education savings against the target and the years remaining — flagging funds below half-target inside five years, and funds not started for children under sixteen, so the runway shrinks visibly rather than silently.",
         ],
       },
     ],
     faq: [
       {
-        q: 'How much should I save for my child\'s education?',
+        q: "How much should I save for my child's education?",
         a: 'Work backward from the target cost and the years remaining — the same balance means very different things at different runways. A financial advisor can help set a target and a monthly contribution that fits your household.',
       },
       {
@@ -262,12 +274,14 @@ export const GUIDES: Guide[] = [
   },
   {
     slug: 'new-baby-financial-checklist',
+    navLabel: 'New baby',
     kind: 'life-stage',
     title: 'New Baby, New Numbers: The Financial Checklist for New Parents',
-    description: 'The first child changes every financial number a household has — emergency fund, protection cover, education savings, and the budget itself. What to check, and why the first months matter.',
+    description:
+      'The first child changes every financial number a household has — emergency fund, protection cover, education savings, and the budget itself. What to check, and why the first months matter.',
     tagline: 'Every check on this site gets bigger the day the baby arrives',
     intro: [
-      'A first child is the single largest simultaneous change to a household\'s finances. Expenses rise, income often drops during leave, a new dependent exists for the next eighteen-plus years — and every financial check a family runs changes its answer on the same day.',
+      "A first child is the single largest simultaneous change to a household's finances. Expenses rise, income often drops during leave, a new dependent exists for the next eighteen-plus years — and every financial check a family runs changes its answer on the same day.",
       'None of the arithmetic is new. What changes is that the numbers all move at once, which is why the weeks after a birth are when families most often discover a gap that had been quietly fine before.',
     ],
     sections: [
@@ -320,15 +334,17 @@ export const GUIDES: Guide[] = [
       },
       {
         q: 'Do we need life insurance after a baby?',
-        a: 'A new dependent is the classic reason the protection question becomes concrete — the household\'s need estimate (mortgage, education, living costs) now has someone it exists for. Compare quotes from multiple insurers or speak with a licensed broker.',
+        a: "A new dependent is the classic reason the protection question becomes concrete — the household's need estimate (mortgage, education, living costs) now has someone it exists for. Compare quotes from multiple insurers or speak with a licensed broker.",
       },
     ],
   },
   {
     slug: 'first-home-financial-checklist',
+    navLabel: 'Buying a first home',
     kind: 'life-stage',
     title: 'Buying a First Home: The Financial Checks That Come With the Keys',
-    description: 'A mortgage changes the math on everything — the emergency fund, the protection gap, and the monthly budget. What to recheck the day the purchase completes.',
+    description:
+      'A mortgage changes the math on everything — the emergency fund, the protection gap, and the monthly budget. What to recheck the day the purchase completes.',
     tagline: 'The mortgage is the visible part; the recheck is the important part',
     intro: [
       'Buying a first home is planned for months — the deposit, the rate, the conveyancing. What gets less attention is the day after: the household now carries the largest debt it has ever had, a new set of essential costs, and a property that must be maintained.',
@@ -346,7 +362,7 @@ export const GUIDES: Guide[] = [
         heading: 'The mortgage is now the largest line in the protection estimate',
         paragraphs: [
           'The standard household need — mortgage plus education costs plus five years of living expenses — jumps the moment a mortgage exists. Cover sized for a renting household, or none at all, is a different calculation with a £200,000 balance attached.',
-          'Many buyers take out mortgage-linked cover at completion because it is offered then; worth checking what it actually covers — the outstanding balance only, or the household\'s fuller need — and comparing it against standalone options.',
+          "Many buyers take out mortgage-linked cover at completion because it is offered then; worth checking what it actually covers — the outstanding balance only, or the household's fuller need — and comparing it against standalone options.",
         ],
       },
       {
@@ -366,7 +382,7 @@ export const GUIDES: Guide[] = [
     faq: [
       {
         q: 'How much should I keep in savings after buying a house?',
-        a: 'Enough to rebuild toward three to six months of the new essential costs — mortgage, insurance, utilities, maintenance. The first months after completion are often the thinnest a household\'s buffer ever gets; rebuilding it deliberately matters more than any target number.',
+        a: "Enough to rebuild toward three to six months of the new essential costs — mortgage, insurance, utilities, maintenance. The first months after completion are often the thinnest a household's buffer ever gets; rebuilding it deliberately matters more than any target number.",
       },
       {
         q: 'Is mortgage life cover enough?',
@@ -378,15 +394,17 @@ export const GUIDES: Guide[] = [
       },
       {
         q: 'What insurance does a new homeowner actually need?',
-        a: 'Buildings insurance is usually a mortgage condition. Beyond that — contents, life cover, income protection — the need depends on the household\'s obligations and dependents. Compare multiple quotes and consider a licensed broker for the protection questions.',
+        a: "Buildings insurance is usually a mortgage condition. Beyond that — contents, life cover, income protection — the need depends on the household's obligations and dependents. Compare multiple quotes and consider a licensed broker for the protection questions.",
       },
     ],
   },
   {
     slug: 'single-income-family-checklist',
+    navLabel: 'Single-income family',
     kind: 'life-stage',
     title: 'The Single-Income Family Checklist: When One Paycheck Carries Everything',
-    description: 'Why single-earner households need a bigger buffer and a sharper view of protection — the math that changes when there is no second income to fall back on.',
+    description:
+      'Why single-earner households need a bigger buffer and a sharper view of protection — the math that changes when there is no second income to fall back on.',
     tagline: 'No second income means no built-in backup plan',
     intro: [
       'In a two-income household, a lost paycheck is a crisis with a partial cushion — the other income keeps arriving. In a single-income household the same event is total: income goes to zero while every expense continues. The financial checks are identical; the margins are not.',
@@ -403,7 +421,7 @@ export const GUIDES: Guide[] = [
       {
         heading: 'Protection is not optional when one income is everything',
         paragraphs: [
-          'The need estimate — mortgage, education costs, five years of living expenses — assumes the earner\'s income stops permanently. In a single-income household that scenario has no buffer whatsoever, which makes the cover question sharper than in almost any other arrangement.',
+          "The need estimate — mortgage, education costs, five years of living expenses — assumes the earner's income stops permanently. In a single-income household that scenario has no buffer whatsoever, which makes the cover question sharper than in almost any other arrangement.",
           'Income protection deserves specific attention here: statistically the more likely disruption is the earner alive but unable to work for months — an event the emergency fund alone may not outlast.',
         ],
         bullets: [
@@ -422,7 +440,7 @@ export const GUIDES: Guide[] = [
       {
         heading: 'How Keel checks this',
         paragraphs: [
-          'Keel sees the household\'s actual income structure — a single-income profile automatically weights the fund check toward the higher band, surfaces the protection estimate against listed cover, and keeps the renewal windows watched. The risk profile of one income is read from the data, not assumed.',
+          "Keel sees the household's actual income structure — a single-income profile automatically weights the fund check toward the higher band, surfaces the protection estimate against listed cover, and keeps the renewal windows watched. The risk profile of one income is read from the data, not assumed.",
         ],
       },
     ],
@@ -447,9 +465,11 @@ export const GUIDES: Guide[] = [
   },
   {
     slug: 'retirement-in-your-50s',
+    navLabel: 'Retirement in your fifties',
     kind: 'life-stage',
     title: 'Retirement Planning in Your Fifties: The Last Decade of Leverage',
-    description: 'What the projection-vs-target check looks like when the runway is ten to fifteen years — the contribution math, the honest limits, and the levers that are not contributions.',
+    description:
+      'What the projection-vs-target check looks like when the runway is ten to fifteen years — the contribution math, the honest limits, and the levers that are not contributions.',
     tagline: 'The math gets steeper — and more honest',
     intro: [
       'In your thirties, a retirement gap is a number with decades of runway to close it. In your fifties it is a decision. The projection-versus-target comparison is the same check — what changes is which levers are still strong enough to move it.',
@@ -460,7 +480,7 @@ export const GUIDES: Guide[] = [
         heading: 'The contribution math at ten to fifteen years',
         paragraphs: [
           'With a decade of runway left, each year of delay costs more than the year before — compounding has less time to work, so more of the pot has to come from contributions directly. The monthly figure that would have closed a gap at forty can be half what the same gap needs at fifty-five.',
-          'This is the uncomfortable version of the check, and also the useful one: the projected-versus-target number turns a vague worry into a specific monthly figure that can be weighed against the household\'s actual capacity.',
+          "This is the uncomfortable version of the check, and also the useful one: the projected-versus-target number turns a vague worry into a specific monthly figure that can be weighed against the household's actual capacity.",
         ],
       },
       {
@@ -510,19 +530,21 @@ export const GUIDES: Guide[] = [
   },
   {
     slug: 'saving-for-university-countdown',
+    navLabel: 'University countdown',
     kind: 'life-stage',
     title: 'The University Costs Countdown: Saving When the Deadline Is a Person',
-    description: 'Education saving has a fixed deadline — the child turns eighteen on schedule. How to read the runway, what behind-pace looks like in real numbers, and when the window gets tight.',
+    description:
+      'Education saving has a fixed deadline — the child turns eighteen on schedule. How to read the runway, what behind-pace looks like in real numbers, and when the window gets tight.',
     tagline: 'Most savings goals can slip; this one has a birthday',
     intro: [
-      'A retirement can move; a house purchase can wait. Education saving is unusual because the deadline is fixed — the child\'s eighteenth birthday arrives on schedule regardless of the fund\'s balance. That makes the check unusually readable: progress is simply current savings against target, weighed against years left.',
+      "A retirement can move; a house purchase can wait. Education saving is unusual because the deadline is fixed — the child's eighteenth birthday arrives on schedule regardless of the fund's balance. That makes the check unusually readable: progress is simply current savings against target, weighed against years left.",
       'The same balance means opposite things at different runways — half-funded with fifteen years left is comfortable; half-funded with five is urgent. This is the countdown logic.',
     ],
     sections: [
       {
         heading: 'Reading the runway',
         paragraphs: [
-          'Divide current savings by the target cost — that percentage only means something against the years remaining. Keel\'s check flags the sharp case: below half the target inside five years, when the monthly contribution needed to close it climbs steeply.',
+          "Divide current savings by the target cost — that percentage only means something against the years remaining. Keel's check flags the sharp case: below half the target inside five years, when the monthly contribution needed to close it climbs steeply.",
           'The useful output is not the percentage but the monthly figure — the contribution that closes the gap in the time left. A specific number can be planned around; a shortfall percentage cannot.',
         ],
       },
@@ -536,8 +558,8 @@ export const GUIDES: Guide[] = [
       {
         heading: 'When the fund cannot get there',
         paragraphs: [
-          'A fund that projects short of target is information, not failure — education funding has levers other goals lack: the target itself can adjust (local versus away, covered versus shared), and loans, scholarships, and part-time work all exist on the student\'s side too.',
-          'The order most guidance suggests: the child\'s education has alternatives; the parents\' retirement does not. Funding education at the expense of retirement is a trade worth making deliberately rather than by default.',
+          "A fund that projects short of target is information, not failure — education funding has levers other goals lack: the target itself can adjust (local versus away, covered versus shared), and loans, scholarships, and part-time work all exist on the student's side too.",
+          "The order most guidance suggests: the child's education has alternatives; the parents' retirement does not. Funding education at the expense of retirement is a trade worth making deliberately rather than by default.",
         ],
       },
       {
@@ -558,7 +580,7 @@ export const GUIDES: Guide[] = [
       },
       {
         q: 'Should education saving come before retirement?',
-        a: 'Most guidance says no — education has loans, scholarships, and flexibility that retirement lacks. Funding a child\'s education at the cost of an unfunded retirement shifts the burden rather than removing it.',
+        a: "Most guidance says no — education has loans, scholarships, and flexibility that retirement lacks. Funding a child's education at the cost of an unfunded retirement shifts the burden rather than removing it.",
       },
       {
         q: 'What accounts exist for education savings?',

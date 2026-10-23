@@ -1,5 +1,25 @@
 import type { Metadata } from 'next'
 import { PublicShell } from '@/components/landing/PublicShell'
+import { DocsLayout, type DocsGroup } from '@/components/landing/DocsLayout'
+import { GUIDES } from './guides-data'
+
+const NAV: DocsGroup[] = [
+  { links: [{ href: '/guides/', label: 'All guides' }] },
+  {
+    heading: 'The checks',
+    links: GUIDES.filter((g) => g.kind === 'detector').map((g) => ({
+      href: `/guides/${g.slug}/`,
+      label: g.navLabel,
+    })),
+  },
+  {
+    heading: 'Moments that change the numbers',
+    links: GUIDES.filter((g) => g.kind === 'life-stage').map((g) => ({
+      href: `/guides/${g.slug}/`,
+      label: g.navLabel,
+    })),
+  },
+]
 
 // Same pattern as blog/layout.tsx / readiness/layout.tsx — route-level
 // title/OG/canonical live here so the page components stay simple.
@@ -18,5 +38,11 @@ export const metadata: Metadata = {
 }
 
 export default function GuidesLayout({ children }: { children: React.ReactNode }) {
-  return <PublicShell>{children}</PublicShell>
+  return (
+    <PublicShell>
+      <DocsLayout label="Guides" groups={NAV}>
+        {children}
+      </DocsLayout>
+    </PublicShell>
+  )
 }

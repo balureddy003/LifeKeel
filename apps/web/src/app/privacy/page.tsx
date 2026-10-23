@@ -72,12 +72,12 @@ export default function PrivacyPage() {
       <P>
         <b className="text-ink-primary">Family members:</b> names, roles, dates of birth and email
         addresses of people you add. An organizer can invite an adult member to their own sign-in,
-        which gives them read access to the household; members under 18 can never have a sign-in.
-        If you add someone else&apos;s details, please let them know and point them to this notice.
+        which gives them read access to the household; members under 18 can never have a sign-in. If
+        you add someone else&apos;s details, please let them know and point them to this notice.
       </P>
       <P>
-        <b className="text-ink-primary">Documents you upload:</b> the file and, on paid plans, fields
-        a model reads from it (provider, policy number, amounts, dates). Vault documents are
+        <b className="text-ink-primary">Documents you upload:</b> the file and, on paid plans,
+        fields a model reads from it (provider, policy number, amounts, dates). Vault documents are
         encrypted before storage and can also be sealed in your browser.
       </P>
       <P>
@@ -137,8 +137,8 @@ export default function PrivacyPage() {
         </li>
         <li>
           <b className="text-ink-primary">AI processing.</b> Some features use a model to read
-          documents, classify email or answer questions. LifeKeel-controlled models are preferred.
-          A hosted AI provider is used only once its contract terms (no training on your content,
+          documents, classify email or answer questions. LifeKeel-controlled models are preferred. A
+          hosted AI provider is used only once its contract terms (no training on your content,
           retention, location) have been reviewed and recorded; until then the features that need
           one may be unavailable. The current list is published at /ai-processing.
         </li>
@@ -193,8 +193,12 @@ export default function PrivacyPage() {
       <P>
         You can ask for access to, correction of, a copy of, or deletion of your personal data, and
         object to or restrict some processing. Export is in Settings (an organizer exports the
-        household; other members export their own account). For anything else contact {CONTACT}.
-        We reply within one month.
+        household; other members export their own account). For anything else contact {CONTACT}. We
+        reply within one month. Each right, and how to use it, is explained on our{' '}
+        <Link href="/legal/gdpr" className="underline">
+          GDPR &amp; your data rights
+        </Link>{' '}
+        page.
       </P>
       <P>
         If you&apos;re unhappy with how we handle your data, you can complain to the Information
@@ -220,7 +224,13 @@ export default function PrivacyPage() {
         your account, and nothing is set if you reject them.
       </P>
       <CookieSettingsButton />
-      <P>See our <Link href="/cookies" className="underline">cookies and device storage page</Link> for the storage we use and how to manage your choices.</P>
+      <P>
+        See our{' '}
+        <Link href="/cookies" className="underline">
+          cookies and device storage page
+        </Link>{' '}
+        for the storage we use and how to manage your choices.
+      </P>
 
       <H2>9. Changes to this notice</H2>
       <P>We update the effective date when this notice changes materially.</P>

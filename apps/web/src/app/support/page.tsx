@@ -382,7 +382,7 @@ export default function SupportPage() {
       <P>
         To delete your account and associated data, or to exercise any other right described in the{' '}
         <a href="/privacy" className="text-family-400 font-medium">
-          Privacy Policy
+          Privacy Notice
         </a>
         , open a case marked &quot;privacy&quot; — erasure requests are handled by an operator with
         an audited workflow.

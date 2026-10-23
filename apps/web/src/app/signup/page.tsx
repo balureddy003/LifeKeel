@@ -213,7 +213,7 @@ export default function SignUpPage() {
         </Link>{' '}
         and{' '}
         <Link href="/privacy" className="lk-textlink">
-          Privacy Policy
+          Privacy Notice
         </Link>
         .
       </p>

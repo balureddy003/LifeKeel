@@ -5,7 +5,21 @@ import { test, expect } from '@playwright/test'
  * Horizontal overflow on a phone or iPad is the most common "works on desktop
  * only" bug and is cheap to catch.
  */
-const ROUTES = ['/', '/readiness', '/events', '/settings', '/upload']
+const ROUTES = [
+  '/',
+  '/readiness',
+  '/events',
+  '/settings',
+  '/upload',
+  '/legal',
+  '/legal/gdpr',
+  '/terms',
+  '/privacy',
+  '/cookies',
+  '/security',
+  '/guides/',
+  '/guides/emergency-fund-how-much/',
+]
 
 for (const route of ROUTES) {
   test(`${route} has no horizontal overflow`, async ({ page }) => {
