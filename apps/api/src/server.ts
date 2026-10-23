@@ -1689,6 +1689,16 @@ app.addHook('onRequest', async (request, reply) => {
   if (/^\/connectors\/[^/]+\/oauth\/callback/.test(request.url)) return
   if (/^\/auth\/(google|github)\/callback/.test(request.url)) return
   if (/^\/auth\/(google|github)\/exchange/.test(request.url)) return
+  // Public routes can also consume the ambient session cookie (dual-mode
+  // resend/verification). Apply CSRF checks before their opportunistic auth
+  // path, not only in the protected-route branch below.
+  if (
+    !extractBearerToken(request.headers.authorization) &&
+    readSessionCookie(request) &&
+    !isOriginAllowedForCookieAuth(request)
+  ) {
+    return reply.status(403).send({ error: 'Origin not allowed' })
+  }
   if (OPEN_ROUTE_PREFIXES.some((p) => request.url.startsWith(p))) {
     // Dual-mode open routes (e.g. /auth/resend-verification) behave
     // differently when a valid Bearer token rides along — authenticate it
