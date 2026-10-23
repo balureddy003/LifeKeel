@@ -265,32 +265,28 @@ describe('tier-2 proposals', () => {
   it('ignores failures from a single IP — that is a forgot-password user, not stuffing', async () => {
     await enableRule('propose_suspend_brute_force')
     await db.collection('users').insertOne({ id: 'u1', status: 'active' })
-    await db
-      .collection('login_events')
-      .insertMany(
-        Array.from({ length: 20 }, () => ({
-          user_id: 'u1',
-          success: false,
-          ip: '10.0.0.1',
-          created_at: new Date(),
-        })),
-      )
+    await db.collection('login_events').insertMany(
+      Array.from({ length: 20 }, () => ({
+        user_id: 'u1',
+        success: false,
+        ip: '10.0.0.1',
+        created_at: new Date(),
+      })),
+    )
     expect(await runAutopilotSweep(db)).toHaveLength(0)
   })
 
   it('dedupes proposals — a second sweep files nothing for the same window', async () => {
     await enableRule('propose_suspend_brute_force')
     await db.collection('users').insertOne({ id: 'victim', status: 'active' })
-    await db
-      .collection('login_events')
-      .insertMany(
-        Array.from({ length: 15 }, (_, i) => ({
-          user_id: 'victim',
-          success: false,
-          ip: `10.0.0.${i % 3}`,
-          created_at: new Date(),
-        })),
-      )
+    await db.collection('login_events').insertMany(
+      Array.from({ length: 15 }, (_, i) => ({
+        user_id: 'victim',
+        success: false,
+        ip: `10.0.0.${i % 3}`,
+        created_at: new Date(),
+      })),
+    )
     await runAutopilotSweep(db)
     await db
       .collection('autopilot_rules')
@@ -302,16 +298,14 @@ describe('tier-2 proposals', () => {
   it('skips users already suspended', async () => {
     await enableRule('propose_suspend_brute_force')
     await db.collection('users').insertOne({ id: 'u1', status: 'suspended' })
-    await db
-      .collection('login_events')
-      .insertMany(
-        Array.from({ length: 15 }, (_, i) => ({
-          user_id: 'u1',
-          success: false,
-          ip: `10.0.0.${i % 3}`,
-          created_at: new Date(),
-        })),
-      )
+    await db.collection('login_events').insertMany(
+      Array.from({ length: 15 }, (_, i) => ({
+        user_id: 'u1',
+        success: false,
+        ip: `10.0.0.${i % 3}`,
+        created_at: new Date(),
+      })),
+    )
     expect(await runAutopilotSweep(db)).toHaveLength(0)
   })
 
@@ -352,6 +346,53 @@ describe('tier-2 proposals', () => {
     await db
       .collection('marketing_posts')
       .insertOne({ tenant_id: 't1', source_blog_slug: 'ready-check', state: 'draft' })
+    expect(await runAutopilotSweep(db)).toHaveLength(0)
+  })
+})
+
+describe('cooldown follows action, not attempt', () => {
+  const publishedBlog = () =>
+    db.collection('blog_posts').insertOne({
+      slug: 'late-post',
+      title: 'Published after the first sweep',
+      published: true,
+      published_at: new Date(Date.now() - 5 * 24 * 3600_000),
+    })
+
+  it('does not put a rule on cooldown when its sweep found nothing to do', async () => {
+    await enableRule('propose_blog_promo')
+    expect(await runAutopilotSweep(db)).toHaveLength(0)
+
+    const stored = await db.collection('autopilot_rules').findOne({ rule: 'propose_blog_promo' })
+    expect(stored?.['last_run_at']).toBeUndefined()
+
+    // Content and a channel appear a moment later — the very next sweep must
+    // see them rather than waiting out the rule's 24h cooldown.
+    await publishedBlog()
+    await db
+      .collection('social_connections')
+      .insertOne({ tenant_id: 't1', channel: 'x', status: 'active' })
+    const rows = await runAutopilotSweep(db)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ status: 'proposed', target_type: 'blog_post' })
+  })
+
+  it('still cools down after a sweep that acted', async () => {
+    await enableRule('propose_blog_promo')
+    await publishedBlog()
+    await db
+      .collection('social_connections')
+      .insertOne({ tenant_id: 't1', channel: 'x', status: 'active' })
+    expect(await runAutopilotSweep(db)).toHaveLength(1)
+
+    const stored = await db.collection('autopilot_rules').findOne({ rule: 'propose_blog_promo' })
+    expect(stored?.['last_run_at']).toBeInstanceOf(Date)
+
+    // A second connected channel would yield a new candidate, but the rule is
+    // inside its cooldown so it must not run.
+    await db
+      .collection('social_connections')
+      .insertOne({ tenant_id: 't2', channel: 'x', status: 'active' })
     expect(await runAutopilotSweep(db)).toHaveLength(0)
   })
 })

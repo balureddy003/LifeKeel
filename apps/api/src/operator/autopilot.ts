@@ -592,11 +592,21 @@ export async function runAutopilotSweep(db: Db): Promise<AutopilotActionDoc[]> {
         created_at: new Date(),
       })
     }
-    await rulesCol(db).updateOne(
-      { rule: cfg.rule },
-      { $set: { last_run_at: new Date() }, $setOnInsert: { rule: cfg.rule, enabled: cfg.enabled } },
-      { upsert: true },
-    )
+    // Cooldown only follows a sweep that did something. An empty sweep (no
+    // stale leads yet, no connected channel yet) must not put the rule to
+    // sleep for its full cooldown — content published a minute later would
+    // otherwise wait a day. Candidate collection is read-only and cheap, and
+    // the ledger's dedup_key still guarantees one act per target.
+    if (acted > 0) {
+      await rulesCol(db).updateOne(
+        { rule: cfg.rule },
+        {
+          $set: { last_run_at: new Date() },
+          $setOnInsert: { rule: cfg.rule, enabled: cfg.enabled },
+        },
+        { upsert: true },
+      )
+    }
   }
   return executed
 }
