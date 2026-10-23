@@ -63,7 +63,7 @@ describe('vertex provider routing', () => {
     expect(detectActiveProvider()).toBe('openai') // invalid value ignored
   })
 
-  it('a runtime providerOverride beats LIFEKEEL_LLM_PROVIDER and env keys', async () => {
+  it('a runtime providerOverride beats LIFEKEEL_LLM_PROVIDER, env keys and tier defaults', async () => {
     process.env['OPENAI_API_KEY'] = 'k'
     process.env['LIFEKEEL_LLM_PROVIDER'] = 'openai'
     const fetchMock = vi.fn().mockResolvedValue(okResponse(completion('hi')))
@@ -72,9 +72,12 @@ describe('vertex provider routing', () => {
       providerOverride: () => 'ollama',
       ollamaBaseUrl: 'http://ollama.test:11434',
     })
-    await router('s', 'p', 'no-provider-prefix')
-    const [url] = fetchMock.mock.calls[0] as [string, RequestInit]
+    // 'tier:fast' is the governed-task call shape — the override must win over
+    // the default model name's own provider mapping.
+    await router('s', 'p', 'tier:fast')
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(url).toContain('ollama.test:11434')
+    expect(JSON.parse(init.body as string).model).toBe('llama3.2:3b')
   })
 
   it('calls the global openapi endpoint with the google/ model prefix and low effort', async () => {

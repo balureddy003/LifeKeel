@@ -118,13 +118,15 @@ scorer warm-start can use it.
   `limited_abuse_log` retention recorded conservatively on both, tolerated on
   non-sensitive tasks only); anthropic, openai and groq stay `unreviewed` and
   are refused in a non-dev deployment. The active provider picks in order:
-  explicit model-name match, then the operator's audited
+  explicit provider config, then the operator's audited
   `platform_config.llm_provider_override` (the `/operator/configuration`
-  switch — runtime, no redeploy), then `LIFEKEEL_LLM_PROVIDER`, then the
-  first configured credential (anthropic → openai → groq → azure → vertex →
-  ollama). A runtime pick still passes the processor check per task —
-  selecting an unapproved or unconfigured provider refuses calls, it does
-  not silently fall back to another processor.
+  switch — runtime, no redeploy), then model-name match, then
+  `LIFEKEEL_LLM_PROVIDER`, then the first configured credential (anthropic →
+  openai → groq → azure → vertex → ollama). The override is global: it also
+  wins for `tier:*` calls, and a model that doesn't exist on the picked
+  provider fails there rather than rerouting. A runtime pick still passes
+  the processor check per task — selecting an unapproved or unconfigured
+  provider refuses calls, it does not silently fall back.
   Vertex auth is OAuth only — the service's GCP service account on Cloud Run,
   or `VERTEX_SERVICE_ACCOUNT_JSON` off-GCP; express-mode API keys do not work
   on its OpenAI-compatible endpoint.

@@ -229,9 +229,9 @@ export interface LlmConfig {
   ollamaHeaders?: () => Promise<Record<string, string>>
   /**
    * Runtime provider override — a per-call sync accessor (e.g. the operator's
-   * platform-config switch) consulted after model-name detection and before
-   * env-key fallback, so the pick can change without a redeploy. Returning
-   * null/undefined means "no runtime override."
+   * platform-config switch) consulted before model-name detection and env
+   * fallback, so the pick can change without a redeploy and applies to
+   * tier-string calls too. Returning null/undefined means "no override."
    */
   providerOverride?: () => LlmProvider | null | undefined
   /** Default model if caller doesn't specify */
@@ -333,13 +333,14 @@ function envProviderOverride(): LlmProvider | null {
 
 function resolveProvider(cfg: LlmConfig, model: string): LlmProvider {
   if (cfg.provider && cfg.provider !== 'auto') return cfg.provider
+  // Operator runtime override — a global routing decision, so it beats the
+  // per-call model name as well as env detection. A model that doesn't exist
+  // on the chosen provider fails at the provider rather than rerouting.
+  const runtime = cfg.providerOverride?.()
+  if (runtime) return runtime
   // Auto-detect from model name
   const fromModel = detectProviderFromModel(model)
   if (fromModel) return fromModel
-  // Operator override — runtime (platform-config) beats env beats whichever
-  // API key happens to be configured.
-  const runtime = cfg.providerOverride?.()
-  if (runtime) return runtime
   const override = envProviderOverride()
   if (override) return override
   // Fall back to whichever API key is available
