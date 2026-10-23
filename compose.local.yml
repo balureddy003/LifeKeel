@@ -39,5 +39,22 @@ services:
     environment:
       MP_MAX_MESSAGES: '500'
 
+  # Malware scanner for the R2 upload scan worker (CLAMD_HOST=localhost). The
+  # first start downloads signatures and takes a few minutes; the healthcheck
+  # passes once clamd answers. The -debian image is used because clamav/clamav
+  # is amd64-only and this must run on Apple Silicon too.
+  clamav:
+    image: docker.io/clamav/clamav-debian:1.4
+    ports:
+      - '127.0.0.1:3310:3310'
+    volumes:
+      - lifekeel_clamav:/var/lib/clamav
+    healthcheck:
+      test: ['CMD', 'clamdscan', '--ping', '1']
+      interval: 15s
+      timeout: 5s
+      retries: 40
+
 volumes:
   lifekeel_mongo:
+  lifekeel_clamav:
