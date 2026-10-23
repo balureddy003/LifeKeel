@@ -39,6 +39,7 @@ import {
   type ProcessorRegistry,
   type ProcessorViolation,
 } from './ai-processors.js'
+import type { LlmResponseCache } from './llm-response-cache.js'
 
 const log = createLogger({ service: 'task-gateway', version: '0.0.0' })
 
@@ -78,6 +79,16 @@ export interface AiTaskPolicy {
   guard_policy?: string
   /** Processor ids (definitions/ai-processors.yaml) that may serve this task. */
   allowed_processors?: string[]
+  /**
+   * Exact-match answer cache TTL (seconds) for this task. Absent/zero means
+   * the task is never cached — the default for anything conversational,
+   * context-dynamic or sensitive. When set, a governed call whose
+   * (task_id, resolved model, system, guarded prompt) hash matches a live
+   * entry in `llm_cache` returns the stored output without contacting a
+   * provider. Forbidden on `lifekeel_infra_required` and `device_only` —
+   * the quarantine and device paths must not leave extra retained copies.
+   */
+  cache_ttl_seconds?: number
 }
 
 export type TaskRegistry = Map<string, AiTaskPolicy>
@@ -221,6 +232,22 @@ export function parseTaskRegistry(doc: unknown): TaskRegistry {
         `Task '${taskId}': allowed_processors must be empty for device_only tasks and non-empty for all others`,
       )
     }
+    const cacheTtl = policy['cache_ttl_seconds']
+    if (cacheTtl !== undefined) {
+      if (typeof cacheTtl !== 'number' || !Number.isFinite(cacheTtl) || cacheTtl <= 0) {
+        throw new TaskPolicyError(
+          `Task '${taskId}' has invalid cache_ttl_seconds '${String(cacheTtl)}' — expected a positive number of seconds`,
+        )
+      }
+      if (
+        policy['data_boundary'] === 'lifekeel_infra_required' ||
+        policy['data_boundary'] === 'device_only'
+      ) {
+        throw new TaskPolicyError(
+          `Task '${taskId}' may not declare cache_ttl_seconds — ${String(policy['data_boundary'])} tasks never cache model output`,
+        )
+      }
+    }
     registry.set(taskId, { ...(policy as unknown as AiTaskPolicy), task_id: taskId })
   }
   if (registry.size === 0) throw new TaskPolicyError('Task registry contains no tasks')
@@ -331,6 +358,17 @@ export interface TaskGatewayDeps {
    * no content.
    */
   onDeviceEscalation?: (taskId: string) => void
+  /**
+   * Exact-match answer cache (llm-response-cache.ts). Consulted only for
+   * tasks whose policy declares `cache_ttl_seconds`; the key is
+   * SHA-256(task_id, resolved model, system, guarded prompt) under the
+   * caller's tenant, so entries never cross a tenant boundary. A hit
+   * returns the stored post-guard output — the provider is not contacted
+   * and no token usage is recorded (the ai_task_calls row is marked
+   * outcome 'cache_hit' so hit-rate stays measurable). Store failures
+   * degrade to an uncached call; they never fail one.
+   */
+  answerCache?: LlmResponseCache
 }
 
 /**
@@ -480,23 +518,49 @@ export function governedLlm(
     const guardedPrompt = inputGuard.guard(prompt)
     const started = Date.now()
     let ok = false
+    let cacheHit = false
     try {
       // callOnce: the provider-level retry inside the router stays the
       // single transport retry layer; the breaker only counts outcomes.
-      const raw = await breaker.callOnce(() =>
-        withDeadline(taskId, policy.deadline_ms, (signal) =>
-          llmCallContext.run({ task_id: taskId, tenant_id: tenantId }, () =>
-            base(system, guardedPrompt.value, resolvedModel, { signal }),
+      const serveOnce = async (): Promise<string> => {
+        const raw = await breaker.callOnce(() =>
+          withDeadline(taskId, policy.deadline_ms, (signal) =>
+            llmCallContext.run({ task_id: taskId, tenant_id: tenantId }, () =>
+              base(system, guardedPrompt.value, resolvedModel, { signal }),
+            ),
           ),
-        ),
-      )
-      ok = true
-      const guardedOutput = outputGuard.guard(raw)
-      const events = [...guardedPrompt.events, ...guardedOutput.events]
-      if (events.length > 0) {
-        void deps.guardEventSink?.(events, { task_id: taskId }).catch(() => {})
+        )
+        ok = true
+        const guardedOutput = outputGuard.guard(raw)
+        const events = [...guardedPrompt.events, ...guardedOutput.events]
+        if (events.length > 0) {
+          void deps.guardEventSink?.(events, { task_id: taskId }).catch(() => {})
+        }
+        return guardedOutput.value
       }
-      return guardedOutput.value
+      if (deps.answerCache && policy.cache_ttl_seconds) {
+        const result = await deps.answerCache.getOrCompute(
+          tenantId,
+          taskId,
+          {
+            task_id: taskId,
+            model: resolvedModel,
+            system,
+            prompt: guardedPrompt.value,
+          },
+          serveOnce,
+          { enabled: true, ttl_seconds: policy.cache_ttl_seconds },
+        )
+        ok = true
+        cacheHit = result.cache_hit
+        // The input guard still ran — its events (injection/PII signals on
+        // this prompt) are reported even though no output was generated.
+        if (cacheHit && guardedPrompt.events.length > 0) {
+          void deps.guardEventSink?.(guardedPrompt.events, { task_id: taskId }).catch(() => {})
+        }
+        return result.value
+      }
+      return await serveOnce()
     } catch (err) {
       const events: LlmGuardEvent[] = [...guardedPrompt.events]
       if (events.length > 0) {
@@ -511,6 +575,7 @@ export function governedLlm(
           model: resolvedModel,
           ok,
           latency_ms: Date.now() - started,
+          ...(cacheHit ? { outcome: 'cache_hit' } : {}),
         })
       } catch {
         /* metrics must never fail a call */
