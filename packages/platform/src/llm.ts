@@ -227,6 +227,13 @@ export interface LlmConfig {
   ollamaBaseUrl?: string
   /** Extra headers for Ollama calls, resolved per call (e.g. a Cloud Run identity token). */
   ollamaHeaders?: () => Promise<Record<string, string>>
+  /**
+   * Runtime provider override — a per-call sync accessor (e.g. the operator's
+   * platform-config switch) consulted after model-name detection and before
+   * env-key fallback, so the pick can change without a redeploy. Returning
+   * null/undefined means "no runtime override."
+   */
+  providerOverride?: () => LlmProvider | null | undefined
   /** Default model if caller doesn't specify */
   defaultModel?: string
   /** Max tokens to generate (default: 2048) */
@@ -329,7 +336,10 @@ function resolveProvider(cfg: LlmConfig, model: string): LlmProvider {
   // Auto-detect from model name
   const fromModel = detectProviderFromModel(model)
   if (fromModel) return fromModel
-  // Operator override beats whichever API key happens to be configured
+  // Operator override — runtime (platform-config) beats env beats whichever
+  // API key happens to be configured.
+  const runtime = cfg.providerOverride?.()
+  if (runtime) return runtime
   const override = envProviderOverride()
   if (override) return override
   // Fall back to whichever API key is available

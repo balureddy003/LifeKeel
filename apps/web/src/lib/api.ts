@@ -4439,11 +4439,14 @@ export function fetchOperatorReferrals(): Promise<OperatorReferrals> {
 
 // ── Operator: configuration ───────────────────────────────────────────────
 
+export type LlmProviderId = 'anthropic' | 'openai' | 'azure' | 'vertex' | 'ollama' | 'groq'
+
 export interface PlatformConfig {
   maintenance_mode: boolean
   signups_enabled: boolean
   marketing_paused: boolean
   maintenance_window: MaintenanceWindow | null
+  llm_provider_override: LlmProviderId | null
 }
 
 export interface ConfigHistoryEntry {
@@ -4463,7 +4466,10 @@ export function fetchOperatorConfiguration(): Promise<{
 }
 
 export async function updateOperatorConfiguration(
-  changes: Partial<PlatformConfig>,
+  changes: Partial<Omit<PlatformConfig, 'llm_provider_override'>> & {
+    /** 'auto' clears the override back to router detection. */
+    llm_provider_override?: LlmProviderId | 'auto' | null
+  },
   reason: string,
 ): Promise<PlatformConfig> {
   const base = getApiBase()

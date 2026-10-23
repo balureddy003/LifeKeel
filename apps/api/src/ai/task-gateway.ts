@@ -49,7 +49,7 @@ import {
 } from '@lifekeel/platform'
 import { createLogger } from '@lifekeel/platform'
 import { deploymentConfig } from '../config/deployment.js'
-import { getPlatformConfig } from '../operator/platform-config.js'
+import { currentLlmProviderOverride, getPlatformConfig } from '../operator/platform-config.js'
 import { checkPlanSpendBudget } from '../spend-ledger.js'
 import { familyDataLlmFromEnv, localDecisionFromEnv } from '../local-model.js'
 import {
@@ -152,9 +152,11 @@ export function resolveServingProcessor(policy: AiTaskPolicy): string | null {
     case 'lifekeel_infra_required':
       return 'ollama'
     case 'lifekeel_infra':
-      return localTextConfigured() ? 'ollama' : processorForProvider(detectActiveProvider())
+      return localTextConfigured()
+        ? 'ollama'
+        : processorForProvider(currentLlmProviderOverride() ?? detectActiveProvider())
     default:
-      return processorForProvider(detectActiveProvider())
+      return processorForProvider(currentLlmProviderOverride() ?? detectActiveProvider())
   }
 }
 
@@ -314,7 +316,10 @@ function recordUsage(u: LlmTokenUsage): void {
 }
 
 function cloudLlm(): LlmFn {
-  cloudBase ??= createLlmRouterFromEnv({ onUsage: recordUsage })
+  cloudBase ??= createLlmRouterFromEnv({
+    onUsage: recordUsage,
+    providerOverride: currentLlmProviderOverride,
+  })
   return cloudBase
 }
 

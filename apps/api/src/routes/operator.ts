@@ -3919,6 +3919,11 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     marketing_paused: z.boolean().optional(),
     /** null clears a scheduled window; object sets/replaces it. */
     maintenance_window: MaintenanceWindowSchema.nullable().optional(),
+    /** Runtime LLM provider pick; 'auto'/null clears back to router detection. */
+    llm_provider_override: z
+      .enum(['auto', 'anthropic', 'openai', 'azure', 'vertex', 'ollama', 'groq'])
+      .nullable()
+      .optional(),
     reason: z.string().min(5).max(500),
   })
 
@@ -3944,6 +3949,13 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
           changes.maintenance_window === undefined
             ? before.maintenance_window
             : changes.maintenance_window,
+        // 'auto' and null both mean "router decides" — stored as null.
+        llm_provider_override:
+          changes.llm_provider_override === undefined
+            ? before.llm_provider_override
+            : changes.llm_provider_override === 'auto' || changes.llm_provider_override === null
+              ? null
+              : changes.llm_provider_override,
         // Never set via the generic config write — only the audited
         // /operator/ai-tasks/:taskId/state route touches it (PRD-217).
         ai_disabled_tasks: before.ai_disabled_tasks,
@@ -3958,6 +3970,8 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         {
           $set: {
             ...changes,
+            // Stored normalized — 'auto' and explicit null both become null.
+            llm_provider_override: next.llm_provider_override,
             updated_by: request.operatorContext?.user_id,
             updated_at: new Date(),
           },
