@@ -99,8 +99,13 @@ export async function reconcileOnce(
     if (key) await store.delete('quarantine', key).catch(() => {})
     const set: Record<string, unknown> = { quarantine_present: false }
     if (row['status'] === 'clean') set['ocr_pending'] = true
-    await docs.updateOne({ _id: row._id, quarantine_present: true }, { $set: set })
-    report.quarantine_cleaned++
+    // The row might have entered fenced deletion after the read. Do not
+    // resurrect OCR work or change its markers after the generation bump.
+    const updated = await docs.updateOne(
+      { _id: row._id, status: row['status'], generation: row['generation'], quarantine_present: true },
+      { $set: set },
+    )
+    if (updated.modifiedCount === 1) report.quarantine_cleaned++
   }
 
   // 5. Clean rows whose reservation commit was interrupted.
