@@ -102,6 +102,8 @@ const EXEMPT_COLLECTIONS = new Set([
   'search_pages_daily',
   'ga4_daily',
   'search_readback_state',
+  // intent 47: topic ideas derived from the aggregates above; query text only, no person
+  'topic_suggestions',
   'outcome_charges',
   'stripe_webhook_events',
   // commercial plane (pre-signup/operator-scoped). Leads matching a deleted
