@@ -53,6 +53,7 @@ import { PostCalendar } from './_components/PostCalendar'
 import { PlanPanel } from './_components/PlanPanel'
 import { FunnelPanel } from './_components/FunnelPanel'
 import { EconomicsPanel } from './_components/EconomicsPanel'
+import { ConnectionsPanel } from './_components/ConnectionsPanel'
 import { ReasonAction } from '../_components/ReasonAction'
 
 const STATE_STYLE: Record<MarketingPost['state'], string> = {
@@ -112,7 +113,15 @@ function toLocalInput(iso: string): string {
 }
 
 type Tab =
-  'compose' | 'queue' | 'plan' | 'calendar' | 'performance' | 'economics' | 'campaigns' | 'profiles'
+  | 'compose'
+  | 'queue'
+  | 'plan'
+  | 'calendar'
+  | 'performance'
+  | 'economics'
+  | 'connections'
+  | 'campaigns'
+  | 'profiles'
 
 export default function MarketingPage() {
   const toast = useToast()
@@ -521,7 +530,11 @@ export default function MarketingPage() {
           </GlassCard>
 
           {/* Tabs */}
-          <div className="flex gap-1.5 mt-5 mb-4 rounded-xl bg-tint/[0.03] border border-tint/[0.06] p-1">
+          <div
+            role="tablist"
+            aria-label="Marketing sections"
+            className="flex gap-1.5 mt-5 mb-4 overflow-x-auto rounded-xl bg-tint/[0.03] border border-tint/[0.06] p-1"
+          >
             {(
               [
                 ['compose', 'Compose'],
@@ -530,6 +543,7 @@ export default function MarketingPage() {
                 ['calendar', 'Calendar'],
                 ['performance', 'Performance'],
                 ['economics', 'Economics'],
+                ['connections', 'Connections'],
                 ['campaigns', 'Campaigns'],
                 ['profiles', 'Profiles'],
               ] as [Tab, string][]
@@ -537,7 +551,9 @@ export default function MarketingPage() {
               <button
                 key={key}
                 onClick={() => setTab(key)}
-                className={`flex-1 rounded-lg px-2 py-2 text-xs font-semibold transition-colors ${
+                role="tab"
+                aria-selected={tab === key}
+                className={`flex-auto shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
                   tab === key
                     ? 'bg-family-500/20 text-family-300'
                     : 'text-ink-tertiary hover:text-ink-secondary'
@@ -1195,6 +1211,7 @@ export default function MarketingPage() {
 
           {/* Campaigns — one-shot targeted email to filtered cohorts */}
           {tab === 'economics' && <EconomicsPanel />}
+          {tab === 'connections' && <ConnectionsPanel />}
           {tab === 'campaigns' && <CampaignsPanel />}
           {tab === 'profiles' && <ProfilesPanel />}
         </>
