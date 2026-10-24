@@ -196,7 +196,7 @@ export async function callStructured<T>(
     }
 
     // Format Zod errors for the retry prompt
-    lastError = `Schema validation failed:\n${result.error.errors
+    lastError = `Schema validation failed:\n${result.error.issues
       .map((e) => `  - ${e.path.join('.')}: ${e.message}`)
       .join('\n')}`
     retries++
@@ -248,7 +248,7 @@ export class BudgetExhaustedError extends Error {
 // `zod-to-json-schema` to keep the platform package lean. Covers the 90% case:
 // object, string, number, boolean, array, enum, optional, nullable, literal.
 
-function zodToJsonSchema(schema: z.ZodType): Record<string, unknown> {
+function zodToJsonSchema(schema: z.core.$ZodType): Record<string, unknown> {
   if (schema instanceof z.ZodObject) {
     const shape = schema.shape as Record<string, z.ZodType>
     const properties: Record<string, unknown> = {}
@@ -277,12 +277,12 @@ function zodToJsonSchema(schema: z.ZodType): Record<string, unknown> {
     return zodToJsonSchema(schema.unwrap())
   }
   if (schema instanceof z.ZodUnion) {
-    return { oneOf: (schema.options as z.ZodType[]).map(zodToJsonSchema) }
+    return { oneOf: (schema.options as z.core.$ZodType[]).map(zodToJsonSchema) }
   }
   if (schema instanceof z.ZodRecord) {
     // ZodRecord's value type is accessible via ._def.valueType
-     
-    const valueType = (schema as any)._def?.valueType as z.ZodType | undefined
+
+    const valueType = (schema as any)._def?.valueType as z.core.$ZodType | undefined
     return { type: 'object', additionalProperties: valueType ? zodToJsonSchema(valueType) : {} }
   }
   // Fallback for unknown Zod types

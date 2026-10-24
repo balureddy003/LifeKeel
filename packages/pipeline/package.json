@@ -27,7 +27,7 @@
     "@lifekeel/platform": "workspace:^",
     "js-yaml": "^4.1.0",
     "papaparse": "^5.5.3",
-    "zod": "^3.23.0",
+    "zod": "^4.6.6",
     "exceljs": "^4.4.0"
   },
   "devDependencies": {
