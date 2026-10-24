@@ -91,6 +91,7 @@ export interface SocialPublisher {
   createPost(args: CreatePostArgs): Promise<unknown>
 }
 
+import { createHash } from 'node:crypto'
 import type { Db } from 'mongodb'
 import { decryptEnveloped } from '../crypto/envelope.js'
 import { ConnectorActionExecutor } from '@lifekeel/workflows'
@@ -250,9 +251,7 @@ function blueskyHandler(
             collection: 'app.bsky.feed.post',
             // Deterministic record key = real dedupe: a retried write with
             // the same rkey is refused by the repo instead of double-posting.
-            ...(ctx.idempotencyKey
-              ? { rkey: ctx.idempotencyKey.replace(/[^a-zA-Z0-9-]/g, '') }
-              : {}),
+            ...(ctx.idempotencyKey ? { rkey: tidRkey(ctx.idempotencyKey) } : {}),
             record: {
               $type: 'app.bsky.feed.post',
               text: content,
@@ -275,6 +274,24 @@ function blueskyHandler(
       }
     },
   }
+}
+
+const TID_ALPHABET = '234567abcdefghijklmnopqrstuvwxyz'
+
+/** A TID-shaped rkey derived deterministically from the idempotency key —
+ *  Bluesky validates record keys as TIDs, so a raw hashed key is refused
+ *  ("Invalid TID string format") while a hash *in TID format* keeps the
+ *  dedupe property: a retried write replays the same rkey and is refused
+ *  instead of double-posting. */
+export function tidRkey(seed: string): string {
+  const h = createHash('sha256').update(seed).digest()
+  let n = h.readBigUInt64BE(0)
+  let s = ''
+  for (let i = 0; i < 13; i++) {
+    s = TID_ALPHABET[Number(n & 31n)] + s
+    n >>= 5n
+  }
+  return s
 }
 
 // ---------------------------------------------------------------------------
