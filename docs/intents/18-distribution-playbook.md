@@ -58,8 +58,9 @@ prospects, influencer programmes, building new product features, translating to 
   --source reddit-personalfinanceuk --medium social --campaign playbook --content a01 --path /`
   prints the URL using the same token rule as `apps/api/src/marketing/utm.ts` (import it if the
   repo's tooling allows, otherwise copy the regex and add a test that fails if they diverge).
-- Optional test: a script that runs every draft message in the doc through `checkCopy`
-  (extract fenced blocks tagged `draft`) so the doc cannot drift from the guard.
+- Optional test: a script or vitest that runs every draft message in the doc through `checkCopy`
+  (extract fenced blocks tagged `draft`) so the doc cannot drift from the guard — run them as
+  kind `'social'`; the buy/switch rule does not fire for the `'blog'` kind.
 
 **Acceptance (reviewer checks)**
 - Every channel claim cites a source with a retrieval date; rules-of-the-venue are quoted or

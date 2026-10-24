@@ -66,3 +66,15 @@ export function attributionKey(a: Record<string, unknown> | null | undefined): {
 export function attributionContent(a: Record<string, unknown> | null | undefined): string {
   return bucket(a?.['utm_content'], 'none')
 }
+
+const HEX = '0123456789abcdef'
+
+/** Per-post attribution tag (PRD-218): 'p' + 8 lowercase hex chars — always
+ *  inside the token rule, and short enough that a stray click reads as a
+ *  post, not a slug. Callers store it on the post and must check it against
+ *  the collection before use (see uniquePostTag in post-stats.ts). */
+export function newPostTag(rand: () => number = Math.random): string {
+  let tag = 'p'
+  for (let i = 0; i < 8; i++) tag += HEX[Math.floor(rand() * 16) % 16]
+  return tag
+}

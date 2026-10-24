@@ -70,6 +70,13 @@ export async function getDb(): Promise<Db> {
   // Backs the per-email throttle in /auth/login (R42).
   await loginEvents.createIndex({ email: 1, created_at: -1 }).catch(safeIndex)
 
+  // PRD-218: post tags are globally unique — growth_events carry no
+  // tenant_id, so a tag collision would cross-attribute anonymous visits.
+  await db
+    .collection('marketing_posts')
+    .createIndex({ post_tag: 1 }, { unique: true, sparse: true })
+    .catch(safeIndex)
+
   // Signed-out session tokens (R06), kept until the longest session could expire.
   await db
     .collection('revoked_sessions')

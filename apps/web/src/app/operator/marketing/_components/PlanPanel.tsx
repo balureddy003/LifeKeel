@@ -188,6 +188,29 @@ export function PlanPanel() {
                   <span className="text-xs font-semibold text-ink-secondary">
                     {p.channel} · {p.state}
                   </span>
+                  {(p.format || p.hook) && (
+                    <span className="ml-2 inline-flex gap-1 align-middle">
+                      {p.format && (
+                        <span className="rounded-full border border-family-500/25 px-1.5 py-0.5 text-[10px] text-family-400">
+                          {p.format}
+                        </span>
+                      )}
+                      {p.hook && (
+                        <span className="rounded-full border border-tint/15 px-1.5 py-0.5 text-[10px] text-ink-tertiary">
+                          {p.hook}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                  {p.media_url && (
+                    // Signed card preview (PRD-219) — the same URL the platform will fetch.
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={p.media_url}
+                      alt={p.alt_text ?? 'Card preview'}
+                      className="mt-1 h-20 rounded-lg border border-tint/[0.08]"
+                    />
+                  )}
                   <span className="block text-sm text-ink-primary whitespace-pre-wrap">
                     {p.content}
                   </span>

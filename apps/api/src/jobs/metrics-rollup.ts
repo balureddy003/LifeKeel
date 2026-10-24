@@ -5,6 +5,8 @@ import type { Db } from 'mongodb'
  *
  * Doc shape: { _id: '<day>|<metric>|<dim>', day, metric, dim, count, updated_at }
  *   metric: 'growth_event' | 'signup' | 'lead' | 'login' | 'support_case'
+ *           | 'visit_content' (PRD-218: visits per utm_content token)
+ *           | funnel/journey cohort rows (funnel.ts / journeys.ts)
  *   dim:    dimension value (utm_source for signup, source for lead,
  *           event name for growth_event, '' otherwise)
  *
@@ -17,6 +19,8 @@ import type { Db } from 'mongodb'
 
 import { COHORT_DAYS, cohortFunnelRows, eventFunnelRows } from '../marketing/funnel.js'
 import { cohortJourneyRows } from '../marketing/journeys.js'
+import { VISIT_EVENTS } from '../marketing/post-stats.js'
+import { attributionContent } from '../marketing/utm.js'
 
 const RECENT_COHORT_DAYS = 3
 /** Payment lands days or weeks after signup, so journey cohorts keep maturing for a quarter. */
@@ -54,6 +58,23 @@ async function rollupDay(db: Db, day: string): Promise<number> {
     .toArray()
   for (const e of events)
     upserts.push({ metric: 'growth_event', dim: e['_id'] as string, count: e['count'] as number })
+
+  // PRD-218: visits per content token (post tag / blog slug) so per-post
+  // reads never scan growth_events at serve time. Dim is bucketed through
+  // attributionContent — non-token values collapse to 'other'.
+  const visitRows = await db
+    .collection('growth_events')
+    .aggregate([
+      { $match: { created_at: range, event: { $in: [...VISIT_EVENTS] } } },
+      { $group: { _id: '$meta.utm_content', count: { $sum: 1 } } },
+    ])
+    .toArray()
+  for (const v of visitRows)
+    upserts.push({
+      metric: 'visit_content',
+      dim: attributionContent({ utm_content: v['_id'] }),
+      count: v['count'] as number,
+    })
 
   const signups = await db
     .collection('users')

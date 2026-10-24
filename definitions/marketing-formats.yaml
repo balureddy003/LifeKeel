@@ -1,0 +1,79 @@
+# PRD-219: post formats and the hook allow-list.
+# Loaded and validated at API boot by apps/api/src/marketing/formats.ts —
+# an invalid file fails startup. Every fallback must produce public copy that
+# passes checkCopy on its own; hooks are an allow-list — fear, urgency,
+# scarcity and "act now" are excluded by construction (a test enforces it).
+
+hooks:
+  - id: question
+    label: Question
+  - id: concrete_scene
+    label: Concrete scene
+  - id: myth_bust
+    label: Myth bust
+  - id: checklist
+    label: Checklist
+  - id: plain_statement
+    label: Plain statement
+  - id: claim
+    label: Claim
+
+formats:
+  - id: myth_vs_file
+    label: Myth vs file
+    status: active
+    channels: [bluesky, linkedin, x, threads, instagram, facebook]
+    card: myth_fact
+    draft_prompt: |
+      Structure the post in two beats: first a common assumption families
+      make, then what they can actually check on file. Contrast, don't scare.
+      Information only — never tell the reader what to buy or switch.
+    card_sub: What a family can check on file
+    fallback: |
+      A common assumption: it is all written down somewhere.
+
+      What a family can check on file: {{facts}}
+  - id: one_thing_to_check
+    label: One thing to check
+    status: active
+    channels: [bluesky, linkedin, x, threads, instagram, facebook]
+    card: headline
+    draft_prompt: |
+      One small habit, one sentence each: a renewal date, a named beneficiary,
+      where the papers are. Pick the single most useful check in the facts.
+      Information only — never a recommendation.
+    card_sub: One small thing worth checking
+    fallback: |
+      One thing worth checking this week: {{facts}}
+  - id: hard_day_steps
+    label: A hard day, step by step
+    status: active
+    channels: [bluesky, linkedin, x, threads, instagram, facebook]
+    card: headline
+    # thread: true is reserved for a future multi-post format; no publisher
+    # posts threads today, so this stays unset and single-post.
+    draft_prompt: |
+      A calm numbered list — three or four steps max — of what a partner
+      would need to find or do, drawn only from the facts. Warm and plain.
+      Information only.
+    card_sub: The steps, written down before they are needed
+    fallback: |
+      If something happens, a partner would need to find:
+      1. {{facts}}
+  # Held for counsel review of wording — never selected while status: held.
+  - id: calendar_moment
+    label: Calendar moment
+    status: held
+    channels: [bluesky, linkedin, x]
+    draft_prompt: |
+      Held — counsel reviews the wording before this format runs.
+    fallback: |
+      Held.
+  - id: illustrative_scene
+    label: Illustrative scene
+    status: held
+    channels: [bluesky, linkedin, x]
+    draft_prompt: |
+      Held — counsel reviews the wording before this format runs.
+    fallback: |
+      Held.

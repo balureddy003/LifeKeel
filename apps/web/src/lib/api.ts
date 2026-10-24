@@ -4047,6 +4047,9 @@ export interface PlanPostView {
   /** Instagram cannot post without an image; true until a media URL is attached. */
   needs_image?: boolean
   media_url?: string | null
+  alt_text?: string | null
+  format?: string | null
+  hook?: string | null
 }
 
 export interface PlanItemView {
@@ -5085,6 +5088,44 @@ export interface SpendEntry {
 
 export function fetchEconomics(days: number, model: 'first' | 'last'): Promise<EconomicsView> {
   return operatorRequest(`/operator/marketing/economics?days=${days}&model=${model}`)
+}
+
+/** PRD-218: the weekly posts table — visits/signups joined by post tag. */
+export interface PostStatRow {
+  id: string
+  post_tag: string | null
+  channel: string
+  format: string | null
+  hook: string | null
+  pillar: string | null
+  length_bucket: 'short' | 'medium' | 'long' | null
+  hour_bucket: 'morning' | 'midday' | 'afternoon' | 'evening' | null
+  has_media: boolean
+  posted_at: string | null
+  visits: number
+  signups: number
+  engagement: { likes: number; reposts: number; replies: number }
+  tagged: boolean
+}
+
+export interface PostStatGroup {
+  key: string | null
+  posts: number
+  visits: number
+  signups: number
+  visits_per_post: number
+  visits_per_post_interval: { low: number; high: number } | null
+  signup_rate_interval: { low: number; high: number } | null
+  insufficient: boolean
+}
+
+export interface PostStatsView {
+  rows: PostStatRow[]
+  groups: Record<string, PostStatGroup[]>
+}
+
+export function fetchPostStats(weeks = 8): Promise<PostStatsView> {
+  return operatorRequest(`/operator/marketing/post-stats?weeks=${weeks}`)
 }
 
 export function fetchSpend(): Promise<{ entries: SpendEntry[] }> {

@@ -29,8 +29,10 @@ Connect all six platforms (Bluesky, LinkedIn, X, Threads, Instagram, Facebook) b
    `social.post`, `marketing.profile_update`. Do not add a caller of `ConnectorActionExecutor`
    without editing the allow-list in `apps/api/src/__tests__/trust-tier-gate.test.ts`.
 2. **No regulated advice.** All public text passes `checkCopy` (`marketing/copy-guard.ts`) and the
-   advice-rule test. Facts come only from the live claims registry (`claims.ts`, 29 live claims).
-   No "buy/switch", no named providers, no savings promises, no invented numbers or testimonials.
+   advice-rule test. Facts come only from the live claims registry
+   (`apps/web/src/components/landing/claims.ts`, 29 live claims — not the separate trust-page
+   registry in `apps/api/src/trust/claims.ts`). No "buy/switch", no named providers, no savings
+   promises, no invented numbers or testimonials.
 3. **Family content is never model training data or prompt input** for marketing. Public marketing
    text only. Any model call goes through the AI task gateway (`apps/api/src/ai/task-gateway.ts`,
    `definitions/ai-tasks.yaml`); register a task id or CI fails.
@@ -57,8 +59,11 @@ Connect all six platforms (Bluesky, LinkedIn, X, Threads, Instagram, Facebook) b
   `routes/family-group.ts` and web `app/invite/[code]`.
 - Operator UI: `apps/web/src/app/operator/marketing/_components/` (Plan, Connections, Economics).
   Mission Control decisions: `apps/api/src/operator/mission-control.ts`.
-- Erasure catalogue: `apps/api/src/erasure.ts` (`DELETABLE_COLLECTIONS`, `EXEMPT_COLLECTIONS`).
-  Any new collection with per-tenant data must be listed in one of them.
+- Erasure catalogue: `apps/api/src/erasure.ts` exports `DELETABLE_COLLECTIONS`,
+  `CUSTOM_DELETES`, `ERASURE_CATEGORY`; the exempt side lives in
+  `apps/api/src/__tests__/architecture-claims.test.ts` (`EXEMPT_COLLECTIONS`, with a reason each).
+  Every collection found in code must be classified in that test — tenant-keyed data goes in
+  `DELETABLE_COLLECTIONS`, platform/global aggregates get an exempt entry with a reason.
 
 ## Local testing recipe (important)
 
@@ -70,7 +75,9 @@ MONGODB_URL=mongodb://127.0.0.1:27017 MONGODB_DB=<throwaway> REDIS_URL=redis://1
 AUTH_OTP_MODE=off TURNSTILE_MODE=off
 ```
 
-and `unset` provider, Stripe, SendGrid and Azure/Anthropic/OpenAI/Groq/xAI keys. Set tenant
+and `unset` every provider and secret key — `RESEND_API_KEY`/`RESEND_WEBHOOK_SECRET`, Stripe,
+Azure/Anthropic/OpenAI/Groq/xAI, `GOOGLE_*`, `X_*`, `VAPID_*`, `JWT_SECRET`, `TURNSTILE_SECRET_KEY`
+(`TURNSTILE_MODE=off` covers the site key). Set tenant
 `automation.dry_run_mode: true` for anything that could post. Only kill your own servers by port;
 a separate checkout runs its API on :3001. Drop the throwaway DB afterwards. Unit tests use fakes
 and need none of this. Do not run `pnpm typecheck` or `pnpm build` while `next dev` is running.

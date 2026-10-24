@@ -19,11 +19,15 @@ That answer is the early signal every later step (Content Studio, learner) needs
    until intent 16 supplies them (pillar and channel come from the plan today). Buckets:
    length `short` (<=140 chars) / `medium` (<=400) / `long`; hour = scheduled hour in Europe/London,
    bucketed morning (5-11) / midday (11-15) / afternoon (15-19) / evening (19-24, 0-5).
-3. **Visits and signups per tag.** Landing and blog page views already post to `POST /growth/events`
-   with `meta.utm_*`. Verify the web client forwards `utm_content` in `meta`; add it (and keep the
-   `KNOWN_EVENTS` allow-list and `eventMeta` sanitising: token-only, `other` otherwise) if missing.
-   Add `utm_content` to the per-day rollup so visits (`landing_view`, `blog_view`) and signups per
-   tag are computed from `growth_events` and `attribution_journeys`, not by scanning users.
+3. **Visits and signups per tag.** Verified: the web client already forwards `utm_content` in
+   `meta` on `landing_view`, `blog_view`, `guide_view` and `signup_view` (`currentUtm()` in
+   `apps/web/src/lib/growth-track.ts`), and `eventMeta` passes it through — so no client change is
+   needed. `eventMeta` does *not* token-clamp generic events today; the token→`other` bucketing is
+   `bucket()` in `utm.ts`, applied via `attributionContent` at rollup time. Add `utm_content` to
+   the per-day rollup so visits (`landing_view`, `blog_view`) and signups per tag are computed
+   from `growth_events` and the journey rollup, not by scanning users. Note: posts published
+   before this change keep `utm_content=<slug>` links live on the platforms, so their clicks won't
+   join the table — early weeks undercount; that is expected, not a bug.
 4. **Replace the all-users scan in `learningContextBlock`** with the tag join: the winner/flop
    section ranks by visits then signups per tag, with a sample-size note ("3 visits" is not a
    winner). Must not call out any person; aggregates only.
@@ -55,9 +59,11 @@ posted (intent 19), A/B significance tests, Search Console/GA4, new dashboards b
 ## Build spec
 
 **Files likely touched**
-- `apps/api/src/routes/marketing-posts.ts`: tag generation at post creation (all `insertOne` sites:
-  manual, plan, campaign), `siteLink` call sites, `learningContextBlock`, post type gets `post_tag`
-  and `features`.
+- `apps/api/src/routes/marketing-posts.ts`: tag generation at post creation — all `insertOne`
+  sites, which are: the `/marketing/posts/generate` route (manual), `draftBlogPromoPost` (used by
+  both the daily generator and the autopilot-approve path), `planWeek` posts, and campaign posts.
+  Plus `siteLink` call sites, `learningContextBlock`, and the post type gets `post_tag` and
+  `features`.
 - `apps/api/src/marketing/content-plan.ts`: pass tag and brief id through `planWeek`.
 - `apps/api/src/marketing/utm.ts`: add `newPostTag()` helper and a unit test for the token rule.
 - `apps/api/src/marketing/journeys.ts`, `funnel.ts`, `jobs/metrics-rollup.ts`: roll up by
@@ -65,10 +71,13 @@ posted (intent 19), A/B significance tests, Search Console/GA4, new dashboards b
   side the same way). Keep `metrics_daily` row counts bounded (tokens only; `other` bucket).
 - New `apps/api/src/marketing/post-stats.ts`: pure function `postStats(posts, visits, signups)`
   returning rows and grouped stats; route `GET /operator/marketing/post-stats?weeks=8`
-  (`marketing.view`, read only) next to the other marketing operator routes.
+  (`marketing.read`, read only — the scope is `read`, not `view`) next to the other marketing
+  operator routes.
 - `apps/web/src/lib/api.ts` and a new `PostStatsPanel.tsx` in the marketing `_components`.
 - `apps/web` landing/blog client: forward `utm_content` in event `meta` if absent.
-- Index on `{ post_tag: 1 }` (unique sparse per tenant) in `db.ts`.
+- Index on `{ post_tag: 1 }` (unique, sparse) in `db.ts` — global uniqueness, not per tenant:
+  `growth_events` are anonymous with no `tenant_id`, so a tag collision across tenants would
+  silently cross-attribute visits.
 
 **Tests (each must fail without the change)**
 - `newPostTag` always matches the UTM token rule; 1,000 draws without collision handling still
@@ -78,7 +87,7 @@ posted (intent 19), A/B significance tests, Search Console/GA4, new dashboards b
 - `postStats` joins visits and signups by tag; untagged posts are excluded from groups; groups with
   fewer than 5 posts return `insufficient: true`; intervals match the economics helper.
 - `eventMeta`/growth-events: a valid `utm_content` token is kept, free text becomes `other`.
-- Route: role gating (`marketing.view`), response never contains user ids or emails.
+- Route: role gating (`marketing.read`), response never contains user ids or emails.
 - Learning block: ranks by tag join, labels small samples, includes no per-person data.
 - Web: panel renders rows, group toggle, "not enough data" state.
 - Existing plan/approve/hash tests stay green.

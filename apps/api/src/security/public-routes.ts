@@ -59,6 +59,9 @@ const ALWAYS: PublicRoute[] = [
   { prefix: '/insights/cleanup-stale-all', group: 'I' },
   { prefix: '/billing/webhook', group: 'I' },
   { prefix: '/growth/events', group: 'G', note: 'volume; rate limit only' },
+  // PRD-219: HMAC-signed card images — signature proves the URL was minted
+  // server-side; wrong/missing `s` gets a 404, nothing else is served here.
+  { prefix: '/public/social-card/', group: 'G', note: 'signed GETs; rate limit only' },
   { prefix: '/trust', group: 'G' },
   { prefix: '/leads', group: 'G', turnstile: true, note: 'POST gated; unsubscribe is G2' },
   { prefix: '/users/unsubscribe', group: 'G2' },

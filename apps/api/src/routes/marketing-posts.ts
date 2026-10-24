@@ -55,7 +55,16 @@ import {
 import { type LlmFn } from '@lifekeel/platform'
 import { encryptForTenant } from '../crypto/envelope.js'
 import { checkCopy, describeViolations, type CopyCheck } from '../marketing/copy-guard.js'
-import { utmQuery } from '../marketing/utm.js'
+import { newPostTag, utmQuery } from '../marketing/utm.js'
+import {
+  postFeatures,
+  uniquePostTag,
+  visitsByContent,
+  signupsByContent,
+  postJoinKey,
+  type PostFeatures,
+} from '../marketing/post-stats.js'
+import { renderFormatFallback, type FormatDef, type HookDef } from '../marketing/formats.js'
 import { readFunnel, type FunnelView } from '../marketing/funnel.js'
 import { isRollupReady } from '../jobs/metrics-rollup.js'
 import { taskLlm } from '../ai/task-gateway.js'
@@ -90,6 +99,19 @@ export interface MarketingPostDoc {
    *  let the operator split performance by push. */
   campaign?: string
   source_blog_slug?: string
+  /** PRD-218: the post's own utm_content token ('p' + 8 hex), globally unique
+   *  across tenants so anonymous visit events join to exactly one post. */
+  post_tag?: string
+  /** PRD-218: the brief a plan post was written from (kept on the doc now
+   *  that utm_content carries the post tag, not the brief id). */
+  brief_id?: string
+  /** PRD-218: what the post was, recorded at draft time for the weekly table
+   *  and (later) the learner. */
+  features?: PostFeatures
+  /** PRD-219: alt text for the card image when media_url is a social card. */
+  alt_text?: string
+  /** PRD-219: the brand-card spec media_url renders — signing covers it. */
+  card?: { layout: 'headline' | 'myth_fact'; headline: string; sub?: string }
   /** Image URL for media-capable channels. Instagram REQUIRES it (its API
    *  has no text-only post); Facebook uses it as an attached photo. */
   media_url?: string
@@ -367,7 +389,8 @@ export async function generateDailyMarketingDrafts(
     if (!candidate) continue
 
     const slug = candidate['slug'] as string
-    const src = await blogSourceBlock(db, slug, channel)
+    const tag = await uniquePostTag(postsCol)
+    const src = await blogSourceBlock(db, slug, channel, tag)
     if (!src) continue
     const learning = await learningContextBlock(db, tenantId, channel)
     const { content, generated } = await draftPostText(
@@ -386,6 +409,8 @@ export async function generateDailyMarketingDrafts(
       state: 'draft',
       generated,
       source_blog_slug: slug,
+      post_tag: tag,
+      features: postFeatures({ channel, content }),
       created_by: 'daily-generator',
       created_at: new Date(),
     }
@@ -408,7 +433,9 @@ export async function draftBlogPromoPost(
   channel: string,
   createdBy = 'autopilot-approve',
 ): Promise<MarketingPostDoc | null> {
-  const src = await blogSourceBlock(db, blogSlug, channel)
+  const postsCol = db.collection<MarketingPostDoc>('marketing_posts')
+  const tag = await uniquePostTag(postsCol)
+  const src = await blogSourceBlock(db, blogSlug, channel, tag)
   if (!src) return null
   const learning = await learningContextBlock(db, tenantId, channel)
   const { content, generated } = await draftPostText(
@@ -428,6 +455,8 @@ export async function draftBlogPromoPost(
     state: 'draft',
     generated,
     source_blog_slug: blogSlug,
+    post_tag: tag,
+    features: postFeatures({ channel, content }),
     created_by: createdBy,
     created_at: new Date(),
   }
@@ -995,12 +1024,14 @@ async function blogSourceBlock(
   db: Db,
   blogSlug: string,
   channel: string,
+  contentTag: string,
   campaign = 'lifekeel_social',
 ): Promise<{ sourceBlock: string; link: string } | null> {
   const post = await db.collection('blog_posts').findOne({ slug: blogSlug, published: true })
   if (!post) return null
-  // utm_content carries the slug for per-post reads.
-  const link = siteLink(channel, `/blog/${blogSlug}`, blogSlug, campaign)
+  // utm_content carries the post's own tag (PRD-218); the slug stays on the
+  // post doc as source_blog_slug.
+  const link = siteLink(channel, `/blog/${blogSlug}`, contentTag, campaign)
   return {
     link,
     sourceBlock: `Blog post to promote:\nTitle: ${post['title']}\nSummary: ${post['excerpt']}${link ? `\nLink to include verbatim: ${link}` : ''}`,
@@ -1008,10 +1039,13 @@ async function blogSourceBlock(
 }
 
 /** The learning loop's prompt side — what this tenant's audience actually
- *  responded to. Published posts are scored on polled engagement plus the
- *  signups/leads their promoted slug attributed (utm_content carries it);
- *  the top and bottom ends are quoted back to the model as style signal.
- *  Strictly tenant-scoped — nobody else's winners leak into a prompt.
+ *  responded to. Published posts are ranked by the visits and signups their
+ *  own link earned (utm_content carries the post's tag; pre-tag posts join
+ *  by their promoted slug) plus polled engagement; the top and bottom ends
+ *  are quoted back to the model as style signal.
+ *  Strictly tenant-scoped and aggregate-only — visits come from anonymous
+ *  growth events and signups from the daily journey rollup, never from
+ *  scanning user or lead records.
  *  Returns '' when the sample is too thin for "learning" to mean anything,
  *  so a brand-new tenant generates exactly as before. */
 export async function learningContextBlock(
@@ -1025,39 +1059,35 @@ export async function learningContextBlock(
     .toArray()
   if (published.length < 2) return ''
 
-  // Conversions join back through the slug the post promoted.
-  const conversionsBySlug = new Map<string, number>()
-  const bump = (slug: unknown, n = 1) => {
-    if (typeof slug === 'string' && slug)
-      conversionsBySlug.set(slug, (conversionsBySlug.get(slug) ?? 0) + n)
-  }
-  for (const u of await db.collection('users').find({}).toArray()) {
-    const a = u['attribution'] as Record<string, string> | undefined
-    if (a?.['utm_medium'] === 'social') bump(a['utm_content'])
-  }
-  for (const l of await db.collection('leads').find({}).toArray()) {
-    const a = l['attribution'] as Record<string, string> | undefined
-    if (a?.['utm_medium'] === 'social') bump(a['utm_content'])
-  }
+  const visits = await visitsByContent(db)
+  const signups = await signupsByContent(db)
 
   const scored = published.map((p) => {
+    const key = postJoinKey(p)
     const m = p.metrics ?? {}
-    const conversions = p.source_blog_slug ? (conversionsBySlug.get(p.source_blog_slug) ?? 0) : 0
-    // Conversions outweigh vanity metrics by a wide margin — a signup is
-    // the actual goal; a like is directional signal at best.
-    const score = conversions * 10 + (m.reposts ?? 0) * 3 + (m.replies ?? 0) * 2 + (m.likes ?? 0)
-    return { p, score, conversions }
+    return {
+      p,
+      visits: key ? (visits.get(key) ?? 0) : 0,
+      signups: key ? (signups.get(key) ?? 0) : 0,
+      // A like is directional signal at best — visits and signups lead.
+      engagement: (m.reposts ?? 0) * 3 + (m.replies ?? 0) * 2 + (m.likes ?? 0),
+    }
   })
+
+  // A winner needs enough visits to mean anything, or a signup. "3 visits"
+  // is not a winner — it earns no line here at all.
+  const winners = scored
+    .filter((s) => s.signups > 0 || s.visits >= 5 || s.engagement >= 10)
+    .sort((a, b) => b.visits - a.visits || b.signups - a.signups || b.engagement - a.engagement)
 
   // Same-channel winners first — platform conventions differ, then fill
   // with cross-channel signal if the channel itself is thin.
-  const winners = scored.filter((s) => s.score > 0).sort((a, b) => b.score - a.score)
   const channelWinners = winners.filter((s) => s.p.channel === channel).slice(0, 3)
   const otherWinners = winners
     .filter((s) => s.p.channel !== channel)
     .slice(0, Math.max(0, 3 - channelWinners.length))
   const flops = scored
-    .filter((s) => s.score === 0 && s.p.metrics_at) // only "measured and flat", never unmeasured
+    .filter((s) => s.visits === 0 && s.signups === 0 && s.engagement === 0 && s.p.metrics_at) // only "measured and flat", never unmeasured
     .slice(0, 2)
 
   const top = [...channelWinners, ...otherWinners]
@@ -1067,17 +1097,17 @@ export async function learningContextBlock(
   const lines: string[] = [
     'What has performed for THIS account before — study the winners for structure and tone (never copy wording):',
   ]
-  for (const { p, conversions } of top) {
+  for (const { p, visits: v, signups: s } of top) {
     const m = p.metrics ?? {}
     const stats = [
+      `${v} visits`,
+      `${s} signups`,
       `${m.likes ?? 0} likes`,
       `${m.reposts ?? 0} reposts`,
       `${m.replies ?? 0} replies`,
-      conversions > 0 ? `${conversions} signups/leads` : null,
-    ]
-      .filter(Boolean)
-      .join(', ')
-    lines.push(`WINNER [${p.channel}]: "${excerpt(p.content)}" → ${stats}`)
+    ].join(', ')
+    const note = v < 10 && s === 0 ? ' — thin sample' : ''
+    lines.push(`WINNER [${p.channel}]: "${excerpt(p.content)}" → ${stats}${note}`)
   }
   for (const { p } of flops) {
     lines.push(
@@ -1095,12 +1125,17 @@ export async function draftPostText(
   sourceBlock: string,
   link: string,
   learning = '',
+  format?: FormatDef,
+  hook?: HookDef,
 ): Promise<{ content: string; generated: 'llm' | 'template' }> {
   const limit = CHANNEL_CHAR_LIMIT[channel] ?? 2000
+  const shape = format
+    ? `Format rules — follow exactly:\n${format.draft_prompt}${hook ? `\nHook style: ${hook.label}.` : ''}\n\n`
+    : ''
   try {
     const raw = await llm(
       GENERATE_SYSTEM,
-      `Channel: ${channel} (hard maximum ${limit} characters — stay under it).\n\n${sourceBlock}${learning ? `\n\n${learning}` : ''}\n\nWrite one post.`,
+      `${shape}Channel: ${channel} (hard maximum ${limit} characters — stay under it).\n\n${sourceBlock}${learning ? `\n\n${learning}` : ''}\n\nWrite one post.`,
       'tier:fast',
     )
     const content = finishPost(raw, limit, link)
@@ -1122,7 +1157,11 @@ export async function draftPostText(
       .map((l) => l.replace(/^\s*(Title|Summary):\s*/i, ''))
       .join('\n')
       .trim()
-    const body = clampPost(facts, limit, link ? link.length + 2 : 0)
+    const body = clampPost(
+      format ? renderFormatFallback(format, facts) : facts,
+      limit,
+      link ? link.length + 2 : 0,
+    )
     return { generated: 'template', content: `${body}${link ? `\n\n${link}` : ''}` }
   }
 }
@@ -1380,6 +1419,9 @@ export function registerMarketingPostRoutes(
       return reply.status(400).send({ error: 'Instagram requires an image — provide media_url' })
     }
     const now = new Date()
+    // Manual posts get a tag too so they can join the posts table; the tag is
+    // not injected into operator-written content — visits only join when the
+    // operator's own link carries utm_content.
     const post: MarketingPostDoc = {
       id: randomUUID(),
       tenant_id,
@@ -1389,6 +1431,13 @@ export function registerMarketingPostRoutes(
       campaign: campaign ?? 'lifekeel_social',
       ...(scheduled_at ? { scheduled_at: new Date(scheduled_at) } : {}),
       ...(media_url ? { media_url } : {}),
+      post_tag: await uniquePostTag(col),
+      features: postFeatures({
+        channel,
+        content,
+        media_url,
+        scheduled_at: scheduled_at ? new Date(scheduled_at) : undefined,
+      }),
       state: 'draft',
       created_by: user_id,
       created_at: now,
@@ -1418,17 +1467,20 @@ export function registerMarketingPostRoutes(
     }
     const { integration_id, channel, topic, blog_slug, campaign, preview, count } = parsed.data
     const camp = campaign ?? 'lifekeel_social'
+    // Persisted drafts carry the post's own tag in utm_content (PRD-218);
+    // previews keep the generic tag — nothing is stored for them to join to.
+    const tag = preview ? (blog_slug ?? 'topic') : await uniquePostTag(col)
 
     let sourceBlock: string
     let link = ''
     if (blog_slug) {
-      const src = await blogSourceBlock(db, blog_slug, channel, camp)
+      const src = await blogSourceBlock(db, blog_slug, channel, tag, camp)
       if (!src) return reply.status(404).send({ error: 'Blog post not found' })
       sourceBlock = src.sourceBlock
       link = src.link
     } else {
       // Free-topic drafts still need a funnel — link to signup.
-      link = siteLink(channel, '/signup', 'topic', camp)
+      link = siteLink(channel, '/signup', tag, camp)
       sourceBlock = `Topic: ${topic}${link ? `\nLink to include verbatim: ${link}` : ''}`
     }
 
@@ -1481,6 +1533,8 @@ export function registerMarketingPostRoutes(
       state: 'draft',
       generated,
       ...(blog_slug ? { source_blog_slug: blog_slug } : {}),
+      post_tag: tag,
+      features: postFeatures({ channel, content }),
       created_by: user_id,
       created_at: now,
     }

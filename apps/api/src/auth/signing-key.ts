@@ -37,6 +37,9 @@ export type SigningPurpose =
   | 'lead-unsubscribe'
   | 'user-unsubscribe'
   | 'heartbeat-unsubscribe'
+  /** PRD-219: signed social-card image URLs — proves the URL was minted
+   *  server-side, not guessed or edited. */
+  | 'social-card'
   /** Email-OTP pending token (CLOUDFLARE_INTEGRATION.md D11): never a session key. */
   | 'otp-pending'
   /** Dev/test-only fallback for OTP_PEPPER; production reads the secret. */

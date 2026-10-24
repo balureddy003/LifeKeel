@@ -71,8 +71,11 @@ tab (the ledger is a section of the brief), Search Console/GA4.
 - `apps/api/src/routes/marketing-learning.ts`: list ledger, veto, promote, demote
   (`marketing.manage`, audited, dual-control not required but reason required).
 - `apps/web`: a "Weekly brief" section in the Plan tab and veto buttons (`ReasonAction`).
-- `apps/api/src/db.ts`: indexes for `marketing_learnings`; `erasure.ts`: add to the catalogue
-  (aggregate data, likely `EXEMPT_COLLECTIONS` with a reason).
+- `apps/api/src/db.ts`: indexes for `marketing_learnings`; erasure catalogue: the collection is
+  tenant-keyed, so it goes in `DELETABLE_COLLECTIONS` in `apps/api/src/erasure.ts` (plus a
+  `ERASURE_CATEGORY` label). (`EXEMPT_COLLECTIONS` — for tenant-free platform data — lives in
+  `apps/api/src/__tests__/architecture-claims.test.ts`, not erasure.ts; only use it if the ledger
+  is deliberately stored without tenant_id.)
 
 **Tests (each must fail without the change)**
 - Exploration floor: over 10,000 simulated draws with a dominant option, at least ~30% of picks are

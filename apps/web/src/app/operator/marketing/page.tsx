@@ -51,6 +51,7 @@ import { PostPreview } from './_components/PostPreview'
 import { ProfilesPanel } from './_components/ProfilesPanel'
 import { PostCalendar } from './_components/PostCalendar'
 import { PlanPanel } from './_components/PlanPanel'
+import { PostStatsPanel } from './_components/PostStatsPanel'
 import { FunnelPanel } from './_components/FunnelPanel'
 import { EconomicsPanel } from './_components/EconomicsPanel'
 import { ConnectionsPanel } from './_components/ConnectionsPanel'
@@ -1001,7 +1002,12 @@ export default function MarketingPage() {
           )}
 
           {/* Calendar */}
-          {tab === 'plan' && <PlanPanel />}
+          {tab === 'plan' && (
+            <>
+              <PlanPanel />
+              <PostStatsPanel />
+            </>
+          )}
           {tab === 'calendar' && <PostCalendar posts={posts} />}
 
           {/* Performance */}

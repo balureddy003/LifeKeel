@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
-import { UTM_MEDIUMS, attributionKey, isValidUtm, utmQuery } from '../utm.js'
+import { UTM_MEDIUMS, attributionKey, isValidUtm, newPostTag, utmQuery } from '../utm.js'
 
 describe('utm scheme', () => {
   it('builds the four-part query in a fixed order', () => {
@@ -39,6 +39,14 @@ describe('utm scheme', () => {
       campaign: 'none',
     })
   })
+  it('newPostTag always matches the token rule (PRD-218)', () => {
+    for (let i = 0; i < 1000; i++) {
+      const tag = newPostTag()
+      expect(tag).toMatch(/^p[0-9a-f]{8}$/)
+      expect(isValidUtm({ source: 'x', medium: 'social', campaign: 'y', content: tag })).toBe(true)
+    }
+  })
+
   it('reads missing attribution as direct and none', () => {
     expect(attributionKey(undefined)).toEqual({ source: 'direct', campaign: 'none' })
     expect(attributionKey({ utm_source: 'x', utm_campaign: 'pillar_chart' })).toEqual({
