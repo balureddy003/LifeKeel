@@ -30,3 +30,43 @@ and CONTRIBUTING.md's loop. Each file here is a stub for one Stage A item in
 | `19-learner-and-weekly-brief.md` | Marketing engine step 6 — shadow learner and weekly brief (gated on traffic) | PRD-210 |
 
 Shared build context for 15 to 19: [marketing-engine-build-notes.md](marketing-engine-build-notes.md).
+
+## 20–33: 2026-10-24 QA + critic review triage
+
+Stubs from the combined automated-QA and critic/product review
+([qa-critic-review-2026-10-24.md](../reviews/qa-critic-review-2026-10-24.md)).
+Ordered roughly by that review's own priority (score trust → scenario
+reliability → second-adult engagement → everything else); 29–31 are
+reliability/verification items rather than features, and 33 is flagged
+longer-term.
+
+| File | Concern | Overlaps existing PRD |
+|---|---|---|
+| `20-readiness-score-calibration-and-explainability.md` | Score feels harsh; expose the 5 components + recalibrate against personas | PRD-114, PRD-118 |
+| `21-scenario-partial-data-honesty.md` | Silent "Sample scenario"/"event not found" fallbacks on thin data | PRD-115, PRD-132 |
+| `22-derived-surface-freshness.md` | Stale figures in insights/AI Explains after profile edits | PRD-107 |
+| `23-invite-status-and-second-adult-engagement.md` | "Not joined yet" opacity; copy link / resend / seen state | PRD-110, PRD-123 |
+| `24-insight-severity-signaling.md` | Critical gaps look identical to mild ones; no urgency sort | — |
+| `25-blended-family-member-labels.md` | Step-/shared-child distinction on the roster and chart | PRD-001 |
+| `26-variable-income-capture.md` | Second-earner prominence + income notes for irregular earners | PRD-104, PRD-131 |
+| `27-document-upload-feedback-loop.md` | Upload progress, stored confirmation, honest Plus gate | PRD-003 (extraction stays PRD-143) |
+| `28-profile-wizard-validation-and-prefill.md` | Inline validation on blur; saved fields pre-fill on return | PRD-002 |
+| `29-signup-otp-reliability.md` | Intermittent OTP; example.com addresses fail (reproduce first) | — |
+| `30-ask-keel-answer-freshness.md` | Previous-answer bleed after data changes; occasional lag | PRD-211, PRD-212 |
+| `31-billing-unlock-verification.md` | Sandbox checkout → webhook → Plus unlock never verified e2e | PRD-006 |
+| `32-retirement-gap-closure-estimate.md` | "What would close the gap" slider, estimate-labelled, advice-rule-safe | PRD-106 territory |
+| `33-crisis-mode-simplified-view.md` | Crisis mode: top-3 next actions + runway + key documents | PRD-108 |
+
+## 34–37: multi-device easiness pass
+
+From the 390/768/1440px viewport pass in the same review doc. 34 is a
+suspected bug (reproduce first); 36 is an audit before fixes.
+
+| File | Concern | Overlaps existing PRD |
+|---|---|---|
+| `34-post-login-routing-state-fragility.md` | "Create Family Group" shown to accounts that have a family | — |
+| `35-mobile-navigation-and-tablet-layout.md` | Nav density at 390px; tablet width unused | — |
+| `36-accessibility-baseline-audit.md` | Keyboard order, focus, contrast, labels unconfirmed | — |
+| `37-interruptible-setup-and-cross-device-continuity.md` | Autosave per step, "Continue setup", numeric input modes, resume on another device | lands with intent 28 |
+| `38-renewal-price-creep-tracking.md` | Premium history + alert on recorded premium increase — informational only (rule 2 edge) | detectors/policy-review.yaml; PRD-143 for capture |
+| `39-subscription-packaging-and-conversion-moments.md` | Annual plan frame, post-upload paywall moment, explicit free/Plus line | PRD-006, PRD-206 |

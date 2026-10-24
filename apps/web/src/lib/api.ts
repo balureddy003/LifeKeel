@@ -5879,3 +5879,26 @@ export function draftOperatorReply(id: string): Promise<{ draft: string }> {
     return data as { draft: string }
   })
 }
+
+/** PRD-220: owner-generated emergency sheet — opt-in sections only. */
+export interface SheetSectionView {
+  id: string
+  title: string
+  items: { label: string; detail?: string }[]
+}
+export async function previewEmergencySheet(
+  sections: string[],
+): Promise<{ sections: SheetSectionView[] }> {
+  const res = await credFetch(`${getApiBase()}/family/emergency-sheet/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAuthToken()}` },
+    body: JSON.stringify({ sections }),
+  })
+  if (!res.ok) throw new Error('Could not build the sheet')
+  return res.json()
+}
+
+/** Referral link variants: campaign distinguishes which artefact brought the visit. */
+export function referralLink(code: string, campaign: 'sheet' | 'invite'): string {
+  return `${window.location.origin}/signup?ref=${encodeURIComponent(code)}&utm_source=referral&utm_medium=social&utm_campaign=${campaign}`
+}

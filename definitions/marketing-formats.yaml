@@ -26,8 +26,9 @@ formats:
     card: myth_fact
     draft_prompt: |
       Structure the post in two beats: first a common assumption families
-      make, then what they can actually check on file. Contrast, don't scare.
-      Information only — never tell the reader what to buy or switch.
+      make, then what they can actually check on file. Contrast, never
+      frighten. Information only — never tell the reader what to buy or
+      switch.
     card_sub: What a family can check on file
     fallback: |
       A common assumption: it is all written down somewhere.

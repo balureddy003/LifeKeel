@@ -157,6 +157,7 @@ import { registerFamilyJoinRoutes } from './routes/family-join.js'
 import { registerReferralRoutes } from './routes/referrals.js'
 import { registerGrowthEventRoutes } from './routes/growth-events.js'
 import { registerMarketingCardRoutes } from './routes/marketing-card.js'
+import { registerEmergencySheetRoutes } from './routes/emergency-sheet.js'
 import { registerFamilyFinancialProfileRoutes } from './routes/family-financial-profile.js'
 import { registerLifeEventRoutes } from './routes/life-events.js'
 import { runChecklistReminderSweep } from './life-events/checklist-reminder.js'
@@ -2243,6 +2244,7 @@ if (workflowDb) {
   registerReferralRoutes(app, workflowDb)
   registerGrowthEventRoutes(app, workflowDb)
   await registerMarketingCardRoutes(app, workflowDb)
+  await registerEmergencySheetRoutes(app, workflowDb)
   registerFamilyInboxRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerAssistantRoutes(app, workflowDb)
   registerSupportRoutes(app, workflowDb)

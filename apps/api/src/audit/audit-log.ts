@@ -114,6 +114,7 @@ export type AuditAction =
   | 'document.uploaded'
   | 'document.scan_result'
   | 'document.accessed'
+  | 'family.emergency_sheet_generated'
 
 export interface AuditEntry {
   tenant_id: string

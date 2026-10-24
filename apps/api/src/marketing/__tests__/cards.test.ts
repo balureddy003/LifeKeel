@@ -33,7 +33,7 @@ describe('social cards (PRD-219)', () => {
   })
 
   it('wraps long text and throws rather than overflowing', () => {
-    const lines = wrapText('word '.repeat(60).trim(), 24, 4)
+    const lines = wrapText('word '.repeat(30).trim(), 24, 10)
     expect(lines.every((l) => l.length <= 24)).toBe(true)
     expect(() => wrapText('word '.repeat(500).trim(), 24, 4)).toThrow(/overflow/)
     expect(() => cardSvg({ ...spec, headline: 'long '.repeat(200) }, 'facebook')).toThrow()

@@ -75,12 +75,14 @@ describe('postStats', () => {
       visits,
       signups,
     )
-    const [first, second] = view.rows
-    expect(first!.visits).toBe(4) // legacy slug join, untagged
-    expect(first!.tagged).toBe(false)
-    expect(second!.visits).toBe(9)
-    expect(second!.signups).toBe(2)
-    expect(second!.tagged).toBe(true)
+    const tagged = view.rows.find((r) => r.post_tag === 'p0000001')!
+    const legacy = view.rows.find((r) => r.id === 'old')!
+    expect(legacy.visits).toBe(4) // legacy slug join, untagged
+    expect(legacy.signups).toBe(1)
+    expect(legacy.tagged).toBe(false)
+    expect(tagged.visits).toBe(9)
+    expect(tagged.signups).toBe(2)
+    expect(tagged.tagged).toBe(true)
   })
 
   it('marks groups under 5 posts insufficient and excludes untagged posts', () => {

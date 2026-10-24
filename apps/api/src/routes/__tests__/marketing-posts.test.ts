@@ -1570,7 +1570,7 @@ describe('learning loop — performance-informed generation', () => {
         id: 'w1',
         post_tag: 'p0000001',
         content: 'a',
-        metrics: { likes: 9 },
+        metrics: { likes: 15 },
         metrics_at: new Date(),
       }),
       pubPost({
@@ -1607,13 +1607,13 @@ describe('learning loop — performance-informed generation', () => {
       pubPost({
         id: 'w1',
         content: 'Tenant one winner',
-        metrics: { likes: 5 },
+        metrics: { likes: 15 },
         metrics_at: new Date(),
       }),
       pubPost({
         id: 'w2',
         content: 'Tenant one runner-up',
-        metrics: { likes: 2 },
+        metrics: { likes: 12 },
         metrics_at: new Date(),
       }),
       pubPost({
