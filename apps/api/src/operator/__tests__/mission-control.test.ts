@@ -241,3 +241,154 @@ describe('buildDecisions', () => {
     expect(ds.length).toBeLessThanOrEqual(MAX_DECISIONS)
   })
 })
+
+describe('social decisions', () => {
+  // Thursday 22 Oct 2026, so next week is the Monday 26th.
+  const THU = new Date('2026-10-22T10:00:00Z')
+  const WED = new Date('2026-10-21T10:00:00Z')
+  const admin = { user_id: 'me', roles: ['super_admin'] as never }
+
+  const plannedPost = (over: Record<string, unknown> = {}) => ({
+    tenant_id: 't1',
+    state: 'draft',
+    content_item_id: 'ci-1',
+    channel: 'bluesky',
+    scheduled_at: new Date('2026-10-26T09:00:00Z'),
+    created_at: new Date('2026-10-21T08:00:00Z'),
+    copy_check: { ok: true, violations: [] },
+    ...over,
+  })
+  const oauth = (connector_id: string, over: Record<string, unknown> = {}) => ({
+    tenant_id: 't1',
+    connector_id,
+    needs_reauth: false,
+    ...over,
+  })
+
+  it('groups a whole week of plan drafts into one decision, not one card per post', async () => {
+    await db.collection('marketing_posts').insertMany([
+      plannedPost({ channel: 'bluesky' }),
+      plannedPost({ channel: 'x' }),
+      plannedPost({ channel: 'linkedin', scheduled_at: new Date('2026-10-28T09:00:00Z') }),
+      plannedPost({ channel: 'x', scheduled_at: new Date('2026-11-02T09:00:00Z') }), // the week after
+    ])
+    const ds = await buildDecisions(db, admin, THU)
+    const weeks = ds.filter((d) => d.kind === 'plan_week')
+    expect(weeks.map((d) => d.id).sort()).toEqual(['plan_week:2026-10-26', 'plan_week:2026-11-02'])
+    const w = weeks.find((d) => d.id === 'plan_week:2026-10-26')!
+    expect(w.title).toBe('Review and approve the week of 2026-10-26: 3 posts across 3 platforms')
+    expect(w.batchable).toBe(false)
+    expect(w.required_permission).toBe('marketing.manage')
+    expect(w.effect).toMatch(/cannot be unsent/)
+    expect(ds.filter((d) => d.kind === 'post_draft')).toEqual([]) // no per-post flood
+  })
+
+  it('says what blocks approval: copy-guard failures and Instagram posts with no image', async () => {
+    await db
+      .collection('marketing_posts')
+      .insertMany([
+        plannedPost(),
+        plannedPost({ channel: 'x', copy_check: { ok: false, violations: [{ rule: 'x' }] } }),
+        plannedPost({ channel: 'instagram' }),
+        plannedPost({ channel: 'instagram', media_url: 'https://cdn.example.com/a.png' }),
+      ])
+    const w = (await buildDecisions(db, admin, THU)).find((d) => d.kind === 'plan_week')!
+    expect(w.why).toMatch(/1 fail the copy guard/)
+    expect(w.why).toMatch(/1 Instagram post needs an image/)
+    expect(w.why).toMatch(/fix before approving/)
+  })
+
+  it('stays quiet for approved, past and non-plan posts', async () => {
+    await db.collection('marketing_posts').insertMany([
+      plannedPost({ state: 'approved' }),
+      plannedPost({ scheduled_at: new Date('2026-10-20T09:00:00Z') }), // already past
+      { tenant_id: 't1', state: 'draft', channel: 'x', created_at: THU }, // one-off draft, not a plan post
+    ])
+    const ds = await buildDecisions(db, admin, THU)
+    expect(ds.find((d) => d.kind === 'plan_week')).toBeUndefined()
+    expect(ds.filter((d) => d.kind === 'post_draft')).toHaveLength(1) // the one-off keeps its own card
+  })
+
+  it('flags a missing plan from Thursday, and says why', async () => {
+    await db.collection('connector_credentials').insertOne(oauth('twitter_x'))
+    expect(
+      (await buildDecisions(db, admin, WED)).find((d) => d.kind === 'plan_missing'),
+    ).toBeUndefined()
+    const off = (await buildDecisions(db, admin, THU)).find((d) => d.kind === 'plan_missing')!
+    expect(off.id).toBe('plan_missing:2026-10-26')
+    expect(off.why).toMatch(/switched off/)
+    await db
+      .collection('tenant_settings')
+      .insertOne({ tenant_id: 't1', automation: { daily_marketing_drafts_enabled: true } })
+    expect(
+      (await buildDecisions(db, admin, THU)).find((d) => d.kind === 'plan_missing')!.why,
+    ).toMatch(/nothing was drafted/)
+  })
+
+  it('does not flag a missing plan when it exists, or when no platform is connected', async () => {
+    expect(
+      (await buildDecisions(db, admin, THU)).find((d) => d.kind === 'plan_missing'),
+    ).toBeUndefined() // nothing connected
+    await db.collection('connector_credentials').insertOne(oauth('twitter_x'))
+    await db
+      .collection('content_items')
+      .insertOne({ tenant_id: 't1', week_key: '2026-10-26', slot: 0 })
+    expect(
+      (await buildDecisions(db, admin, THU)).find((d) => d.kind === 'plan_missing'),
+    ).toBeUndefined()
+  })
+
+  it('raises a decision for a connection that needs reconnecting or is about to die', async () => {
+    await db.collection('connector_credentials').insertMany([
+      oauth('twitter_x', { needs_reauth: true }),
+      oauth('linkedin', { token_expires_at: new Date(THU.getTime() + 3 * 86_400_000) }),
+      oauth('threads'), // healthy: no decision
+    ])
+    const ds = (await buildDecisions(db, admin, THU)).filter((d) => d.kind === 'channel_attention')
+    expect(ds.map((d) => d.id).sort()).toEqual([
+      'channel_attention:t1:linkedin',
+      'channel_attention:t1:x',
+    ])
+    const x = ds.find((d) => d.id.endsWith(':x'))!
+    expect(x).toMatchObject({ severity: 'danger', title: 'X needs reconnecting' })
+    const li = ds.find((d) => d.id.endsWith(':linkedin'))!
+    expect(li).toMatchObject({
+      severity: 'warning',
+      title: 'LinkedIn connection expires in 3 days',
+    })
+    expect(ds.every((d) => !d.batchable)).toBe(true)
+  })
+
+  it('does not nag about a channel that also has a healthy connection', async () => {
+    await db.collection('social_connections').insertMany([
+      { tenant_id: 't1', channel: 'bluesky', status: 'error', last_error: 'old', handle: 'a' },
+      { tenant_id: 't1', channel: 'bluesky', status: 'active', handle: 'b' },
+    ])
+    expect(
+      (await buildDecisions(db, admin, THU)).filter((d) => d.kind === 'channel_attention'),
+    ).toEqual([])
+  })
+
+  it('shows social decisions only to roles that can manage marketing, and never batches them', async () => {
+    await db.collection('marketing_posts').insertOne(plannedPost())
+    await db
+      .collection('connector_credentials')
+      .insertOne(oauth('twitter_x', { needs_reauth: true }))
+    const support = await buildDecisions(db, { user_id: 'me', roles: ['support'] as never }, THU)
+    expect(
+      support.filter((d) => ['plan_week', 'plan_missing', 'channel_attention'].includes(d.kind)),
+    ).toEqual([])
+    const marketing = await buildDecisions(
+      db,
+      { user_id: 'me', roles: ['marketing_operator'] as never },
+      THU,
+    )
+    const kinds = new Set(marketing.map((d) => d.kind))
+    expect(kinds.has('plan_week')).toBe(true)
+    expect(kinds.has('channel_attention')).toBe(true)
+    for (const d of marketing.filter((d) =>
+      ['plan_week', 'plan_missing', 'channel_attention'].includes(d.kind),
+    ))
+      expect(d.batchable).toBe(false)
+  })
+})

@@ -339,3 +339,29 @@ export async function allUsableChannels(
   }
   return out
 }
+
+export interface ChannelIssue extends ChannelInfo {
+  tenant_id: string
+}
+
+/**
+ * Connections that need a person: dead tokens, errors, and tokens about to
+ * expire (the ones that cannot refresh themselves). Across every tenant.
+ */
+export async function channelIssues(db: Db, now = new Date()): Promise<ChannelIssue[]> {
+  const [a, b] = await Promise.all([
+    db.collection('social_connections').distinct('tenant_id'),
+    db
+      .collection('connector_credentials')
+      .distinct('tenant_id', { connector_id: { $in: Object.values(CONNECTOR_CHANNELS) } }),
+  ])
+  const out: ChannelIssue[] = []
+  for (const tenant_id of [...new Set([...a, ...b].map(String))]) {
+    const infos = await listChannels(db, tenant_id, now)
+    for (const info of infos) {
+      const healthyTwin = infos.some((i) => i.channel === info.channel && i.status === 'connected')
+      if (info.status !== 'connected' && !healthyTwin) out.push({ ...info, tenant_id })
+    }
+  }
+  return out
+}

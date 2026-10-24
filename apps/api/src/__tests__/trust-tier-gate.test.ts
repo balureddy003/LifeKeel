@@ -122,6 +122,8 @@ describe('trust-tier gate on ConnectorActionExecutor', () => {
     'marketing/social-publisher.ts':
       'X/Facebook publishing; gated by approved state, see social publishing tests',
     'routes/marketing-posts.ts': 'publishPost after approval, plus read-only engagement lookups',
+    'marketing/profile-reader.ts':
+      'read-only profile lookups for the profile check; refuses any action not on a fixed GET-only list (profile-reader tests)',
     'routes/connector-credentials.ts':
       'POST /connectors/:id/actions/:action; read-only, any non-GET registry action is refused via connectors/action-gate.ts (playbook G11)',
   }

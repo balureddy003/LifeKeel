@@ -33,7 +33,7 @@ export interface ConnectorAction {
   label: string
   description: string
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
-  path: string                          // relative path, supports {vars}
+  path: string // relative path, supports {vars}
   params: ConnectorParam[]
   output_schema?: Record<string, string> // key → description
 }
@@ -41,9 +41,9 @@ export interface ConnectorAction {
 export interface ConnectorTrigger {
   id: string
   label: string
-  event_type: string                    // normalized event type emitted
+  event_type: string // normalized event type emitted
   description: string
-  webhook_event: string                 // platform-specific event name
+  webhook_event: string // platform-specific event name
   sample_payload?: Record<string, unknown>
 }
 
@@ -53,7 +53,7 @@ export interface ConnectorParam {
   type: 'string' | 'number' | 'boolean' | 'select' | 'template'
   required: boolean
   description?: string
-  options?: string[]                    // for select type
+  options?: string[] // for select type
   default?: unknown
 }
 
@@ -62,8 +62,8 @@ export interface ConnectorDef {
   name: string
   category: ConnectorCategory
   description: string
-  icon: string                          // emoji or URL
-  color: string                         // hex for UI
+  icon: string // emoji or URL
+  color: string // hex for UI
   auth: AuthMethod
   base_url: string
   live_base_url?: string
@@ -97,7 +97,6 @@ export type ConnectorCategory =
 // ── Connector Definitions ─────────────────────────────────────────────────────
 
 export const CONNECTORS: ConnectorDef[] = [
-
   // ── FINANCE ──────────────────────────────────────────────────────────────
 
   {
@@ -112,28 +111,86 @@ export const CONNECTORS: ConnectorDef[] = [
     docs_url: 'https://developer.xero.com/documentation',
     tags: ['accounting', 'invoices', 'payroll'],
     actions: [
-      { id: 'get_invoices', label: 'Get invoices', description: 'Fetch invoices with optional filters', method: 'GET', path: '/Invoices', params: [
-        { name: 'Status', label: 'Status', type: 'select', required: false, options: ['DRAFT', 'SUBMITTED', 'AUTHORISED', 'PAID', 'OVERDUE'] },
-        { name: 'DateFrom', label: 'Date from', type: 'string', required: false },
-      ], output_schema: { invoices: 'Array of invoice objects' } },
-      { id: 'create_invoice', label: 'Create invoice', description: 'Create a new sales invoice', method: 'POST', path: '/Invoices', params: [
-        { name: 'ContactID', label: 'Contact ID', type: 'template', required: true },
-        { name: 'LineItems', label: 'Line items (JSON)', type: 'template', required: true },
-        { name: 'DueDate', label: 'Due date', type: 'template', required: false },
-      ]},
-      { id: 'send_invoice', label: 'Send invoice by email', description: 'Email invoice to contact', method: 'POST', path: '/Invoices/{InvoiceID}/Email', params: [
-        { name: 'InvoiceID', label: 'Invoice ID', type: 'template', required: true },
-      ]},
-      { id: 'get_contacts', label: 'Get contacts', description: 'List all contacts/customers', method: 'GET', path: '/Contacts', params: [] },
-      { id: 'get_account_summary', label: 'Get P&L summary', description: 'Fetch profit & loss report', method: 'GET', path: '/Reports/ProfitAndLoss', params: [
-        { name: 'fromDate', label: 'From date', type: 'string', required: false },
-        { name: 'toDate', label: 'To date', type: 'string', required: false },
-      ]},
+      {
+        id: 'get_invoices',
+        label: 'Get invoices',
+        description: 'Fetch invoices with optional filters',
+        method: 'GET',
+        path: '/Invoices',
+        params: [
+          {
+            name: 'Status',
+            label: 'Status',
+            type: 'select',
+            required: false,
+            options: ['DRAFT', 'SUBMITTED', 'AUTHORISED', 'PAID', 'OVERDUE'],
+          },
+          { name: 'DateFrom', label: 'Date from', type: 'string', required: false },
+        ],
+        output_schema: { invoices: 'Array of invoice objects' },
+      },
+      {
+        id: 'create_invoice',
+        label: 'Create invoice',
+        description: 'Create a new sales invoice',
+        method: 'POST',
+        path: '/Invoices',
+        params: [
+          { name: 'ContactID', label: 'Contact ID', type: 'template', required: true },
+          { name: 'LineItems', label: 'Line items (JSON)', type: 'template', required: true },
+          { name: 'DueDate', label: 'Due date', type: 'template', required: false },
+        ],
+      },
+      {
+        id: 'send_invoice',
+        label: 'Send invoice by email',
+        description: 'Email invoice to contact',
+        method: 'POST',
+        path: '/Invoices/{InvoiceID}/Email',
+        params: [{ name: 'InvoiceID', label: 'Invoice ID', type: 'template', required: true }],
+      },
+      {
+        id: 'get_contacts',
+        label: 'Get contacts',
+        description: 'List all contacts/customers',
+        method: 'GET',
+        path: '/Contacts',
+        params: [],
+      },
+      {
+        id: 'get_account_summary',
+        label: 'Get P&L summary',
+        description: 'Fetch profit & loss report',
+        method: 'GET',
+        path: '/Reports/ProfitAndLoss',
+        params: [
+          { name: 'fromDate', label: 'From date', type: 'string', required: false },
+          { name: 'toDate', label: 'To date', type: 'string', required: false },
+        ],
+      },
     ],
     triggers: [
-      { id: 'invoice_paid', label: 'Invoice paid', event_type: 'finance.invoice.paid', webhook_event: 'INVOICE', description: 'Fires when an invoice is marked as paid' },
-      { id: 'invoice_overdue', label: 'Invoice overdue', event_type: 'finance.invoice.overdue', webhook_event: 'INVOICE', description: 'Fires when an invoice passes its due date' },
-      { id: 'new_contact', label: 'New contact added', event_type: 'finance.contact.created', webhook_event: 'CONTACT', description: 'New customer or supplier added' },
+      {
+        id: 'invoice_paid',
+        label: 'Invoice paid',
+        event_type: 'finance.invoice.paid',
+        webhook_event: 'INVOICE',
+        description: 'Fires when an invoice is marked as paid',
+      },
+      {
+        id: 'invoice_overdue',
+        label: 'Invoice overdue',
+        event_type: 'finance.invoice.overdue',
+        webhook_event: 'INVOICE',
+        description: 'Fires when an invoice passes its due date',
+      },
+      {
+        id: 'new_contact',
+        label: 'New contact added',
+        event_type: 'finance.contact.created',
+        webhook_event: 'CONTACT',
+        description: 'New customer or supplier added',
+      },
     ],
   },
 
@@ -149,15 +206,42 @@ export const CONNECTORS: ConnectorDef[] = [
     tags: ['accounting', 'invoices', 'usa'],
     supported_countries: ['US'],
     actions: [
-      { id: 'get_invoices', label: 'Get invoices', description: 'Query invoices', method: 'GET', path: '/query?query=SELECT * FROM Invoice', params: [] },
-      { id: 'create_invoice', label: 'Create invoice', description: 'Create new invoice', method: 'POST', path: '/invoice', params: [
-        { name: 'CustomerRef', label: 'Customer reference', type: 'template', required: true },
-        { name: 'Line', label: 'Line items (JSON)', type: 'template', required: true },
-      ]},
-      { id: 'get_customers', label: 'Get customers', description: 'List customers', method: 'GET', path: '/query?query=SELECT * FROM Customer', params: [] },
+      {
+        id: 'get_invoices',
+        label: 'Get invoices',
+        description: 'Query invoices',
+        method: 'GET',
+        path: '/query?query=SELECT * FROM Invoice',
+        params: [],
+      },
+      {
+        id: 'create_invoice',
+        label: 'Create invoice',
+        description: 'Create new invoice',
+        method: 'POST',
+        path: '/invoice',
+        params: [
+          { name: 'CustomerRef', label: 'Customer reference', type: 'template', required: true },
+          { name: 'Line', label: 'Line items (JSON)', type: 'template', required: true },
+        ],
+      },
+      {
+        id: 'get_customers',
+        label: 'Get customers',
+        description: 'List customers',
+        method: 'GET',
+        path: '/query?query=SELECT * FROM Customer',
+        params: [],
+      },
     ],
     triggers: [
-      { id: 'invoice_created', label: 'Invoice created', event_type: 'finance.invoice.created', webhook_event: 'Invoice', description: 'New invoice created' },
+      {
+        id: 'invoice_created',
+        label: 'Invoice created',
+        event_type: 'finance.invoice.created',
+        webhook_event: 'Invoice',
+        description: 'New invoice created',
+      },
     ],
   },
 
@@ -175,28 +259,95 @@ export const CONNECTORS: ConnectorDef[] = [
     docs_url: 'https://stripe.com/docs/api',
     tags: ['payments', 'subscriptions', 'invoices'],
     actions: [
-      { id: 'get_customer', label: 'Get customer', description: 'Retrieve a customer by ID or email', method: 'GET', path: '/customers/{id}', params: [
-        { name: 'id', label: 'Customer ID', type: 'template', required: true },
-      ]},
-      { id: 'create_payment_link', label: 'Create payment link', description: 'Generate a hosted payment page', method: 'POST', path: '/payment_links', params: [
-        { name: 'line_items', label: 'Line items (JSON)', type: 'template', required: true },
-      ]},
-      { id: 'refund_charge', label: 'Refund charge', description: 'Issue a partial or full refund', method: 'POST', path: '/refunds', params: [
-        { name: 'charge', label: 'Charge ID', type: 'template', required: true },
-        { name: 'amount', label: 'Amount (pence)', type: 'template', required: false },
-        { name: 'reason', label: 'Reason', type: 'select', required: false, options: ['duplicate', 'fraudulent', 'requested_by_customer'] },
-      ]},
-      { id: 'cancel_subscription', label: 'Cancel subscription', description: 'Cancel at period end', method: 'DELETE', path: '/subscriptions/{id}', params: [
-        { name: 'id', label: 'Subscription ID', type: 'template', required: true },
-      ]},
-      { id: 'list_failed_payments', label: 'List failed payments', description: 'Fetch recently failed charges', method: 'GET', path: '/charges?status=failed', params: [] },
+      {
+        id: 'get_customer',
+        label: 'Get customer',
+        description: 'Retrieve a customer by ID or email',
+        method: 'GET',
+        path: '/customers/{id}',
+        params: [{ name: 'id', label: 'Customer ID', type: 'template', required: true }],
+      },
+      {
+        id: 'create_payment_link',
+        label: 'Create payment link',
+        description: 'Generate a hosted payment page',
+        method: 'POST',
+        path: '/payment_links',
+        params: [
+          { name: 'line_items', label: 'Line items (JSON)', type: 'template', required: true },
+        ],
+      },
+      {
+        id: 'refund_charge',
+        label: 'Refund charge',
+        description: 'Issue a partial or full refund',
+        method: 'POST',
+        path: '/refunds',
+        params: [
+          { name: 'charge', label: 'Charge ID', type: 'template', required: true },
+          { name: 'amount', label: 'Amount (pence)', type: 'template', required: false },
+          {
+            name: 'reason',
+            label: 'Reason',
+            type: 'select',
+            required: false,
+            options: ['duplicate', 'fraudulent', 'requested_by_customer'],
+          },
+        ],
+      },
+      {
+        id: 'cancel_subscription',
+        label: 'Cancel subscription',
+        description: 'Cancel at period end',
+        method: 'DELETE',
+        path: '/subscriptions/{id}',
+        params: [{ name: 'id', label: 'Subscription ID', type: 'template', required: true }],
+      },
+      {
+        id: 'list_failed_payments',
+        label: 'List failed payments',
+        description: 'Fetch recently failed charges',
+        method: 'GET',
+        path: '/charges?status=failed',
+        params: [],
+      },
     ],
     triggers: [
-      { id: 'payment_succeeded', label: 'Payment succeeded', event_type: 'payment.succeeded', webhook_event: 'payment_intent.succeeded', description: 'A payment was successfully processed' },
-      { id: 'payment_failed', label: 'Payment failed', event_type: 'payment.failed', webhook_event: 'payment_intent.payment_failed', description: 'A payment attempt failed' },
-      { id: 'subscription_cancelled', label: 'Subscription cancelled', event_type: 'subscription.cancelled', webhook_event: 'customer.subscription.deleted', description: 'A subscription was cancelled' },
-      { id: 'subscription_past_due', label: 'Subscription past due', event_type: 'subscription.past_due', webhook_event: 'customer.subscription.updated', description: 'A subscription payment is overdue' },
-      { id: 'dispute_created', label: 'Dispute/chargeback', event_type: 'payment.dispute', webhook_event: 'charge.dispute.created', description: 'Customer filed a dispute' },
+      {
+        id: 'payment_succeeded',
+        label: 'Payment succeeded',
+        event_type: 'payment.succeeded',
+        webhook_event: 'payment_intent.succeeded',
+        description: 'A payment was successfully processed',
+      },
+      {
+        id: 'payment_failed',
+        label: 'Payment failed',
+        event_type: 'payment.failed',
+        webhook_event: 'payment_intent.payment_failed',
+        description: 'A payment attempt failed',
+      },
+      {
+        id: 'subscription_cancelled',
+        label: 'Subscription cancelled',
+        event_type: 'subscription.cancelled',
+        webhook_event: 'customer.subscription.deleted',
+        description: 'A subscription was cancelled',
+      },
+      {
+        id: 'subscription_past_due',
+        label: 'Subscription past due',
+        event_type: 'subscription.past_due',
+        webhook_event: 'customer.subscription.updated',
+        description: 'A subscription payment is overdue',
+      },
+      {
+        id: 'dispute_created',
+        label: 'Dispute/chargeback',
+        event_type: 'payment.dispute',
+        webhook_event: 'charge.dispute.created',
+        description: 'Customer filed a dispute',
+      },
     ],
   },
 
@@ -213,33 +364,80 @@ export const CONNECTORS: ConnectorDef[] = [
     base_url: 'https://api.hubapi.com',
     tags: ['crm', 'marketing', 'sales'],
     actions: [
-      { id: 'create_contact', label: 'Create contact', description: 'Add a new CRM contact', method: 'POST', path: '/crm/v3/objects/contacts', params: [
-        { name: 'email', label: 'Email', type: 'template', required: true },
-        { name: 'firstname', label: 'First name', type: 'template', required: false },
-        { name: 'lastname', label: 'Last name', type: 'template', required: false },
-        { name: 'phone', label: 'Phone', type: 'template', required: false },
-      ]},
-      { id: 'update_contact', label: 'Update contact', description: 'Update contact properties', method: 'PATCH', path: '/crm/v3/objects/contacts/{id}', params: [
-        { name: 'id', label: 'Contact ID', type: 'template', required: true },
-        { name: 'properties', label: 'Properties (JSON)', type: 'template', required: true },
-      ]},
-      { id: 'create_deal', label: 'Create deal', description: 'Open a new sales deal', method: 'POST', path: '/crm/v3/objects/deals', params: [
-        { name: 'dealname', label: 'Deal name', type: 'template', required: true },
-        { name: 'amount', label: 'Amount', type: 'template', required: false },
-        { name: 'dealstage', label: 'Stage', type: 'template', required: true },
-      ]},
-      { id: 'log_activity', label: 'Log note/activity', description: 'Add a note to a contact', method: 'POST', path: '/crm/v3/objects/notes', params: [
-        { name: 'hs_note_body', label: 'Note text', type: 'template', required: true },
-        { name: 'contact_id', label: 'Contact ID', type: 'template', required: true },
-      ]},
-      { id: 'add_to_list', label: 'Add to marketing list', description: 'Enroll contact in a list', method: 'POST', path: '/contacts/v1/lists/{listId}/add', params: [
-        { name: 'listId', label: 'List ID', type: 'template', required: true },
-        { name: 'email', label: 'Email', type: 'template', required: true },
-      ]},
+      {
+        id: 'create_contact',
+        label: 'Create contact',
+        description: 'Add a new CRM contact',
+        method: 'POST',
+        path: '/crm/v3/objects/contacts',
+        params: [
+          { name: 'email', label: 'Email', type: 'template', required: true },
+          { name: 'firstname', label: 'First name', type: 'template', required: false },
+          { name: 'lastname', label: 'Last name', type: 'template', required: false },
+          { name: 'phone', label: 'Phone', type: 'template', required: false },
+        ],
+      },
+      {
+        id: 'update_contact',
+        label: 'Update contact',
+        description: 'Update contact properties',
+        method: 'PATCH',
+        path: '/crm/v3/objects/contacts/{id}',
+        params: [
+          { name: 'id', label: 'Contact ID', type: 'template', required: true },
+          { name: 'properties', label: 'Properties (JSON)', type: 'template', required: true },
+        ],
+      },
+      {
+        id: 'create_deal',
+        label: 'Create deal',
+        description: 'Open a new sales deal',
+        method: 'POST',
+        path: '/crm/v3/objects/deals',
+        params: [
+          { name: 'dealname', label: 'Deal name', type: 'template', required: true },
+          { name: 'amount', label: 'Amount', type: 'template', required: false },
+          { name: 'dealstage', label: 'Stage', type: 'template', required: true },
+        ],
+      },
+      {
+        id: 'log_activity',
+        label: 'Log note/activity',
+        description: 'Add a note to a contact',
+        method: 'POST',
+        path: '/crm/v3/objects/notes',
+        params: [
+          { name: 'hs_note_body', label: 'Note text', type: 'template', required: true },
+          { name: 'contact_id', label: 'Contact ID', type: 'template', required: true },
+        ],
+      },
+      {
+        id: 'add_to_list',
+        label: 'Add to marketing list',
+        description: 'Enroll contact in a list',
+        method: 'POST',
+        path: '/contacts/v1/lists/{listId}/add',
+        params: [
+          { name: 'listId', label: 'List ID', type: 'template', required: true },
+          { name: 'email', label: 'Email', type: 'template', required: true },
+        ],
+      },
     ],
     triggers: [
-      { id: 'contact_created', label: 'Contact created', event_type: 'crm.contact.created', webhook_event: 'contact.creation', description: 'New contact added to CRM' },
-      { id: 'deal_stage_changed', label: 'Deal stage changed', event_type: 'crm.deal.stage_changed', webhook_event: 'deal.propertyChange', description: 'Deal moved to new stage' },
+      {
+        id: 'contact_created',
+        label: 'Contact created',
+        event_type: 'crm.contact.created',
+        webhook_event: 'contact.creation',
+        description: 'New contact added to CRM',
+      },
+      {
+        id: 'deal_stage_changed',
+        label: 'Deal stage changed',
+        event_type: 'crm.deal.stage_changed',
+        webhook_event: 'deal.propertyChange',
+        description: 'Deal moved to new stage',
+      },
     ],
   },
 
@@ -254,21 +452,48 @@ export const CONNECTORS: ConnectorDef[] = [
     base_url: 'https://api.pipedrive.com/v1',
     tags: ['crm', 'sales', 'pipeline'],
     actions: [
-      { id: 'create_person', label: 'Create person', description: 'Add a new person/contact', method: 'POST', path: '/persons', params: [
-        { name: 'name', label: 'Full name', type: 'template', required: true },
-        { name: 'email', label: 'Email', type: 'template', required: false },
-      ]},
-      { id: 'create_deal', label: 'Create deal', description: 'Open a deal in the pipeline', method: 'POST', path: '/deals', params: [
-        { name: 'title', label: 'Deal title', type: 'template', required: true },
-        { name: 'value', label: 'Value', type: 'template', required: false },
-      ]},
-      { id: 'add_note', label: 'Add note', description: 'Log a note to a deal', method: 'POST', path: '/notes', params: [
-        { name: 'content', label: 'Note content', type: 'template', required: true },
-        { name: 'deal_id', label: 'Deal ID', type: 'template', required: false },
-      ]},
+      {
+        id: 'create_person',
+        label: 'Create person',
+        description: 'Add a new person/contact',
+        method: 'POST',
+        path: '/persons',
+        params: [
+          { name: 'name', label: 'Full name', type: 'template', required: true },
+          { name: 'email', label: 'Email', type: 'template', required: false },
+        ],
+      },
+      {
+        id: 'create_deal',
+        label: 'Create deal',
+        description: 'Open a deal in the pipeline',
+        method: 'POST',
+        path: '/deals',
+        params: [
+          { name: 'title', label: 'Deal title', type: 'template', required: true },
+          { name: 'value', label: 'Value', type: 'template', required: false },
+        ],
+      },
+      {
+        id: 'add_note',
+        label: 'Add note',
+        description: 'Log a note to a deal',
+        method: 'POST',
+        path: '/notes',
+        params: [
+          { name: 'content', label: 'Note content', type: 'template', required: true },
+          { name: 'deal_id', label: 'Deal ID', type: 'template', required: false },
+        ],
+      },
     ],
     triggers: [
-      { id: 'deal_created', label: 'Deal created', event_type: 'crm.deal.created', webhook_event: 'deal.added', description: 'New deal opened' },
+      {
+        id: 'deal_created',
+        label: 'Deal created',
+        event_type: 'crm.deal.created',
+        webhook_event: 'deal.added',
+        description: 'New deal opened',
+      },
     ],
   },
 
@@ -285,28 +510,68 @@ export const CONNECTORS: ConnectorDef[] = [
     base_url: 'https://gmail.googleapis.com/gmail/v1/users/me',
     tags: ['email', 'google', 'inbox'],
     actions: [
-      { id: 'send_email', label: 'Send email', description: 'Send an email from the connected account', method: 'POST', path: '/messages/send', params: [
-        { name: 'to', label: 'To (email)', type: 'template', required: true },
-        { name: 'subject', label: 'Subject', type: 'template', required: true },
-        { name: 'body', label: 'Body (HTML)', type: 'template', required: true },
-        { name: 'cc', label: 'CC', type: 'template', required: false },
-      ]},
-      { id: 'reply_to_thread', label: 'Reply to thread', description: 'Reply in an existing email thread', method: 'POST', path: '/messages/send', params: [
-        { name: 'threadId', label: 'Thread ID', type: 'template', required: true },
-        { name: 'body', label: 'Reply body', type: 'template', required: true },
-      ]},
-      { id: 'search_emails', label: 'Search emails', description: 'Search inbox with Gmail query syntax', method: 'GET', path: '/messages?q={query}', params: [
-        { name: 'query', label: 'Search query', type: 'template', required: true },
-        { name: 'maxResults', label: 'Max results', type: 'number', required: false, default: 10 },
-      ]},
-      { id: 'create_draft', label: 'Create draft', description: 'Save an email as draft', method: 'POST', path: '/drafts', params: [
-        { name: 'to', label: 'To', type: 'template', required: true },
-        { name: 'subject', label: 'Subject', type: 'template', required: true },
-        { name: 'body', label: 'Body', type: 'template', required: true },
-      ]},
+      {
+        id: 'send_email',
+        label: 'Send email',
+        description: 'Send an email from the connected account',
+        method: 'POST',
+        path: '/messages/send',
+        params: [
+          { name: 'to', label: 'To (email)', type: 'template', required: true },
+          { name: 'subject', label: 'Subject', type: 'template', required: true },
+          { name: 'body', label: 'Body (HTML)', type: 'template', required: true },
+          { name: 'cc', label: 'CC', type: 'template', required: false },
+        ],
+      },
+      {
+        id: 'reply_to_thread',
+        label: 'Reply to thread',
+        description: 'Reply in an existing email thread',
+        method: 'POST',
+        path: '/messages/send',
+        params: [
+          { name: 'threadId', label: 'Thread ID', type: 'template', required: true },
+          { name: 'body', label: 'Reply body', type: 'template', required: true },
+        ],
+      },
+      {
+        id: 'search_emails',
+        label: 'Search emails',
+        description: 'Search inbox with Gmail query syntax',
+        method: 'GET',
+        path: '/messages?q={query}',
+        params: [
+          { name: 'query', label: 'Search query', type: 'template', required: true },
+          {
+            name: 'maxResults',
+            label: 'Max results',
+            type: 'number',
+            required: false,
+            default: 10,
+          },
+        ],
+      },
+      {
+        id: 'create_draft',
+        label: 'Create draft',
+        description: 'Save an email as draft',
+        method: 'POST',
+        path: '/drafts',
+        params: [
+          { name: 'to', label: 'To', type: 'template', required: true },
+          { name: 'subject', label: 'Subject', type: 'template', required: true },
+          { name: 'body', label: 'Body', type: 'template', required: true },
+        ],
+      },
     ],
     triggers: [
-      { id: 'email_received', label: 'Email received', event_type: 'email.received', webhook_event: 'gmail.new_message', description: 'New email arrives in inbox' },
+      {
+        id: 'email_received',
+        label: 'Email received',
+        event_type: 'email.received',
+        webhook_event: 'gmail.new_message',
+        description: 'New email arrives in inbox',
+      },
     ],
   },
 
@@ -321,23 +586,54 @@ export const CONNECTORS: ConnectorDef[] = [
     base_url: 'https://{server}.api.mailchimp.com/3.0',
     tags: ['email', 'marketing', 'campaigns'],
     actions: [
-      { id: 'add_subscriber', label: 'Add subscriber', description: 'Add a contact to a list', method: 'POST', path: '/lists/{listId}/members', params: [
-        { name: 'listId', label: 'Audience ID', type: 'template', required: true },
-        { name: 'email_address', label: 'Email', type: 'template', required: true },
-        { name: 'status', label: 'Status', type: 'select', required: true, options: ['subscribed', 'pending', 'unsubscribed'] },
-        { name: 'merge_fields', label: 'Merge fields (JSON)', type: 'template', required: false },
-      ]},
-      { id: 'tag_subscriber', label: 'Tag subscriber', description: 'Add tags to a subscriber', method: 'POST', path: '/lists/{listId}/members/{subscriberHash}/tags', params: [
-        { name: 'listId', label: 'Audience ID', type: 'template', required: true },
-        { name: 'email', label: 'Email', type: 'template', required: true },
-        { name: 'tags', label: 'Tags (comma-separated)', type: 'template', required: true },
-      ]},
-      { id: 'send_campaign', label: 'Send campaign', description: 'Trigger send of a scheduled campaign', method: 'POST', path: '/campaigns/{campaignId}/actions/send', params: [
-        { name: 'campaignId', label: 'Campaign ID', type: 'template', required: true },
-      ]},
+      {
+        id: 'add_subscriber',
+        label: 'Add subscriber',
+        description: 'Add a contact to a list',
+        method: 'POST',
+        path: '/lists/{listId}/members',
+        params: [
+          { name: 'listId', label: 'Audience ID', type: 'template', required: true },
+          { name: 'email_address', label: 'Email', type: 'template', required: true },
+          {
+            name: 'status',
+            label: 'Status',
+            type: 'select',
+            required: true,
+            options: ['subscribed', 'pending', 'unsubscribed'],
+          },
+          { name: 'merge_fields', label: 'Merge fields (JSON)', type: 'template', required: false },
+        ],
+      },
+      {
+        id: 'tag_subscriber',
+        label: 'Tag subscriber',
+        description: 'Add tags to a subscriber',
+        method: 'POST',
+        path: '/lists/{listId}/members/{subscriberHash}/tags',
+        params: [
+          { name: 'listId', label: 'Audience ID', type: 'template', required: true },
+          { name: 'email', label: 'Email', type: 'template', required: true },
+          { name: 'tags', label: 'Tags (comma-separated)', type: 'template', required: true },
+        ],
+      },
+      {
+        id: 'send_campaign',
+        label: 'Send campaign',
+        description: 'Trigger send of a scheduled campaign',
+        method: 'POST',
+        path: '/campaigns/{campaignId}/actions/send',
+        params: [{ name: 'campaignId', label: 'Campaign ID', type: 'template', required: true }],
+      },
     ],
     triggers: [
-      { id: 'unsubscribe', label: 'Subscriber unsubscribed', event_type: 'email.unsubscribed', webhook_event: 'unsubscribe', description: 'User opts out of mailing list' },
+      {
+        id: 'unsubscribe',
+        label: 'Subscriber unsubscribed',
+        event_type: 'email.unsubscribed',
+        webhook_event: 'unsubscribe',
+        description: 'User opts out of mailing list',
+      },
     ],
   },
 
@@ -352,17 +648,36 @@ export const CONNECTORS: ConnectorDef[] = [
     base_url: 'https://api.sendgrid.com/v3',
     tags: ['email', 'transactional'],
     actions: [
-      { id: 'send_email', label: 'Send email', description: 'Send transactional email', method: 'POST', path: '/mail/send', params: [
-        { name: 'to', label: 'To email', type: 'template', required: true },
-        { name: 'from', label: 'From email', type: 'template', required: true },
-        { name: 'subject', label: 'Subject', type: 'template', required: true },
-        { name: 'html_content', label: 'HTML body', type: 'template', required: true },
-      ]},
-      { id: 'send_template', label: 'Send template email', description: 'Use a dynamic template', method: 'POST', path: '/mail/send', params: [
-        { name: 'to', label: 'To email', type: 'template', required: true },
-        { name: 'template_id', label: 'Template ID', type: 'template', required: true },
-        { name: 'dynamic_template_data', label: 'Template data (JSON)', type: 'template', required: false },
-      ]},
+      {
+        id: 'send_email',
+        label: 'Send email',
+        description: 'Send transactional email',
+        method: 'POST',
+        path: '/mail/send',
+        params: [
+          { name: 'to', label: 'To email', type: 'template', required: true },
+          { name: 'from', label: 'From email', type: 'template', required: true },
+          { name: 'subject', label: 'Subject', type: 'template', required: true },
+          { name: 'html_content', label: 'HTML body', type: 'template', required: true },
+        ],
+      },
+      {
+        id: 'send_template',
+        label: 'Send template email',
+        description: 'Use a dynamic template',
+        method: 'POST',
+        path: '/mail/send',
+        params: [
+          { name: 'to', label: 'To email', type: 'template', required: true },
+          { name: 'template_id', label: 'Template ID', type: 'template', required: true },
+          {
+            name: 'dynamic_template_data',
+            label: 'Template data (JSON)',
+            type: 'template',
+            required: false,
+          },
+        ],
+      },
     ],
     triggers: [],
   },
@@ -380,26 +695,64 @@ export const CONNECTORS: ConnectorDef[] = [
     base_url: 'https://slack.com/api',
     tags: ['messaging', 'team', 'notifications'],
     actions: [
-      { id: 'send_message', label: 'Send message', description: 'Post a message to a channel or DM', method: 'POST', path: '/chat.postMessage', params: [
-        { name: 'channel', label: 'Channel (#name or @user)', type: 'template', required: true },
-        { name: 'text', label: 'Message text', type: 'template', required: true },
-        { name: 'blocks', label: 'Rich blocks (JSON)', type: 'template', required: false },
-      ]},
-      { id: 'send_dm', label: 'Send direct message', description: 'DM a specific user', method: 'POST', path: '/chat.postMessage', params: [
-        { name: 'user_email', label: 'User email', type: 'template', required: true },
-        { name: 'text', label: 'Message text', type: 'template', required: true },
-      ]},
-      { id: 'create_channel', label: 'Create channel', description: 'Create a new Slack channel', method: 'POST', path: '/conversations.create', params: [
-        { name: 'name', label: 'Channel name', type: 'template', required: true },
-      ]},
-      { id: 'invite_to_channel', label: 'Invite to channel', description: 'Add users to a channel', method: 'POST', path: '/conversations.invite', params: [
-        { name: 'channel', label: 'Channel ID', type: 'template', required: true },
-        { name: 'users', label: 'User IDs (comma-separated)', type: 'template', required: true },
-      ]},
+      {
+        id: 'send_message',
+        label: 'Send message',
+        description: 'Post a message to a channel or DM',
+        method: 'POST',
+        path: '/chat.postMessage',
+        params: [
+          { name: 'channel', label: 'Channel (#name or @user)', type: 'template', required: true },
+          { name: 'text', label: 'Message text', type: 'template', required: true },
+          { name: 'blocks', label: 'Rich blocks (JSON)', type: 'template', required: false },
+        ],
+      },
+      {
+        id: 'send_dm',
+        label: 'Send direct message',
+        description: 'DM a specific user',
+        method: 'POST',
+        path: '/chat.postMessage',
+        params: [
+          { name: 'user_email', label: 'User email', type: 'template', required: true },
+          { name: 'text', label: 'Message text', type: 'template', required: true },
+        ],
+      },
+      {
+        id: 'create_channel',
+        label: 'Create channel',
+        description: 'Create a new Slack channel',
+        method: 'POST',
+        path: '/conversations.create',
+        params: [{ name: 'name', label: 'Channel name', type: 'template', required: true }],
+      },
+      {
+        id: 'invite_to_channel',
+        label: 'Invite to channel',
+        description: 'Add users to a channel',
+        method: 'POST',
+        path: '/conversations.invite',
+        params: [
+          { name: 'channel', label: 'Channel ID', type: 'template', required: true },
+          { name: 'users', label: 'User IDs (comma-separated)', type: 'template', required: true },
+        ],
+      },
     ],
     triggers: [
-      { id: 'message_received', label: 'Message received', event_type: 'messaging.message.received', webhook_event: 'message', description: 'New message in a monitored channel' },
-      { id: 'mention', label: 'App mentioned', event_type: 'messaging.mention', webhook_event: 'app_mention', description: 'App was @mentioned' },
+      {
+        id: 'message_received',
+        label: 'Message received',
+        event_type: 'messaging.message.received',
+        webhook_event: 'message',
+        description: 'New message in a monitored channel',
+      },
+      {
+        id: 'mention',
+        label: 'App mentioned',
+        event_type: 'messaging.mention',
+        webhook_event: 'app_mention',
+        description: 'App was @mentioned',
+      },
     ],
   },
 
@@ -414,19 +767,39 @@ export const CONNECTORS: ConnectorDef[] = [
     base_url: 'https://api.twilio.com/2010-04-01',
     tags: ['sms', 'whatsapp', 'voice'],
     actions: [
-      { id: 'send_sms', label: 'Send SMS', description: 'Send a text message', method: 'POST', path: '/Accounts/{AccountSid}/Messages.json', params: [
-        { name: 'To', label: 'To phone (+E.164)', type: 'template', required: true },
-        { name: 'From', label: 'From number', type: 'template', required: true },
-        { name: 'Body', label: 'Message body', type: 'template', required: true },
-      ]},
-      { id: 'send_whatsapp', label: 'Send WhatsApp', description: 'Send via WhatsApp Business', method: 'POST', path: '/Accounts/{AccountSid}/Messages.json', params: [
-        { name: 'To', label: 'To (whatsapp:+number)', type: 'template', required: true },
-        { name: 'From', label: 'From (whatsapp:+number)', type: 'template', required: true },
-        { name: 'Body', label: 'Message', type: 'template', required: true },
-      ]},
+      {
+        id: 'send_sms',
+        label: 'Send SMS',
+        description: 'Send a text message',
+        method: 'POST',
+        path: '/Accounts/{AccountSid}/Messages.json',
+        params: [
+          { name: 'To', label: 'To phone (+E.164)', type: 'template', required: true },
+          { name: 'From', label: 'From number', type: 'template', required: true },
+          { name: 'Body', label: 'Message body', type: 'template', required: true },
+        ],
+      },
+      {
+        id: 'send_whatsapp',
+        label: 'Send WhatsApp',
+        description: 'Send via WhatsApp Business',
+        method: 'POST',
+        path: '/Accounts/{AccountSid}/Messages.json',
+        params: [
+          { name: 'To', label: 'To (whatsapp:+number)', type: 'template', required: true },
+          { name: 'From', label: 'From (whatsapp:+number)', type: 'template', required: true },
+          { name: 'Body', label: 'Message', type: 'template', required: true },
+        ],
+      },
     ],
     triggers: [
-      { id: 'sms_received', label: 'SMS received', event_type: 'messaging.sms.received', webhook_event: 'sms.inbound', description: 'Inbound SMS received' },
+      {
+        id: 'sms_received',
+        label: 'SMS received',
+        event_type: 'messaging.sms.received',
+        webhook_event: 'sms.inbound',
+        description: 'Inbound SMS received',
+      },
     ],
   },
 
@@ -443,27 +816,75 @@ export const CONNECTORS: ConnectorDef[] = [
     base_url: 'https://{shop}.myshopify.com/admin/api/2024-01',
     tags: ['ecommerce', 'orders', 'inventory'],
     actions: [
-      { id: 'get_order', label: 'Get order', description: 'Fetch order details', method: 'GET', path: '/orders/{id}.json', params: [
-        { name: 'id', label: 'Order ID', type: 'template', required: true },
-      ]},
-      { id: 'update_order', label: 'Update order', description: 'Update order tags or notes', method: 'PUT', path: '/orders/{id}.json', params: [
-        { name: 'id', label: 'Order ID', type: 'template', required: true },
-        { name: 'tags', label: 'Tags', type: 'template', required: false },
-        { name: 'note', label: 'Note', type: 'template', required: false },
-      ]},
-      { id: 'create_discount', label: 'Create discount code', description: 'Generate a unique discount code', method: 'POST', path: '/price_rules/{priceRuleId}/discount_codes.json', params: [
-        { name: 'priceRuleId', label: 'Price rule ID', type: 'template', required: true },
-        { name: 'code', label: 'Discount code', type: 'template', required: false },
-      ]},
-      { id: 'send_email', label: 'Send order email', description: 'Trigger a transactional email', method: 'POST', path: '/orders/{id}/send_invoice.json', params: [
-        { name: 'id', label: 'Order ID', type: 'template', required: true },
-      ]},
+      {
+        id: 'get_order',
+        label: 'Get order',
+        description: 'Fetch order details',
+        method: 'GET',
+        path: '/orders/{id}.json',
+        params: [{ name: 'id', label: 'Order ID', type: 'template', required: true }],
+      },
+      {
+        id: 'update_order',
+        label: 'Update order',
+        description: 'Update order tags or notes',
+        method: 'PUT',
+        path: '/orders/{id}.json',
+        params: [
+          { name: 'id', label: 'Order ID', type: 'template', required: true },
+          { name: 'tags', label: 'Tags', type: 'template', required: false },
+          { name: 'note', label: 'Note', type: 'template', required: false },
+        ],
+      },
+      {
+        id: 'create_discount',
+        label: 'Create discount code',
+        description: 'Generate a unique discount code',
+        method: 'POST',
+        path: '/price_rules/{priceRuleId}/discount_codes.json',
+        params: [
+          { name: 'priceRuleId', label: 'Price rule ID', type: 'template', required: true },
+          { name: 'code', label: 'Discount code', type: 'template', required: false },
+        ],
+      },
+      {
+        id: 'send_email',
+        label: 'Send order email',
+        description: 'Trigger a transactional email',
+        method: 'POST',
+        path: '/orders/{id}/send_invoice.json',
+        params: [{ name: 'id', label: 'Order ID', type: 'template', required: true }],
+      },
     ],
     triggers: [
-      { id: 'order_created', label: 'Order created', event_type: 'ecommerce.order.created', webhook_event: 'orders/create', description: 'New order placed' },
-      { id: 'order_fulfilled', label: 'Order fulfilled', event_type: 'ecommerce.order.fulfilled', webhook_event: 'orders/fulfilled', description: 'Order shipped' },
-      { id: 'cart_abandoned', label: 'Cart abandoned', event_type: 'ecommerce.cart.abandoned', webhook_event: 'checkouts/create', description: 'Checkout started but not completed' },
-      { id: 'refund_created', label: 'Refund issued', event_type: 'ecommerce.refund.created', webhook_event: 'refunds/create', description: 'Order refunded' },
+      {
+        id: 'order_created',
+        label: 'Order created',
+        event_type: 'ecommerce.order.created',
+        webhook_event: 'orders/create',
+        description: 'New order placed',
+      },
+      {
+        id: 'order_fulfilled',
+        label: 'Order fulfilled',
+        event_type: 'ecommerce.order.fulfilled',
+        webhook_event: 'orders/fulfilled',
+        description: 'Order shipped',
+      },
+      {
+        id: 'cart_abandoned',
+        label: 'Cart abandoned',
+        event_type: 'ecommerce.cart.abandoned',
+        webhook_event: 'checkouts/create',
+        description: 'Checkout started but not completed',
+      },
+      {
+        id: 'refund_created',
+        label: 'Refund issued',
+        event_type: 'ecommerce.refund.created',
+        webhook_event: 'refunds/create',
+        description: 'Order refunded',
+      },
     ],
   },
 
@@ -480,16 +901,36 @@ export const CONNECTORS: ConnectorDef[] = [
     base_url: 'https://mybusiness.googleapis.com/v4',
     tags: ['reviews', 'google', 'reputation'],
     actions: [
-      { id: 'reply_to_review', label: 'Reply to review', description: 'Post a reply to a Google review', method: 'PUT', path: '/accounts/{accountName}/locations/{locationName}/reviews/{reviewId}/reply', params: [
-        { name: 'reviewId', label: 'Review ID', type: 'template', required: true },
-        { name: 'comment', label: 'Reply text', type: 'template', required: true },
-      ]},
-      { id: 'get_reviews', label: 'Get reviews', description: 'Fetch recent reviews', method: 'GET', path: '/accounts/{accountName}/locations/{locationName}/reviews', params: [
-        { name: 'pageSize', label: 'Page size', type: 'number', required: false, default: 20 },
-      ]},
+      {
+        id: 'reply_to_review',
+        label: 'Reply to review',
+        description: 'Post a reply to a Google review',
+        method: 'PUT',
+        path: '/accounts/{accountName}/locations/{locationName}/reviews/{reviewId}/reply',
+        params: [
+          { name: 'reviewId', label: 'Review ID', type: 'template', required: true },
+          { name: 'comment', label: 'Reply text', type: 'template', required: true },
+        ],
+      },
+      {
+        id: 'get_reviews',
+        label: 'Get reviews',
+        description: 'Fetch recent reviews',
+        method: 'GET',
+        path: '/accounts/{accountName}/locations/{locationName}/reviews',
+        params: [
+          { name: 'pageSize', label: 'Page size', type: 'number', required: false, default: 20 },
+        ],
+      },
     ],
     triggers: [
-      { id: 'new_review', label: 'New review', event_type: 'review.created', webhook_event: 'review.new', description: 'New Google review received' },
+      {
+        id: 'new_review',
+        label: 'New review',
+        event_type: 'review.created',
+        webhook_event: 'review.new',
+        description: 'New Google review received',
+      },
     ],
   },
 
@@ -504,17 +945,37 @@ export const CONNECTORS: ConnectorDef[] = [
     base_url: 'https://api.trustpilot.com/v1',
     tags: ['reviews', 'reputation'],
     actions: [
-      { id: 'reply_to_review', label: 'Reply to review', description: 'Post a business reply', method: 'POST', path: '/private/business-units/{businessUnitId}/reviews/{reviewId}/reply', params: [
-        { name: 'reviewId', label: 'Review ID', type: 'template', required: true },
-        { name: 'message', label: 'Reply message', type: 'template', required: true },
-      ]},
-      { id: 'invite_customer', label: 'Invite customer to review', description: 'Send a review invitation', method: 'POST', path: '/private/business-units/{businessUnitId}/invitations/email-invitations', params: [
-        { name: 'email', label: 'Customer email', type: 'template', required: true },
-        { name: 'name', label: 'Customer name', type: 'template', required: true },
-      ]},
+      {
+        id: 'reply_to_review',
+        label: 'Reply to review',
+        description: 'Post a business reply',
+        method: 'POST',
+        path: '/private/business-units/{businessUnitId}/reviews/{reviewId}/reply',
+        params: [
+          { name: 'reviewId', label: 'Review ID', type: 'template', required: true },
+          { name: 'message', label: 'Reply message', type: 'template', required: true },
+        ],
+      },
+      {
+        id: 'invite_customer',
+        label: 'Invite customer to review',
+        description: 'Send a review invitation',
+        method: 'POST',
+        path: '/private/business-units/{businessUnitId}/invitations/email-invitations',
+        params: [
+          { name: 'email', label: 'Customer email', type: 'template', required: true },
+          { name: 'name', label: 'Customer name', type: 'template', required: true },
+        ],
+      },
     ],
     triggers: [
-      { id: 'new_review', label: 'New review', event_type: 'review.created', webhook_event: 'review.created', description: 'New Trustpilot review posted' },
+      {
+        id: 'new_review',
+        label: 'New review',
+        event_type: 'review.created',
+        webhook_event: 'review.created',
+        description: 'New Trustpilot review posted',
+      },
     ],
   },
 
@@ -531,21 +992,52 @@ export const CONNECTORS: ConnectorDef[] = [
     base_url: 'https://www.googleapis.com/calendar/v3',
     tags: ['calendar', 'scheduling', 'google'],
     actions: [
-      { id: 'create_event', label: 'Create event', description: 'Add an event to calendar', method: 'POST', path: '/calendars/{calendarId}/events', params: [
-        { name: 'summary', label: 'Event title', type: 'template', required: true },
-        { name: 'start', label: 'Start (ISO datetime)', type: 'template', required: true },
-        { name: 'end', label: 'End (ISO datetime)', type: 'template', required: true },
-        { name: 'attendees', label: 'Attendee emails (JSON array)', type: 'template', required: false },
-        { name: 'description', label: 'Description', type: 'template', required: false },
-      ]},
-      { id: 'list_events', label: 'List upcoming events', description: 'Get events in a time range', method: 'GET', path: '/calendars/{calendarId}/events', params: [
-        { name: 'timeMin', label: 'From (ISO)', type: 'template', required: false },
-        { name: 'timeMax', label: 'To (ISO)', type: 'template', required: false },
-        { name: 'maxResults', label: 'Max results', type: 'number', required: false, default: 10 },
-      ]},
+      {
+        id: 'create_event',
+        label: 'Create event',
+        description: 'Add an event to calendar',
+        method: 'POST',
+        path: '/calendars/{calendarId}/events',
+        params: [
+          { name: 'summary', label: 'Event title', type: 'template', required: true },
+          { name: 'start', label: 'Start (ISO datetime)', type: 'template', required: true },
+          { name: 'end', label: 'End (ISO datetime)', type: 'template', required: true },
+          {
+            name: 'attendees',
+            label: 'Attendee emails (JSON array)',
+            type: 'template',
+            required: false,
+          },
+          { name: 'description', label: 'Description', type: 'template', required: false },
+        ],
+      },
+      {
+        id: 'list_events',
+        label: 'List upcoming events',
+        description: 'Get events in a time range',
+        method: 'GET',
+        path: '/calendars/{calendarId}/events',
+        params: [
+          { name: 'timeMin', label: 'From (ISO)', type: 'template', required: false },
+          { name: 'timeMax', label: 'To (ISO)', type: 'template', required: false },
+          {
+            name: 'maxResults',
+            label: 'Max results',
+            type: 'number',
+            required: false,
+            default: 10,
+          },
+        ],
+      },
     ],
     triggers: [
-      { id: 'event_starting', label: 'Event starting soon', event_type: 'calendar.event.starting', webhook_event: 'calendar.event.updated', description: 'Event is about to start' },
+      {
+        id: 'event_starting',
+        label: 'Event starting soon',
+        event_type: 'calendar.event.starting',
+        webhook_event: 'calendar.event.updated',
+        description: 'Event is about to start',
+      },
     ],
   },
 
@@ -560,18 +1052,44 @@ export const CONNECTORS: ConnectorDef[] = [
     base_url: 'https://api.calendly.com',
     tags: ['scheduling', 'bookings'],
     actions: [
-      { id: 'get_scheduled_events', label: 'Get bookings', description: 'Fetch upcoming scheduled events', method: 'GET', path: '/scheduled_events', params: [
-        { name: 'min_start_time', label: 'From (ISO)', type: 'template', required: false },
-        { name: 'max_start_time', label: 'To (ISO)', type: 'template', required: false },
-      ]},
-      { id: 'cancel_event', label: 'Cancel booking', description: 'Cancel a scheduled event', method: 'POST', path: '/scheduled_events/{uuid}/cancellation', params: [
-        { name: 'uuid', label: 'Event UUID', type: 'template', required: true },
-        { name: 'reason', label: 'Cancellation reason', type: 'template', required: false },
-      ]},
+      {
+        id: 'get_scheduled_events',
+        label: 'Get bookings',
+        description: 'Fetch upcoming scheduled events',
+        method: 'GET',
+        path: '/scheduled_events',
+        params: [
+          { name: 'min_start_time', label: 'From (ISO)', type: 'template', required: false },
+          { name: 'max_start_time', label: 'To (ISO)', type: 'template', required: false },
+        ],
+      },
+      {
+        id: 'cancel_event',
+        label: 'Cancel booking',
+        description: 'Cancel a scheduled event',
+        method: 'POST',
+        path: '/scheduled_events/{uuid}/cancellation',
+        params: [
+          { name: 'uuid', label: 'Event UUID', type: 'template', required: true },
+          { name: 'reason', label: 'Cancellation reason', type: 'template', required: false },
+        ],
+      },
     ],
     triggers: [
-      { id: 'booking_created', label: 'Booking made', event_type: 'calendar.booking.created', webhook_event: 'invitee.created', description: 'New appointment booked' },
-      { id: 'booking_cancelled', label: 'Booking cancelled', event_type: 'calendar.booking.cancelled', webhook_event: 'invitee.canceled', description: 'Appointment was cancelled' },
+      {
+        id: 'booking_created',
+        label: 'Booking made',
+        event_type: 'calendar.booking.created',
+        webhook_event: 'invitee.created',
+        description: 'New appointment booked',
+      },
+      {
+        id: 'booking_cancelled',
+        label: 'Booking cancelled',
+        event_type: 'calendar.booking.cancelled',
+        webhook_event: 'invitee.canceled',
+        description: 'Appointment was cancelled',
+      },
     ],
   },
 
@@ -588,26 +1106,71 @@ export const CONNECTORS: ConnectorDef[] = [
     base_url: 'https://{subdomain}.zendesk.com/api/v2',
     tags: ['support', 'tickets', 'helpdesk'],
     actions: [
-      { id: 'create_ticket', label: 'Create ticket', description: 'Open a new support ticket', method: 'POST', path: '/tickets.json', params: [
-        { name: 'subject', label: 'Subject', type: 'template', required: true },
-        { name: 'description', label: 'Description', type: 'template', required: true },
-        { name: 'requester_email', label: 'Customer email', type: 'template', required: false },
-        { name: 'priority', label: 'Priority', type: 'select', required: false, options: ['low', 'normal', 'high', 'urgent'] },
-        { name: 'tags', label: 'Tags (JSON array)', type: 'template', required: false },
-      ]},
-      { id: 'update_ticket', label: 'Update ticket', description: 'Change status or add a comment', method: 'PUT', path: '/tickets/{id}.json', params: [
-        { name: 'id', label: 'Ticket ID', type: 'template', required: true },
-        { name: 'status', label: 'Status', type: 'select', required: false, options: ['open', 'pending', 'solved', 'closed'] },
-        { name: 'comment', label: 'Comment', type: 'template', required: false },
-      ]},
-      { id: 'add_internal_note', label: 'Add internal note', description: 'Add agent-only note', method: 'PUT', path: '/tickets/{id}.json', params: [
-        { name: 'id', label: 'Ticket ID', type: 'template', required: true },
-        { name: 'note', label: 'Note text', type: 'template', required: true },
-      ]},
+      {
+        id: 'create_ticket',
+        label: 'Create ticket',
+        description: 'Open a new support ticket',
+        method: 'POST',
+        path: '/tickets.json',
+        params: [
+          { name: 'subject', label: 'Subject', type: 'template', required: true },
+          { name: 'description', label: 'Description', type: 'template', required: true },
+          { name: 'requester_email', label: 'Customer email', type: 'template', required: false },
+          {
+            name: 'priority',
+            label: 'Priority',
+            type: 'select',
+            required: false,
+            options: ['low', 'normal', 'high', 'urgent'],
+          },
+          { name: 'tags', label: 'Tags (JSON array)', type: 'template', required: false },
+        ],
+      },
+      {
+        id: 'update_ticket',
+        label: 'Update ticket',
+        description: 'Change status or add a comment',
+        method: 'PUT',
+        path: '/tickets/{id}.json',
+        params: [
+          { name: 'id', label: 'Ticket ID', type: 'template', required: true },
+          {
+            name: 'status',
+            label: 'Status',
+            type: 'select',
+            required: false,
+            options: ['open', 'pending', 'solved', 'closed'],
+          },
+          { name: 'comment', label: 'Comment', type: 'template', required: false },
+        ],
+      },
+      {
+        id: 'add_internal_note',
+        label: 'Add internal note',
+        description: 'Add agent-only note',
+        method: 'PUT',
+        path: '/tickets/{id}.json',
+        params: [
+          { name: 'id', label: 'Ticket ID', type: 'template', required: true },
+          { name: 'note', label: 'Note text', type: 'template', required: true },
+        ],
+      },
     ],
     triggers: [
-      { id: 'ticket_created', label: 'Ticket created', event_type: 'support.ticket.created', webhook_event: 'ticket_created', description: 'New support ticket opened' },
-      { id: 'ticket_escalated', label: 'Ticket escalated', event_type: 'support.ticket.escalated', webhook_event: 'ticket_priority_change', description: 'Ticket marked urgent' },
+      {
+        id: 'ticket_created',
+        label: 'Ticket created',
+        event_type: 'support.ticket.created',
+        webhook_event: 'ticket_created',
+        description: 'New support ticket opened',
+      },
+      {
+        id: 'ticket_escalated',
+        label: 'Ticket escalated',
+        event_type: 'support.ticket.escalated',
+        webhook_event: 'ticket_priority_change',
+        description: 'Ticket marked urgent',
+      },
     ],
   },
 
@@ -624,15 +1187,29 @@ export const CONNECTORS: ConnectorDef[] = [
     base_url: 'https://sheets.googleapis.com/v4/spreadsheets',
     tags: ['spreadsheet', 'data', 'google'],
     actions: [
-      { id: 'append_row', label: 'Append row', description: 'Add a new row to a sheet', method: 'POST', path: '/{spreadsheetId}/values/{range}:append', params: [
-        { name: 'spreadsheetId', label: 'Spreadsheet ID', type: 'template', required: true },
-        { name: 'range', label: 'Range (e.g. Sheet1!A:Z)', type: 'template', required: true },
-        { name: 'values', label: 'Row values (JSON array)', type: 'template', required: true },
-      ]},
-      { id: 'get_rows', label: 'Get rows', description: 'Read rows from a sheet', method: 'GET', path: '/{spreadsheetId}/values/{range}', params: [
-        { name: 'spreadsheetId', label: 'Spreadsheet ID', type: 'template', required: true },
-        { name: 'range', label: 'Range', type: 'template', required: true },
-      ]},
+      {
+        id: 'append_row',
+        label: 'Append row',
+        description: 'Add a new row to a sheet',
+        method: 'POST',
+        path: '/{spreadsheetId}/values/{range}:append',
+        params: [
+          { name: 'spreadsheetId', label: 'Spreadsheet ID', type: 'template', required: true },
+          { name: 'range', label: 'Range (e.g. Sheet1!A:Z)', type: 'template', required: true },
+          { name: 'values', label: 'Row values (JSON array)', type: 'template', required: true },
+        ],
+      },
+      {
+        id: 'get_rows',
+        label: 'Get rows',
+        description: 'Read rows from a sheet',
+        method: 'GET',
+        path: '/{spreadsheetId}/values/{range}',
+        params: [
+          { name: 'spreadsheetId', label: 'Spreadsheet ID', type: 'template', required: true },
+          { name: 'range', label: 'Range', type: 'template', required: true },
+        ],
+      },
     ],
     triggers: [],
   },
@@ -648,22 +1225,43 @@ export const CONNECTORS: ConnectorDef[] = [
     base_url: 'https://api.airtable.com/v0',
     tags: ['database', 'no-code', 'records'],
     actions: [
-      { id: 'create_record', label: 'Create record', description: 'Add a new row to a base', method: 'POST', path: '/{baseId}/{tableName}', params: [
-        { name: 'baseId', label: 'Base ID', type: 'template', required: true },
-        { name: 'tableName', label: 'Table name', type: 'template', required: true },
-        { name: 'fields', label: 'Fields (JSON)', type: 'template', required: true },
-      ]},
-      { id: 'update_record', label: 'Update record', description: 'Modify an existing record', method: 'PATCH', path: '/{baseId}/{tableName}/{recordId}', params: [
-        { name: 'baseId', label: 'Base ID', type: 'template', required: true },
-        { name: 'tableName', label: 'Table name', type: 'template', required: true },
-        { name: 'recordId', label: 'Record ID', type: 'template', required: true },
-        { name: 'fields', label: 'Fields to update (JSON)', type: 'template', required: true },
-      ]},
-      { id: 'list_records', label: 'List records', description: 'Query records with a filter', method: 'GET', path: '/{baseId}/{tableName}', params: [
-        { name: 'baseId', label: 'Base ID', type: 'template', required: true },
-        { name: 'tableName', label: 'Table name', type: 'template', required: true },
-        { name: 'filterByFormula', label: 'Filter formula', type: 'template', required: false },
-      ]},
+      {
+        id: 'create_record',
+        label: 'Create record',
+        description: 'Add a new row to a base',
+        method: 'POST',
+        path: '/{baseId}/{tableName}',
+        params: [
+          { name: 'baseId', label: 'Base ID', type: 'template', required: true },
+          { name: 'tableName', label: 'Table name', type: 'template', required: true },
+          { name: 'fields', label: 'Fields (JSON)', type: 'template', required: true },
+        ],
+      },
+      {
+        id: 'update_record',
+        label: 'Update record',
+        description: 'Modify an existing record',
+        method: 'PATCH',
+        path: '/{baseId}/{tableName}/{recordId}',
+        params: [
+          { name: 'baseId', label: 'Base ID', type: 'template', required: true },
+          { name: 'tableName', label: 'Table name', type: 'template', required: true },
+          { name: 'recordId', label: 'Record ID', type: 'template', required: true },
+          { name: 'fields', label: 'Fields to update (JSON)', type: 'template', required: true },
+        ],
+      },
+      {
+        id: 'list_records',
+        label: 'List records',
+        description: 'Query records with a filter',
+        method: 'GET',
+        path: '/{baseId}/{tableName}',
+        params: [
+          { name: 'baseId', label: 'Base ID', type: 'template', required: true },
+          { name: 'tableName', label: 'Table name', type: 'template', required: true },
+          { name: 'filterByFormula', label: 'Filter formula', type: 'template', required: false },
+        ],
+      },
     ],
     triggers: [],
   },
@@ -681,10 +1279,17 @@ export const CONNECTORS: ConnectorDef[] = [
     base_url: 'https://api.linkedin.com/v2',
     tags: ['social', 'b2b', 'posts'],
     actions: [
-      { id: 'create_post', label: 'Create post', description: 'Publish a post on company page', method: 'POST', path: '/ugcPosts', params: [
-        { name: 'text', label: 'Post text', type: 'template', required: true },
-        { name: 'author', label: 'Author URN', type: 'template', required: true },
-      ]},
+      {
+        id: 'create_post',
+        label: 'Create post',
+        description: 'Publish a post on company page',
+        method: 'POST',
+        path: '/ugcPosts',
+        params: [
+          { name: 'text', label: 'Post text', type: 'template', required: true },
+          { name: 'author', label: 'Author URN', type: 'template', required: true },
+        ],
+      },
     ],
     triggers: [],
   },
@@ -704,7 +1309,13 @@ export const CONNECTORS: ConnectorDef[] = [
     tags: ['social', 'twitter', 'x', 'posts', 'threads'],
     actions: resolveXAgentActions(),
     triggers: [
-      { id: 'mention_received', label: 'Mention received', event_type: 'twitter.mention', webhook_event: 'tweet_create_events', description: 'Fired when your account is @mentioned' },
+      {
+        id: 'mention_received',
+        label: 'Mention received',
+        event_type: 'twitter.mention',
+        webhook_event: 'tweet_create_events',
+        description: 'Fired when your account is @mentioned',
+      },
     ],
     agent_tool_pack: X_AGENT_TOOL_PACK,
   },
@@ -720,22 +1331,55 @@ export const CONNECTORS: ConnectorDef[] = [
     base_url: 'https://graph.facebook.com/v19.0',
     tags: ['social', 'facebook', 'posts', 'pages'],
     actions: [
-      { id: 'create_post', label: 'Create page post', description: 'Publish a text post on your Facebook page', method: 'POST', path: '/{page_id}/feed', params: [
-        { name: 'page_id', label: 'Page ID', type: 'template', required: true },
-        { name: 'message', label: 'Post text', type: 'template', required: true },
-        { name: 'link', label: 'Link URL (optional)', type: 'template', required: false },
-      ]},
-      { id: 'create_photo_post', label: 'Post with image', description: 'Publish a post with an attached image', method: 'POST', path: '/{page_id}/photos', params: [
-        { name: 'page_id', label: 'Page ID', type: 'template', required: true },
-        { name: 'caption', label: 'Caption', type: 'template', required: true },
-        { name: 'image_url', label: 'Image URL', type: 'template', required: true },
-      ]},
-      { id: 'get_post', label: 'Get post metrics', description: 'Read a page post with like/comment/share counts', method: 'GET', path: '/{post_id}?fields=likes.summary(true),comments.summary(true),shares', params: [
-        { name: 'post_id', label: 'Post ID', type: 'template', required: true },
-      ]},
+      {
+        id: 'create_post',
+        label: 'Create page post',
+        description: 'Publish a text post on your Facebook page',
+        method: 'POST',
+        path: '/{page_id}/feed',
+        params: [
+          { name: 'page_id', label: 'Page ID', type: 'template', required: true },
+          { name: 'message', label: 'Post text', type: 'template', required: true },
+          { name: 'link', label: 'Link URL (optional)', type: 'template', required: false },
+        ],
+      },
+      {
+        id: 'create_photo_post',
+        label: 'Post with image',
+        description: 'Publish a post with an attached image',
+        method: 'POST',
+        path: '/{page_id}/photos',
+        params: [
+          { name: 'page_id', label: 'Page ID', type: 'template', required: true },
+          { name: 'caption', label: 'Caption', type: 'template', required: true },
+          { name: 'image_url', label: 'Image URL', type: 'template', required: true },
+        ],
+      },
+      {
+        id: 'get_profile',
+        label: 'Get page profile',
+        description: 'Read the page name, about text, picture and cover (read-only)',
+        method: 'GET',
+        path: '/{page_id}?fields=name,about,picture{is_silhouette},cover',
+        params: [{ name: 'page_id', label: 'Page ID', type: 'template', required: true }],
+      },
+      {
+        id: 'get_post',
+        label: 'Get post metrics',
+        description: 'Read a page post with like/comment/share counts',
+        method: 'GET',
+        path: '/{post_id}?fields=likes.summary(true),comments.summary(true),shares',
+        params: [{ name: 'post_id', label: 'Post ID', type: 'template', required: true }],
+      },
     ],
     triggers: [
-      { id: 'comment_received', label: 'New comment', event_type: 'facebook.comment', webhook_event: 'feed', description: 'Fired when a comment is posted on your page' },
+      {
+        id: 'comment_received',
+        label: 'New comment',
+        event_type: 'facebook.comment',
+        webhook_event: 'feed',
+        description: 'Fired when a comment is posted on your page',
+      },
     ],
   },
 
@@ -750,21 +1394,54 @@ export const CONNECTORS: ConnectorDef[] = [
     base_url: 'https://graph.facebook.com/v19.0',
     tags: ['social', 'instagram', 'posts', 'reels'],
     actions: [
-      { id: 'create_post', label: 'Create feed post', description: 'Publish an image/video post with caption', method: 'POST', path: '/{ig_user_id}/media_publish', params: [
-        { name: 'ig_user_id', label: 'IG User ID', type: 'template', required: true },
-        { name: 'caption', label: 'Caption text', type: 'template', required: true },
-        { name: 'image_url', label: 'Image URL', type: 'template', required: false },
-      ]},
-      { id: 'create_story', label: 'Post story', description: 'Publish an image story', method: 'POST', path: '/{ig_user_id}/media_publish', params: [
-        { name: 'ig_user_id', label: 'IG User ID', type: 'template', required: true },
-        { name: 'image_url', label: 'Story image URL', type: 'template', required: true },
-      ]},
-      { id: 'get_media', label: 'Get media metrics', description: 'Read an IG media object with like/comment counts', method: 'GET', path: '/{media_id}?fields=like_count,comments_count', params: [
-        { name: 'media_id', label: 'Media ID', type: 'template', required: true },
-      ]},
+      {
+        id: 'create_post',
+        label: 'Create feed post',
+        description: 'Publish an image/video post with caption',
+        method: 'POST',
+        path: '/{ig_user_id}/media_publish',
+        params: [
+          { name: 'ig_user_id', label: 'IG User ID', type: 'template', required: true },
+          { name: 'caption', label: 'Caption text', type: 'template', required: true },
+          { name: 'image_url', label: 'Image URL', type: 'template', required: false },
+        ],
+      },
+      {
+        id: 'create_story',
+        label: 'Post story',
+        description: 'Publish an image story',
+        method: 'POST',
+        path: '/{ig_user_id}/media_publish',
+        params: [
+          { name: 'ig_user_id', label: 'IG User ID', type: 'template', required: true },
+          { name: 'image_url', label: 'Story image URL', type: 'template', required: true },
+        ],
+      },
+      {
+        id: 'get_profile',
+        label: 'Get account profile',
+        description: 'Read the account name, biography and picture (read-only)',
+        method: 'GET',
+        path: '/{ig_user_id}?fields=name,username,biography,profile_picture_url',
+        params: [{ name: 'ig_user_id', label: 'IG User ID', type: 'template', required: true }],
+      },
+      {
+        id: 'get_media',
+        label: 'Get media metrics',
+        description: 'Read an IG media object with like/comment counts',
+        method: 'GET',
+        path: '/{media_id}?fields=like_count,comments_count',
+        params: [{ name: 'media_id', label: 'Media ID', type: 'template', required: true }],
+      },
     ],
     triggers: [
-      { id: 'comment_received', label: 'New comment', event_type: 'instagram.comment', webhook_event: 'comments', description: 'Fired when someone comments on your post' },
+      {
+        id: 'comment_received',
+        label: 'New comment',
+        event_type: 'instagram.comment',
+        webhook_event: 'comments',
+        description: 'Fired when someone comments on your post',
+      },
     ],
   },
 
@@ -783,10 +1460,30 @@ export const CONNECTORS: ConnectorDef[] = [
     // publish handler — the single-call action shape can't express it.
     // These actions cover the read side (engagement polling).
     actions: [
-      { id: 'get_me', label: 'Get profile', description: 'Read the connected Threads user', method: 'GET', path: '/me?fields=id,username', params: [] },
-      { id: 'get_media_insights', label: 'Get post insights', description: 'Read views/likes/replies/reposts for a post', method: 'GET', path: '/{media_id}/insights?metric=views,likes,replies,reposts,quotes', params: [
-        { name: 'media_id', label: 'Media ID', type: 'template', required: true },
-      ]},
+      {
+        id: 'get_me',
+        label: 'Get profile',
+        description: 'Read the connected Threads user',
+        method: 'GET',
+        path: '/me?fields=id,username',
+        params: [],
+      },
+      {
+        id: 'get_profile',
+        label: 'Get full profile',
+        description: 'Read the Threads name, biography and picture (read-only)',
+        method: 'GET',
+        path: '/me?fields=id,username,name,threads_biography,threads_profile_picture_url',
+        params: [],
+      },
+      {
+        id: 'get_media_insights',
+        label: 'Get post insights',
+        description: 'Read views/likes/replies/reposts for a post',
+        method: 'GET',
+        path: '/{media_id}/insights?metric=views,likes,replies,reposts,quotes',
+        params: [{ name: 'media_id', label: 'Media ID', type: 'template', required: true }],
+      },
     ],
     triggers: [],
   },
@@ -802,21 +1499,54 @@ export const CONNECTORS: ConnectorDef[] = [
     base_url: 'https://api.bufferapp.com/1',
     tags: ['social', 'scheduling', 'queue', 'buffer'],
     actions: [
-      { id: 'create_post', label: 'Add to queue', description: 'Add a post to the Buffer posting queue', method: 'POST', path: '/updates/create.json', params: [
-        { name: 'text', label: 'Post text', type: 'template', required: true },
-        { name: 'profile_ids', label: 'Profile IDs (comma-separated)', type: 'template', required: true },
-        { name: 'scheduled_at', label: 'Schedule at (ISO datetime, optional)', type: 'template', required: false },
-      ]},
-      { id: 'post_now', label: 'Post immediately', description: 'Skip queue and post now', method: 'POST', path: '/updates/create.json', params: [
-        { name: 'text', label: 'Post text', type: 'template', required: true },
-        { name: 'profile_ids', label: 'Profile IDs (comma-separated)', type: 'template', required: true },
-        { name: 'now', label: 'Post immediately', type: 'boolean', required: false, default: true },
-      ]},
+      {
+        id: 'create_post',
+        label: 'Add to queue',
+        description: 'Add a post to the Buffer posting queue',
+        method: 'POST',
+        path: '/updates/create.json',
+        params: [
+          { name: 'text', label: 'Post text', type: 'template', required: true },
+          {
+            name: 'profile_ids',
+            label: 'Profile IDs (comma-separated)',
+            type: 'template',
+            required: true,
+          },
+          {
+            name: 'scheduled_at',
+            label: 'Schedule at (ISO datetime, optional)',
+            type: 'template',
+            required: false,
+          },
+        ],
+      },
+      {
+        id: 'post_now',
+        label: 'Post immediately',
+        description: 'Skip queue and post now',
+        method: 'POST',
+        path: '/updates/create.json',
+        params: [
+          { name: 'text', label: 'Post text', type: 'template', required: true },
+          {
+            name: 'profile_ids',
+            label: 'Profile IDs (comma-separated)',
+            type: 'template',
+            required: true,
+          },
+          {
+            name: 'now',
+            label: 'Post immediately',
+            type: 'boolean',
+            required: false,
+            default: true,
+          },
+        ],
+      },
     ],
     triggers: [],
   },
-
-
 
   {
     id: 'instagram',
@@ -830,25 +1560,58 @@ export const CONNECTORS: ConnectorDef[] = [
     docs_url: 'https://developers.facebook.com/docs/instagram',
     tags: ['social', 'instagram', 'posts', 'reels', 'stories'],
     actions: [
-      { id: 'create_post', label: 'Create feed post', description: 'Publish an image/video post with caption', method: 'POST', path: '/{ig_user_id}/media_publish', params: [
-        { name: 'ig_user_id', label: 'IG User ID', type: 'template', required: true },
-        { name: 'caption', label: 'Caption text', type: 'template', required: true },
-        { name: 'image_url', label: 'Image URL', type: 'template', required: false },
-        { name: 'video_url', label: 'Video URL', type: 'template', required: false },
-      ]},
-      { id: 'create_story', label: 'Post story', description: 'Publish an image story', method: 'POST', path: '/{ig_user_id}/media_publish', params: [
-        { name: 'ig_user_id', label: 'IG User ID', type: 'template', required: true },
-        { name: 'image_url', label: 'Story image URL', type: 'template', required: true },
-      ]},
-      { id: 'create_reel', label: 'Create reel', description: 'Publish a reel with caption', method: 'POST', path: '/{ig_user_id}/media_publish', params: [
-        { name: 'ig_user_id', label: 'IG User ID', type: 'template', required: true },
-        { name: 'video_url', label: 'Reel video URL', type: 'template', required: true },
-        { name: 'caption', label: 'Reel caption', type: 'template', required: false },
-      ]},
+      {
+        id: 'create_post',
+        label: 'Create feed post',
+        description: 'Publish an image/video post with caption',
+        method: 'POST',
+        path: '/{ig_user_id}/media_publish',
+        params: [
+          { name: 'ig_user_id', label: 'IG User ID', type: 'template', required: true },
+          { name: 'caption', label: 'Caption text', type: 'template', required: true },
+          { name: 'image_url', label: 'Image URL', type: 'template', required: false },
+          { name: 'video_url', label: 'Video URL', type: 'template', required: false },
+        ],
+      },
+      {
+        id: 'create_story',
+        label: 'Post story',
+        description: 'Publish an image story',
+        method: 'POST',
+        path: '/{ig_user_id}/media_publish',
+        params: [
+          { name: 'ig_user_id', label: 'IG User ID', type: 'template', required: true },
+          { name: 'image_url', label: 'Story image URL', type: 'template', required: true },
+        ],
+      },
+      {
+        id: 'create_reel',
+        label: 'Create reel',
+        description: 'Publish a reel with caption',
+        method: 'POST',
+        path: '/{ig_user_id}/media_publish',
+        params: [
+          { name: 'ig_user_id', label: 'IG User ID', type: 'template', required: true },
+          { name: 'video_url', label: 'Reel video URL', type: 'template', required: true },
+          { name: 'caption', label: 'Reel caption', type: 'template', required: false },
+        ],
+      },
     ],
     triggers: [
-      { id: 'comment_received', label: 'New comment', event_type: 'instagram.comment', webhook_event: 'comments', description: 'Fired when someone comments on your post' },
-      { id: 'mention_received', label: 'Mention received', event_type: 'instagram.mention', webhook_event: 'mentions', description: 'Fired when your account is mentioned' },
+      {
+        id: 'comment_received',
+        label: 'New comment',
+        event_type: 'instagram.comment',
+        webhook_event: 'comments',
+        description: 'Fired when someone comments on your post',
+      },
+      {
+        id: 'mention_received',
+        label: 'Mention received',
+        event_type: 'instagram.mention',
+        webhook_event: 'mentions',
+        description: 'Fired when your account is mentioned',
+      },
     ],
   },
 
@@ -856,7 +1619,8 @@ export const CONNECTORS: ConnectorDef[] = [
     id: 'youtube',
     name: 'YouTube',
     category: 'social',
-    description: 'Upload videos, manage playlists, and interact with YouTube API (via Postiz Library)',
+    description:
+      'Upload videos, manage playlists, and interact with YouTube API (via Postiz Library)',
     icon: '▶️',
     color: '#FF0000',
     auth: 'oauth2',
@@ -864,27 +1628,74 @@ export const CONNECTORS: ConnectorDef[] = [
     docs_url: 'https://developers.google.com/youtube/v3',
     tags: ['social', 'youtube', 'video', 'streaming', 'content', 'postiz'],
     actions: [
-      { id: 'upload_video', label: 'Upload video', description: 'Upload a video to your YouTube channel', method: 'POST', path: '/upload', params: [
-        { name: 'title', label: 'Video title', type: 'template', required: true },
-        { name: 'description', label: 'Video description', type: 'template', required: false },
-        { name: 'tags', label: 'Tags (comma-separated)', type: 'template', required: false },
-        { name: 'privacy_status', label: 'Privacy status', type: 'select', required: false, options: ['public', 'private', 'unlisted', 'scheduled'], default: 'private' },
-        { name: 'category_id', label: 'Category ID', type: 'template', required: false },
-      ]},
-      { id: 'create_playlist', label: 'Create playlist', description: 'Create a new playlist', method: 'POST', path: '/playlists', params: [
-        { name: 'title', label: 'Playlist title', type: 'template', required: true },
-        { name: 'description', label: 'Playlist description', type: 'template', required: false },
-        { name: 'privacy_status', label: 'Privacy status', type: 'select', required: false, options: ['public', 'private', 'unlisted'], default: 'private' },
-      ]},
-      { id: 'add_to_playlist', label: 'Add video to playlist', description: 'Add a video to an existing playlist', method: 'POST', path: '/playlistItems', params: [
-        { name: 'playlist_id', label: 'Playlist ID', type: 'template', required: true },
-        { name: 'video_id', label: 'Video ID', type: 'template', required: true },
-        { name: 'position', label: 'Position (optional)', type: 'number', required: false },
-      ]},
+      {
+        id: 'upload_video',
+        label: 'Upload video',
+        description: 'Upload a video to your YouTube channel',
+        method: 'POST',
+        path: '/upload',
+        params: [
+          { name: 'title', label: 'Video title', type: 'template', required: true },
+          { name: 'description', label: 'Video description', type: 'template', required: false },
+          { name: 'tags', label: 'Tags (comma-separated)', type: 'template', required: false },
+          {
+            name: 'privacy_status',
+            label: 'Privacy status',
+            type: 'select',
+            required: false,
+            options: ['public', 'private', 'unlisted', 'scheduled'],
+            default: 'private',
+          },
+          { name: 'category_id', label: 'Category ID', type: 'template', required: false },
+        ],
+      },
+      {
+        id: 'create_playlist',
+        label: 'Create playlist',
+        description: 'Create a new playlist',
+        method: 'POST',
+        path: '/playlists',
+        params: [
+          { name: 'title', label: 'Playlist title', type: 'template', required: true },
+          { name: 'description', label: 'Playlist description', type: 'template', required: false },
+          {
+            name: 'privacy_status',
+            label: 'Privacy status',
+            type: 'select',
+            required: false,
+            options: ['public', 'private', 'unlisted'],
+            default: 'private',
+          },
+        ],
+      },
+      {
+        id: 'add_to_playlist',
+        label: 'Add video to playlist',
+        description: 'Add a video to an existing playlist',
+        method: 'POST',
+        path: '/playlistItems',
+        params: [
+          { name: 'playlist_id', label: 'Playlist ID', type: 'template', required: true },
+          { name: 'video_id', label: 'Video ID', type: 'template', required: true },
+          { name: 'position', label: 'Position (optional)', type: 'number', required: false },
+        ],
+      },
     ],
     triggers: [
-      { id: 'video_published', label: 'Video published', event_type: 'youtube.video.published', webhook_event: 'youtube#video#published', description: 'Fired when a video is published on your channel' },
-      { id: 'comment_added', label: 'New comment', event_type: 'youtube.comment.added', webhook_event: 'youtube#comment#insert', description: 'Fired when a comment is added to your video' },
+      {
+        id: 'video_published',
+        label: 'Video published',
+        event_type: 'youtube.video.published',
+        webhook_event: 'youtube#video#published',
+        description: 'Fired when a video is published on your channel',
+      },
+      {
+        id: 'comment_added',
+        label: 'New comment',
+        event_type: 'youtube.comment.added',
+        webhook_event: 'youtube#comment#insert',
+        description: 'Fired when a comment is added to your video',
+      },
     ],
   },
 
@@ -901,15 +1712,46 @@ export const CONNECTORS: ConnectorDef[] = [
     base_url: 'https://api.medium.com/v1',
     tags: ['blog', 'medium', 'publishing', 'content'],
     actions: [
-      { id: 'create_post', label: 'Publish post', description: 'Create and publish a post on Medium', method: 'POST', path: '/users/{user_id}/posts', params: [
-        { name: 'user_id', label: 'Medium User ID', type: 'template', required: true },
-        { name: 'title', label: 'Post title', type: 'template', required: true },
-        { name: 'content', label: 'Post body (HTML or Markdown)', type: 'template', required: true },
-        { name: 'content_format', label: 'Format', type: 'select', required: false, options: ['html', 'markdown'], default: 'markdown' },
-        { name: 'publish_status', label: 'Status', type: 'select', required: false, options: ['draft', 'public'], default: 'draft' },
-        { name: 'tags', label: 'Tags (comma-separated)', type: 'template', required: false },
-        { name: 'canonical_url', label: 'Canonical URL (optional)', type: 'template', required: false },
-      ]},
+      {
+        id: 'create_post',
+        label: 'Publish post',
+        description: 'Create and publish a post on Medium',
+        method: 'POST',
+        path: '/users/{user_id}/posts',
+        params: [
+          { name: 'user_id', label: 'Medium User ID', type: 'template', required: true },
+          { name: 'title', label: 'Post title', type: 'template', required: true },
+          {
+            name: 'content',
+            label: 'Post body (HTML or Markdown)',
+            type: 'template',
+            required: true,
+          },
+          {
+            name: 'content_format',
+            label: 'Format',
+            type: 'select',
+            required: false,
+            options: ['html', 'markdown'],
+            default: 'markdown',
+          },
+          {
+            name: 'publish_status',
+            label: 'Status',
+            type: 'select',
+            required: false,
+            options: ['draft', 'public'],
+            default: 'draft',
+          },
+          { name: 'tags', label: 'Tags (comma-separated)', type: 'template', required: false },
+          {
+            name: 'canonical_url',
+            label: 'Canonical URL (optional)',
+            type: 'template',
+            required: false,
+          },
+        ],
+      },
     ],
     triggers: [],
   },
@@ -925,22 +1767,71 @@ export const CONNECTORS: ConnectorDef[] = [
     base_url: '{ghost_url}/ghost/api/admin',
     tags: ['blog', 'ghost', 'newsletter', 'publishing', 'content'],
     actions: [
-      { id: 'create_post', label: 'Create post', description: 'Create a new blog post in Ghost', method: 'POST', path: '/posts/', params: [
-        { name: 'title', label: 'Post title', type: 'template', required: true },
-        { name: 'html', label: 'Post body (HTML)', type: 'template', required: true },
-        { name: 'status', label: 'Status', type: 'select', required: false, options: ['draft', 'published', 'scheduled'], default: 'draft' },
-        { name: 'tags', label: 'Tags (JSON array of {name})', type: 'template', required: false },
-        { name: 'feature_image', label: 'Feature image URL (optional)', type: 'template', required: false },
-        { name: 'custom_excerpt', label: 'Excerpt (optional)', type: 'template', required: false },
-      ]},
-      { id: 'send_newsletter', label: 'Send newsletter', description: 'Email the post to all newsletter subscribers', method: 'PUT', path: '/posts/{post_id}/', params: [
-        { name: 'post_id', label: 'Post ID', type: 'template', required: true },
-        { name: 'email_only', label: 'Email only (no blog publish)', type: 'boolean', required: false, default: false },
-      ]},
+      {
+        id: 'create_post',
+        label: 'Create post',
+        description: 'Create a new blog post in Ghost',
+        method: 'POST',
+        path: '/posts/',
+        params: [
+          { name: 'title', label: 'Post title', type: 'template', required: true },
+          { name: 'html', label: 'Post body (HTML)', type: 'template', required: true },
+          {
+            name: 'status',
+            label: 'Status',
+            type: 'select',
+            required: false,
+            options: ['draft', 'published', 'scheduled'],
+            default: 'draft',
+          },
+          { name: 'tags', label: 'Tags (JSON array of {name})', type: 'template', required: false },
+          {
+            name: 'feature_image',
+            label: 'Feature image URL (optional)',
+            type: 'template',
+            required: false,
+          },
+          {
+            name: 'custom_excerpt',
+            label: 'Excerpt (optional)',
+            type: 'template',
+            required: false,
+          },
+        ],
+      },
+      {
+        id: 'send_newsletter',
+        label: 'Send newsletter',
+        description: 'Email the post to all newsletter subscribers',
+        method: 'PUT',
+        path: '/posts/{post_id}/',
+        params: [
+          { name: 'post_id', label: 'Post ID', type: 'template', required: true },
+          {
+            name: 'email_only',
+            label: 'Email only (no blog publish)',
+            type: 'boolean',
+            required: false,
+            default: false,
+          },
+        ],
+      },
     ],
     triggers: [
-      { id: 'post_published', label: 'Post published', event_type: 'ghost.post.published', webhook_event: 'post.published', description: 'Fired when a post goes live' },
-      { id: 'member_added', label: 'New member/subscriber', event_type: 'ghost.member.added', webhook_event: 'member.added', description: 'Fired when someone subscribes' },
+      {
+        id: 'post_published',
+        label: 'Post published',
+        event_type: 'ghost.post.published',
+        webhook_event: 'post.published',
+        description: 'Fired when a post goes live',
+      },
+      {
+        id: 'member_added',
+        label: 'New member/subscriber',
+        event_type: 'ghost.member.added',
+        webhook_event: 'member.added',
+        description: 'Fired when someone subscribes',
+      },
     ],
   },
 
@@ -955,24 +1846,68 @@ export const CONNECTORS: ConnectorDef[] = [
     base_url: '{wordpress_url}/wp-json/wp/v2',
     tags: ['blog', 'wordpress', 'cms', 'publishing', 'content'],
     actions: [
-      { id: 'create_post', label: 'Create post', description: 'Create a new WordPress post', method: 'POST', path: '/posts', params: [
-        { name: 'title', label: 'Post title', type: 'template', required: true },
-        { name: 'content', label: 'Post body (HTML)', type: 'template', required: true },
-        { name: 'status', label: 'Status', type: 'select', required: false, options: ['draft', 'publish', 'future'], default: 'draft' },
-        { name: 'excerpt', label: 'Excerpt (optional)', type: 'template', required: false },
-        { name: 'tags', label: 'Tag IDs (comma-separated)', type: 'template', required: false },
-        { name: 'featured_media', label: 'Featured image media ID (optional)', type: 'template', required: false },
-      ]},
-      { id: 'update_post', label: 'Update post', description: 'Edit an existing post', method: 'PUT', path: '/posts/{post_id}', params: [
-        { name: 'post_id', label: 'Post ID', type: 'template', required: true },
-        { name: 'title', label: 'New title', type: 'template', required: false },
-        { name: 'content', label: 'New content', type: 'template', required: false },
-        { name: 'status', label: 'New status', type: 'select', required: false, options: ['draft', 'publish'] },
-      ]},
+      {
+        id: 'create_post',
+        label: 'Create post',
+        description: 'Create a new WordPress post',
+        method: 'POST',
+        path: '/posts',
+        params: [
+          { name: 'title', label: 'Post title', type: 'template', required: true },
+          { name: 'content', label: 'Post body (HTML)', type: 'template', required: true },
+          {
+            name: 'status',
+            label: 'Status',
+            type: 'select',
+            required: false,
+            options: ['draft', 'publish', 'future'],
+            default: 'draft',
+          },
+          { name: 'excerpt', label: 'Excerpt (optional)', type: 'template', required: false },
+          { name: 'tags', label: 'Tag IDs (comma-separated)', type: 'template', required: false },
+          {
+            name: 'featured_media',
+            label: 'Featured image media ID (optional)',
+            type: 'template',
+            required: false,
+          },
+        ],
+      },
+      {
+        id: 'update_post',
+        label: 'Update post',
+        description: 'Edit an existing post',
+        method: 'PUT',
+        path: '/posts/{post_id}',
+        params: [
+          { name: 'post_id', label: 'Post ID', type: 'template', required: true },
+          { name: 'title', label: 'New title', type: 'template', required: false },
+          { name: 'content', label: 'New content', type: 'template', required: false },
+          {
+            name: 'status',
+            label: 'New status',
+            type: 'select',
+            required: false,
+            options: ['draft', 'publish'],
+          },
+        ],
+      },
     ],
     triggers: [
-      { id: 'post_published', label: 'Post published', event_type: 'wordpress.post.published', webhook_event: 'publish_post', description: 'Fires when a post is published' },
-      { id: 'comment_added', label: 'New comment', event_type: 'wordpress.comment.added', webhook_event: 'comment_post', description: 'Fires when a comment is added' },
+      {
+        id: 'post_published',
+        label: 'Post published',
+        event_type: 'wordpress.post.published',
+        webhook_event: 'publish_post',
+        description: 'Fires when a post is published',
+      },
+      {
+        id: 'comment_added',
+        label: 'New comment',
+        event_type: 'wordpress.comment.added',
+        webhook_event: 'comment_post',
+        description: 'Fires when a comment is added',
+      },
     ],
   },
 
@@ -987,13 +1922,30 @@ export const CONNECTORS: ConnectorDef[] = [
     base_url: 'https://gql.hashnode.com',
     tags: ['blog', 'hashnode', 'developer', 'content', 'tech'],
     actions: [
-      { id: 'create_post', label: 'Publish post', description: 'Create and publish a post on Hashnode', method: 'POST', path: '/', params: [
-        { name: 'title', label: 'Post title', type: 'template', required: true },
-        { name: 'content_markdown', label: 'Content (Markdown)', type: 'template', required: true },
-        { name: 'publication_id', label: 'Publication ID', type: 'template', required: true },
-        { name: 'tags', label: 'Tag slugs (JSON array)', type: 'template', required: false },
-        { name: 'subtitle', label: 'Subtitle / SEO description', type: 'template', required: false },
-      ]},
+      {
+        id: 'create_post',
+        label: 'Publish post',
+        description: 'Create and publish a post on Hashnode',
+        method: 'POST',
+        path: '/',
+        params: [
+          { name: 'title', label: 'Post title', type: 'template', required: true },
+          {
+            name: 'content_markdown',
+            label: 'Content (Markdown)',
+            type: 'template',
+            required: true,
+          },
+          { name: 'publication_id', label: 'Publication ID', type: 'template', required: true },
+          { name: 'tags', label: 'Tag slugs (JSON array)', type: 'template', required: false },
+          {
+            name: 'subtitle',
+            label: 'Subtitle / SEO description',
+            type: 'template',
+            required: false,
+          },
+        ],
+      },
     ],
     triggers: [],
   },
@@ -1011,14 +1963,27 @@ export const CONNECTORS: ConnectorDef[] = [
     base_url: '',
     tags: ['webhook', 'http', 'generic'],
     actions: [
-      { id: 'post_webhook', label: 'POST to URL', description: 'Send JSON payload to any URL', method: 'POST', path: '{url}', params: [
-        { name: 'url', label: 'Target URL', type: 'template', required: true },
-        { name: 'payload', label: 'Payload (JSON)', type: 'template', required: true },
-        { name: 'headers', label: 'Headers (JSON)', type: 'template', required: false },
-      ]},
+      {
+        id: 'post_webhook',
+        label: 'POST to URL',
+        description: 'Send JSON payload to any URL',
+        method: 'POST',
+        path: '{url}',
+        params: [
+          { name: 'url', label: 'Target URL', type: 'template', required: true },
+          { name: 'payload', label: 'Payload (JSON)', type: 'template', required: true },
+          { name: 'headers', label: 'Headers (JSON)', type: 'template', required: false },
+        ],
+      },
     ],
     triggers: [
-      { id: 'webhook_received', label: 'Webhook received', event_type: 'webhook.received', webhook_event: 'lifekeel.webhook', description: 'Any inbound webhook payload' },
+      {
+        id: 'webhook_received',
+        label: 'Webhook received',
+        event_type: 'webhook.received',
+        webhook_event: 'lifekeel.webhook',
+        description: 'Any inbound webhook payload',
+      },
     ],
   },
 ]
@@ -1029,7 +1994,7 @@ export class ConnectorRegistry {
   private index: Map<string, ConnectorDef>
 
   constructor(defs: ConnectorDef[] = CONNECTORS) {
-    this.index = new Map(defs.map(c => [c.id, c]))
+    this.index = new Map(defs.map((c) => [c.id, c]))
   }
 
   all(): ConnectorDef[] {
@@ -1041,25 +2006,36 @@ export class ConnectorRegistry {
   }
 
   byCategory(category: ConnectorCategory): ConnectorDef[] {
-    return this.all().filter(c => c.category === category)
+    return this.all().filter((c) => c.category === category)
   }
 
   search(query: string): ConnectorDef[] {
     const q = query.toLowerCase()
-    return this.all().filter(c =>
-      c.name.toLowerCase().includes(q) ||
-      c.tags.some(t => t.includes(q)) ||
-      c.description.toLowerCase().includes(q),
+    return this.all().filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        c.tags.some((t) => t.includes(q)) ||
+        c.description.toLowerCase().includes(q),
     )
   }
 
   getAction(connectorId: string, actionId: string): ConnectorAction | undefined {
-    return this.get(connectorId)?.actions.find(a => a.id === actionId)
+    return this.get(connectorId)?.actions.find((a) => a.id === actionId)
   }
 
   /** Summary for Studio UI — no base_url or auth secrets */
-  summary(): Array<{ id: string; name: string; category: ConnectorCategory; icon: string; color: string; action_count: number; trigger_count: number; tags: string[]; supported_countries?: string[] }> {
-    return this.all().map(c => ({
+  summary(): Array<{
+    id: string
+    name: string
+    category: ConnectorCategory
+    icon: string
+    color: string
+    action_count: number
+    trigger_count: number
+    tags: string[]
+    supported_countries?: string[]
+  }> {
+    return this.all().map((c) => ({
       id: c.id,
       name: c.name,
       category: c.category,
