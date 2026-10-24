@@ -5024,6 +5024,105 @@ export function fetchChannelHealth(): Promise<{ channels: ChannelHealth[] }> {
   return operatorRequest('/marketing/channels/health')
 }
 
+// ── Operator: standing approvals (the content bank and the policy) ────────
+
+export interface BankEntry {
+  id: string
+  content: string
+  content_hash: string
+  channels: string[]
+  format: string | null
+  hook: string | null
+  pillar: string | null
+  status: 'candidate' | 'approved' | 'retired'
+  source: 'plan_draft' | 'candidate_job' | 'manual'
+  card: { layout: string; headline: string; sub?: string } | null
+  media_url: string | null
+  link_path: string | null
+  copy_check: { ok: boolean; violations: { rule: string; match: string }[] }
+  missing_image_for: string[]
+  approved_by: string | null
+  approved_at: string | null
+  expires_at: string | null
+  times_scheduled: number
+  retired_reason: string | null
+  created_at: string
+}
+
+export interface StandingPolicy {
+  enabled: boolean
+  enabled_by: string
+  enabled_at: string
+  reason: string
+  expires_at: string
+  channels: string[]
+  max_per_channel_per_week: number
+  max_per_channel_per_day: number
+  min_gap_hours: number
+  repeat_cooldown_days: number
+  hours: number[]
+  paused_channels: { channel: string; reason: string; at: string }[]
+}
+
+export interface StandingStatus {
+  policy: StandingPolicy | null
+  active: boolean
+  bank: { candidate: number; approved: number; retired: number }
+  weeks_of_posts_left: number | null
+  upcoming: { id: string; channel: string; scheduled_at: string; bank_entry_id?: string }[]
+}
+
+export function fetchStanding(): Promise<StandingStatus> {
+  return operatorRequest('/marketing/standing')
+}
+
+export async function fetchBank(status?: BankEntry['status']): Promise<BankEntry[]> {
+  const data = await operatorRequest<{ entries: BankEntry[] }>(
+    `/marketing/bank${status ? `?status=${status}` : ''}`,
+  )
+  return data.entries
+}
+
+export function saveStandingPolicy(input: {
+  reason: string
+  expires_in_days: number
+  channels: string[]
+  max_per_channel_per_week?: number
+}): Promise<{ policy: StandingPolicy }> {
+  return marketingRequest('/marketing/standing', 'PUT', input)
+}
+
+export function disableStanding(reason: string): Promise<{ rejected: number }> {
+  return marketingRequest('/marketing/standing/disable', 'POST', { reason })
+}
+
+export function resumeStandingChannel(channel: string): Promise<{ ok: true }> {
+  return marketingRequest(
+    `/marketing/standing/channels/${encodeURIComponent(channel)}/resume`,
+    'POST',
+  )
+}
+
+export function runStandingNow(): Promise<{ scheduled: number }> {
+  return marketingRequest('/marketing/standing/run', 'POST')
+}
+
+export function approveBankEntries(items: { id: string; content_hash: string }[]): Promise<{
+  results: { id: string; ok: boolean; error?: string }[]
+  approved: number
+  refused: number
+}> {
+  return marketingRequest('/marketing/bank/approve', 'POST', { items })
+}
+
+export function retireBankEntry(id: string, reason?: string): Promise<{ ok: true }> {
+  return marketingRequest(`/marketing/bank/${id}/retire`, 'POST', reason ? { reason } : {})
+}
+
+export function editBankEntry(id: string, content: string): Promise<BankEntry> {
+  return marketingRequest(`/marketing/bank/${id}`, 'PATCH', { content })
+}
+
 // ── Operator: marketing economics ─────────────────────────────────────────
 
 export interface EconomicsRate {

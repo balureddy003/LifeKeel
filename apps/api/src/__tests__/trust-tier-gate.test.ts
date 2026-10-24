@@ -111,6 +111,48 @@ describe('trust-tier gate on social publishing', () => {
 })
 
 /**
+ * Standing approvals (intent 46): a human approves exact texts into the bank and sets a policy; the
+ * scheduler then creates *approved* posts on its own. That is a second door to the approved state, so it
+ * is pinned here: only marketing/standing.ts may do it, the approver on every such post must be the human
+ * who approved the bank entry, and the scheduler can never publish on its own.
+ */
+describe('trust-tier gate on standing approvals', () => {
+  const standing = files.find((f) => f.rel === 'marketing/standing.ts')!.text
+
+  it('only marketing/standing.ts inserts posts that are already approved', () => {
+    const inserts = files
+      .filter((f) => f.rel !== 'marketing/standing.ts')
+      .filter((f) => /insertOne\(\{[^}]*state:\s*'approved'/s.test(f.text))
+      .map((f) => f.rel)
+    expect(inserts).toEqual([])
+    expect(standing).toMatch(/insertOne\(\{[\s\S]*state:\s*'approved'/)
+  })
+
+  it('every standing post takes approved_by from the bank entry, never from the scheduler', () => {
+    expect(standing).toMatch(/approved_by:\s*entry\.approved_by!/)
+    expect(standing).toMatch(/approved_via:\s*'standing'/)
+    expect(standing).not.toMatch(/approved_by:\s*['"`]/)
+    // A policy cannot be enabled without a named human and a reason.
+    expect(standing).toMatch(/enabled_by:\s*userId/)
+  })
+
+  it('the scheduler never publishes: no createPost, no publishPost, no executor', () => {
+    expect(standing).not.toMatch(
+      /\.createPost\(|publishPost\(|ConnectorActionExecutor|ActionExecutor/,
+    )
+  })
+
+  it('only the bank-approval path and the policy routes can create standing authority', () => {
+    const writers = files
+      .filter((f) => /status:\s*'approved',\s*approved_by:/.test(f.text))
+      .map((f) => f.rel)
+      .sort()
+    // bank.ts approves entries by hash; the legacy plan/post routes approve posts by hash.
+    expect(writers).toEqual(['marketing/bank.ts'])
+  })
+})
+
+/**
  * ConnectorActionExecutor is the generic runtime for connector write actions
  * (Slack, LinkedIn, broker orders). It sits outside ActionExecutor, so it needs its
  * own allow-list: a new caller is a new way to act on a family's or tenant's behalf.

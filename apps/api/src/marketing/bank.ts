@@ -43,6 +43,14 @@ export interface BankEntryDoc {
   alt_text?: string
   /** Claims-registry ids the text relies on, for drift checks. */
   claim_ids?: string[]
+  /**
+   * Where the post's link goes. The approved text holds LINK_TOKEN where the link belongs; each scheduled
+   * post gets its own freshly tagged link there, so per-post attribution still works. The only variable
+   * part of what is published is this link, and the approver sees the path.
+   */
+  link_path?: string
+  /** UTM campaign for the link, for example `pillar_chart`. */
+  campaign?: string
   status: BankStatus
   source: BankSource
   created_by: string
@@ -91,7 +99,40 @@ export interface NewBankEntry {
   media_url?: string
   alt_text?: string
   claim_ids?: string[]
+  link_path?: string
+  campaign?: string
   source: BankSource
+}
+
+/** The place in an approved text where each scheduled post's own tagged link goes. */
+export const LINK_TOKEN = '{{link}}'
+
+/** Fill LINK_TOKEN with a link ('' removes the token and the space before it). */
+export function renderBankContent(content: string, link: string): string {
+  if (!content.includes(LINK_TOKEN)) return content
+  return link
+    ? content.replace(LINK_TOKEN, link)
+    : content.replace(new RegExp(`\\s*${LINK_TOKEN.replace(/[{}]/g, '\\$&')}`), '')
+}
+
+/**
+ * Turn a published-style post into a template: swap the post's own tagged link for LINK_TOKEN and keep its
+ * path and campaign. Returns the text unchanged (no path) when the post carries no link of its own.
+ */
+export function templatizeLink(
+  content: string,
+  postTag: string | undefined,
+): { content: string; link_path?: string } {
+  if (!postTag) return { content }
+  const m = new RegExp(`https?://[^\\s]*utm_content=${postTag}[^\\s]*`).exec(content)
+  if (!m) return { content }
+  let path = '/'
+  try {
+    path = new URL(m[0]).pathname || '/'
+  } catch {
+    return { content }
+  }
+  return { content: content.replace(m[0], LINK_TOKEN), link_path: path }
 }
 
 /** Add a candidate. It is never usable until a human approves it. */
@@ -116,6 +157,8 @@ export async function addCandidate(
     ...(input.media_url ? { media_url: input.media_url } : {}),
     ...(input.alt_text ? { alt_text: input.alt_text } : {}),
     ...(input.claim_ids ? { claim_ids: input.claim_ids } : {}),
+    ...(input.link_path ? { link_path: input.link_path } : {}),
+    ...(input.campaign ? { campaign: input.campaign } : {}),
     status: 'candidate',
     source: input.source,
     created_by: createdBy,

@@ -87,6 +87,9 @@ export interface MarketingPostDoc {
   created_at: Date
   approved_by?: string
   approved_at?: Date
+  /** Set when the post was scheduled from a standing approval (marketing/standing.ts); approved_by is then the human who approved the bank entry. */
+  approved_via?: 'standing'
+  bank_entry_id?: string
   published_at?: Date
   publish_error?: string
   generated?: 'llm' | 'template'
@@ -509,12 +512,10 @@ export async function reviveGuides(db: Db, llmFor: (tenantId: string) => LlmFn):
     // Rank by visits: landing_view events carrying any of the slug's tags.
     let best: { slug: string; visits: number } = { slug: due[0]!, visits: -1 }
     for (const slug of due) {
-      const visits = await db
-        .collection('growth_events')
-        .countDocuments({
-          event: 'landing_view',
-          'meta.utm_content': { $in: tagsBySlug.get(slug) ?? [] },
-        })
+      const visits = await db.collection('growth_events').countDocuments({
+        event: 'landing_view',
+        'meta.utm_content': { $in: tagsBySlug.get(slug) ?? [] },
+      })
       if (visits > best.visits) best = { slug, visits }
     }
     if (await draftBlogPromoPost(db, llmFor, tenantId, best.slug, channel, 'guide-revival'))
