@@ -217,6 +217,7 @@ import { registerFamilyReceiptRoutes } from './routes/family-receipts.js'
 import { registerFamilyScopeContractRoutes } from './routes/family-scope-contracts.js'
 import { ensureScopeContractIndexes } from './family/scope-contracts.js'
 import { registerMarketingPlanRoutes } from './routes/marketing-plan.js'
+import { registerMarketingBankRoutes } from './routes/marketing-bank.js'
 import { registerMarketingProfileRoutes } from './routes/marketing-profiles.js'
 import { registerLeadRoutes } from './routes/leads.js'
 import { registerHeartbeatUnsubscribeRoutes } from './routes/heartbeat-unsubscribe.js'
@@ -2279,6 +2280,7 @@ if (workflowDb) {
   registerMarketingPostRoutes(app, workflowDb)
   registerMarketingProfileRoutes(app, workflowDb)
   registerMarketingPlanRoutes(app, workflowDb)
+  registerMarketingBankRoutes(app, workflowDb)
   ensureAutopilotIndexes(workflowDb)
   void ensureRevenueIndexes(workflowDb)
   void ensureMarketingSpendIndexes(workflowDb)

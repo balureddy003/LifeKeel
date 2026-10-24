@@ -89,6 +89,7 @@ export const DELETABLE_COLLECTIONS = [
   // ── tenant-keyed growth/support surfaces ──
   'marketing_posts',
   'content_items',
+  'content_bank', // standing approvals: per-tenant approved post texts
   'channel_profiles',
   'social_connections',
   'support_cases',
