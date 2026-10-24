@@ -1591,6 +1591,54 @@ export function registerMarketingPostRoutes(
     },
   )
 
+  /** POST /marketing/posts/:id/refine — operator writes an instruction
+   *  ("shorter, one question, add a stat"), the model rewrites the draft
+   *  under the same rules, checkCopy gates the result like any other edit.
+   *  Draft/publish_failed only — refinement is still drafting, never a
+   *  publish action. */
+  app.post<{ Params: { id: string } }>(
+    '/marketing/posts/:id/refine',
+    { preHandler: manageGate },
+    async (req, reply) => {
+      const { tenant_id } = req.authContext
+      const parsed = z.object({ instruction: z.string().min(3).max(500) }).safeParse(req.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid request', issues: parsed.error.issues })
+      const post = await col.findOne({
+        id: req.params.id,
+        tenant_id,
+        state: { $in: ['draft', 'publish_failed'] },
+      })
+      if (!post) return reply.status(404).send({ error: 'Post not found or not editable' })
+      const limit = CHANNEL_CHAR_LIMIT[post.channel] ?? 2000
+      let refined: string
+      try {
+        refined = clampPost(
+          await llmFor(tenant_id)(
+            GENERATE_SYSTEM,
+            `Channel: ${post.channel} (hard maximum ${limit} characters).\n\nCurrent draft:\n"""\n${post.content}\n"""\n\nRewrite it following this instruction: ${parsed.data.instruction}\nKeep any URLs and the same factual claims — change wording only.`,
+            'tier:fast',
+          ),
+          limit,
+        )
+      } catch {
+        return reply.status(503).send({ error: 'Refinement unavailable — no model configured' })
+      }
+      const copy_check = checkCopy(refined, 'social')
+      if (!copy_check.ok)
+        return reply.status(422).send({ error: 'Refinement failed the copy guard', copy_check })
+      await col.updateOne(
+        { id: post.id },
+        { $set: { content: refined, copy_check, generated: 'llm' } },
+      )
+      getAuditLogger()?.fromRequest(req, 'marketing.post_update', 'marketing_post', post.id, {
+        channel: post.channel,
+        edited: ['content', 'refined'],
+      })
+      return { post: { ...post, content: refined, copy_check, generated: 'llm' } }
+    },
+  )
+
   /** POST /marketing/posts/:id/approve — human decision; publishes and earns
    *  channel trust on success. Retries publish_failed posts. */
   app.post<{ Params: { id: string } }>(

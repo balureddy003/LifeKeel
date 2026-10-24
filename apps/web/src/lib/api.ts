@@ -5902,3 +5902,26 @@ export async function previewEmergencySheet(
 export function referralLink(code: string, campaign: 'sheet' | 'invite'): string {
   return `${window.location.origin}/signup?ref=${encodeURIComponent(code)}&utm_source=referral&utm_medium=social&utm_campaign=${campaign}`
 }
+
+/** PRD-219: operator instruction -> LLM rewrite of a draft (draft/failed only). */
+export async function refineMarketingPost(
+  postId: string,
+  instruction: string,
+): Promise<{ post: { id: string; content: string } }> {
+  const res = await credFetch(
+    `${getApiBase()}/marketing/posts/${encodeURIComponent(postId)}/refine`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${getAuthToken()}`,
+      },
+      body: JSON.stringify({ instruction }),
+    },
+  )
+  if (!res.ok)
+    throw new Error(
+      ((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'Refine failed',
+    )
+  return res.json()
+}

@@ -73,3 +73,11 @@ suspected bug (reproduce first); 36 is an audit before fixes.
 | `37-interruptible-setup-and-cross-device-continuity.md` | Autosave per step, "Continue setup", numeric input modes, resume on another device | lands with intent 28 |
 | `38-renewal-price-creep-tracking.md` | Premium history + alert on recorded premium increase — informational only (rule 2 edge) | detectors/policy-review.yaml; PRD-143 for capture |
 | `39-subscription-packaging-and-conversion-moments.md` | Annual plan frame, post-upload paywall moment, explicit free/Plus line | PRD-006, PRD-206 |
+
+## 40–42: marketing amplification (Buffer/Postiz-inspired, post-15/16)
+
+| File | Concern | Overlaps existing PRD |
+|---|---|---|
+| `40-short-link-click-tracking.md` | `/go/:tag` redirect counts clicks even when landing-page JS doesn't fire | extends PRD-218 |
+| `41-winner-requeue-and-timing-hints.md` | requeue winners as new drafts; hour_bucket hints on Plan tab | extends PRD-218; auto-timing stays with PRD-221 |
+| `42-per-channel-variants-and-card-gallery.md` | side-by-side per-channel edits + card grid | extends PRD-219 |
