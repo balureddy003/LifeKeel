@@ -643,6 +643,77 @@ export async function standingStatus(
   }
 }
 
+// ── attention items (read by Mission Control) ──────────────────────────────
+
+export const BANK_LOW_WEEKS = 2
+export const EXPIRING_SOON_DAYS = 5
+
+export type StandingIssueKind =
+  'bank_low' | 'expiring' | 'expired' | 'channel_paused' | 'candidates_waiting'
+
+export interface StandingIssue {
+  tenant_id: string
+  kind: StandingIssueKind
+  channel?: string
+  detail: string
+  at: Date
+  count?: number
+}
+
+/** Things a person should look at for tenants that have used standing approvals. */
+export async function standingIssues(db: Db, now = new Date()): Promise<StandingIssue[]> {
+  const out: StandingIssue[] = []
+  for (const policy of await policyCollection(db).find({}).toArray()) {
+    const tenantId = policy.tenant_id
+    const live = policy.enabled && policy.expires_at.getTime() > now.getTime()
+    const candidates = await bankCollection(db).countDocuments({
+      tenant_id: tenantId,
+      status: 'candidate',
+    })
+    if (candidates > 0)
+      out.push({
+        tenant_id: tenantId,
+        kind: 'candidates_waiting',
+        detail: `${candidates} drafted post${candidates === 1 ? ' is' : 's are'} waiting for your approval`,
+        at: now,
+        count: candidates,
+      })
+    if (policy.enabled && !live)
+      out.push({
+        tenant_id: tenantId,
+        kind: 'expired',
+        detail: 'The standing approval has expired, so nothing new is being scheduled.',
+        at: policy.expires_at,
+      })
+    if (!live) continue
+    const daysLeft = (policy.expires_at.getTime() - now.getTime()) / 86_400_000
+    if (daysLeft <= EXPIRING_SOON_DAYS)
+      out.push({
+        tenant_id: tenantId,
+        kind: 'expiring',
+        detail: `The standing approval ends in ${Math.max(0, Math.ceil(daysLeft))} day${Math.ceil(daysLeft) === 1 ? '' : 's'}; renew it to keep posting.`,
+        at: policy.expires_at,
+      })
+    for (const p of policy.paused_channels)
+      out.push({
+        tenant_id: tenantId,
+        kind: 'channel_paused',
+        channel: p.channel,
+        detail: `${p.channel} was paused: ${p.reason}.`,
+        at: p.at,
+      })
+    const status = await standingStatus(db, tenantId, now)
+    if (status.weeks_of_posts_left !== null && status.weeks_of_posts_left < BANK_LOW_WEEKS)
+      out.push({
+        tenant_id: tenantId,
+        kind: 'bank_low',
+        detail: `The bank can keep the pace for about ${status.weeks_of_posts_left} weeks before a text repeats.`,
+        at: now,
+      })
+  }
+  return out
+}
+
 function audit(
   tenantId: string,
   userId: string,

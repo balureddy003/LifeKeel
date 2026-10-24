@@ -63,3 +63,12 @@ generation is Tier 1, review-only — unaffected); `auto_execute_enabled` and
 scopes never matched an insight workflow so nothing else spent the
 counter); the `marketing.post_auto_publish` audit event vocabulary
 (historical records keep it).
+
+## Amendment (intent 46, standing approvals)
+
+Intent 03's rule is unchanged: a human approves every public text and `NEVER_AUTONOMOUS` names publishing.
+Intent 46 changes *when* that approval is given, not whether: a human approves exact texts into a content
+bank (by content hash), then sets a limited, expiring policy. The scheduler may then schedule those approved
+texts within the policy. It records the bank entry's human approver as `approved_by`, never publishes itself,
+and cannot enable itself. The tripwire in `trust-tier-gate.test.ts` pins this second door to the approved
+state. Unattended publishing of model-written text remains rejected here.

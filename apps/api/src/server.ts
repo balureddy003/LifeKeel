@@ -542,6 +542,10 @@ try {
             // networks), then fill the calendar from the approved bank. Publishing is still the sweep's job.
             const { runBreakers, scheduleStanding } = await import('./marketing/standing.js')
             await runBreakers(workflowDb)
+            // Drafting candidates is the unattended half: it only fills the bank with text waiting for a
+            // person, never schedules or publishes anything.
+            const { draftCandidates } = await import('./marketing/candidates.js')
+            await draftCandidates(workflowDb, taskLlmFor('marketing.social_draft.v1'))
             await scheduleStanding(workflowDb)
             // PRD-226: re-promote the top-visited guide not pushed in 30 days.
             const { reviveGuides } = await import('./routes/marketing-posts.js')
