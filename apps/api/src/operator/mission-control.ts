@@ -18,6 +18,7 @@ import {
 } from '../marketing/channels.js'
 import { nextMondayKey } from '../marketing/content-plan.js'
 import { standingIssues } from '../marketing/standing.js'
+import { searchIssues } from '../marketing/search-readback.js'
 import {
   hasOperatorPermission,
   type OperatorPermission,
@@ -37,6 +38,7 @@ export type DecisionKind =
   | 'channel_attention'
   | 'profile_drift'
   | 'standing_attention'
+  | 'search_attention'
 
 export type DecisionSeverity = 'danger' | 'warning' | 'info'
 
@@ -415,6 +417,24 @@ export async function buildDecisions(
         required_permission: 'marketing.manage',
         batchable: false,
         created_at: iso(issue.updated_at ?? now),
+      })
+    }
+
+    // Search Console and GA4 read-back: set up, but the last daily pull failed.
+    for (const issue of await searchIssues(db)) {
+      const label = issue.id === 'ga4' ? 'GA4' : 'Search Console'
+      out.push({
+        id: `search_attention:${issue.id}`,
+        kind: 'search_attention',
+        severity: 'warning',
+        title: `${label} read-back needs attention`,
+        why: issue.error,
+        effect: `Search numbers stop updating until the access is fixed. Nothing is written to ${label}.`,
+        undo: 'Not applicable — this is read-only.',
+        href: '/operator/marketing',
+        required_permission: 'marketing.manage',
+        batchable: false,
+        created_at: iso(issue.at),
       })
     }
 

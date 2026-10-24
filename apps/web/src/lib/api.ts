@@ -5123,6 +5123,78 @@ export function editBankEntry(id: string, content: string): Promise<BankEntry> {
   return marketingRequest(`/marketing/bank/${id}`, 'PATCH', { content })
 }
 
+// ── Operator: Search Console and GA4 read-back (read-only) ────────────────
+
+export type SearchIntegrationStatus = 'connected' | 'not_configured' | 'needs_attention'
+
+export interface SearchView {
+  window_days: number
+  lag_note: string
+  enough_data: boolean
+  configured: { credentials: boolean; search_console: boolean; ga4: boolean }
+  integrations: Record<
+    'search_console' | 'ga4',
+    { status: SearchIntegrationStatus; last_ok_at: string | null; last_error: string | null }
+  >
+  totals: { clicks: number; impressions: number }
+  top_queries: {
+    query: string
+    clicks: number
+    impressions: number
+    ctr: number
+    position: number
+  }[]
+  top_pages: { path: string; clicks: number; impressions: number; ctr: number; position: number }[]
+  near_misses: {
+    query: string
+    clicks: number
+    impressions: number
+    ctr: number
+    position: number
+  }[]
+  ga4: {
+    sessions: number
+    first_party_visits: number
+    note: string
+    by_source: { source_medium: string; sessions: number; engaged: number; key_events: number }[]
+  }
+}
+
+export interface TopicSuggestion {
+  id: string
+  query: string
+  impressions: number
+  clicks: number
+  position: number
+  nearest: { kind: 'brief' | 'guide'; id: string; title: string; overlap: number } | null
+}
+
+export function fetchSearchView(days = 28): Promise<SearchView> {
+  return operatorRequest(`/operator/marketing/search?days=${days}`)
+}
+
+export async function fetchTopicSuggestions(): Promise<TopicSuggestion[]> {
+  const data = await operatorRequest<{ suggestions: TopicSuggestion[] }>(
+    '/operator/marketing/search/suggestions',
+  )
+  return data.suggestions
+}
+
+export function runSearchReadbackNow(): Promise<Record<string, unknown>> {
+  return marketingRequest('/operator/marketing/search/run', 'POST')
+}
+
+export function generateTopicSuggestions(): Promise<{ suggested: number }> {
+  return marketingRequest('/operator/marketing/search/suggestions/generate', 'POST')
+}
+
+export function setTopicSuggestion(id: string, action: 'dismiss' | 'used'): Promise<{ ok: true }> {
+  return marketingRequest(
+    `/operator/marketing/search/suggestions/${encodeURIComponent(id)}/${action}`,
+    'POST',
+  )
+}
+
 // ── Operator: marketing economics ─────────────────────────────────────────
 
 export interface EconomicsRate {

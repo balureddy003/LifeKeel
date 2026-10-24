@@ -405,3 +405,14 @@ export async function searchView(db: Db, days = 28, now = new Date()) {
     },
   }
 }
+
+/** Integrations that have been set up but failed their last pull (for Mission Control). */
+export async function searchIssues(
+  db: Db,
+): Promise<{ id: IntegrationId; error: string; at: Date }[]> {
+  return (await stateCol(db).find({ status: 'needs_attention' }).toArray()).map((s) => ({
+    id: s._id,
+    error: s.last_error ?? 'The last pull failed',
+    at: s.last_attempt_at,
+  }))
+}

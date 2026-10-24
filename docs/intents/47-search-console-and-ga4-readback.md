@@ -106,3 +106,19 @@ daily job must be a no-op. Do not claim live verification in the PR unless that 
 **Open decisions for the owner** — the Search Console property type (domain versus URL prefix); whether GA4 stays
 consent-gated on the public site (default: yes, which means GA4 undercounts versus the first-party funnel, and the
 comparison panel should say so); the impressions threshold for suggestions (default 20 over 28 days).
+
+## Build record
+
+Built as four stacked draft PRs: shared Google auth and read-only clients (#239), daily rollup, route and cron (#240),
+topic suggestions (#241), and the Search tab with a Mission Control item (this PR).
+
+Differences from the spec above:
+- Setup steps and integration status live in the **Search** tab, not the Connections tab, to avoid reworking that
+  panel; the status and last error are the same.
+- GA4 `keyEvents` is the metric used for key events; confirm the metric name against the GA4 Data API when first
+  running against a real property.
+- Suggestions skip queries that ask for a personal recommendation ("best", "should I switch", "cheapest").
+
+Not verified: nothing has been run against real Google APIs. The check in the Verification section above is still
+to do once the service account exists.
+
