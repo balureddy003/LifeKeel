@@ -70,6 +70,59 @@ describe('Mission Control page', () => {
     expect(screen.getByText(/never batched/i)).toBeTruthy()
   })
 
+  it('shows the social decisions with their own labels, an Open link, and no batch checkbox', async () => {
+    const social: MissionDecision[] = [
+      {
+        ...base,
+        id: 'plan_week:2026-10-26',
+        kind: 'plan_week',
+        severity: 'warning',
+        title: 'Review and approve the week of 2026-10-26: 18 posts across 6 platforms',
+        href: '/operator/marketing',
+        batchable: false,
+        required_permission: 'marketing.manage',
+      },
+      {
+        ...base,
+        id: 'channel_attention:t1:linkedin',
+        kind: 'channel_attention',
+        severity: 'danger',
+        title: 'LinkedIn needs reconnecting',
+        href: '/operator/marketing',
+        batchable: false,
+        required_permission: 'marketing.manage',
+      },
+      {
+        ...base,
+        id: 'profile_drift:t1:x',
+        kind: 'profile_drift',
+        severity: 'info',
+        title: 'X profile differs from the approved text: bio',
+        href: '/operator/marketing',
+        batchable: false,
+        required_permission: 'marketing.manage',
+      },
+      {
+        ...base,
+        id: 'plan_missing:2026-10-26',
+        kind: 'plan_missing',
+        severity: 'warning',
+        title: 'No plan yet for the week of 2026-10-26',
+        href: '/operator/marketing',
+        batchable: false,
+        required_permission: 'marketing.manage',
+      },
+    ]
+    fetchMissionControl.mockResolvedValue({ decisions: social, autopilot_paused: false })
+    render(<MissionControlPage />)
+    await screen.findByText(/Review and approve the week of 2026-10-26/)
+    for (const label of ['Week to approve', 'Connection', 'Profile', 'Plan missing'])
+      expect(screen.getByText(label)).toBeTruthy()
+    // None of these can be approved in a batch — each opens its own page.
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
+    expect(screen.getAllByRole('link', { name: /Open/ })).toHaveLength(4)
+  })
+
   it('shows the kill-switch banner when autopilot is paused', async () => {
     fetchMissionControl.mockResolvedValue({ decisions, autopilot_paused: true })
     render(<MissionControlPage />)

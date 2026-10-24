@@ -53,6 +53,7 @@ import { PostCalendar } from './_components/PostCalendar'
 import { PlanPanel } from './_components/PlanPanel'
 import { FunnelPanel } from './_components/FunnelPanel'
 import { EconomicsPanel } from './_components/EconomicsPanel'
+import { ConnectionsPanel } from './_components/ConnectionsPanel'
 import { ReasonAction } from '../_components/ReasonAction'
 
 const STATE_STYLE: Record<MarketingPost['state'], string> = {
@@ -112,7 +113,15 @@ function toLocalInput(iso: string): string {
 }
 
 type Tab =
-  'compose' | 'queue' | 'plan' | 'calendar' | 'performance' | 'economics' | 'campaigns' | 'profiles'
+  | 'compose'
+  | 'queue'
+  | 'plan'
+  | 'calendar'
+  | 'performance'
+  | 'economics'
+  | 'connections'
+  | 'campaigns'
+  | 'profiles'
 
 export default function MarketingPage() {
   const toast = useToast()
@@ -530,6 +539,7 @@ export default function MarketingPage() {
                 ['calendar', 'Calendar'],
                 ['performance', 'Performance'],
                 ['economics', 'Economics'],
+                ['connections', 'Connections'],
                 ['campaigns', 'Campaigns'],
                 ['profiles', 'Profiles'],
               ] as [Tab, string][]
@@ -1195,6 +1205,7 @@ export default function MarketingPage() {
 
           {/* Campaigns — one-shot targeted email to filtered cohorts */}
           {tab === 'economics' && <EconomicsPanel />}
+          {tab === 'connections' && <ConnectionsPanel />}
           {tab === 'campaigns' && <CampaignsPanel />}
           {tab === 'profiles' && <ProfilesPanel />}
         </>

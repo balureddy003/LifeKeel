@@ -23,6 +23,10 @@ const KIND_LABEL: Record<MissionDecision['kind'], string> = {
   post_failed: 'Post failed',
   campaign_draft: 'Campaign draft',
   dual_approval: 'Second approval',
+  plan_week: 'Week to approve',
+  plan_missing: 'Plan missing',
+  channel_attention: 'Connection',
+  profile_drift: 'Profile',
 }
 
 const SEVERITY_STYLE: Record<MissionDecision['severity'], string> = {
