@@ -67,7 +67,7 @@ suspected bug (reproduce first); 36 is an audit before fixes.
 
 | File | Concern | Overlaps existing PRD |
 |---|---|---|
-| `34-post-login-routing-state-fragility.md` | "Create Family Group" shown to accounts that have a family | — |
+| `34-post-login-routing-state-fragility.md` | ~~"Create Family Group" shown to accounts that have a family~~ **implemented — PR #243** | — |
 | `35-mobile-navigation-and-tablet-layout.md` | Nav density at 390px; tablet width unused | — |
 | `36-accessibility-baseline-audit.md` | Keyboard order, focus, contrast, labels unconfirmed | — |
 | `37-interruptible-setup-and-cross-device-continuity.md` | Autosave per step, "Continue setup", numeric input modes, resume on another device | lands with intent 28 |

@@ -29,3 +29,9 @@ model changes.
 
 **Becomes** — fast-path fix PR if the race is localized; the reproduction
 steps come first.
+
+---
+
+**Status: implemented** — fix in PR #243 (`fix/post-login-family-gate`). A failed
+`/family` read now sets `familyLoadFailed` → AuthGate shows a retry card;
+create-family only renders on a confirmed `family: null`.
