@@ -16,9 +16,13 @@ async function gotoWithWarmup(page: import('@playwright/test').Page, url: string
   }
 }
 
-test('a policy-less event type shows the static sample scenario', async ({ page }) => {
+test('a policy-less event type names its missing input (intent 21)', async ({ page }) => {
   await gotoWithWarmup(page, '/events/property')
-  await expect(page.getByText('Sample scenario — connect your data for a real one')).toBeVisible()
+  await expect(
+    page.getByText(
+      'Using the data you have so far — add a home insurance policy on file for a real number.',
+    ),
+  ).toBeVisible()
 })
 
 test('a seeded car policy flips /events/car to real, live-computed data', async ({ page }) => {
