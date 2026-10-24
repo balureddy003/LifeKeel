@@ -381,6 +381,31 @@ describe('/marketing/posts', () => {
     expect(ok.statusCode).toBe(200)
   })
 
+  it('refuses to approve an Instagram draft that has no image, and approves it once it has one', async () => {
+    const postiz = fakePostiz()
+    const { app, posts } = await buildApp({ postiz })
+    // Weekly-plan drafts bypass the create route's image check — the approve route must hold the line.
+    posts.push({
+      id: 'ig-1',
+      tenant_id: TENANT,
+      channel: 'instagram',
+      integration_id: 'instagram:connection',
+      content: "LifeKeel keeps your family's chart. Free to start.",
+      state: 'draft',
+      created_by: 'plan',
+      created_at: new Date(),
+    })
+    const refused = await app.inject({ method: 'POST', url: '/marketing/posts/ig-1/approve' })
+    expect(refused.statusCode).toBe(422)
+    expect(refused.json().error).toBe('image_required')
+    expect(postiz.createPost).not.toHaveBeenCalled()
+    expect(posts[0]!['state']).toBe('draft')
+
+    posts[0]!['media_url'] = 'https://cdn.example.com/a.png'
+    const ok = await app.inject({ method: 'POST', url: '/marketing/posts/ig-1/approve' })
+    expect(ok.statusCode).toBe(200)
+  })
+
   it('stays approved without dispatching when scheduled_at is still future, then the sweep publishes it when due', async () => {
     const postiz = fakePostiz()
     const { app, db, posts } = await buildApp({ postiz, settings: TRUSTED })

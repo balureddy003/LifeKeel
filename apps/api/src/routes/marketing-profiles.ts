@@ -4,7 +4,7 @@
  *   GET  /marketing/profiles                    desired text, last read-back and drift, per network
  *   PUT  /marketing/profiles/:channel           edit the desired text (limits and the copy guard apply)
  *   PUT  /marketing/profiles/:channel/checklist tick a manual setup step
- *   POST /marketing/profiles/:channel/check     read the live profile and compute drift (Bluesky)
+ *   POST /marketing/profiles/:channel/check     read the live profile and compute drift (Bluesky, X, Facebook, Instagram, Threads)
  *   POST /marketing/profiles/:channel/apply     write the approved text to the network (Bluesky)
  *
  * Autonomy model: reading and planning are Tier 0. Writing to a network profile is public and
@@ -32,11 +32,14 @@ import {
   desiredHash,
   isProfileChannel,
   readBlueskyProfile,
+  readConnectorProfile,
   validateDesired,
+  type ConnectorRead,
   type DesiredProfile,
   type ProfileChannel,
   type ProfileDoc,
 } from '../marketing/channel-profiles.js'
+import { profileReader } from '../marketing/profile-reader.js'
 import { getAutomation } from './marketing-posts.js'
 
 const DesiredSchema = z.object({
@@ -50,6 +53,8 @@ export interface MarketingProfileOptions {
   /** Test seam: skip the operator permission check for these tenants. */
   operatorTenants?: string[]
   readProfile?: typeof readBlueskyProfile
+  /** Test seam for the OAuth platforms (X, Facebook, Instagram, Threads). */
+  connectorRead?: ConnectorRead
   applyProfile?: typeof applyBlueskyProfile
 }
 
@@ -62,6 +67,7 @@ export function registerMarketingProfileRoutes(
   const connections = db.collection<SocialConnectionDoc>('social_connections')
   col.createIndex({ tenant_id: 1, channel: 1 }, { unique: true }).catch(() => {})
   const read = opts?.readProfile ?? readBlueskyProfile
+  const connectorRead: ConnectorRead = opts?.connectorRead ?? profileReader(db)
   const apply = opts?.applyProfile ?? applyBlueskyProfile
 
   const testGate = async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
@@ -179,7 +185,10 @@ export function registerMarketingProfileRoutes(
       const desired = doc?.desired ?? DEFAULT_PROFILES[channel]
       let actual: NonNullable<ProfileDoc['actual']>
       try {
-        actual = await read(desired.handle)
+        actual =
+          channel === 'bluesky'
+            ? await read(desired.handle)
+            : await readConnectorProfile(db, tenant_id, channel, connectorRead)
       } catch (err) {
         return reply
           .status(502)
@@ -190,7 +199,7 @@ export function registerMarketingProfileRoutes(
         {
           $set: {
             actual,
-            drift: computeDrift(desired, actual),
+            drift: computeDrift(desired, actual, channel),
             updated_by: user_id,
             updated_at: new Date(),
           },
