@@ -16,6 +16,7 @@ import {
   fetchPlanWeek,
   generatePlanWeek,
   skipPlanItem,
+  updateMarketingPost,
   type PlanPostView,
   type PlanWeekView,
 } from '@/lib/api'
@@ -117,6 +118,16 @@ export function PlanPanel() {
 
       {!data && <div className="shimmer h-24 rounded-2xl" />}
 
+      {data?.skipped_channels && data.skipped_channels.length > 0 && (
+        <GlassCard className="p-3">
+          <p role="status" className="text-xs text-warning">
+            Left out of this plan:{' '}
+            {data.skipped_channels.map((s) => `${s.channel} (${s.reason})`).join('; ')}. Reconnect
+            in the Connections tab.
+          </p>
+        </GlassCard>
+      )}
+
       {data && data.items.length === 0 && (
         <GlassCard className="p-4">
           <p className="text-sm text-ink-secondary mb-3">
@@ -180,6 +191,14 @@ export function PlanPanel() {
                   <span className="block text-sm text-ink-primary whitespace-pre-wrap">
                     {p.content}
                   </span>
+                  {p.needs_image && (
+                    <ImageField
+                      postId={p.id}
+                      disabled={busy !== null}
+                      onSaved={() => run('image', async () => {}, 'Image attached')}
+                      attach={(url) => updateMarketingPost(p.id, { media_url: url })}
+                    />
+                  )}
                   {!p.copy_check.ok && (
                     <span role="alert" className="block text-xs text-danger mt-1">
                       Fails the copy guard:{' '}
@@ -229,5 +248,59 @@ export function PlanPanel() {
 }
 
 function canApprove(p: PlanPostView): boolean {
-  return p.copy_check.ok && (p.state === 'draft' || p.state === 'publish_failed')
+  return p.copy_check.ok && !p.needs_image && (p.state === 'draft' || p.state === 'publish_failed')
+}
+
+/** Instagram cannot post text alone: the draft stays unapprovable until it has an image. */
+function ImageField({
+  postId,
+  disabled,
+  attach,
+  onSaved,
+}: {
+  postId: string
+  disabled: boolean
+  attach: (url: string) => Promise<unknown>
+  onSaved: () => void
+}) {
+  const [url, setUrl] = useState('')
+  const [err, setErr] = useState<string | null>(null)
+  const valid = /^https:\/\/\S+$/.test(url.trim())
+  return (
+    <span className="block mt-1">
+      <span className="block text-xs text-warning">
+        Instagram needs an image before this can be approved.
+      </span>
+      <span className="flex gap-2 mt-1">
+        <input
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://… image URL"
+          aria-label={`Image URL for post ${postId}`}
+          className="glass-input flex-1 rounded-lg px-2 py-1 text-xs"
+        />
+        <button
+          type="button"
+          disabled={disabled || !valid}
+          onClick={async () => {
+            setErr(null)
+            try {
+              await attach(url.trim())
+              onSaved()
+            } catch (e) {
+              setErr(e instanceof Error ? e.message : 'Could not attach the image')
+            }
+          }}
+          className="rounded-lg px-2.5 py-1 text-xs font-semibold bg-family-500/15 text-family-400 disabled:opacity-40"
+        >
+          Attach image
+        </button>
+      </span>
+      {err && (
+        <span role="alert" className="block text-xs text-danger mt-1">
+          {err}
+        </span>
+      )}
+    </span>
+  )
 }

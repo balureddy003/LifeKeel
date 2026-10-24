@@ -41,8 +41,9 @@ export interface ProfileDoc {
   actual?: {
     display_name: string
     bio: string
-    has_avatar: boolean
-    has_banner: boolean
+    /** null = this network's API does not say; drift never reports an unknown. */
+    has_avatar: boolean | null
+    has_banner: boolean | null
     checked_at: Date
   }
   drift: ProfileDrift[]
@@ -69,7 +70,13 @@ export const BIO_LIMIT: Record<ProfileChannel, number> = {
 }
 
 /** Networks whose API lets the console read the live profile, and write it after approval. */
-export const SUPPORTS_CHECK: ReadonlySet<ProfileChannel> = new Set(['bluesky'])
+export const SUPPORTS_CHECK: ReadonlySet<ProfileChannel> = new Set([
+  'bluesky',
+  'x',
+  'facebook',
+  'instagram',
+  'threads',
+])
 export const SUPPORTS_APPLY: ReadonlySet<ProfileChannel> = new Set(['bluesky'])
 
 const COMMON_STEPS = [
@@ -158,15 +165,21 @@ const norm = (s: string) => s.replace(/\s+/g, ' ').trim()
 export function computeDrift(
   desired: DesiredProfile,
   actual: NonNullable<ProfileDoc['actual']>,
+  channel?: ProfileChannel,
 ): ProfileDrift[] {
+  // X rewrites links in a bio into t.co short links, so a link can never match
+  // what was typed; compare the wording around it instead.
+  const cmp = (t: string) => (channel === 'x' ? norm(t.replace(/https?:\/\/\S+/g, '')) : norm(t))
   const out: ProfileDrift[] = []
   if (norm(desired.display_name) !== norm(actual.display_name))
     out.push({ field: 'display_name', desired: desired.display_name, actual: actual.display_name })
-  if (norm(desired.bio) !== norm(actual.bio))
+  if (cmp(desired.bio) !== cmp(actual.bio))
     out.push({ field: 'bio', desired: desired.bio, actual: actual.bio })
-  if (!actual.has_avatar)
+  // Only a definite "no" counts: null means the network's API cannot tell us.
+  if (actual.has_avatar === false)
     out.push({ field: 'avatar', desired: 'a profile picture', actual: 'none' })
-  if (!actual.has_banner) out.push({ field: 'banner', desired: 'a banner image', actual: 'none' })
+  if (actual.has_banner === false)
+    out.push({ field: 'banner', desired: 'a banner image', actual: 'none' })
   return out
 }
 
@@ -266,4 +279,105 @@ export async function applyBlueskyProfile(
     },
     { label: 'bluesky putRecord', breakerKey: `bluesky:${conn.handle}` },
   )
+}
+
+type Actual = NonNullable<ProfileDoc['actual']>
+
+/** A function that runs one read-only connector action for a tenant. */
+export type ConnectorRead = (
+  tenantId: string,
+  connectorId: string,
+  actionId: string,
+  params: Record<string, unknown>,
+) => Promise<{ ok: boolean; status: number; body: unknown }>
+
+const str = (v: unknown): string => (typeof v === 'string' ? v : '')
+
+/**
+ * Read the live profile on X, Facebook, Instagram or Threads through the
+ * tenant's OAuth connection. Read-only: nothing here can change a profile.
+ * Throws with a plain reason when the channel is not connected or the read fails.
+ */
+export async function readConnectorProfile(
+  db: Db,
+  tenantId: string,
+  channel: ProfileChannel,
+  read: ConnectorRead,
+): Promise<Actual> {
+  const connectorId = (
+    {
+      x: 'twitter_x',
+      facebook: 'facebook_pages',
+      instagram: 'instagram_business',
+      threads: 'threads',
+    } as Record<string, string>
+  )[channel]
+  if (!connectorId) throw new Error(`${channel} profile cannot be read by the console`)
+  const cred = await db
+    .collection('connector_credentials')
+    .findOne({ tenant_id: tenantId, connector_id: connectorId })
+  if (!cred) throw new Error(`${channel} is not connected`)
+  if (cred['needs_reauth'] === true)
+    throw new Error(`${channel} token expired — reconnect it first`)
+  const extra = (cred['extra'] ?? {}) as Record<string, string>
+
+  const params: Record<string, unknown> = {}
+  let actionId: string
+  if (channel === 'x') actionId = 'getUsersMe'
+  else if (channel === 'facebook') {
+    actionId = 'get_profile'
+    if (!extra['page_id']) throw new Error('facebook connection has no Page id — reconnect it')
+    params['page_id'] = extra['page_id']
+  } else if (channel === 'instagram') {
+    actionId = 'get_profile'
+    if (!extra['ig_user_id'])
+      throw new Error('instagram connection has no account id — reconnect it')
+    params['ig_user_id'] = extra['ig_user_id']
+  } else actionId = 'get_profile'
+
+  const res = await read(tenantId, connectorId, actionId, params)
+  if (!res.ok) throw new Error(`${channel} profile read failed (HTTP ${res.status})`)
+  const body = (res.body ?? {}) as Record<string, unknown>
+  const now = new Date()
+
+  if (channel === 'x') {
+    const d = (body['data'] ?? {}) as Record<string, unknown>
+    return {
+      display_name: str(d['name']),
+      bio: str(d['description']),
+      // X's stock avatar URL contains "default_profile_images".
+      has_avatar:
+        Boolean(str(d['profile_image_url'])) &&
+        !/default_profile/.test(str(d['profile_image_url'])),
+      has_banner: null,
+      checked_at: now,
+    }
+  }
+  if (channel === 'facebook') {
+    const picture = ((body['picture'] as Record<string, unknown> | undefined)?.['data'] ??
+      {}) as Record<string, unknown>
+    return {
+      display_name: str(body['name']),
+      bio: str(body['about']),
+      has_avatar: picture['is_silhouette'] === undefined ? null : picture['is_silhouette'] !== true,
+      has_banner: Boolean(body['cover']),
+      checked_at: now,
+    }
+  }
+  if (channel === 'instagram') {
+    return {
+      display_name: str(body['name']) || str(body['username']),
+      bio: str(body['biography']),
+      has_avatar: Boolean(str(body['profile_picture_url'])),
+      has_banner: null,
+      checked_at: now,
+    }
+  }
+  return {
+    display_name: str(body['name']) || str(body['username']),
+    bio: str(body['threads_biography']),
+    has_avatar: Boolean(str(body['threads_profile_picture_url'])),
+    has_banner: null,
+    checked_at: now,
+  }
 }

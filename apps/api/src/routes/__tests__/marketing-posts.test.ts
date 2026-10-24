@@ -12,6 +12,7 @@ import {
   publishDueMarketingPosts,
   generateDailyMarketingDrafts,
   pollMarketingEngagement,
+  draftPostText,
 } from '../marketing-posts.js'
 import { AUTO_EXECUTE_TRUST_THRESHOLD } from '../../jobs/auto-execute-trusted.js'
 import { withTenantKeys } from '../../__tests__/helpers/tenant-keys-fake.js'
@@ -380,6 +381,31 @@ describe('/marketing/posts', () => {
     expect(ok.statusCode).toBe(200)
   })
 
+  it('refuses to approve an Instagram draft that has no image, and approves it once it has one', async () => {
+    const postiz = fakePostiz()
+    const { app, posts } = await buildApp({ postiz })
+    // Weekly-plan drafts bypass the create route's image check — the approve route must hold the line.
+    posts.push({
+      id: 'ig-1',
+      tenant_id: TENANT,
+      channel: 'instagram',
+      integration_id: 'instagram:connection',
+      content: "LifeKeel keeps your family's chart. Free to start.",
+      state: 'draft',
+      created_by: 'plan',
+      created_at: new Date(),
+    })
+    const refused = await app.inject({ method: 'POST', url: '/marketing/posts/ig-1/approve' })
+    expect(refused.statusCode).toBe(422)
+    expect(refused.json().error).toBe('image_required')
+    expect(postiz.createPost).not.toHaveBeenCalled()
+    expect(posts[0]!['state']).toBe('draft')
+
+    posts[0]!['media_url'] = 'https://cdn.example.com/a.png'
+    const ok = await app.inject({ method: 'POST', url: '/marketing/posts/ig-1/approve' })
+    expect(ok.statusCode).toBe(200)
+  })
+
   it('stays approved without dispatching when scheduled_at is still future, then the sweep publishes it when due', async () => {
     const postiz = fakePostiz()
     const { app, db, posts } = await buildApp({ postiz, settings: TRUSTED })
@@ -406,6 +432,54 @@ describe('/marketing/posts', () => {
       expect.objectContaining({ channel: 'x', type: 'now' }),
     )
     expect(posts[0]!['state']).toBe('published')
+  })
+
+  it('the scheduled sweep honours dry_run_mode too — an approved week never reaches the channel', async () => {
+    const postiz = fakePostiz()
+    const { db, posts } = await buildApp({ postiz, settings: { dry_run_mode: true } })
+    // The weekly plan's approve route only marks posts 'approved' with a time; the sweep does the sending.
+    posts.push({
+      id: 'planned-1',
+      tenant_id: TENANT,
+      channel: 'x',
+      integration_id: 'x:connection',
+      content: "LifeKeel keeps your family's chart. Free to start.",
+      state: 'approved',
+      approved_by: USER,
+      scheduled_at: new Date(Date.now() - 1000),
+      content_item_id: 'ci-1',
+      created_by: 'plan',
+      created_at: new Date(),
+    })
+    expect(await publishDueMarketingPosts(db, postiz)).toBe(1)
+    expect(posts[0]!['state']).toBe('published')
+    expect(posts[0]!['dry_run']).toBe(true)
+    expect(postiz.createPost).not.toHaveBeenCalled()
+  })
+
+  it('the sweep decides dry-run per tenant, so one tenant rehearsing does not silence another', async () => {
+    const postiz = fakePostiz()
+    const { db, posts, settingsDocs } = await buildApp({ postiz, settings: { dry_run_mode: true } })
+    settingsDocs.push({ tenant_id: 'tenant-live', automation: {} })
+    const due = (tenant: string, id: string) => ({
+      id,
+      tenant_id: tenant,
+      channel: 'x',
+      integration_id: 'x:connection',
+      content: "LifeKeel keeps your family's chart. Free to start.",
+      state: 'approved',
+      scheduled_at: new Date(Date.now() - 1000),
+      created_by: 'u',
+      created_at: new Date(),
+    })
+    posts.push(due(TENANT, 'rehearsal'), due('tenant-live', 'real'))
+    await publishDueMarketingPosts(db, postiz)
+    expect(postiz.createPost).toHaveBeenCalledTimes(1)
+    const rehearsal = posts.find((p) => p['id'] === 'rehearsal')!
+    const real = posts.find((p) => p['id'] === 'real')!
+    expect(rehearsal['dry_run']).toBe(true)
+    expect(real['dry_run']).toBeUndefined()
+    expect(real['state']).toBe('published')
   })
 
   it('a Postiz failure lands in publish_failed with the error kept — and earns no trust', async () => {
@@ -1451,5 +1525,47 @@ describe('learning loop — performance-informed generation', () => {
     expect(seen[0]).not.toContain('WINNER')
     expect(seen[0]).not.toContain('FLOP')
     expect(res.json().post.content).toBe('fresh draft')
+  })
+})
+
+describe('draftPostText fallback when no model is available', () => {
+  const broken = async () => {
+    throw new Error('no provider')
+  }
+  const LINK = 'https://lifekeel.co.uk/?utm_source=x&utm_medium=social'
+  const SCAFFOLD =
+    /Topic:|Facts you may use|Blog post to promote|Link to include verbatim|Title:|Summary:/i
+
+  it('posts the plan facts without the prompt scaffolding, with the link once', async () => {
+    const block = `Topic: The chart\nFacts you may use (use nothing else):\nLifeKeel keeps a family's chart. Free to start.\nLink to include verbatim: ${LINK}`
+    const { content, generated } = await draftPostText(broken, 'x', block, LINK)
+    expect(generated).toBe('template')
+    expect(content).not.toMatch(SCAFFOLD)
+    expect(content).toBe(`LifeKeel keeps a family's chart. Free to start.\n\n${LINK}`)
+    expect(content.split(LINK)).toHaveLength(2)
+  })
+
+  it('posts a blog promotion as its title and summary, without the labels', async () => {
+    const block = `Blog post to promote:\nTitle: The cover gap\nSummary: Most families miss it.\nLink to include verbatim: ${LINK}`
+    const { content } = await draftPostText(broken, 'bluesky', block, LINK)
+    expect(content).not.toMatch(SCAFFOLD)
+    expect(content).toBe(`The cover gap\nMost families miss it.\n\n${LINK}`)
+  })
+
+  it('still fits the channel limit, keeping room for the link', async () => {
+    const block = `Topic: T\nFacts you may use (use nothing else):\n${'word '.repeat(200)}\nLink to include verbatim: ${LINK}`
+    const { content } = await draftPostText(broken, 'x', block, LINK)
+    expect(content.length).toBeLessThanOrEqual(280)
+    expect(content.endsWith(LINK)).toBe(true)
+  })
+
+  it('works with no link', async () => {
+    const { content } = await draftPostText(
+      broken,
+      'x',
+      'Topic: T\nFacts you may use (use nothing else):\nJust the fact.',
+      '',
+    )
+    expect(content).toBe('Just the fact.')
   })
 })

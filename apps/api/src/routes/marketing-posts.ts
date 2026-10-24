@@ -30,6 +30,12 @@
  * approved post with a future scheduled_at stays 'approved' until the
  * marketing-publish cron sweep dispatches it when due.
  */
+import {
+  IMAGE_REQUIRED_CHANNELS,
+  channelHealth,
+  missingImage,
+  plannableChannels,
+} from '../marketing/channels.js'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { Db } from 'mongodb'
 import { randomUUID } from 'node:crypto'
@@ -277,6 +283,15 @@ export async function publishDueMarketingPosts(
     .filter((p) => !p.scheduled_at || p.scheduled_at.getTime() <= now.getTime())
     .slice(0, 20)
   let dispatched = 0
+  // A simulating tenant's scheduled posts are rehearsed here too: approving a future-dated
+  // post parks it 'approved', so this sweep — not the approve route — is what would otherwise
+  // send it for real.
+  const dryRunByTenant = new Map<string, boolean>()
+  const isDryRun = async (tenantId: string) => {
+    if (!dryRunByTenant.has(tenantId))
+      dryRunByTenant.set(tenantId, (await getAutomation(db, tenantId)).dry_run_mode === true)
+    return dryRunByTenant.get(tenantId)!
+  }
   for (const post of due) {
     // The rules can tighten after approval; copy that no longer passes is held, not sent.
     const recheck = checkCopy(post.content, 'social')
@@ -301,7 +316,9 @@ export async function publishDueMarketingPosts(
     // publishPost re-writes state to published/publish_failed on outcome;
     // a pause leaves it 'publishing' — restore 'approved' so the next tick
     // retries instead of stranding it.
-    const result = await publishPost(db, col, client, post, { dryRun: false })
+    const result = await publishPost(db, col, client, post, {
+      dryRun: await isDryRun(post.tenant_id),
+    })
     if (!result.ok && (await getPlatformConfig(db)).marketing_paused) {
       await col.updateOne({ id: post.id, state: 'publishing' }, { $set: { state: 'approved' } })
     }
@@ -322,7 +339,6 @@ export async function generateDailyMarketingDrafts(
   llmFor: (tenantId: string) => LlmFn,
 ): Promise<number> {
   const postsCol = db.collection<MarketingPostDoc>('marketing_posts')
-  const connsCol = db.collection<SocialConnectionDoc>('social_connections')
   const blogsCol = db.collection('blog_posts')
   const optedIn = (await db.collection('tenant_settings').find({}).toArray()).filter(
     (d) =>
@@ -334,8 +350,12 @@ export async function generateDailyMarketingDrafts(
   let queued = 0
   for (const s of optedIn) {
     const tenantId = s['tenant_id'] as string
-    const conn = await connsCol.findOne({ tenant_id: tenantId, status: 'active' })
-    if (!conn) continue
+    // One blog-promo draft a day goes to the first healthy text channel — images
+    // are not generated here, so Instagram is left to the weekly plan.
+    const channel = (await plannableChannels(db, tenantId)).channels.find(
+      (c) => !IMAGE_REQUIRED_CHANNELS.has(c),
+    )
+    if (!channel) continue
     const usedSlugs = new Set(
       (await postsCol.find({ tenant_id: tenantId }).toArray())
         .map((p) => p.source_blog_slug)
@@ -347,12 +367,12 @@ export async function generateDailyMarketingDrafts(
     if (!candidate) continue
 
     const slug = candidate['slug'] as string
-    const src = await blogSourceBlock(db, slug, conn.channel)
+    const src = await blogSourceBlock(db, slug, channel)
     if (!src) continue
-    const learning = await learningContextBlock(db, tenantId, conn.channel)
+    const learning = await learningContextBlock(db, tenantId, channel)
     const { content, generated } = await draftPostText(
       llmFor(tenantId),
-      conn.channel,
+      channel,
       src.sourceBlock,
       src.link,
       learning,
@@ -360,8 +380,8 @@ export async function generateDailyMarketingDrafts(
     const post: MarketingPostDoc = {
       id: randomUUID(),
       tenant_id: tenantId,
-      channel: conn.channel,
-      integration_id: `${conn.channel}:connection`,
+      channel,
+      integration_id: `${channel}:connection`,
       content,
       state: 'draft',
       generated,
@@ -1087,11 +1107,22 @@ export async function draftPostText(
     if (!content) throw new Error('empty generation')
     return { content, generated: 'llm' }
   } catch {
-    const body = clampPost(
-      sourceBlock.split('\n').slice(1).join('\n'),
-      limit,
-      link ? link.length + 2 : 0,
-    )
+    // No model: post the facts themselves. The source block also carries prompt scaffolding
+    // for the model ("Topic:", "Facts you may use…", "Blog post to promote:", "Link to include
+    // verbatim…", and "Title:"/"Summary:" labels) that must never reach a public post; the
+    // link is appended once below.
+    const facts = sourceBlock
+      .split('\n')
+      .filter(
+        (l) =>
+          !/^(Topic:|Facts you may use|Blog post to promote:|Link to include verbatim:)/i.test(
+            l.trim(),
+          ),
+      )
+      .map((l) => l.replace(/^\s*(Title|Summary):\s*/i, ''))
+      .join('\n')
+      .trim()
+    const body = clampPost(facts, limit, link ? link.length + 2 : 0)
     return { generated: 'template', content: `${body}${link ? `\n\n${link}` : ''}` }
   }
 }
@@ -1229,6 +1260,15 @@ export function registerMarketingPostRoutes(
       ],
     }
   })
+
+  /** GET /marketing/channels/health — every supported platform with its state
+   *  (connected, expiring_soon, needs_reauth, error, not_configured), token
+   *  expiry, last real publish, last error, whether the developer-app
+   *  credentials are present in this deployment (a boolean, never a value),
+   *  and the exact steps to connect it. */
+  app.get('/marketing/channels/health', { preHandler: readGate }, async (req) => ({
+    channels: await channelHealth(db, req.authContext.tenant_id),
+  }))
 
   /** POST /marketing/connections/bluesky — verify the app password against
    *  bsky.social before storing it (encrypted). A bad password is rejected
@@ -1519,6 +1559,11 @@ export function registerMarketingPostRoutes(
             .status(422)
             .send({ error: 'copy_guard_failed', violations: check.violations })
         }
+        if (missingImage(current))
+          return reply.status(422).send({
+            error: 'image_required',
+            message: 'Instagram cannot post without an image — add an image URL, then approve.',
+          })
       }
       const claimed = (await col.findOneAndUpdate(
         { id: req.params.id, tenant_id, state: { $in: ['draft', 'publish_failed'] } },

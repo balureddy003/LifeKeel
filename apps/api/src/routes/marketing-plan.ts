@@ -18,7 +18,7 @@ import { getAuditLogger } from '../audit/audit-log.js'
 import { requireOperator } from '../operator/operator-auth.js'
 import { taskLlm } from '../ai/task-gateway.js'
 import type { LlmFn } from '@lifekeel/platform'
-import type { SocialConnectionDoc } from '../marketing/social-publisher.js'
+import { missingImage, plannableChannels } from '../marketing/channels.js'
 import { checkCopy, describeViolations } from '../marketing/copy-guard.js'
 import {
   contentHash,
@@ -44,7 +44,6 @@ export function registerMarketingPlanRoutes(
 ): void {
   const items = db.collection<ContentItemDoc>('content_items')
   const posts = db.collection<MarketingPostDoc>('marketing_posts')
-  const connections = db.collection<SocialConnectionDoc>('social_connections')
   items.createIndex({ tenant_id: 1, week_key: 1, slot: 1 }, { unique: true }).catch(() => {})
   const now = () => opts?.now?.() ?? new Date()
   const llmFor = (tenantId: string) => opts?.llm ?? taskLlm('marketing.social_draft.v1', tenantId)
@@ -62,10 +61,11 @@ export function registerMarketingPlanRoutes(
     const ps = ids.length
       ? await posts.find({ tenant_id, content_item_id: { $in: ids } }).toArray()
       : []
-    const active = await connections.find({ tenant_id, status: 'active' }).toArray()
+    const { channels: usable, skipped } = await plannableChannels(db, tenant_id)
     return {
       week_key: week,
-      available_channels: active.map((c) => c.channel),
+      available_channels: usable,
+      skipped_channels: skipped,
       items: its.map((i) => ({
         ...i,
         posts: ps
@@ -78,6 +78,7 @@ export function registerMarketingPlanRoutes(
             state: p.state,
             scheduled_at: p.scheduled_at ?? null,
             copy_check: checkCopy(p.content, 'social'),
+            needs_image: missingImage(p),
           })),
       })),
     }
@@ -106,9 +107,7 @@ export function registerMarketingPlanRoutes(
     if (new Date(`${parsed.data.week_start}T23:59:59Z`) < now())
       return reply.status(400).send({ error: 'week_is_in_the_past' })
 
-    const channels =
-      parsed.data.channels ??
-      (await connections.find({ tenant_id, status: 'active' }).toArray()).map((c) => c.channel)
+    const channels = parsed.data.channels ?? (await plannableChannels(db, tenant_id)).channels
     if (channels.length === 0)
       return reply.status(409).send({
         error: 'no_channels',
@@ -168,6 +167,10 @@ export function registerMarketingPlanRoutes(
           ok: false,
           error: `copy_guard_failed: ${describeViolations(check)}`,
         })
+        continue
+      }
+      if (missingImage(post)) {
+        results.push({ post_id, ok: false, error: 'image_required' })
         continue
       }
       if (!post.scheduled_at || post.scheduled_at.getTime() <= now().getTime()) {
