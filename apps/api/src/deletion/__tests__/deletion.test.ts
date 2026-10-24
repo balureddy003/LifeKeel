@@ -79,8 +79,12 @@ async function seedEverything(tenant: string) {
     .collection('login_events')
     .insertOne({ user_id: uid, email: `${tenant}@x.test`, ip: '203.0.113.9' })
   // Keyed by id prefix, not tenant_id (CLOUDFLARE_INTEGRATION.md §6.2.2, §7.12).
-  await db.collection('otp_send_windows').insertOne({ _id: `${uid}:cool` as never, expires_at: new Date() })
-  await db.collection('tenant_quota_days').insertOne({ _id: `${tenant}:20261023` as never, uploads: 1 })
+  await db
+    .collection('otp_send_windows')
+    .insertOne({ _id: `${uid}:cool` as never, expires_at: new Date() })
+  await db
+    .collection('tenant_quota_days')
+    .insertOne({ _id: `${tenant}:20261023` as never, uploads: 1 })
   await blob(tenant)
 }
 const countFor = async (tenant: string) => {
@@ -468,5 +472,30 @@ describe('retention sweep', () => {
     expect(await db.collection('documents').countDocuments({ tenant_id: A })).toBe(1)
     expect(await db.collection('family_financial_profile').countDocuments({ tenant_id: A })).toBe(1)
     expect(await db.collection('job_runs').countDocuments({ job: 'retention', signals: 1 })).toBe(1)
+  })
+
+  it('sweeps marketing-intelligence revenue copies with the billing evidence of a deleted household, and only then', async () => {
+    const longAgo = new Date(Date.now() - 8 * 365 * 86_400_000)
+    const recent = new Date(Date.now() - 30 * 86_400_000)
+    await db.collection('tenants').insertMany([
+      { tenant_id: 'gone-old', status: 'deleted', deleted_at: longAgo },
+      { tenant_id: 'gone-recent', status: 'deleted', deleted_at: recent },
+      { tenant_id: 'alive', status: 'active' },
+    ])
+    for (const t of ['gone-old', 'gone-recent', 'alive']) {
+      await db
+        .collection('revenue_events')
+        .insertOne({ invoice_id: `in_${t}`, tenant_id: t, net_pence: 799 })
+      await db
+        .collection('revenue_subscriptions')
+        .insertOne({ subscription_id: `sub_${t}`, tenant_id: t })
+    }
+    const out = await new RetentionWorker(db).run()
+    expect(out['revenue_events']).toBe(1)
+    expect(out['revenue_subscriptions']).toBe(1)
+    expect(await db.collection('revenue_events').distinct('tenant_id')).toEqual(
+      expect.arrayContaining(['gone-recent', 'alive']),
+    )
+    expect(await db.collection('revenue_events').countDocuments({ tenant_id: 'gone-old' })).toBe(0)
   })
 })

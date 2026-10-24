@@ -17,7 +17,7 @@ import { getApiBase } from './env'
 import { credFetch } from './http'
 import { purgeClientData } from './session-purge'
 import { unregisterAllPush } from './push'
-import { getAttribution } from './attribution'
+import { getAttribution, getLastTouch } from './attribution'
 import { turnstileErrorMessage, turnstileHeaders } from './turnstile'
 import {
   clearPendingOtp,
@@ -297,6 +297,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     opts: { turnstileToken?: string | null; next?: string } = {},
   ): Promise<SignUpResult> => {
     const attribution = getAttribution()
+    const lastTouch = getLastTouch()
     const data = await apiAuthRequest(
       '/auth/signup',
       {
@@ -306,6 +307,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         workspace: uniqueWorkspaceSlug(name || email),
         ...(ref ? { ref } : {}),
         ...(attribution ? { attribution } : {}),
+        ...(lastTouch ? { last_touch: lastTouch } : {}),
       },
       turnstileHeaders(opts.turnstileToken),
     )

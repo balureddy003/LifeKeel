@@ -173,6 +173,7 @@ import { runAiHealthAlert } from './jobs/ai-health-alert.js'
 import { runWeeklyDigest } from './operator/weekly-digest.js'
 import { runLifecycleSweep } from './marketing/lifecycle-emails.js'
 import { runAutopilotSweep, ensureAutopilotIndexes } from './operator/autopilot.js'
+import { ensureRevenueIndexes, readonlyStripeFromEnv, syncRevenue } from './marketing/revenue.js'
 import { socialPublisherFromEnv, DbSocialPublisher } from './marketing/social-publisher.js'
 import { registerOperatorRoutes } from './routes/operator.js'
 import { registerOperatorStripeRoutes } from './routes/operator-stripe.js'
@@ -554,6 +555,24 @@ try {
       },
       { missedExecutionTolerance: 600_000 },
     )
+
+    // Stripe revenue (read-only) — daily at 04:15. Feeds channel economics;
+    // a no-op until STRIPE_READONLY_KEY (a restricted rk_ key) is set.
+    cron.schedule(
+      '15 4 * * *',
+      async () => {
+        try {
+          await withCronLock(workflowDb, 'revenue-sync', async () => {
+            const result = await syncRevenue(workflowDb, readonlyStripeFromEnv())
+            if (result.configured) log.info({ ...result }, 'Revenue sync run')
+          })
+        } catch (err) {
+          log.error({ err }, 'Revenue sync failed')
+        }
+      },
+      { missedExecutionTolerance: 3_600_000 },
+    )
+    log.info({}, 'Revenue sync cron started')
 
     // Daily metrics rollup — hourly at :40. Recomputes today + yesterday
     // (late-arriving events) into metrics_daily; first run backfills 90 days.
@@ -1484,7 +1503,8 @@ if (process.env['NODE_ENV'] === 'production' && connectorLoader.count === 0) {
 // exception, and /metrics without a scrape token.
 {
   const guards = collectBootGuards(process.env, deploymentConfig.mode)
-  for (const exception of guards.exceptions) log.warn({ exception }, 'Boot guard exception in effect')
+  for (const exception of guards.exceptions)
+    log.warn({ exception }, 'Boot guard exception in effect')
   if (guards.violations.length > 0) {
     log.error({ violations: guards.violations }, 'FATAL: boot guard violations. Refusing to start.')
     process.exit(1)
@@ -1687,7 +1707,6 @@ app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (request, bo
 })
 
 // ─── Auth middleware ──────────────────────────────────────────────────────────
-
 
 app.addHook('onRequest', async (request, reply) => {
   // The inventory and its protection groups live in security/public-routes.ts.
@@ -2230,6 +2249,7 @@ if (workflowDb) {
   registerMarketingProfileRoutes(app, workflowDb)
   registerMarketingPlanRoutes(app, workflowDb)
   ensureAutopilotIndexes(workflowDb)
+  void ensureRevenueIndexes(workflowDb)
   await registerOperatorRoutes(app, workflowDb)
   registerOperatorStripeRoutes(app, workflowDb)
   registerOperatorRetentionRoutes(app, workflowDb)

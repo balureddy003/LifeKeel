@@ -80,6 +80,9 @@ export interface User {
   // First-touch marketing attribution captured by apps/web's attribution.ts
   // — utm_*/referrer/landing_path, all short sanitized strings.
   attribution?: Record<string, string> | undefined
+  // Most recent marketing touch before signup (same shape, same sanitizer).
+  // Lets marketing intelligence compare first-touch with last-touch credit.
+  last_touch?: Record<string, string> | undefined
   // TOTP MFA (RFC 6238): pending secret lives on the doc between setup and
   // enable so a half-finished enrollment can't lock the account; recovery
   // codes are stored as SHA-256 hashes only, consumed on use.
@@ -121,6 +124,7 @@ interface SignupBody {
   country?: string
   ref?: string
   attribution?: Record<string, unknown>
+  last_touch?: Record<string, unknown>
 }
 
 // Attribution is client-supplied and unverifiable — it's analytics, not
@@ -226,7 +230,8 @@ const MAX_FAILURES_PER_EMAIL = 50
 const MFA_MAX_FAILURES = 5
 const MFA_LOCK_MS = 15 * 60 * 1000
 const GENERIC_LOGIN_ERROR = 'Invalid email or password'
-const THROTTLED_LOGIN_ERROR = 'Too many sign-in attempts. Wait a few minutes or reset your password.'
+const THROTTLED_LOGIN_ERROR =
+  'Too many sign-in attempts. Wait a few minutes or reset your password.'
 
 /** The link in the verification email — goes to the web /verify-email
  *  page, which POSTs the token back to /auth/verify-email. Never logged:
@@ -298,6 +303,7 @@ export async function registerAuthUserRoutes(
         country,
         ref,
         attribution,
+        last_touch,
       } = request.body
 
       if (!str(email, 320) || !EMAIL_FORMAT_RE.test(email.trim()))
@@ -447,6 +453,7 @@ export async function registerAuthUserRoutes(
         password_reset_expires: undefined,
         updated_at: undefined,
         attribution: sanitizeAttribution(attribution),
+        last_touch: sanitizeAttribution(last_touch),
       }
       if (otpSignup) {
         user.registration_status = 'pending'
@@ -578,8 +585,17 @@ export async function registerAuthUserRoutes(
       const since = new Date(Date.now() - LOGIN_THROTTLE_WINDOW_MS)
       const loginEvents = getLoginEventsCollection(await getDb())
       const [ipFailures, emailFailures] = await Promise.all([
-        loginEvents.countDocuments({ email: emailKey, ip: request.ip, success: false, created_at: { $gte: since } }),
-        loginEvents.countDocuments({ email: emailKey, success: false, created_at: { $gte: since } }),
+        loginEvents.countDocuments({
+          email: emailKey,
+          ip: request.ip,
+          success: false,
+          created_at: { $gte: since },
+        }),
+        loginEvents.countDocuments({
+          email: emailKey,
+          success: false,
+          created_at: { $gte: since },
+        }),
       ])
       if (ipFailures >= MAX_FAILURES_PER_EMAIL_AND_IP || emailFailures >= MAX_FAILURES_PER_EMAIL) {
         recordLoginEvent(request, { email: emailKey, success: false, reason: 'throttled' })
@@ -671,7 +687,9 @@ export async function registerAuthUserRoutes(
       // Email OTP as the second step for accounts without TOTP (D8): TOTP
       // users took the branch above and never receive an email code.
       if (otpRequiredFor(otpMode, 'login')) {
-        return startOtpChallenge(request, reply, user, 'login', { remember_me: rememberMe === true })
+        return startOtpChallenge(request, reply, user, 'login', {
+          remember_me: rememberMe === true,
+        })
       }
 
       // "Remember me" controls actual session length, not just UI copy: checked
@@ -948,51 +966,51 @@ export async function registerAuthUserRoutes(
       },
     },
     async (request, reply) => {
-    const { app: originApp } = request.body
-    const email = str(request.body.email, 320)
+      const { app: originApp } = request.body
+      const email = str(request.body.email, 320)
 
-    if (!email?.includes('@')) {
-      return reply.status(400).send({ error: 'Valid email required' })
-    }
-
-    const col = await getUsersCollection()
-    const user = await col.findOne({ email: email.toLowerCase() })
-
-    // Always return success to prevent email enumeration
-    // Only send email if user exists
-    if (user && user.status !== 'erased') {
-      const resetToken = generateEmailVerificationToken()
-      const expires = new Date(Date.now() + 1 * 60 * 60 * 1000) // 1 hour expiry
-
-      await col.updateOne(
-        { id: user.id },
-        {
-          $set: {
-            password_reset_token_hash: hashAuthToken(resetToken),
-            password_reset_expires: expires,
-          },
-          $unset: { password_reset_token: '' },
-        },
-      )
-
-      // Only apps with a page that actually consumes this token get a real
-      // email — family (apps/family/src/app/reset-password/confirm) and now
-      // lifekeel (apps/lifekeel/src/app/reset-password/confirm). Studio's
-      // /reset-password is request-only with no completion step, so sending
-      // a Studio link here would just be a dead end. Skip sending (keeping
-      // prior behavior) until Studio has a matching confirm page.
-      if (originApp === 'family') {
-        const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
-        const resetUrl = `${appUrl}/reset-password/confirm#token=${resetToken}`
-        await sendPasswordResetEmail(user.email, user.name, resetUrl)
-      } else if (originApp === 'lifekeel') {
-        const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3003').replace(/\/$/, '')
-        const resetUrl = `${appUrl}/reset-password/confirm#token=${resetToken}`
-        await sendPasswordResetEmail(user.email, user.name, resetUrl)
+      if (!email?.includes('@')) {
+        return reply.status(400).send({ error: 'Valid email required' })
       }
-    }
 
-    return reply.send({ sent: true })
+      const col = await getUsersCollection()
+      const user = await col.findOne({ email: email.toLowerCase() })
+
+      // Always return success to prevent email enumeration
+      // Only send email if user exists
+      if (user && user.status !== 'erased') {
+        const resetToken = generateEmailVerificationToken()
+        const expires = new Date(Date.now() + 1 * 60 * 60 * 1000) // 1 hour expiry
+
+        await col.updateOne(
+          { id: user.id },
+          {
+            $set: {
+              password_reset_token_hash: hashAuthToken(resetToken),
+              password_reset_expires: expires,
+            },
+            $unset: { password_reset_token: '' },
+          },
+        )
+
+        // Only apps with a page that actually consumes this token get a real
+        // email — family (apps/family/src/app/reset-password/confirm) and now
+        // lifekeel (apps/lifekeel/src/app/reset-password/confirm). Studio's
+        // /reset-password is request-only with no completion step, so sending
+        // a Studio link here would just be a dead end. Skip sending (keeping
+        // prior behavior) until Studio has a matching confirm page.
+        if (originApp === 'family') {
+          const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
+          const resetUrl = `${appUrl}/reset-password/confirm#token=${resetToken}`
+          await sendPasswordResetEmail(user.email, user.name, resetUrl)
+        } else if (originApp === 'lifekeel') {
+          const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3003').replace(/\/$/, '')
+          const resetUrl = `${appUrl}/reset-password/confirm#token=${resetToken}`
+          await sendPasswordResetEmail(user.email, user.name, resetUrl)
+        }
+      }
+
+      return reply.send({ sent: true })
     },
   )
 
@@ -1272,7 +1290,10 @@ export async function registerAuthUserRoutes(
           await col.updateOne(
             { id: user.id },
             {
-              $set: { mfa_locked_until: new Date(Date.now() + MFA_LOCK_MS), mfa_failed_attempts: 0 },
+              $set: {
+                mfa_locked_until: new Date(Date.now() + MFA_LOCK_MS),
+                mfa_failed_attempts: 0,
+              },
             },
           )
           return reply

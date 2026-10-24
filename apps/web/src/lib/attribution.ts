@@ -10,6 +10,8 @@
  */
 
 const KEY = 'lifekeel_attribution'
+/** Most recent attributed visit — overwritten on each one, unlike the first touch. */
+const LAST_KEY = 'lifekeel_last_touch'
 
 export interface Attribution {
   utm_source?: string
@@ -24,11 +26,23 @@ export interface Attribution {
 
 const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'] as const
 
-/** Read current URL params and persist attribution if not already stored. */
+/** True when `referrer` is a different site (a same-site click is not a new touch). */
+function isExternalReferrer(referrer: string): boolean {
+  try {
+    return !!referrer && new URL(referrer).hostname !== window.location.hostname
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Read current URL params. The first attributed visit is kept as first touch;
+ * every attributed visit (UTM params or an external referrer) replaces the
+ * last touch. A direct visit with nothing to say claims neither slot.
+ */
 export function captureAttribution(): void {
   if (typeof window === 'undefined') return
   try {
-    if (localStorage.getItem(KEY)) return
     const params = new URLSearchParams(window.location.search)
     const attribution: Attribution = {
       landing_path: window.location.pathname.slice(0, 200),
@@ -43,14 +57,15 @@ export function captureAttribution(): void {
       }
     }
     const referrer = document.referrer.slice(0, 300)
-    if (referrer) {
+    if (referrer && isExternalReferrer(referrer)) {
       attribution.referrer = referrer
       any = true
     }
     // Only persist when there's something to say — a direct visit with no
-    // params shouldn't permanently claim the first-touch slot before a
-    // later attributed visit.
-    if (any) localStorage.setItem(KEY, JSON.stringify(attribution))
+    // params shouldn't permanently claim a slot before a later attributed visit.
+    if (!any) return
+    localStorage.setItem(LAST_KEY, JSON.stringify(attribution))
+    if (!localStorage.getItem(KEY)) localStorage.setItem(KEY, JSON.stringify(attribution))
   } catch {
     // Locked-down browser contexts — attribution is best-effort, never fatal.
   }
@@ -60,6 +75,18 @@ export function getAttribution(): Attribution | undefined {
   if (typeof window === 'undefined') return undefined
   try {
     const raw = localStorage.getItem(KEY)
+    if (!raw) return undefined
+    return JSON.parse(raw) as Attribution
+  } catch {
+    return undefined
+  }
+}
+
+/** The most recent attributed visit, for last-touch comparison. */
+export function getLastTouch(): Attribution | undefined {
+  if (typeof window === 'undefined') return undefined
+  try {
+    const raw = localStorage.getItem(LAST_KEY)
     if (!raw) return undefined
     return JSON.parse(raw) as Attribution
   } catch {
