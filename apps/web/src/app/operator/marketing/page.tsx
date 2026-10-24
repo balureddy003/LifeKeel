@@ -56,6 +56,7 @@ import { FunnelPanel } from './_components/FunnelPanel'
 import { EconomicsPanel } from './_components/EconomicsPanel'
 import { ConnectionsPanel } from './_components/ConnectionsPanel'
 import { AutonomyPanel } from './_components/AutonomyPanel'
+import { SearchPanel } from './_components/SearchPanel'
 import { ReasonAction } from '../_components/ReasonAction'
 
 const STATE_STYLE: Record<MarketingPost['state'], string> = {
@@ -123,6 +124,7 @@ type Tab =
   | 'economics'
   | 'connections'
   | 'autonomy'
+  | 'search'
   | 'campaigns'
   | 'profiles'
 
@@ -556,6 +558,7 @@ export default function MarketingPage() {
                 ['economics', 'Economics'],
                 ['connections', 'Connections'],
                 ['autonomy', 'Autonomy'],
+                ['search', 'Search'],
                 ['campaigns', 'Campaigns'],
                 ['profiles', 'Profiles'],
               ] as [Tab, string][]
@@ -1230,6 +1233,7 @@ export default function MarketingPage() {
           {tab === 'economics' && <EconomicsPanel />}
           {tab === 'connections' && <ConnectionsPanel />}
           {tab === 'autonomy' && <AutonomyPanel />}
+          {tab === 'search' && <SearchPanel />}
           {tab === 'campaigns' && <CampaignsPanel />}
           {tab === 'profiles' && <ProfilesPanel />}
         </>
