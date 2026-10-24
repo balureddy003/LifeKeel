@@ -12,6 +12,7 @@ import {
   publishDueMarketingPosts,
   generateDailyMarketingDrafts,
   pollMarketingEngagement,
+  draftPostText,
 } from '../marketing-posts.js'
 import { AUTO_EXECUTE_TRUST_THRESHOLD } from '../../jobs/auto-execute-trusted.js'
 import { withTenantKeys } from '../../__tests__/helpers/tenant-keys-fake.js'
@@ -1499,5 +1500,47 @@ describe('learning loop — performance-informed generation', () => {
     expect(seen[0]).not.toContain('WINNER')
     expect(seen[0]).not.toContain('FLOP')
     expect(res.json().post.content).toBe('fresh draft')
+  })
+})
+
+describe('draftPostText fallback when no model is available', () => {
+  const broken = async () => {
+    throw new Error('no provider')
+  }
+  const LINK = 'https://lifekeel.co.uk/?utm_source=x&utm_medium=social'
+  const SCAFFOLD =
+    /Topic:|Facts you may use|Blog post to promote|Link to include verbatim|Title:|Summary:/i
+
+  it('posts the plan facts without the prompt scaffolding, with the link once', async () => {
+    const block = `Topic: The chart\nFacts you may use (use nothing else):\nLifeKeel keeps a family's chart. Free to start.\nLink to include verbatim: ${LINK}`
+    const { content, generated } = await draftPostText(broken, 'x', block, LINK)
+    expect(generated).toBe('template')
+    expect(content).not.toMatch(SCAFFOLD)
+    expect(content).toBe(`LifeKeel keeps a family's chart. Free to start.\n\n${LINK}`)
+    expect(content.split(LINK)).toHaveLength(2)
+  })
+
+  it('posts a blog promotion as its title and summary, without the labels', async () => {
+    const block = `Blog post to promote:\nTitle: The cover gap\nSummary: Most families miss it.\nLink to include verbatim: ${LINK}`
+    const { content } = await draftPostText(broken, 'bluesky', block, LINK)
+    expect(content).not.toMatch(SCAFFOLD)
+    expect(content).toBe(`The cover gap\nMost families miss it.\n\n${LINK}`)
+  })
+
+  it('still fits the channel limit, keeping room for the link', async () => {
+    const block = `Topic: T\nFacts you may use (use nothing else):\n${'word '.repeat(200)}\nLink to include verbatim: ${LINK}`
+    const { content } = await draftPostText(broken, 'x', block, LINK)
+    expect(content.length).toBeLessThanOrEqual(280)
+    expect(content.endsWith(LINK)).toBe(true)
+  })
+
+  it('works with no link', async () => {
+    const { content } = await draftPostText(
+      broken,
+      'x',
+      'Topic: T\nFacts you may use (use nothing else):\nJust the fact.',
+      '',
+    )
+    expect(content).toBe('Just the fact.')
   })
 })
