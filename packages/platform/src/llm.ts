@@ -891,7 +891,11 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
     let resolvedModel = model ?? defaultModel
     if (resolvedModel.startsWith('tier:')) {
       const tier = resolvedModel.slice(5) as ReasoningTier
-      const provider = resolveProvider(cfg, defaultModel)
+      // '' defeats model-name detection — a tier has no model of its own, so
+      // the provider must come from explicit config → operator/env override
+      // → first configured credential. Passing defaultModel here routes every
+      // tier call to anthropic regardless of which keys are set.
+      const provider = resolveProvider(cfg, '')
       resolvedModel = resolveTierModel(tier, provider, cfg.tierModels)
     }
     const provider = resolveProvider(cfg, resolvedModel)
