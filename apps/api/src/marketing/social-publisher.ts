@@ -252,11 +252,7 @@ function blueskyHandler(
             // Deterministic record key = real dedupe: a retried write with
             // the same rkey is refused by the repo instead of double-posting.
             ...(ctx.idempotencyKey ? { rkey: tidRkey(ctx.idempotencyKey) } : {}),
-            record: {
-              $type: 'app.bsky.feed.post',
-              text: content,
-              createdAt: new Date().toISOString(),
-            },
+            record: blueskyRecord(content),
           }),
         },
         {
@@ -283,6 +279,42 @@ const TID_ALPHABET = '234567abcdefghijklmnopqrstuvwxyz'
  *  ("Invalid TID string format") while a hash *in TID format* keeps the
  *  dedupe property: a retried write replays the same rkey and is refused
  *  instead of double-posting. */
+/** A bare URL in `text` renders as dead text on Bluesky — the post needs a
+ *  link facet (clickable) and an `app.bsky.embed.external` card (the rich
+ *  preview every other scheduler ships). Byte offsets, not char offsets. */
+export function blueskyRecord(content: string): Record<string, unknown> {
+  const encoder = new TextEncoder()
+  const facets: Record<string, unknown>[] = []
+  let firstUrl: string | undefined
+  for (const m of content.matchAll(/https?:\/\/\S+/g)) {
+    const url = m[0]
+    firstUrl ??= url
+    facets.push({
+      index: {
+        byteStart: encoder.encode(content.slice(0, m.index)).length,
+        byteEnd: encoder.encode(content.slice(0, m.index + url.length)).length,
+      },
+      features: [{ $type: 'app.bsky.richtext.facet#link', uri: url }],
+    })
+  }
+  const record: Record<string, unknown> = {
+    $type: 'app.bsky.feed.post',
+    text: content,
+    createdAt: new Date().toISOString(),
+  }
+  if (facets.length > 0) record['facets'] = facets
+  if (firstUrl)
+    record['embed'] = {
+      $type: 'app.bsky.embed.external',
+      external: {
+        uri: firstUrl,
+        title: 'LifeKeel',
+        description: 'One calm place for the family’s cover, runway and papers.',
+      },
+    }
+  return record
+}
+
 export function tidRkey(seed: string): string {
   const h = createHash('sha256').update(seed).digest()
   let n = h.readBigUInt64BE(0)
