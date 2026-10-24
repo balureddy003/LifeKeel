@@ -228,6 +228,36 @@ describe('content bank', () => {
     expect(none.statusCode).toBe(404)
   })
 
+  it("turns the post's own tagged link into a token, keeping the path and campaign", async () => {
+    const app = await buildApp()
+    await db.collection('marketing_posts').insertOne({
+      id: 'p2',
+      tenant_id: 't1',
+      channel: 'bluesky',
+      integration_id: 'bluesky:h',
+      content:
+        GOOD +
+        ' https://lifekeel.co.uk/guides/chart?utm_source=bluesky&utm_medium=social&utm_campaign=pillar_chart&utm_content=pabc12345',
+      state: 'draft',
+      content_item_id: 'ci-2',
+      campaign: 'pillar_chart',
+      post_tag: 'pabc12345',
+      created_by: 'op-1',
+      created_at: NOW,
+    })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/marketing/bank/from-post',
+      payload: { post_id: 'p2' },
+    })
+    expect(res.statusCode).toBe(201)
+    const doc = await bankCollection(db).findOne({ tenant_id: 't1' })
+    expect(doc?.content).toBe(GOOD + ' {{link}}')
+    expect(doc?.link_path).toBe('/guides/chart')
+    expect(doc?.campaign).toBe('pillar_chart')
+    expect(doc?.content).not.toContain('pabc12345')
+  })
+
   it('rejects a request that is not an operator tenant', async () => {
     const app = Fastify()
     app.addHook('onRequest', async (req) => {
