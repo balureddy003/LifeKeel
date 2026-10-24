@@ -177,7 +177,7 @@ jobs:
           # --update-env-vars in flags instead, using ^@^ as the pair
           # delimiter so commas inside values survive. --update-env-vars
           # merges — it does not wipe the env_vars above.
-          flags: --port=3001 --allow-unauthenticated --cpu=1 --memory=512Mi --max-instances=4 --concurrency=80 --min-instances=0 --update-env-vars=^@^CORS_ORIGIN=${{ vars.CORS_ORIGIN || vars.LIFEKEEL_URL || secrets.LIFEKEEL_URL }}@LIFEKEEL_APP_HOSTS=${{ vars.LIFEKEEL_APP_HOSTS || 'app.lifekeel.co.uk,app.lifekeel.si' }} ${{ steps.pre.outputs.exists == 'true' && format('--no-traffic --tag={0}', steps.pre.outputs.tag) || '' }}
+          flags: --port=3001 --allow-unauthenticated --cpu=1 --memory=512Mi --max-instances=4 --concurrency=80 --min-instances=0 --update-env-vars=^@^CORS_ORIGIN=${{ vars.CORS_ORIGIN || vars.LIFEKEEL_URL || secrets.LIFEKEEL_URL }}@LIFEKEEL_APP_HOSTS=${{ vars.LIFEKEEL_APP_HOSTS || 'app.lifekeel.co.uk,app.lifekeel.si' }}@TURNSTILE_ALLOWED_HOSTNAMES=${{ vars.TURNSTILE_ALLOWED_HOSTNAMES }} ${{ steps.pre.outputs.exists == 'true' && format('--no-traffic --tag={0}', steps.pre.outputs.tag) || '' }}
           env_vars: |
             NODE_ENV=production
             LIFEKEEL_DEPLOYMENT_MODE=cloud
@@ -203,7 +203,6 @@ jobs:
             VERTEX_REASONING_EFFORT=${{ vars.VERTEX_REASONING_EFFORT }}
             LIFEKEEL_LLM_PROVIDER=${{ vars.LIFEKEEL_LLM_PROVIDER }}
             TURNSTILE_MODE=${{ vars.TURNSTILE_MODE }}
-            TURNSTILE_ALLOWED_HOSTNAMES=${{ vars.TURNSTILE_ALLOWED_HOSTNAMES }}
             AUTH_OTP_MODE=${{ vars.AUTH_OTP_MODE }}
             DOCUMENTS_STORAGE=${{ vars.DOCUMENTS_STORAGE }}
             DOCUMENTS_R2_TENANTS=${{ vars.DOCUMENTS_R2_TENANTS }}
