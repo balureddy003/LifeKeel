@@ -1087,11 +1087,22 @@ export async function draftPostText(
     if (!content) throw new Error('empty generation')
     return { content, generated: 'llm' }
   } catch {
-    const body = clampPost(
-      sourceBlock.split('\n').slice(1).join('\n'),
-      limit,
-      link ? link.length + 2 : 0,
-    )
+    // No model: post the facts themselves. The source block also carries prompt scaffolding
+    // for the model ("Topic:", "Facts you may use…", "Blog post to promote:", "Link to include
+    // verbatim…", and "Title:"/"Summary:" labels) that must never reach a public post; the
+    // link is appended once below.
+    const facts = sourceBlock
+      .split('\n')
+      .filter(
+        (l) =>
+          !/^(Topic:|Facts you may use|Blog post to promote:|Link to include verbatim:)/i.test(
+            l.trim(),
+          ),
+      )
+      .map((l) => l.replace(/^\s*(Title|Summary):\s*/i, ''))
+      .join('\n')
+      .trim()
+    const body = clampPost(facts, limit, link ? link.length + 2 : 0)
     return { generated: 'template', content: `${body}${link ? `\n\n${link}` : ''}` }
   }
 }
