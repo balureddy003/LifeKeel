@@ -408,6 +408,54 @@ describe('/marketing/posts', () => {
     expect(posts[0]!['state']).toBe('published')
   })
 
+  it('the scheduled sweep honours dry_run_mode too — an approved week never reaches the channel', async () => {
+    const postiz = fakePostiz()
+    const { db, posts } = await buildApp({ postiz, settings: { dry_run_mode: true } })
+    // The weekly plan's approve route only marks posts 'approved' with a time; the sweep does the sending.
+    posts.push({
+      id: 'planned-1',
+      tenant_id: TENANT,
+      channel: 'x',
+      integration_id: 'x:connection',
+      content: "LifeKeel keeps your family's chart. Free to start.",
+      state: 'approved',
+      approved_by: USER,
+      scheduled_at: new Date(Date.now() - 1000),
+      content_item_id: 'ci-1',
+      created_by: 'plan',
+      created_at: new Date(),
+    })
+    expect(await publishDueMarketingPosts(db, postiz)).toBe(1)
+    expect(posts[0]!['state']).toBe('published')
+    expect(posts[0]!['dry_run']).toBe(true)
+    expect(postiz.createPost).not.toHaveBeenCalled()
+  })
+
+  it('the sweep decides dry-run per tenant, so one tenant rehearsing does not silence another', async () => {
+    const postiz = fakePostiz()
+    const { db, posts, settingsDocs } = await buildApp({ postiz, settings: { dry_run_mode: true } })
+    settingsDocs.push({ tenant_id: 'tenant-live', automation: {} })
+    const due = (tenant: string, id: string) => ({
+      id,
+      tenant_id: tenant,
+      channel: 'x',
+      integration_id: 'x:connection',
+      content: "LifeKeel keeps your family's chart. Free to start.",
+      state: 'approved',
+      scheduled_at: new Date(Date.now() - 1000),
+      created_by: 'u',
+      created_at: new Date(),
+    })
+    posts.push(due(TENANT, 'rehearsal'), due('tenant-live', 'real'))
+    await publishDueMarketingPosts(db, postiz)
+    expect(postiz.createPost).toHaveBeenCalledTimes(1)
+    const rehearsal = posts.find((p) => p['id'] === 'rehearsal')!
+    const real = posts.find((p) => p['id'] === 'real')!
+    expect(rehearsal['dry_run']).toBe(true)
+    expect(real['dry_run']).toBeUndefined()
+    expect(real['state']).toBe('published')
+  })
+
   it('a Postiz failure lands in publish_failed with the error kept — and earns no trust', async () => {
     const postiz = fakePostiz({
       createPost: vi.fn(async () => {

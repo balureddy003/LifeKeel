@@ -277,6 +277,15 @@ export async function publishDueMarketingPosts(
     .filter((p) => !p.scheduled_at || p.scheduled_at.getTime() <= now.getTime())
     .slice(0, 20)
   let dispatched = 0
+  // A simulating tenant's scheduled posts are rehearsed here too: approving a future-dated
+  // post parks it 'approved', so this sweep — not the approve route — is what would otherwise
+  // send it for real.
+  const dryRunByTenant = new Map<string, boolean>()
+  const isDryRun = async (tenantId: string) => {
+    if (!dryRunByTenant.has(tenantId))
+      dryRunByTenant.set(tenantId, (await getAutomation(db, tenantId)).dry_run_mode === true)
+    return dryRunByTenant.get(tenantId)!
+  }
   for (const post of due) {
     // The rules can tighten after approval; copy that no longer passes is held, not sent.
     const recheck = checkCopy(post.content, 'social')
@@ -301,7 +310,9 @@ export async function publishDueMarketingPosts(
     // publishPost re-writes state to published/publish_failed on outcome;
     // a pause leaves it 'publishing' — restore 'approved' so the next tick
     // retries instead of stranding it.
-    const result = await publishPost(db, col, client, post, { dryRun: false })
+    const result = await publishPost(db, col, client, post, {
+      dryRun: await isDryRun(post.tenant_id),
+    })
     if (!result.ok && (await getPlatformConfig(db)).marketing_paused) {
       await col.updateOne({ id: post.id, state: 'publishing' }, { $set: { state: 'approved' } })
     }
