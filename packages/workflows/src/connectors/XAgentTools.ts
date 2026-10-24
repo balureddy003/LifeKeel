@@ -81,7 +81,13 @@ export const X_AGENT_ACTIONS: ConnectorAction[] = [
     method: 'POST',
     path: '/tweets',
     params: [
-      { name: 'text', label: 'Post text', type: 'template', required: true, description: 'Up to 280 characters' },
+      {
+        name: 'text',
+        label: 'Post text',
+        type: 'template',
+        required: true,
+        description: 'Up to 280 characters',
+      },
     ],
     output_schema: { id: 'Created post ID' },
   },
@@ -92,7 +98,13 @@ export const X_AGENT_ACTIONS: ConnectorAction[] = [
     method: 'POST',
     path: '/tweets/thread',
     params: [
-      { name: 'tweets', label: 'Thread items', type: 'template', required: true, description: 'JSON array of post text strings' },
+      {
+        name: 'tweets',
+        label: 'Thread items',
+        type: 'template',
+        required: true,
+        description: 'JSON array of post text strings',
+      },
     ],
     output_schema: { id: 'Last post ID', tweets: 'All created post responses' },
   },
@@ -111,19 +123,17 @@ export const X_AGENT_ACTIONS: ConnectorAction[] = [
   {
     id: 'deletePosts',
     label: 'Delete post',
-    description: 'Agent tool: delete one of the authenticated user\'s posts.',
+    description: "Agent tool: delete one of the authenticated user's posts.",
     method: 'DELETE',
     path: '/tweets/{post_id}',
-    params: [
-      { name: 'post_id', label: 'Post ID', type: 'template', required: true },
-    ],
+    params: [{ name: 'post_id', label: 'Post ID', type: 'template', required: true }],
   },
   {
     id: 'getUsersMe',
     label: 'Get authenticated user',
     description: 'Agent tool: resolve the connected X account.',
     method: 'GET',
-    path: '/users/me?user.fields=id,name,username,verified,public_metrics,profile_image_url',
+    path: '/users/me?user.fields=id,name,username,description,verified,public_metrics,profile_image_url',
     params: [],
     output_schema: { id: 'Authenticated user ID', username: 'Authenticated username' },
   },
@@ -133,9 +143,7 @@ export const X_AGENT_ACTIONS: ConnectorAction[] = [
     description: 'Agent tool: look up an X user profile by username.',
     method: 'GET',
     path: '/users/by/username/{username}?user.fields=id,name,username,verified,public_metrics,profile_image_url',
-    params: [
-      { name: 'username', label: 'Username', type: 'template', required: true },
-    ],
+    params: [{ name: 'username', label: 'Username', type: 'template', required: true }],
     output_schema: { id: 'User ID', username: 'Username' },
   },
   {
@@ -144,9 +152,7 @@ export const X_AGENT_ACTIONS: ConnectorAction[] = [
     description: 'Agent tool: fetch a post and public metrics.',
     method: 'GET',
     path: '/tweets/{post_id}?tweet.fields=created_at,author_id,public_metrics,conversation_id,referenced_tweets',
-    params: [
-      { name: 'post_id', label: 'Post ID', type: 'template', required: true },
-    ],
+    params: [{ name: 'post_id', label: 'Post ID', type: 'template', required: true }],
     output_schema: { id: 'Post ID', text: 'Post text' },
   },
   {

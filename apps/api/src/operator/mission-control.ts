@@ -34,6 +34,7 @@ export type DecisionKind =
   | 'plan_week'
   | 'plan_missing'
   | 'channel_attention'
+  | 'profile_drift'
 
 export type DecisionSeverity = 'danger' | 'warning' | 'info'
 
@@ -349,6 +350,33 @@ export async function buildDecisions(
           batchable: false,
           created_at: now.toISOString(),
         })
+    }
+
+    const drifted = await db
+      .collection('channel_profiles')
+      .find(
+        { 'drift.0': { $exists: true } },
+        { projection: { _id: 0, tenant_id: 1, channel: 1, drift: 1, actual: 1 } },
+      )
+      .limit(MAX_DECISIONS)
+      .toArray()
+    for (const prof of drifted) {
+      const fields = (prof['drift'] as { field: string }[]).map((d) => d.field.replace('_', ' '))
+      const checkedAt = (prof['actual'] as { checked_at?: Date } | undefined)?.checked_at
+      out.push({
+        id: `profile_drift:${prof['tenant_id']}:${prof['channel']}`,
+        kind: 'profile_drift',
+        severity: 'info',
+        title: `${channelLabel(String(prof['channel']))} profile differs from the approved text: ${fields.join(', ')}`,
+        why: `Read from the live profile${checkedAt ? ` on ${checkedAt.toISOString().slice(0, 10)}` : ''}; the approved text is saved in Profiles.`,
+        effect:
+          'Nothing changes by itself. Open Profiles for the approved text to paste in (Bluesky can be applied there after you review it).',
+        undo: 'Not applicable — a check changes nothing on the platform.',
+        href: '/operator/marketing',
+        required_permission: 'marketing.manage',
+        batchable: false,
+        created_at: iso(checkedAt ?? now),
+      })
     }
 
     for (const issue of await channelIssues(db, now)) {

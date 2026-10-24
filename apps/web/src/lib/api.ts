@@ -3997,8 +3997,9 @@ export interface ChannelProfileView {
   actual: {
     display_name: string
     bio: string
-    has_avatar: boolean
-    has_banner: boolean
+    /** null = this network's API does not say. */
+    has_avatar: boolean | null
+    has_banner: boolean | null
     checked_at: string
   } | null
   drift: { field: string; desired: string; actual: string }[]
@@ -4043,6 +4044,9 @@ export interface PlanPostView {
   state: MarketingPostState
   scheduled_at: string | null
   copy_check: { ok: boolean; violations: { rule: string; match: string }[] }
+  /** Instagram cannot post without an image; true until a media URL is attached. */
+  needs_image?: boolean
+  media_url?: string | null
 }
 
 export interface PlanItemView {
@@ -4059,6 +4063,8 @@ export interface PlanItemView {
 export interface PlanWeekView {
   week_key: string
   available_channels: string[]
+  /** Connected channels left out of the plan, and why (dead token, error). */
+  skipped_channels?: { channel: string; status: string; reason: string }[]
   items: PlanItemView[]
 }
 
@@ -4986,6 +4992,35 @@ export function resolveAutopilotProposal(
   })
 }
 
+// ── Operator: social channel health ───────────────────────────────────────
+
+export type ChannelStatus =
+  'connected' | 'expiring_soon' | 'needs_reauth' | 'error' | 'not_configured'
+
+export interface ChannelHealth {
+  channel: 'bluesky' | 'linkedin' | 'x' | 'threads' | 'instagram' | 'facebook'
+  label: string
+  status: ChannelStatus
+  usable: boolean
+  handle: string | null
+  expires_at: string | null
+  last_publish_at: string | null
+  last_error: string | null
+  /** Developer-app credentials are set on the API (a yes/no, never the value). */
+  app_credentials: boolean
+  setup: {
+    portal: string
+    steps: string[]
+    redirect_uri: string | null
+    env: string[]
+    note?: string
+  }
+}
+
+export function fetchChannelHealth(): Promise<{ channels: ChannelHealth[] }> {
+  return operatorRequest('/marketing/channels/health')
+}
+
 // ── Operator: marketing economics ─────────────────────────────────────────
 
 export interface EconomicsRate {
@@ -5122,6 +5157,10 @@ export interface MissionDecision {
     | 'post_failed'
     | 'campaign_draft'
     | 'dual_approval'
+    | 'plan_week'
+    | 'plan_missing'
+    | 'channel_attention'
+    | 'profile_drift'
   severity: 'danger' | 'warning' | 'info'
   title: string
   why: string
