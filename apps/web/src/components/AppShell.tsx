@@ -450,8 +450,11 @@ const PUBLIC_CONTENT_PREFIXES = [
 ]
 
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, family } = useAuth()
+  const { isAuthenticated, isLoading, family, user, createFamily } = useAuth()
   const pathname = usePathname()
+  const router = useRouter()
+  const [skipping, setSkipping] = useState(false)
+  const [skipFailed, setSkipFailed] = useState(false)
   const isPublicContent = PUBLIC_CONTENT_PREFIXES.some((p) => pathname.startsWith(p))
 
   // "/" also renders the marketing page while the auth check runs, so it is in the static HTML.
@@ -582,6 +585,28 @@ function AuthGate({ children }: { children: React.ReactNode }) {
             Create Family Group
           </motion.button>
         </Link>
+        <button
+          disabled={skipping}
+          onClick={() => {
+            setSkipping(true)
+            setSkipFailed(false)
+            createFamily(`${user?.name ?? 'My'}'s Family`)
+              .then(() => {
+                track('family_setup_skipped')
+                router.replace('/')
+              })
+              .catch(() => setSkipFailed(true))
+              .finally(() => setSkipping(false))
+          }}
+          className="mt-4 text-sm font-semibold text-ink-secondary disabled:opacity-40"
+        >
+          {skipping ? 'Skipping…' : 'Skip for now'}
+        </button>
+        {skipFailed && (
+          <p className="mt-2 text-xs text-danger" role="alert">
+            Couldn&apos;t skip right now — please try again.
+          </p>
+        )}
       </motion.div>
     )
   }

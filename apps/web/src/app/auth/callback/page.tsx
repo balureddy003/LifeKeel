@@ -40,7 +40,7 @@ export default function AuthCallbackPage() {
       // the Bearer fallback for cookie-blocked browsers (see lib/http.ts).
       storeSessionToken(token)
       if (tenant) localStorage.setItem('lifekeel_tenant', tenant)
-      refresh().then(() => router.push('/'))
+      refresh().then(() => router.replace('/'))
     } else {
       router.push('/login')
     }
