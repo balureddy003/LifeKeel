@@ -177,6 +177,9 @@ Return ONLY a JSON object with this exact shape:
 
 If not relevant, return {"is_financial": false, "summary": "", "action_label": "", "action_type": "info", "priority": "low"}.`
 
+/** The production classifier prompt, exported so load tests can send exactly what production sends. */
+export const EMAIL_CLASSIFY_SYSTEM_PROMPT = SYSTEM_PROMPT
+
 const VALID_ACTION_TYPES = new Set(['review', 'renew', 'compare', 'update', 'info'])
 const VALID_PRIORITIES = new Set(['high', 'medium', 'low'])
 
