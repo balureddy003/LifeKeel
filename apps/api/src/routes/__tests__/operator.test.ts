@@ -2692,6 +2692,9 @@ describe('security monitoring', () => {
         { id: 'post_draft:m1', action: 'approve' },
         { id: 'campaign_draft:k1', action: 'approve' },
         { id: 'dual_approval:d1', action: 'approve' },
+        { id: 'plan_week:2026-10-26', action: 'approve' },
+        { id: 'plan_missing:2026-10-26', action: 'approve' },
+        { id: 'channel_attention:t1:x', action: 'ack' },
         { id: 'proposal:p1', action: 'ack' },
         { id: 'alert:x', action: 'approve' },
       ]) {
