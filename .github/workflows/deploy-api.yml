@@ -215,11 +215,9 @@ jobs:
           # line to gcloud verbatim. Web push: without the VAPID secrets,
           # /push/vapid-key 503s and no browser can subscribe. Values come from
           # one `npx web-push generate-vapid-keys` run.
-          # TURNSTILE_SECRET_KEY and SENDGRID_API_KEY are deliberately NOT bound. This deployment runs with
-          # TURNSTILE_MODE=off and AUTH_OTP_MODE=off (repository variables), and the boot guards only require
-          # those two keys when the matching mode is on; Resend is the email transport (auth-email.ts
-          # no-ops without any provider key). To turn Turnstile on later, create the secret, bind it below,
-          # and set the mode variable (docs/runbooks/cloudflare-integration.md).
+          # SENDGRID_API_KEY is deliberately NOT bound: Resend is the email transport (auth-email.ts
+          # no-ops without any provider key). TURNSTILE_SECRET_KEY is bound because TURNSTILE_MODE is
+          # enforce; the boot guard requires it (docs/runbooks/cloudflare-integration.md).
           secrets: |
             MONGODB_URL=lifekeel-mongodb-url:latest
             REDIS_URL=lifekeel-redis-url:latest
@@ -237,6 +235,7 @@ jobs:
             VAPID_SUBJECT=lifekeel-vapid-subject:latest
             METRICS_SCRAPE_TOKEN=lifekeel-metrics-scrape-token:latest
             OTP_PEPPER=lifekeel-otp-pepper:latest
+            TURNSTILE_SECRET_KEY=lifekeel-turnstile-secret-key:latest
             RESEND_API_KEY=lifekeel-resend-api-key:latest
             RESEND_WEBHOOK_SECRET=lifekeel-resend-webhook-secret:latest
           secrets_update_strategy: overwrite
