@@ -218,6 +218,7 @@ import { registerFamilyScopeContractRoutes } from './routes/family-scope-contrac
 import { ensureScopeContractIndexes } from './family/scope-contracts.js'
 import { registerMarketingPlanRoutes } from './routes/marketing-plan.js'
 import { registerMarketingBankRoutes } from './routes/marketing-bank.js'
+import { registerMarketingStandingRoutes } from './routes/marketing-standing.js'
 import { registerMarketingProfileRoutes } from './routes/marketing-profiles.js'
 import { registerLeadRoutes } from './routes/leads.js'
 import { registerHeartbeatUnsubscribeRoutes } from './routes/heartbeat-unsubscribe.js'
@@ -537,6 +538,11 @@ try {
             // PRD-210: keep next week's pillar plan drafted for the weekly review.
             const { ensureWeeklyPlans } = await import('./marketing/content-plan.js')
             await ensureWeeklyPlans(workflowDb, taskLlmFor('marketing.social_draft.v1'))
+            // Standing approvals: breakers first (they retire expired or stale entries and pause failing
+            // networks), then fill the calendar from the approved bank. Publishing is still the sweep's job.
+            const { runBreakers, scheduleStanding } = await import('./marketing/standing.js')
+            await runBreakers(workflowDb)
+            await scheduleStanding(workflowDb)
             // PRD-226: re-promote the top-visited guide not pushed in 30 days.
             const { reviveGuides } = await import('./routes/marketing-posts.js')
             await reviveGuides(workflowDb, taskLlmFor('marketing.social_draft.v1'))
@@ -557,6 +563,9 @@ try {
         try {
           await withCronLock(workflowDb, 'marketing-engagement', async () => {
             await pollMarketingEngagement(workflowDb)
+            // Standing approvals: notice failing networks and stale approvals within the hour.
+            const { runBreakers } = await import('./marketing/standing.js')
+            await runBreakers(workflowDb)
           })
         } catch (err) {
           log.error({ err }, 'Marketing engagement sweep failed')
@@ -2281,6 +2290,7 @@ if (workflowDb) {
   registerMarketingProfileRoutes(app, workflowDb)
   registerMarketingPlanRoutes(app, workflowDb)
   registerMarketingBankRoutes(app, workflowDb)
+  registerMarketingStandingRoutes(app, workflowDb)
   ensureAutopilotIndexes(workflowDb)
   void ensureRevenueIndexes(workflowDb)
   void ensureMarketingSpendIndexes(workflowDb)
