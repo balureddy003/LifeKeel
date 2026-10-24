@@ -47,7 +47,9 @@ describe('R41: signing keys', () => {
 
   it('OAuth state needs an expiry and is bound to its purpose', () => {
     vi.stubEnv('JWT_SECRET', 'x'.repeat(40))
-    expect(() => verifyState('connector-oauth-state', signState('connector-oauth-state', { a: 1 }))).toThrow(/expired/)
+    expect(() =>
+      verifyState('connector-oauth-state', signState('connector-oauth-state', { a: 1 })),
+    ).toThrow(/expired/)
     const live = signState('connector-oauth-state', { a: 1, exp: Date.now() + 60_000 })
     expect(verifyState('connector-oauth-state', live)['a']).toBe(1)
     expect(() => verifyState('social-oauth-state', live)).toThrow(/signature/)
@@ -67,12 +69,16 @@ describe('R22: log redaction', () => {
     expect(redactUrl('/connectors/gmail/oauth/callback?code=4/abc&state=xyz')).toBe(
       '/connectors/gmail/oauth/callback?[query removed]',
     )
-    expect(redactUrl('/family/invite/3f9a0c1b2d3e4f5a6b7c8d9e0f1a2b3c')).toBe('/family/invite/:redacted')
+    expect(redactUrl('/family/invite/3f9a0c1b2d3e4f5a6b7c8d9e0f1a2b3c')).toBe(
+      '/family/invite/:redacted',
+    )
     expect(redactUrl('/documents/abc/file')).toBe('/documents/abc/file')
   })
 
   it('scrubs emails, bearer tokens and long tokens from free text', () => {
-    const out = scrubSecrets('failed for jane@example.com with Bearer eyJhbGciOi.x.y and key ' + 'a'.repeat(40))
+    const out = scrubSecrets(
+      'failed for jane@example.com with Bearer eyJhbGciOi.x.y and key ' + 'a'.repeat(40),
+    )
     expect(out).not.toContain('jane@example.com')
     expect(out).not.toContain('eyJhbGciOi')
     expect(out).not.toContain('a'.repeat(40))
@@ -81,7 +87,8 @@ describe('R22: log redaction', () => {
 
 describe('R43: display names', () => {
   it('accepts ordinary names', () => {
-    for (const n of ['The Smiths', "Siobhán O'Neill", 'Familie Novak', '李家']) expect(displayNameError(n)).toBeNull()
+    for (const n of ['The Smiths', "Siobhán O'Neill", 'Familie Novak', '李家'])
+      expect(displayNameError(n)).toBeNull()
   })
 
   it('rejects links, addresses, phone numbers, control characters and long text', () => {
@@ -100,7 +107,9 @@ describe('R43: display names', () => {
 
 describe('R13: health terms removed from model context', () => {
   it('keeps the practical facts and drops the health detail', () => {
-    const out = withoutHealthDetail("Mum's at County Hospital after a stroke, kids need pickup at 3")
+    const out = withoutHealthDetail(
+      "Mum's at County Hospital after a stroke, kids need pickup at 3",
+    )
     expect(out).toContain('kids need pickup at 3')
     expect(out).not.toMatch(/hospital|stroke/i)
     expect(out).toContain(HEALTH_PLACEHOLDER)
@@ -123,17 +132,34 @@ describe('R25: scan-before-parse policy', () => {
     expect(mayParse({ result: 'clean', engine: 'clamav' }, prod)).toBe(true)
     expect(mayParse({ result: 'not_performed' }, prod)).toBe(false)
     expect(mayParse({ result: 'not_performed' }, { NODE_ENV: 'test' })).toBe(true)
-    expect(mayParse({ result: 'error', engine: 'clamav', reason: 'x' }, { NODE_ENV: 'test' })).toBe(false)
+    expect(mayParse({ result: 'error', engine: 'clamav', reason: 'x' }, { NODE_ENV: 'test' })).toBe(
+      false,
+    )
   })
 })
 
 describe('R07: private address ranges', () => {
   it('blocks loopback, private, link-local, CGNAT, mapped and reserved addresses', () => {
-    for (const a of ['127.0.0.1', '10.1.2.3', '172.16.0.1', '192.168.0.1', '169.254.169.254', '100.64.0.1', '0.0.0.0', '::1', 'fe80::1', 'fd00::1', '::ffff:10.0.0.1', '224.0.0.1', '198.18.0.1'])
+    for (const a of [
+      '127.0.0.1',
+      '10.1.2.3',
+      '172.16.0.1',
+      '192.168.0.1',
+      '169.254.169.254',
+      '100.64.0.1',
+      '0.0.0.0',
+      '::1',
+      'fe80::1',
+      'fd00::1',
+      '::ffff:10.0.0.1',
+      '224.0.0.1',
+      '198.18.0.1',
+    ])
       expect(isPrivateAddress(a), a).toBe(true)
   })
 
   it('allows public addresses', () => {
-    for (const a of ['93.184.216.34', '142.250.80.109', '2607:f8b0:4004:800::200e']) expect(isPrivateAddress(a), a).toBe(false)
+    for (const a of ['93.184.216.34', '142.250.80.109', '2607:f8b0:4004:800::200e'])
+      expect(isPrivateAddress(a), a).toBe(false)
   })
 })

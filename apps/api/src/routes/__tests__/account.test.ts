@@ -299,7 +299,10 @@ describe('POST /account/delete', () => {
     // R19: leads and sign-in history are keyed by email / user id, not tenant
     const leadFilter = db.cols['leads']!.deleteMany.mock.calls[0]?.[0] as Record<string, unknown>
     expect(leadFilter).toEqual({ email: { $in: ['Parent@Example.com', 'parent@example.com'] } })
-    const loginFilter = db.cols['login_events']!.deleteMany.mock.calls[0]?.[0] as Record<string, unknown>
+    const loginFilter = db.cols['login_events']!.deleteMany.mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >
     expect(loginFilter['$or']).toEqual([
       { user_id: { $in: ['user-1'] } },
       { email: { $in: ['Parent@Example.com', 'parent@example.com'] } },

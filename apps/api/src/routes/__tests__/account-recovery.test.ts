@@ -80,7 +80,9 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await db.collection('users').deleteMany({})
-  await db.collection('users').insertMany([user('victim', 'victim@example.com'), user('other', 'other@example.com')])
+  await db
+    .collection('users')
+    .insertMany([user('victim', 'victim@example.com'), user('other', 'other@example.com')])
 })
 
 afterAll(async () => {
@@ -133,7 +135,12 @@ describe('POST /auth/reset-password', () => {
 
   it('an expired token is refused', async () => {
     const raw = await requestReset('victim@example.com')
-    await db.collection('users').updateOne({ id: 'victim' }, { $set: { password_reset_expires: new Date(Date.now() - 1000) } })
+    await db
+      .collection('users')
+      .updateOne(
+        { id: 'victim' },
+        { $set: { password_reset_expires: new Date(Date.now() - 1000) } },
+      )
     const res = await app.inject({
       method: 'POST',
       url: '/auth/reset-password',

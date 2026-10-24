@@ -148,12 +148,19 @@ class S3ObjectStore implements ObjectStore {
   async put(role: BucketRole, key: string, body: Buffer, contentType: string): Promise<void> {
     assertRole(this.credential, role, true)
     await this.client.send(
-      new PutObjectCommand({ Bucket: this.bucket(role), Key: key, Body: body, ContentType: contentType }),
+      new PutObjectCommand({
+        Bucket: this.bucket(role),
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+      }),
     )
   }
   async get(role: BucketRole, key: string): Promise<Buffer | null> {
     try {
-      const res = await this.client.send(new GetObjectCommand({ Bucket: this.bucket(role), Key: key }))
+      const res = await this.client.send(
+        new GetObjectCommand({ Bucket: this.bucket(role), Key: key }),
+      )
       const bytes = await res.Body?.transformToByteArray()
       return bytes ? Buffer.from(bytes) : Buffer.alloc(0)
     } catch (err) {
@@ -163,7 +170,9 @@ class S3ObjectStore implements ObjectStore {
   }
   async head(role: BucketRole, key: string): Promise<HeadResult | null> {
     try {
-      const res = await this.client.send(new HeadObjectCommand({ Bucket: this.bucket(role), Key: key }))
+      const res = await this.client.send(
+        new HeadObjectCommand({ Bucket: this.bucket(role), Key: key }),
+      )
       return { size: Number(res.ContentLength ?? 0), etag: res.ETag }
     } catch (err) {
       if (isNotFound(err)) return null
@@ -179,7 +188,11 @@ class S3ObjectStore implements ObjectStore {
     let token: string | undefined
     do {
       const res = await this.client.send(
-        new ListObjectsV2Command({ Bucket: this.bucket(role), Prefix: prefix, ContinuationToken: token }),
+        new ListObjectsV2Command({
+          Bucket: this.bucket(role),
+          Prefix: prefix,
+          ContinuationToken: token,
+        }),
       )
       for (const o of res.Contents ?? []) if (o.Key) keys.push(o.Key)
       token = res.IsTruncated ? res.NextContinuationToken : undefined

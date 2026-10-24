@@ -49,7 +49,10 @@ export async function cancelSubscriptionForDeletedTenant(
     return true
   }
   if (!stripe) {
-    log.error({ tenant_id: tenantId }, 'Deleted tenant still has a subscription but Stripe is not configured')
+    log.error(
+      { tenant_id: tenantId },
+      'Deleted tenant still has a subscription but Stripe is not configured',
+    )
     return false
   }
   try {
@@ -58,7 +61,8 @@ export async function cancelSubscriptionForDeletedTenant(
     })
   } catch (err) {
     const code = (err as { code?: string }).code
-    const alreadyGone = code === 'resource_missing' || /canceled/i.test(String((err as Error).message))
+    const alreadyGone =
+      code === 'resource_missing' || /canceled/i.test(String((err as Error).message))
     if (!alreadyGone) {
       log.error({ err, tenant_id: tenantId }, 'Subscription cancellation failed; will retry')
       return false

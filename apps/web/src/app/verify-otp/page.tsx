@@ -78,7 +78,8 @@ export default function VerifyOtpPage() {
   useEffect(() => {
     if (!pending || phase === 'success' || phase === 'verifying') return
     if (chainLeft === 0) setPhase('chain_expired')
-    else if (codeLeft === 0 && phase !== 'locked' && phase !== 'superseded') setPhase('code_expired')
+    else if (codeLeft === 0 && phase !== 'locked' && phase !== 'superseded')
+      setPhase('code_expired')
   }, [pending, chainLeft, codeLeft, phase])
 
   const focusFirstEmpty = (d: string[]) => {

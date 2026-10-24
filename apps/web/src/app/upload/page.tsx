@@ -259,8 +259,8 @@ export default function UploadPage() {
       </div>
 
       <p className="text-xs text-ink-tertiary mt-2">
-        PDF, Word (.docx) or photos, up to 50 MB. Every file is checked for malware before
-        anyone can open it, and photos are saved as WebP with location data removed.
+        PDF, Word (.docx) or photos, up to 50 MB. Every file is checked for malware before anyone
+        can open it, and photos are saved as WebP with location data removed.
       </p>
 
       <input

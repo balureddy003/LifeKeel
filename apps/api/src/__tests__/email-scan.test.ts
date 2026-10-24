@@ -36,7 +36,10 @@ vi.mock('mongodb', async (importOriginal) => {
         // Emits 'finish' after end(), like the real write stream: the
         // storage seam awaits it before inserting the metadata row.
         openUploadStream: vi.fn(() => {
-          const stream = new EventEmitter() as EventEmitter & { id: string; end: (b: Buffer) => void }
+          const stream = new EventEmitter() as EventEmitter & {
+            id: string
+            end: (b: Buffer) => void
+          }
           stream.id = 'fake-gridfs-id'
           stream.end = (b: Buffer) => {
             uploadStreamEnd(b)

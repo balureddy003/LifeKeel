@@ -48,14 +48,12 @@ const user = (id: string, tenant: string, extra: Record<string, unknown> = {}) =
 
 describe('buildJourneys', () => {
   it('reads first and last touch from the signup', async () => {
-    await db
-      .collection('users')
-      .insertOne(
-        user('u1', 't1', {
-          attribution: utm('bluesky'),
-          last_touch: utm('x', 'pillar_guides', 'post_9'),
-        }),
-      )
+    await db.collection('users').insertOne(
+      user('u1', 't1', {
+        attribution: utm('bluesky'),
+        last_touch: utm('x', 'pillar_guides', 'post_9'),
+      }),
+    )
     const [j] = await buildJourneys(db, RANGE)
     expect(j).toMatchObject({
       tenant_id: 't1',
@@ -151,15 +149,13 @@ describe('buildJourneys', () => {
   })
 
   it('counts a family once, under its first signup', async () => {
-    await db
-      .collection('users')
-      .insertMany([
-        user('a', 't1', {
-          attribution: utm('bluesky'),
-          created_at: new Date('2026-10-20T08:00:00Z'),
-        }),
-        user('b', 't1', { attribution: utm('x'), created_at: new Date('2026-10-20T09:00:00Z') }),
-      ])
+    await db.collection('users').insertMany([
+      user('a', 't1', {
+        attribution: utm('bluesky'),
+        created_at: new Date('2026-10-20T08:00:00Z'),
+      }),
+      user('b', 't1', { attribution: utm('x'), created_at: new Date('2026-10-20T09:00:00Z') }),
+    ])
     const js = await buildJourneys(db, RANGE)
     expect(js).toHaveLength(1)
     expect(js[0]!.first.source).toBe('bluesky')

@@ -115,7 +115,12 @@ describe('route gate', () => {
 
   async function build(cfg: TurnstileConfig, fetchImpl: typeof fetch) {
     const app = Fastify()
-    await app.register(rateLimit, { global: true, max: 2, timeWindow: '1 minute', hook: 'preHandler' })
+    await app.register(rateLimit, {
+      global: true,
+      max: 2,
+      timeWindow: '1 minute',
+      hook: 'preHandler',
+    })
     registerTurnstile(app, { config: () => cfg, fetch: fetchImpl })
     app.post('/auth/login', { config: { turnstile: 'login' } }, async () => ({ ok: true }))
     app.post('/open', async () => ({ ok: true }))

@@ -156,7 +156,7 @@ vi.mock('../../db.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../db.js')>()
   return {
     ...actual,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     getDb: async () => makeFakeDb(state) as any,
   }
 })
@@ -169,7 +169,7 @@ async function buildApp(callerId: string | null) {
   app.addHook('onRequest', async (request) => {
     if (callerId) (request as any).authContext = { tenant_id: TENANT, user_id: callerId }
   })
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   registerFamilyJoinRoutes(app, makeFakeDb(state) as any, fakeAuth as any)
   return app
 }

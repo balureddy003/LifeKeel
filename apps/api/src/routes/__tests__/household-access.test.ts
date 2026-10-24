@@ -37,12 +37,32 @@ beforeEach(async () => {
     tenant_id: TENANT,
     name: 'The Testers',
     members: [
-      { id: ORGANIZER.id, name: 'Org', email: 'org@example.com', role: 'organizer', status: 'active', joined_at: '2026-01-01' },
-      { id: MEMBER.id, name: 'Mem', email: 'mem@example.com', role: 'adult', status: 'active', joined_at: '2026-01-01' },
+      {
+        id: ORGANIZER.id,
+        name: 'Org',
+        email: 'org@example.com',
+        role: 'organizer',
+        status: 'active',
+        joined_at: '2026-01-01',
+      },
+      {
+        id: MEMBER.id,
+        name: 'Mem',
+        email: 'mem@example.com',
+        role: 'adult',
+        status: 'active',
+        joined_at: '2026-01-01',
+      },
     ],
   })
   await db.collection('users').insertMany([
-    { id: ORGANIZER.id, tenant_id: TENANT, email: 'org@example.com', roles: ['admin'], status: 'active' },
+    {
+      id: ORGANIZER.id,
+      tenant_id: TENANT,
+      email: 'org@example.com',
+      roles: ['admin'],
+      status: 'active',
+    },
     {
       id: MEMBER.id,
       tenant_id: TENANT,
@@ -76,14 +96,18 @@ async function appAs(userId: string, roles: string[]): Promise<FastifyInstance> 
 
 describe('R03: removing a member ends their access', () => {
   it('marks the login removed, revokes its sessions and drops pending invites', async () => {
-    await db.collection('family_member_invites').insertOne({ tenant_id: TENANT, member_id: MEMBER.id, token: 'x' })
+    await db
+      .collection('family_member_invites')
+      .insertOne({ tenant_id: TENANT, member_id: MEMBER.id, token: 'x' })
     const app = await appAs(ORGANIZER.id, ['admin'])
     const res = await app.inject({ method: 'DELETE', url: `/family/members/${MEMBER.id}` })
     expect(res.statusCode).toBe(200)
     const user = await db.collection('users').findOne({ id: MEMBER.id })
     expect(user?.['status']).toBe('removed')
     expect(user?.['sessions_revoked_at']).toBeInstanceOf(Date)
-    expect(await db.collection('family_member_invites').countDocuments({ member_id: MEMBER.id })).toBe(0)
+    expect(
+      await db.collection('family_member_invites').countDocuments({ member_id: MEMBER.id }),
+    ).toBe(0)
     const organizer = await db.collection('users').findOne({ id: ORGANIZER.id })
     expect(organizer?.['status']).toBe('active')
   })
@@ -97,14 +121,24 @@ describe('R05: export', () => {
     const body = res.json()
     expect(body.scope).toBe('household')
     const text = res.body
-    for (const secret of ['mfa_secret', 'mfa_recovery_hashes', 'mfa_pending_secret', 'password_hash', 'dek:secret']) {
+    for (const secret of [
+      'mfa_secret',
+      'mfa_recovery_hashes',
+      'mfa_pending_secret',
+      'password_hash',
+      'dek:secret',
+    ]) {
       expect(text, secret).not.toContain(secret)
     }
-    expect(body.household_users.map((u: { id: string }) => u.id).sort()).toEqual([MEMBER.id, ORGANIZER.id].sort())
+    expect(body.household_users.map((u: { id: string }) => u.id).sort()).toEqual(
+      [MEMBER.id, ORGANIZER.id].sort(),
+    )
   })
 
   it('a viewer exports their own account and roster entry, not the household', async () => {
-    await db.collection('documents').insertOne({ tenant_id: TENANT, id: 'will', category: 'estate_vault', filename: 'will.pdf' })
+    await db
+      .collection('documents')
+      .insertOne({ tenant_id: TENANT, id: 'will', category: 'estate_vault', filename: 'will.pdf' })
     const app = await appAs(MEMBER.id, ['viewer'])
     const res = await app.inject({ method: 'GET', url: '/account/export' })
     expect(res.statusCode).toBe(200)
@@ -126,28 +160,46 @@ describe('deleting the household', () => {
       payload: { confirmation: 'mem@example.com' },
     })
     expect(res.statusCode).toBe(403)
-    expect((await db.collection('tenants').findOne({ tenant_id: TENANT }))?.['status']).toBe('active')
+    expect((await db.collection('tenants').findOne({ tenant_id: TENANT }))?.['status']).toBe(
+      'active',
+    )
   })
 })
 
 describe('R09: cancelling billing on deletion', () => {
   it('cancels the subscription and clears it, treating an already-cancelled one as done', async () => {
-    await db.collection('tenants').updateOne({ tenant_id: TENANT }, { $set: { stripe_subscription_id: 'sub_1', 'billing.cancellation_pending': true } })
+    await db
+      .collection('tenants')
+      .updateOne(
+        { tenant_id: TENANT },
+        { $set: { stripe_subscription_id: 'sub_1', 'billing.cancellation_pending': true } },
+      )
     const cancel = vi.fn(async () => ({}))
-    const ok = await cancelSubscriptionForDeletedTenant(db, TENANT, { subscriptions: { cancel } } as never)
+    const ok = await cancelSubscriptionForDeletedTenant(db, TENANT, {
+      subscriptions: { cancel },
+    } as never)
     expect(ok).toBe(true)
-    expect(cancel).toHaveBeenCalledWith('sub_1', undefined, { idempotencyKey: `delete-${TENANT}-sub_1` })
+    expect(cancel).toHaveBeenCalledWith('sub_1', undefined, {
+      idempotencyKey: `delete-${TENANT}-sub_1`,
+    })
     const tenant = await db.collection('tenants').findOne({ tenant_id: TENANT })
     expect(tenant?.['stripe_subscription_id']).toBeUndefined()
     expect(tenant?.['billing']?.['cancellation_pending']).toBeUndefined()
   })
 
   it('keeps the pending flag when Stripe fails, so the replay retries', async () => {
-    await db.collection('tenants').updateOne({ tenant_id: TENANT }, { $set: { stripe_subscription_id: 'sub_2', 'billing.cancellation_pending': true } })
+    await db
+      .collection('tenants')
+      .updateOne(
+        { tenant_id: TENANT },
+        { $set: { stripe_subscription_id: 'sub_2', 'billing.cancellation_pending': true } },
+      )
     const cancel = vi.fn(async () => {
       throw Object.assign(new Error('network down'), { code: 'api_connection_error' })
     })
-    const ok = await cancelSubscriptionForDeletedTenant(db, TENANT, { subscriptions: { cancel } } as never)
+    const ok = await cancelSubscriptionForDeletedTenant(db, TENANT, {
+      subscriptions: { cancel },
+    } as never)
     expect(ok).toBe(false)
     const tenant = await db.collection('tenants').findOne({ tenant_id: TENANT })
     expect(tenant?.['stripe_subscription_id']).toBe('sub_2')
@@ -161,7 +213,11 @@ describe('R43: names in outbound email', () => {
     const add = await app.inject({
       method: 'POST',
       url: '/family/members',
-      payload: { name: 'Account suspended, call 0800 123 4567', email: 'x@example.com', role: 'adult' },
+      payload: {
+        name: 'Account suspended, call 0800 123 4567',
+        email: 'x@example.com',
+        role: 'adult',
+      },
     })
     expect(add.statusCode).toBe(400)
   })

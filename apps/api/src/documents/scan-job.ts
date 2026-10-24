@@ -123,7 +123,11 @@ export async function processScanJob(
     if (deps.definitionsStale?.()) return retry('clamav_definitions_stale')
     const scan = await (deps.scan ?? scanUpload)(source)
     if (scan.result === 'infected')
-      return finishTerminal('infected', { result: 'infected', engine: 'clamav', signature: scan.signature })
+      return finishTerminal('infected', {
+        result: 'infected',
+        engine: 'clamav',
+        signature: scan.signature,
+      })
     if (scan.result === 'error') return retry(`clamav_${scan.reason}`)
     if (scan.result === 'not_performed' && scanRequired()) return retry('scanner_not_configured')
 
@@ -148,7 +152,10 @@ export async function processScanJob(
       storedSize: promoted.length,
       sha256,
       sourceSha256,
-      scan: scan.result === 'clean' ? { result: 'clean', engine: 'clamav' } : { result: 'not_performed' },
+      scan:
+        scan.result === 'clean'
+          ? { result: 'clean', engine: 'clamav' }
+          : { result: 'not_performed' },
       stored: parsed.header.stored,
     }) // (2)
     if (!committed) {

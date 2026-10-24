@@ -53,7 +53,9 @@ export async function sweepPendingRegistrations(
     })
     if (removed.deletedCount !== 1) continue
     out.pending_users++
-    out.otp_chains += (await db.collection('otp_chains').deleteMany({ user_id: userId })).deletedCount
+    out.otp_chains += (
+      await db.collection('otp_chains').deleteMany({ user_id: userId })
+    ).deletedCount
     out.otp_send_windows += (
       await db
         .collection('otp_send_windows')

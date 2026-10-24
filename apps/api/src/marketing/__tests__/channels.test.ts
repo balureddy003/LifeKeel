@@ -385,18 +385,16 @@ describe('degraded: connected but not working', () => {
 
   it('clears once a real post has gone out after the failure — dry runs do not count', async () => {
     await db.collection('connector_credentials').insertOne(oauth('linkedin'))
-    await db
-      .collection('marketing_posts')
-      .insertMany([
-        failedVersionPost(),
-        {
-          tenant_id: 't1',
-          channel: 'linkedin',
-          state: 'published',
-          dry_run: true,
-          published_at: days(-0.5),
-        },
-      ])
+    await db.collection('marketing_posts').insertMany([
+      failedVersionPost(),
+      {
+        tenant_id: 't1',
+        channel: 'linkedin',
+        state: 'published',
+        dry_run: true,
+        published_at: days(-0.5),
+      },
+    ])
     expect((await listChannels(db, 't1', NOW))[0]!.status).toBe('degraded')
     await db.collection('marketing_posts').insertOne({
       tenant_id: 't1',

@@ -20,7 +20,10 @@ export function GoogleAnalytics() {
   const tagId = GA_ID ?? ADS_ID
   return (
     <>
-      <Script src={`https://www.googletagmanager.com/gtag/js?id=${tagId}`} strategy="afterInteractive" />
+      <Script
+        src={`https://www.googletagmanager.com/gtag/js?id=${tagId}`}
+        strategy="afterInteractive"
+      />
       <Script id="gtag-init" strategy="afterInteractive">
         {`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());${GA_ID ? `gtag('config','${GA_ID}',{send_page_view:true,page_location:location.origin+location.pathname});` : ''}${ADS_ID ? `gtag('config','${ADS_ID}');` : ''}`}
       </Script>

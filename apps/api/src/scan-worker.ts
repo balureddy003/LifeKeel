@@ -40,7 +40,10 @@ import { dropEmptyEnv } from './env-helpers.js'
 dotenv.config({ path: new URL('../../../.env', import.meta.url).pathname })
 dropEmptyEnv()
 
-const log = createLogger({ service: 'scan-worker', version: process.env['npm_package_version'] ?? '0.0.0' })
+const log = createLogger({
+  service: 'scan-worker',
+  version: process.env['npm_package_version'] ?? '0.0.0',
+})
 const WORKER_ID = `${hostname()}:${process.pid}:${randomUUID().slice(0, 8)}`
 const RECONCILE_MS = 60_000
 const DEFINITIONS_MAX_AGE_S = 48 * 3600
@@ -49,7 +52,8 @@ function bootChecks(): void {
   const s = r2Settings()
   const problems: string[] = []
   if (!s) problems.push('R2_ACCOUNT_ID or R2_ENDPOINT is required')
-  else if (!s.keys.scan) problems.push('R2_SCAN_ACCESS_KEY_ID / R2_SCAN_SECRET_ACCESS_KEY are required')
+  else if (!s.keys.scan)
+    problems.push('R2_SCAN_ACCESS_KEY_ID / R2_SCAN_SECRET_ACCESS_KEY are required')
   if (deploymentConfig.mode !== 'dev' && scanRequired() && !process.env['CLAMD_HOST'])
     problems.push('CLAMD_HOST is required (MALWARE_SCAN_REQUIRED defaults true outside dev)')
   if (problems.length) {
@@ -70,7 +74,9 @@ async function drain(): Promise<number> {
     if (!row) break
     const outcome = await processScanJob(db, row, {
       definitionsStale: () =>
-        process.env['CLAMD_HOST'] !== undefined && definitionsAge !== null && definitionsAge > DEFINITIONS_MAX_AGE_S,
+        process.env['CLAMD_HOST'] !== undefined &&
+        definitionsAge !== null &&
+        definitionsAge > DEFINITIONS_MAX_AGE_S,
     })
     log.info({ documentId: row.id, outcome, attempt: row.scan_job.attempt }, 'Scan job finished')
     n++
@@ -111,7 +117,10 @@ async function main(): Promise<void> {
       res.end(JSON.stringify({ status: healthy ? 'ok' : 'stalled' }))
       return
     }
-    if (req.url === '/metrics' && metricsScrapeAuthorized(req.headers.authorization, process.env['METRICS_SCRAPE_TOKEN'])) {
+    if (
+      req.url === '/metrics' &&
+      metricsScrapeAuthorized(req.headers.authorization, process.env['METRICS_SCRAPE_TOKEN'])
+    ) {
       res.writeHead(200, { 'content-type': 'text/plain; version=0.0.4' })
       res.end(await renderMetrics())
       return

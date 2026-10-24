@@ -18,11 +18,15 @@ export function sessionTokenHash(token: string): string {
 }
 
 export async function revokeSessionToken(db: Db, token: string): Promise<void> {
-  await db.collection('revoked_sessions').updateOne(
-    { token_hash: sessionTokenHash(token) },
-    { $setOnInsert: { expires_at: new Date(Date.now() + MAX_SESSION_MS), revoked_at: new Date() } },
-    { upsert: true },
-  )
+  await db
+    .collection('revoked_sessions')
+    .updateOne(
+      { token_hash: sessionTokenHash(token) },
+      {
+        $setOnInsert: { expires_at: new Date(Date.now() + MAX_SESSION_MS), revoked_at: new Date() },
+      },
+      { upsert: true },
+    )
 }
 
 export async function isSessionTokenRevoked(db: Db, token: string): Promise<boolean> {

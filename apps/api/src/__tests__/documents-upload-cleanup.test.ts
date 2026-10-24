@@ -76,12 +76,12 @@ function makeDb() {
       name === 'tenant_quota' || name === 'tenant_quota_days'
         ? quotaCol
         : name === 'documents.files'
-        ? { aggregate: () => ({ toArray: async () => [] }), countDocuments: async () => 0 }
-        : name === 'documents'
-          ? documentsCol
-          : name === 'growth_events'
-            ? growthEventsCol
-            : tenantsCol,
+          ? { aggregate: () => ({ toArray: async () => [] }), countDocuments: async () => 0 }
+          : name === 'documents'
+            ? documentsCol
+            : name === 'growth_events'
+              ? growthEventsCol
+              : tenantsCol,
   } as any
 }
 
@@ -150,7 +150,15 @@ describe('KEEL-019: document upload GridFS/metadata consistency', () => {
 describe('R26: GET /documents limit', () => {
   it('is always a finite integer from 1 to 100 — 0 must never reach MongoDB as "no limit"', async () => {
     const app = await buildApp()
-    for (const [query, expected] of [['0', 1], ['-5', 1], ['abc', 50], ['1e9', 1], ['500', 100], ['25', 25], ['', 50]] as const) {
+    for (const [query, expected] of [
+      ['0', 1],
+      ['-5', 1],
+      ['abc', 50],
+      ['1e9', 1],
+      ['500', 100],
+      ['25', 25],
+      ['', 50],
+    ] as const) {
       limits.length = 0
       const res = await app.inject({ method: 'GET', url: `/documents?limit=${query}` })
       expect(res.statusCode, query).toBe(200)

@@ -68,7 +68,8 @@ export function matchTotpStep(secret: string, code: unknown): number | null {
   let matched: number | null = null
   for (let i = -1; i <= 1; i++) {
     const candidate = Buffer.from(hotp(secret, now + i))
-    if (candidate.length === expected.length && timingSafeEqual(candidate, expected)) matched = now + i
+    if (candidate.length === expected.length && timingSafeEqual(candidate, expected))
+      matched = now + i
   }
   return matched
 }

@@ -58,14 +58,27 @@ afterAll(async () => {
   await app.close()
   await closeDb()
   await mongod.stop()
-  for (const k of ['MONGODB_URL', 'MONGODB_DB', 'AUTH_OTP_MODE', 'TURNSTILE_MODE', 'INVITE_CODE_REQUIRED'])
+  for (const k of [
+    'MONGODB_URL',
+    'MONGODB_DB',
+    'AUTH_OTP_MODE',
+    'TURNSTILE_MODE',
+    'INVITE_CODE_REQUIRED',
+  ])
     delete process.env[k]
 })
 
 beforeEach(async () => {
   sent.length = 0
   nextDelivery = 'sent'
-  for (const c of ['users', 'tenants', 'otp_chains', 'otp_send_windows', 'login_events', 'invite_codes'])
+  for (const c of [
+    'users',
+    'tenants',
+    'otp_chains',
+    'otp_send_windows',
+    'login_events',
+    'invite_codes',
+  ])
     await db.collection(c).deleteMany({})
 })
 
@@ -87,7 +100,9 @@ async function signup(email = `u${++n}@example.com`, extra: Record<string, unkno
 const lastCode = () => sent[sent.length - 1]!.code
 /** Lets the next send through the 60 s cooldown without waiting. */
 const skipCooldown = () =>
-  db.collection('otp_send_windows').updateMany({ _id: /:cool$/ as never }, { $set: { next_send_at: new Date(0) } })
+  db
+    .collection('otp_send_windows')
+    .updateMany({ _id: /:cool$/ as never }, { $set: { next_send_at: new Date(0) } })
 
 describe('signup with email OTP', () => {
   it('returns otp_required, no session, a pending user, and emails a code', async () => {
@@ -123,7 +138,9 @@ describe('signup with email OTP', () => {
   it('a consumed code cannot be replayed', async () => {
     const { body } = await signup()
     const code = lastCode()
-    expect((await post('/auth/otp/verify', { otp_token: body.otp_token, code })).statusCode).toBe(200)
+    expect((await post('/auth/otp/verify', { otp_token: body.otp_token, code })).statusCode).toBe(
+      200,
+    )
     const again = await post('/auth/otp/verify', { otp_token: body.otp_token, code })
     expect(again.statusCode).toBe(400)
     expect(again.json().error).toBe('otp_expired')
@@ -134,7 +151,8 @@ describe('signup with email OTP', () => {
     const wrong = lastCode() === '000000' ? '111111' : '000000'
     const first = await post('/auth/otp/verify', { otp_token: body.otp_token, code: wrong })
     expect(first.json()).toEqual({ error: 'otp_invalid', attempts_left: 4 })
-    for (let i = 0; i < 3; i++) await post('/auth/otp/verify', { otp_token: body.otp_token, code: wrong })
+    for (let i = 0; i < 3; i++)
+      await post('/auth/otp/verify', { otp_token: body.otp_token, code: wrong })
     const fifth = await post('/auth/otp/verify', { otp_token: body.otp_token, code: wrong })
     expect(fifth.statusCode).toBe(429)
     const right = await post('/auth/otp/verify', { otp_token: body.otp_token, code: lastCode() })
@@ -143,7 +161,9 @@ describe('signup with email OTP', () => {
 
   it('rejects an expired code', async () => {
     const { body } = await signup()
-    await db.collection('otp_chains').updateMany({}, { $set: { code_expires_at: new Date(Date.now() - 1000) } })
+    await db
+      .collection('otp_chains')
+      .updateMany({}, { $set: { code_expires_at: new Date(Date.now() - 1000) } })
     const res = await post('/auth/otp/verify', { otp_token: body.otp_token, code: lastCode() })
     expect(res.json().error).toBe('otp_expired')
   })
@@ -171,10 +191,16 @@ describe('signup with email OTP', () => {
     await skipCooldown()
     const second = await signup('re@example.com')
     expect(second.res.statusCode).toBe(200)
-    const stale = await post('/auth/otp/verify', { otp_token: first.body.otp_token, code: firstCode })
+    const stale = await post('/auth/otp/verify', {
+      otp_token: first.body.otp_token,
+      code: firstCode,
+    })
     expect(stale.statusCode).toBe(409)
     expect(stale.json().error).toBe('otp_superseded')
-    const fresh = await post('/auth/otp/verify', { otp_token: second.body.otp_token, code: lastCode() })
+    const fresh = await post('/auth/otp/verify', {
+      otp_token: second.body.otp_token,
+      code: lastCode(),
+    })
     expect(fresh.statusCode).toBe(200)
     expect(await db.collection('users').countDocuments({ email: 're@example.com' })).toBe(1)
   })
@@ -191,9 +217,13 @@ describe('signup with email OTP', () => {
         created_at: new Date(),
       })
       const { body } = await signup(undefined, { invite_code: 'BETA1' })
-      expect((await db.collection('invite_codes').findOne({ code: 'BETA1' }))?.['used_count']).toBe(0)
+      expect((await db.collection('invite_codes').findOne({ code: 'BETA1' }))?.['used_count']).toBe(
+        0,
+      )
       await post('/auth/otp/verify', { otp_token: body.otp_token, code: lastCode() })
-      expect((await db.collection('invite_codes').findOne({ code: 'BETA1' }))?.['used_count']).toBe(1)
+      expect((await db.collection('invite_codes').findOne({ code: 'BETA1' }))?.['used_count']).toBe(
+        1,
+      )
     } finally {
       delete process.env['INVITE_CODE_REQUIRED']
     }
@@ -267,7 +297,9 @@ describe('resend', () => {
 
   it('an expired chain cannot be resent', async () => {
     const { body } = await signup()
-    await db.collection('otp_chains').updateMany({}, { $set: { chain_expires_at: new Date(Date.now() - 1) } })
+    await db
+      .collection('otp_chains')
+      .updateMany({}, { $set: { chain_expires_at: new Date(Date.now() - 1) } })
     await skipCooldown()
     const res = await post('/auth/otp/resend', { otp_token: body.otp_token })
     expect(res.json().error).toBe('otp_expired')
@@ -332,7 +364,9 @@ describe('login with email OTP', () => {
   it('no session if sessions were revoked after the chain began', async () => {
     const user = await seedUser()
     const res = await post('/auth/login', { email: user.email, password: PASSWORD })
-    await db.collection('users').updateOne({ id: user.id }, { $set: { sessions_revoked_at: new Date() } })
+    await db
+      .collection('users')
+      .updateOne({ id: user.id }, { $set: { sessions_revoked_at: new Date() } })
     const v = await post('/auth/otp/verify', { otp_token: res.json().otp_token, code: lastCode() })
     expect(v.statusCode).toBe(401)
   })
@@ -342,7 +376,9 @@ describe('login with email OTP', () => {
     const res = await post('/auth/login', { email: user.email, password: PASSWORD })
     const wrong = lastCode() === '999999' ? '888888' : '999999'
     const results = await Promise.all(
-      Array.from({ length: 10 }, () => post('/auth/otp/verify', { otp_token: res.json().otp_token, code: wrong })),
+      Array.from({ length: 10 }, () =>
+        post('/auth/otp/verify', { otp_token: res.json().otp_token, code: wrong }),
+      ),
     )
     expect(results.filter((r) => r.json().error === 'otp_invalid').length).toBeLessThanOrEqual(4)
     const chain = await db.collection('otp_chains').findOne({ user_id: user.id })
@@ -388,11 +424,39 @@ describe('pending-registration sweep', () => {
   it('deletes only stale pending rows with no sign-in, and their own tenant', async () => {
     const old = new Date(Date.now() - 8 * 86_400_000)
     await db.collection('users').insertMany([
-      { id: 'p1', email: 'p1@x.io', tenant_id: 't-p1', registration_status: 'pending', email_verified: false, registration_created_at: old },
-      { id: 'p2', email: 'p2@x.io', tenant_id: 't-p2', registration_status: 'pending', email_verified: false, registration_created_at: new Date() },
+      {
+        id: 'p1',
+        email: 'p1@x.io',
+        tenant_id: 't-p1',
+        registration_status: 'pending',
+        email_verified: false,
+        registration_created_at: old,
+      },
+      {
+        id: 'p2',
+        email: 'p2@x.io',
+        tenant_id: 't-p2',
+        registration_status: 'pending',
+        email_verified: false,
+        registration_created_at: new Date(),
+      },
       { id: 'l1', email: 'l1@x.io', tenant_id: 't-l1', email_verified: false, created_at: old },
-      { id: 'a1', email: 'a1@x.io', tenant_id: 't-a1', registration_status: 'active', email_verified: true, registration_created_at: old },
-      { id: 'p3', email: 'p3@x.io', tenant_id: 't-p3', registration_status: 'pending', email_verified: false, registration_created_at: old },
+      {
+        id: 'a1',
+        email: 'a1@x.io',
+        tenant_id: 't-a1',
+        registration_status: 'active',
+        email_verified: true,
+        registration_created_at: old,
+      },
+      {
+        id: 'p3',
+        email: 'p3@x.io',
+        tenant_id: 't-p3',
+        registration_status: 'pending',
+        email_verified: false,
+        registration_created_at: old,
+      },
     ])
     await db.collection('tenants').insertMany([
       { tenant_id: 't-p1', created_by_registration: 'p1' },

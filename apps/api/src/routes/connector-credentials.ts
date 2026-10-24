@@ -18,7 +18,7 @@
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import crypto from 'node:crypto'
-import { ConnectorActionExecutor , connectorRegistry } from '@lifekeel/workflows'
+import { ConnectorActionExecutor, connectorRegistry } from '@lifekeel/workflows'
 import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { decryptEnveloped, encryptForTenant } from '../crypto/envelope.js'
 import { signState, verifyState } from '../auth/signing-key.js'
@@ -245,7 +245,7 @@ export function registerConnectorCredentialRoutes(
 ): void {
   const executor = new ConnectorActionExecutor(db)
   // Sync engine is optional — only wired when full pipeline deps are available
-   
+
   const syncEngine =
     connectorLoader && eventGenerator && engine
       ? new ConnectorSyncEngine(db as any, eventGenerator, engine)
@@ -593,9 +593,9 @@ export function registerConnectorCredentialRoutes(
           const igId = ig.instagram_business_account?.id
           if (!igId) {
             return {
-                connect: connectorId,
-                error: 'no_instagram_business_account',
-              }
+              connect: connectorId,
+              error: 'no_instagram_business_account',
+            }
           }
           extra['ig_user_id'] = igId
           try {
@@ -628,9 +628,9 @@ export function registerConnectorCredentialRoutes(
       } catch (err) {
         log.error({ err, connector_id: connectorId }, 'Meta page resolution failed')
         return {
-            connect: connectorId,
-            error: 'meta_page_resolution_failed',
-          }
+          connect: connectorId,
+          error: 'meta_page_resolution_failed',
+        }
       }
     }
 
@@ -690,9 +690,9 @@ export function registerConnectorCredentialRoutes(
         const me = (await meRes.json()) as { sub?: string; name?: string }
         if (!me.sub) {
           return {
-              connect: 'linkedin',
-              error: 'linkedin_userinfo_failed',
-            }
+            connect: 'linkedin',
+            error: 'linkedin_userinfo_failed',
+          }
         }
         await getTenantCollection<Record<string, unknown>>(
           db,
@@ -727,9 +727,9 @@ export function registerConnectorCredentialRoutes(
       const emailAddress = await fetchGmailAddress(data.access_token)
       if (!emailAddress) {
         return {
-            connect: connectorId,
-            error: 'Could not read the connected Gmail address',
-          }
+          connect: connectorId,
+          error: 'Could not read the connected Gmail address',
+        }
       }
 
       const familyCreds = getTenantCollection<Record<string, unknown>>(
@@ -841,7 +841,12 @@ export function registerConnectorCredentialRoutes(
       const raw = await decryptEnveloped(db, doc['token'] as string)
       if (!raw) return reply.status(500).send({ error: 'Stored grant unreadable' })
       try {
-        const params = await finishConnect(req.params.id, tenant_id, returnTo, JSON.parse(raw) as TokenGrant)
+        const params = await finishConnect(
+          req.params.id,
+          tenant_id,
+          returnTo,
+          JSON.parse(raw) as TokenGrant,
+        )
         return { params }
       } catch (err) {
         log.error({ err, connector_id: req.params.id }, 'OAuth completion failed')
@@ -1121,7 +1126,9 @@ export function registerConnectorCredentialRoutes(
         created_at: new Date(),
         expires_at: new Date(Date.now() + PENDING_GRANT_TTL_MS),
       })
-      return reply.redirect(frontendRedirect(returnTo, { connect: req.params.id, complete: grantId }))
+      return reply.redirect(
+        frontendRedirect(returnTo, { connect: req.params.id, complete: grantId }),
+      )
     } catch (err) {
       return reply.redirect(
         frontendRedirect(returnTo, { connect: req.params.id, error: String(err) }),
@@ -1166,7 +1173,7 @@ export function registerConnectorCredentialRoutes(
       .toArray()
     return {
       connector_id: req.params.id,
-       
+
       resources: (states as any[]).map((s) => ({
         resource: s.resource as string,
         last_synced_at: s.last_synced_at as Date | null,

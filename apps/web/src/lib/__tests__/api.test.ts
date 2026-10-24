@@ -480,7 +480,10 @@ describe('uploadDocument on-device screen', () => {
   const ok = (body: unknown) => ({ ok: true, status: 200, json: () => Promise.resolve(body) })
 
   it('sends the client screen outcome as a form field — and only the outcome', async () => {
-    const fn = vi.fn().mockResolvedValueOnce(notDirect()).mockResolvedValueOnce(ok({ id: 'd1' }))
+    const fn = vi
+      .fn()
+      .mockResolvedValueOnce(notDirect())
+      .mockResolvedValueOnce(ok({ id: 'd1' }))
     vi.stubGlobal('fetch', fn)
     const file = new File([new Uint8Array(8)], 'letter.png', { type: 'image/png' })
     await uploadDocument(file, 'flagged')
@@ -490,7 +493,10 @@ describe('uploadDocument on-device screen', () => {
   })
 
   it('omits the field when no screen ran', async () => {
-    const fn = vi.fn().mockResolvedValueOnce(notDirect()).mockResolvedValueOnce(ok({ id: 'd1' }))
+    const fn = vi
+      .fn()
+      .mockResolvedValueOnce(notDirect())
+      .mockResolvedValueOnce(ok({ id: 'd1' }))
     vi.stubGlobal('fetch', fn)
     await uploadDocument(new File([new Uint8Array(8)], 'doc.pdf', { type: 'application/pdf' }))
     const form = (fn.mock.calls[1]?.[1] as RequestInit).body as FormData
@@ -503,7 +509,10 @@ describe('uploadDocument on-device screen', () => {
       .mockResolvedValueOnce(
         ok({
           document_id: 'd9',
-          upload: { url: 'https://acct.eu.r2.cloudflarestorage.com/q/t/d9?sig', headers: { 'Content-Type': 'application/pdf' } },
+          upload: {
+            url: 'https://acct.eu.r2.cloudflarestorage.com/q/t/d9?sig',
+            headers: { 'Content-Type': 'application/pdf' },
+          },
         }),
       )
       .mockResolvedValueOnce({ ok: true, status: 200 })
@@ -512,7 +521,12 @@ describe('uploadDocument on-device screen', () => {
     const file = new File([new Uint8Array(8)], 'policy.pdf', { type: 'application/pdf' })
     const doc = await uploadDocument(file, 'clear')
     const init = JSON.parse(String((fn.mock.calls[0]?.[1] as RequestInit).body))
-    expect(init).toMatchObject({ filename: 'policy.pdf', mime: 'application/pdf', size: 8, client_screen: 'clear' })
+    expect(init).toMatchObject({
+      filename: 'policy.pdf',
+      mime: 'application/pdf',
+      size: 8,
+      client_screen: 'clear',
+    })
     expect(fn.mock.calls[1]?.[0]).toContain('r2.cloudflarestorage.com')
     expect((fn.mock.calls[1]?.[1] as RequestInit).method).toBe('PUT')
     expect(fn.mock.calls[2]?.[0]).toContain('/documents/d9/complete')

@@ -33,7 +33,7 @@ import {
 } from '../life-events/detect-unreported-change.js'
 import { rewardReferralIfPending } from './referrals.js'
 import { recordInsightAction } from '../insights/insight-attribution.js'
-import { ageFromDob , isHouseholdEditor } from '../family/family-permissions.js'
+import { ageFromDob, isHouseholdEditor } from '../family/family-permissions.js'
 import type { FamilyGroupDoc } from './family-group.js'
 import { monthlyEquivalentMinor, type CashflowEntryDoc } from './family-cashflow.js'
 import { buildEstateSignal } from '../legacy/estate-signal.js'

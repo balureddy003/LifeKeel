@@ -121,7 +121,8 @@ export async function normalizeImage(
     const msg = String((err as Error).message ?? err)
     if (/heif|hevc|heic/i.test(msg) && /heic|heif/.test(mime))
       return { header: { outcome: 'error', reason: 'heic_decoder_unavailable' } }
-    if (/pixel limit/i.test(msg)) return { header: { outcome: 'rejected', reason: 'image_too_large' } }
+    if (/pixel limit/i.test(msg))
+      return { header: { outcome: 'rejected', reason: 'image_too_large' } }
     return { header: { outcome: 'rejected', reason: 'image_undecodable' } }
   }
   const w = meta.width ?? 0
@@ -162,7 +163,9 @@ async function main(): Promise<void> {
   const bytes = await readStdin()
   if (kind === 'pdf') {
     const active = pdfActiveContent(bytes)
-    return active ? emit({ outcome: 'rejected', reason: `pdf_active:${active}` }) : emit({ outcome: 'ok' })
+    return active
+      ? emit({ outcome: 'rejected', reason: `pdf_active:${active}` })
+      : emit({ outcome: 'ok' })
   }
   if (kind === 'docx') {
     try {

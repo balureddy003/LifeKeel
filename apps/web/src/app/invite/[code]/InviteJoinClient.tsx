@@ -180,13 +180,7 @@ function RequestJoin({ code }: { code: string }) {
     setLoading(true)
     setError(null)
     try {
-      const result = await joinFamily(
-        code,
-        name.trim(),
-        email.trim(),
-        password,
-        captcha.consume(),
-      )
+      const result = await joinFamily(code, name.trim(), email.trim(), password, captcha.consume())
       haptic('success')
       setSubmitted(result)
     } catch (err) {

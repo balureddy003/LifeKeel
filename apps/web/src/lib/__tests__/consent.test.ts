@@ -15,7 +15,16 @@ describe('isTrackablePath', () => {
   })
 
   it('never inside the app, on recovery or invite links, or for a signed-in visitor', () => {
-    for (const p of ['/reset-password/confirm', '/verify-email', '/invite/abc', '/financial-profile', '/vault', '/settings', '/login', '/blogx']) {
+    for (const p of [
+      '/reset-password/confirm',
+      '/verify-email',
+      '/invite/abc',
+      '/financial-profile',
+      '/vault',
+      '/settings',
+      '/login',
+      '/blogx',
+    ]) {
       expect(isTrackablePath(p, false), p).toBe(false)
     }
     expect(isTrackablePath('/', true)).toBe(false)
@@ -32,7 +41,10 @@ describe('consent choice', () => {
 
   it('can be withdrawn; withdrawing after accepting reloads so loaded tags stop', () => {
     const reload = vi.fn()
-    Object.defineProperty(window, 'location', { value: { ...window.location, reload }, writable: true })
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, reload },
+      writable: true,
+    })
     writeConsent('accepted')
     writeConsent('rejected')
     expect(readConsent()).toBe('rejected')

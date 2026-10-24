@@ -93,7 +93,13 @@ export function checkDeclaredType(filename: string, mime: string): TypeCheck {
 /** Third leg of the agreement: the bytes' signature. */
 export function signatureMatches(bytes: Buffer, mime: string): boolean {
   if (mime === DOCX_MIME) {
-    return bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04
+    return (
+      bytes.length >= 4 &&
+      bytes[0] === 0x50 &&
+      bytes[1] === 0x4b &&
+      bytes[2] === 0x03 &&
+      bytes[3] === 0x04
+    )
   }
   const base = mime.endsWith('-sequence') ? mime.replace('-sequence', '') : mime
   return signatureMatchesMime(bytes, base)
@@ -109,7 +115,8 @@ const PDF_ACTIVE: ReadonlyArray<[string, RegExp]> = [
 ]
 // An inline action dictionary only: `/OpenAction [3 0 R /Fit]` (a page
 // destination, as most exporters write) is benign and must not be rejected.
-const PDF_OPEN_ACTION = /\/OpenAction\s*<<[\s\S]{0,400}?\/S\s*\/(JavaScript|Launch|URI|SubmitForm|ImportData)/
+const PDF_OPEN_ACTION =
+  /\/OpenAction\s*<<[\s\S]{0,400}?\/S\s*\/(JavaScript|Launch|URI|SubmitForm|ImportData)/
 const MB = 1024 * 1024
 
 /**
@@ -121,14 +128,15 @@ const MB = 1024 * 1024
  */
 export function pdfActiveContent(bytes: Buffer): string | null {
   const head = bytes.subarray(0, MB).toString('latin1')
-  const tail = bytes.length > MB ? bytes.subarray(Math.max(MB, bytes.length - MB)).toString('latin1') : ''
+  const tail =
+    bytes.length > MB ? bytes.subarray(Math.max(MB, bytes.length - MB)).toString('latin1') : ''
   const middle =
     bytes.length > 2 * MB
-      ? bytes
+      ? (bytes
           .subarray(MB, bytes.length - MB)
           .toString('latin1')
           .match(/\d+\s+\d+\s+obj\s*<<[\s\S]{0,2000}?>>/g)
-          ?.join('\n') ?? ''
+          ?.join('\n') ?? '')
       : ''
   for (const text of [head, middle, tail]) {
     for (const [name, re] of PDF_ACTIVE) if (re.test(text)) return name

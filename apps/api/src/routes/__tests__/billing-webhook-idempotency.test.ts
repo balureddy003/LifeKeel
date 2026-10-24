@@ -142,8 +142,18 @@ describe('KEEL-007: POST /billing/webhook claims before processing (real route, 
     const signature = signStripePayload(payload, WEBHOOK_SECRET)
 
     const [a, b] = await Promise.all([
-      app.inject({ method: 'POST', url: '/billing/webhook', headers: { 'content-type': 'application/json', 'stripe-signature': signature }, payload }),
-      app.inject({ method: 'POST', url: '/billing/webhook', headers: { 'content-type': 'application/json', 'stripe-signature': signature }, payload }),
+      app.inject({
+        method: 'POST',
+        url: '/billing/webhook',
+        headers: { 'content-type': 'application/json', 'stripe-signature': signature },
+        payload,
+      }),
+      app.inject({
+        method: 'POST',
+        url: '/billing/webhook',
+        headers: { 'content-type': 'application/json', 'stripe-signature': signature },
+        payload,
+      }),
     ])
 
     // One applies; the other is either a completed duplicate or told to
@@ -161,12 +171,17 @@ describe('KEEL-007: POST /billing/webhook claims before processing (real route, 
     app.inject({
       method: 'POST',
       url: '/billing/webhook',
-      headers: { 'content-type': 'application/json', 'stripe-signature': signStripePayload(payload, WEBHOOK_SECRET) },
+      headers: {
+        'content-type': 'application/json',
+        'stripe-signature': signStripePayload(payload, WEBHOOK_SECRET),
+      },
       payload,
     })
 
   it('R10: an event whose processing failed is reprocessed by the next delivery', async () => {
-    await db.collection('stripe_webhook_events').insertOne({ event_id: 'evt_failed', status: 'failed', attempts: 1 })
+    await db
+      .collection('stripe_webhook_events')
+      .insertOne({ event_id: 'evt_failed', status: 'failed', attempts: 1 })
     const res = await deliver(creditPackEventPayload('evt_failed'))
     expect(res.statusCode).toBe(200)
     expect(res.json().duplicate).toBeUndefined()
@@ -198,21 +213,27 @@ describe('KEEL-007: POST /billing/webhook claims before processing (real route, 
   it('R10: reprocessing after a failure that came after the credit grant does not grant twice', async () => {
     expect((await deliver(creditPackEventPayload('evt_partial'))).statusCode).toBe(200)
     // As if the run crashed after the grant but before marking completed.
-    await db.collection('stripe_webhook_events').updateOne({ event_id: 'evt_partial' }, { $set: { status: 'failed' } })
+    await db
+      .collection('stripe_webhook_events')
+      .updateOne({ event_id: 'evt_partial' }, { $set: { status: 'failed' } })
     expect((await deliver(creditPackEventPayload('evt_partial'))).statusCode).toBe(200)
     const tenant = await db.collection('tenants').findOne({ tenant_id: TENANT_ID })
     expect(tenant?.['billing']?.['credits_balance']).toBe(500)
   })
 
   it('R09: a paid invoice never reactivates a deleted household', async () => {
-    await db.collection('tenants').updateOne(
-      { tenant_id: TENANT_ID },
-      { $set: { status: 'deleted', stripe_customer_id: 'cus_deleted', plan: 'family' } },
-    )
+    await db
+      .collection('tenants')
+      .updateOne(
+        { tenant_id: TENANT_ID },
+        { $set: { status: 'deleted', stripe_customer_id: 'cus_deleted', plan: 'family' } },
+      )
     const payload = JSON.stringify({
       id: 'evt_invoice_after_delete',
       type: 'invoice.payment_succeeded',
-      data: { object: { id: 'in_1', customer: 'cus_deleted', billing_reason: 'subscription_cycle' } },
+      data: {
+        object: { id: 'in_1', customer: 'cus_deleted', billing_reason: 'subscription_cycle' },
+      },
     })
     expect((await deliver(payload)).statusCode).toBe(200)
     const tenant = await db.collection('tenants').findOne({ tenant_id: TENANT_ID })

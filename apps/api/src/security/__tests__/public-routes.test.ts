@@ -57,7 +57,9 @@ describe('public route inventory', () => {
   })
 
   it('lists /documentation only when docs are enabled', () => {
-    expect(openPrefixes({ docsEnabled: false }).some((p) => p.startsWith('/documentation'))).toBe(false)
+    expect(openPrefixes({ docsEnabled: false }).some((p) => p.startsWith('/documentation'))).toBe(
+      false,
+    )
     expect(openPrefixes({ docsEnabled: true })).toContain('/documentation/json')
   })
 
@@ -73,7 +75,6 @@ describe('public route inventory', () => {
     expect(serverSrc).not.toMatch(/const open = \[/)
   })
 })
-
 
 describe('cookie-only mutation CSRF policy', () => {
   const originAllowed = (method: string, origin?: string) =>

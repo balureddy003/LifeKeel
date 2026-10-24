@@ -23,7 +23,12 @@ describe('AuthProvider.signUp', () => {
         const headers = (init?.headers ?? {}) as Record<string, string>
         // Only a request that carries the bearer succeeds: the cookie is blocked.
         return headers['Authorization']
-          ? jsonResponse({ user_id: 'u1', tenant_id: 't1', email: 'jane@example.com', name: 'Jane' })
+          ? jsonResponse({
+              user_id: 'u1',
+              tenant_id: 't1',
+              email: 'jane@example.com',
+              name: 'Jane',
+            })
           : Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({}) })
       }
       return jsonResponse({
@@ -349,7 +354,8 @@ describe('AuthProvider email OTP (CLOUDFLARE_INTEGRATION.md §6)', () => {
 
   it('signIn returns otpRequired, keeps the challenge in sessionStorage and stores no session', async () => {
     const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-      if (url.endsWith('/auth/me')) return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({}) })
+      if (url.endsWith('/auth/me'))
+        return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({}) })
       if (url.endsWith('/auth/login')) {
         expect((init?.headers as Record<string, string>)['cf-turnstile-token']).toBe('cf-tok')
         return jsonResponse(challenge)
@@ -369,13 +375,20 @@ describe('AuthProvider email OTP (CLOUDFLARE_INTEGRATION.md §6)', () => {
   })
 
   it('verifyEmailOtp posts the pending token with the code, then signs in and clears the challenge', async () => {
-    sessionStorage.setItem('lifekeel_otp_pending', JSON.stringify({ ...challenge, purpose: 'login' }))
+    sessionStorage.setItem(
+      'lifekeel_otp_pending',
+      JSON.stringify({ ...challenge, purpose: 'login' }),
+    )
     const bodies: Record<string, unknown>[] = []
     const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-      if (url.endsWith('/auth/me')) return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({}) })
+      if (url.endsWith('/auth/me'))
+        return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({}) })
       if (url.endsWith('/auth/otp/verify')) {
         bodies.push(JSON.parse(String(init?.body)))
-        return jsonResponse({ token: 'tok_otp', user: { id: 'u1', email: 'a@b.com', name: 'A', tenant_id: 't1' } })
+        return jsonResponse({
+          token: 'tok_otp',
+          user: { id: 'u1', email: 'a@b.com', name: 'A', tenant_id: 't1' },
+        })
       }
       return jsonResponse({ id: 'f1', name: 'Fam', members: [] })
     })

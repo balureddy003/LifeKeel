@@ -153,11 +153,19 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db): void {
     const editor = await isHouseholdEditor(db, tenant_id, user_id, roles)
 
     try {
-      await getAuditLogger()?.fromRequestCritical(request, 'account.exported', 'account', tenant_id, {
-        scope: editor ? 'household' : 'self',
-      })
+      await getAuditLogger()?.fromRequestCritical(
+        request,
+        'account.exported',
+        'account',
+        tenant_id,
+        {
+          scope: editor ? 'household' : 'self',
+        },
+      )
     } catch {
-      return reply.status(503).send({ error: 'Export is unavailable right now. Please try again shortly.' })
+      return reply
+        .status(503)
+        .send({ error: 'Export is unavailable right now. Please try again shortly.' })
     }
 
     const user = await db.collection('users').findOne({ tenant_id, id: user_id })
@@ -194,9 +202,15 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db): void {
       }
 
       const householdUsers = await read('users')
-      yield field('household_users', householdUsers.map((u) => pickUser(u)))
+      yield field(
+        'household_users',
+        householdUsers.map((u) => pickUser(u)),
+      )
       yield field('family_group', family ?? null)
-      yield field('financial_profile', await db.collection('family_financial_profile').findOne({ tenant_id }))
+      yield field(
+        'financial_profile',
+        await db.collection('family_financial_profile').findOne({ tenant_id }),
+      )
 
       // File bytes stay out of the JSON bundle — the documents' own download
       // endpoint serves originals until the account is deleted.
@@ -208,13 +222,29 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db): void {
           return rest
         }),
       )
-      for (const name of ['insights', 'goals', 'signals', 'action_receipts', 'reminders', 'audit_log']) {
+      for (const name of [
+        'insights',
+        'goals',
+        'signals',
+        'action_receipts',
+        'reminders',
+        'audit_log',
+      ]) {
         yield field(name, capped(name, await read(name)))
       }
 
       // The rest of the catalogue, including derived inferences about the
       // family (they are personal data even where portability doesn't apply).
-      const listed = new Set(['family_groups', 'family_financial_profile', 'documents', 'insights', 'goals', 'signals', 'action_receipts', 'reminders'])
+      const listed = new Set([
+        'family_groups',
+        'family_financial_profile',
+        'documents',
+        'insights',
+        'goals',
+        'signals',
+        'action_receipts',
+        'reminders',
+      ])
       yield ',"other_records":{'
       let first = true
       for (const name of DELETABLE_COLLECTIONS) {
@@ -266,11 +296,19 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db): void {
     // compliance record the header describes.
     // R33: no deletion without its record — if the audit write fails, stop here.
     try {
-      await getAuditLogger()?.fromRequestCritical(request, 'account.deleted', 'account', tenant_id, {
-        receipt_id: receipt.id,
-      })
+      await getAuditLogger()?.fromRequestCritical(
+        request,
+        'account.deleted',
+        'account',
+        tenant_id,
+        {
+          receipt_id: receipt.id,
+        },
+      )
     } catch {
-      return reply.status(503).send({ error: 'Deletion could not start. Please try again shortly.' })
+      return reply
+        .status(503)
+        .send({ error: 'Deletion could not start. Please try again shortly.' })
     }
 
     // Mark the tenant first. The auth middleware admits only 'active'/'trial',

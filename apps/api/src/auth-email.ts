@@ -128,9 +128,13 @@ export async function sendOtpEmail(
   purpose: OtpPurpose,
 ): Promise<OtpDelivery> {
   if (!emailConfigured()) {
-    const isDev = !process.env['NODE_ENV'] || ['development', 'test'].includes(process.env['NODE_ENV'])
+    const isDev =
+      !process.env['NODE_ENV'] || ['development', 'test'].includes(process.env['NODE_ENV'])
     if (isDev) {
-      log.warn({ to, purpose, code }, 'No email provider configured — dev only: OTP code logged instead of sent')
+      log.warn(
+        { to, purpose, code },
+        'No email provider configured — dev only: OTP code logged instead of sent',
+      )
       return 'sent'
     }
     log.error({ to, purpose }, 'No email provider configured — OTP email not sent')

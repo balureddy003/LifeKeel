@@ -3,35 +3,35 @@ version: 2
 # PR per ecosystem; major versions are ignored here and upgraded by hand as planned migrations
 # (a bare major bump of TypeScript, Vite, jsdom or React fails CI and costs a run for nothing).
 updates:
-  - package-ecosystem: "npm"
-    directory: "/"
+  - package-ecosystem: 'npm'
+    directory: '/'
     schedule:
-      interval: "weekly"
+      interval: 'weekly'
     open-pull-requests-limit: 3
     groups:
       next:
         patterns:
-          - "next"
-          - "eslint-config-next"
+          - 'next'
+          - 'eslint-config-next'
       minor-and-patch:
         update-types:
-          - "minor"
-          - "patch"
+          - 'minor'
+          - 'patch'
     ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
-  - package-ecosystem: "github-actions"
-    directory: "/"
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
+  - package-ecosystem: 'github-actions'
+    directory: '/'
     schedule:
-      interval: "monthly"
+      interval: 'monthly'
     open-pull-requests-limit: 2
     groups:
       actions:
         patterns:
-          - "*"
+          - '*'
   # R31: digest-pinned base images (apps/api/Dockerfile, infra/*) get update PRs.
-  - package-ecosystem: "docker"
-    directory: "/apps/api"
+  - package-ecosystem: 'docker'
+    directory: '/apps/api'
     schedule:
-      interval: "weekly"
+      interval: 'weekly'
     open-pull-requests-limit: 1

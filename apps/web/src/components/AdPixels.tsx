@@ -29,7 +29,12 @@ fbq.disablePushState=true;fbq('init','${META_PIXEL_ID}');fbq('track','PageView')
       {META_PIXEL_ID && (
         <noscript>
           {/* eslint-disable-next-line @next/next/no-img-element -- tracking fallback */}
-          <img height="1" width="1" alt="" src={`https://www.facebook.com/tr?id=${META_PIXEL_ID}&ev=PageView&noscript=1`} />
+          <img
+            height="1"
+            width="1"
+            alt=""
+            src={`https://www.facebook.com/tr?id=${META_PIXEL_ID}&ev=PageView&noscript=1`}
+          />
         </noscript>
       )}
       {LINKEDIN_PARTNER_ID && (
@@ -44,7 +49,12 @@ s.parentNode.insertBefore(b,s);})(window.lintrk);`}
       {LINKEDIN_PARTNER_ID && (
         <noscript>
           {/* eslint-disable-next-line @next/next/no-img-element -- tracking fallback */}
-          <img height="1" width="1" alt="" src={`https://px.ads.linkedin.com/collect/?pid=${LINKEDIN_PARTNER_ID}&fmt=gif`} />
+          <img
+            height="1"
+            width="1"
+            alt=""
+            src={`https://px.ads.linkedin.com/collect/?pid=${LINKEDIN_PARTNER_ID}&fmt=gif`}
+          />
         </noscript>
       )}
     </>

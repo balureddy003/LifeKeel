@@ -26,7 +26,10 @@ vi.mock('imapflow', () => ({
       logout: vi.fn(async () => {}),
       getMailboxLock: vi.fn(async () => mailboxLock),
       mailbox: { exists: messages.length },
-      fetch: () => (async function* () { /* overridden per test via mockFetchYields */ })(),
+      fetch: () =>
+        (async function* () {
+          /* overridden per test via mockFetchYields */
+        })(),
     }
   }),
 }))
@@ -48,17 +51,20 @@ vi.mock('mailparser', () => ({
 }))
 
 const { ImapFlow } = await import('imapflow')
-const { fetchRecentEmails, testImapConnection, validateImapEndpoint } = await import('../imap-client.js')
+const { fetchRecentEmails, testImapConnection, validateImapEndpoint } =
+  await import('../imap-client.js')
 
 function seedMessages(uids: number[]) {
   messages = uids.map((uid) => ({
     uid,
-    source: Buffer.from(JSON.stringify({
-      messageId: `m${uid}`,
-      from: 'sender@example.com',
-      subject: `Message ${uid}`,
-      date: new Date(2026, 0, 1).toISOString(),
-    })),
+    source: Buffer.from(
+      JSON.stringify({
+        messageId: `m${uid}`,
+        from: 'sender@example.com',
+        subject: `Message ${uid}`,
+        date: new Date(2026, 0, 1).toISOString(),
+      }),
+    ),
   }))
 }
 
@@ -69,9 +75,10 @@ function mockFetchYields(rows: { uid: number; source: Buffer }[]) {
       logout: vi.fn(async () => {}),
       getMailboxLock: vi.fn(async () => mailboxLock),
       mailbox: { exists: rows.length },
-      fetch: () => (async function* () {
-        for (const row of rows) yield { uid: row.uid, source: row.source }
-      })(),
+      fetch: () =>
+        (async function* () {
+          for (const row of rows) yield { uid: row.uid, source: row.source }
+        })(),
     }
   })
 }
@@ -83,7 +90,16 @@ const creds = { host: '93.184.216.34', port: 993, useTls: true, username: 'u', p
 describe('R07: IMAP connections only reach public hosts over TLS', () => {
   it('refuses loopback, private, link-local and metadata addresses before connecting', async () => {
     ;(ImapFlow as unknown as ReturnType<typeof vi.fn>).mockClear()
-    for (const host of ['127.0.0.1', '10.0.0.5', '192.168.1.1', '169.254.169.254', '::1', 'localhost', '[::ffff:127.0.0.1]', 'metadata.google.internal']) {
+    for (const host of [
+      '127.0.0.1',
+      '10.0.0.5',
+      '192.168.1.1',
+      '169.254.169.254',
+      '::1',
+      'localhost',
+      '[::ffff:127.0.0.1]',
+      'metadata.google.internal',
+    ]) {
       const res = await testImapConnection({ ...creds, host })
       expect(res.success, host).toBe(false)
     }

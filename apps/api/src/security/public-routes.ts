@@ -37,7 +37,11 @@ const ALWAYS: PublicRoute[] = [
   { prefix: '/auth/login', group: 'B', turnstile: true },
   { prefix: '/auth/logout', group: 'C' },
   { prefix: '/auth/mfa/verify', group: 'C' },
-  { prefix: '/auth/otp/', group: 'D', note: 'resend is Turnstile-gated; verify uses the pending token' },
+  {
+    prefix: '/auth/otp/',
+    group: 'D',
+    note: 'resend is Turnstile-gated; verify uses the pending token',
+  },
   { prefix: '/auth/sso/', group: 'E' },
   { prefix: '/auth/google/', group: 'E' },
   { prefix: '/auth/github/', group: 'E' },

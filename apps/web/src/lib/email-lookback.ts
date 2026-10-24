@@ -18,7 +18,10 @@ export async function searchMailboxForPolicies(days = 90): Promise<LookBackResul
   const token = typeof window === 'undefined' ? null : getSessionToken()
   const res = await credFetch(`${getApiBase()}/connectors/email/scan`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ days }),
   }).catch(() => null)
   if (!res || !res.ok) return null

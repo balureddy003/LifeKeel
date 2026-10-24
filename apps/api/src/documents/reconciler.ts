@@ -92,7 +92,10 @@ export async function reconcileOnce(
 
   // 4. Promoted rows whose quarantine copy or OCR hand-off didn't finish.
   for (const row of await docs
-    .find({ status: { $in: ['clean', 'stored', 'processing', 'extracted', 'applied'] }, quarantine_present: true })
+    .find({
+      status: { $in: ['clean', 'stored', 'processing', 'extracted', 'applied'] },
+      quarantine_present: true,
+    })
     .limit(200)
     .toArray()) {
     const key = (row['quarantine'] as { key?: string } | undefined)?.key
@@ -102,7 +105,12 @@ export async function reconcileOnce(
     // The row might have entered fenced deletion after the read. Do not
     // resurrect OCR work or change its markers after the generation bump.
     const updated = await docs.updateOne(
-      { _id: row._id, status: row['status'], generation: row['generation'], quarantine_present: true },
+      {
+        _id: row._id,
+        status: row['status'],
+        generation: row['generation'],
+        quarantine_present: true,
+      },
       { $set: set },
     )
     if (updated.modifiedCount === 1) report.quarantine_cleaned++
@@ -126,16 +134,26 @@ export async function reconcileOnce(
   report.purges = await finishDuePurges(db, store, now)
 
   // Observability: queue age and stuck rows.
-  const oldest = await docs.find({ status: 'scan_queued' }).sort({ 'scan_job.next_run_at': 1 }).limit(1).next()
+  const oldest = await docs
+    .find({ status: 'scan_queued' })
+    .sort({ 'scan_job.next_run_at': 1 })
+    .limit(1)
+    .next()
   const nextRun = (oldest?.['scan_job'] as { next_run_at?: Date } | undefined)?.next_run_at
   setDocQueueAge(nextRun ? Math.max(0, (now.getTime() - nextRun.getTime()) / 1000) : 0)
   setDocStuck(
     'scanning',
-    await docs.countDocuments({ status: 'scanning', scan_started_at: { $lte: new Date(now.getTime() - 2 * LEASE_MS) } }),
+    await docs.countDocuments({
+      status: 'scanning',
+      scan_started_at: { $lte: new Date(now.getTime() - 2 * LEASE_MS) },
+    }),
   )
   setDocStuck(
     'scan_queued',
-    await docs.countDocuments({ status: 'scan_queued', 'scan_job.next_run_at': { $lte: new Date(now.getTime() - 5 * 60_000) } }),
+    await docs.countDocuments({
+      status: 'scan_queued',
+      'scan_job.next_run_at': { $lte: new Date(now.getTime() - 5 * 60_000) },
+    }),
   )
 
   if (Object.values(report).some((n) => n > 0)) log.info({ ...report }, 'Document reconcile pass')
@@ -159,9 +177,23 @@ export async function sweepOrphanObjects(
       if (!tenantId || !documentId) continue
       const row = await db
         .collection('documents')
-        .findOne({ tenant_id: tenantId, id: documentId }, { projection: { status: 1, uploaded_at: 1 } })
-      if (row && row['status'] !== 'failed' && row['status'] !== 'rejected' && row['status'] !== 'infected') continue
-      if (row && (row['uploaded_at'] as Date | undefined) && (row['uploaded_at'] as Date) > olderThan) continue
+        .findOne(
+          { tenant_id: tenantId, id: documentId },
+          { projection: { status: 1, uploaded_at: 1 } },
+        )
+      if (
+        row &&
+        row['status'] !== 'failed' &&
+        row['status'] !== 'rejected' &&
+        row['status'] !== 'infected'
+      )
+        continue
+      if (
+        row &&
+        (row['uploaded_at'] as Date | undefined) &&
+        (row['uploaded_at'] as Date) > olderThan
+      )
+        continue
       await store.delete(role, key)
       orphans++
     }
