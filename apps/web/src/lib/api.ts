@@ -4047,6 +4047,9 @@ export interface PlanPostView {
   /** Instagram cannot post without an image; true until a media URL is attached. */
   needs_image?: boolean
   media_url?: string | null
+  alt_text?: string | null
+  format?: string | null
+  hook?: string | null
 }
 
 export interface PlanItemView {
@@ -5087,6 +5090,45 @@ export function fetchEconomics(days: number, model: 'first' | 'last'): Promise<E
   return operatorRequest(`/operator/marketing/economics?days=${days}&model=${model}`)
 }
 
+/** PRD-218: the weekly posts table — visits/signups joined by post tag. */
+export interface PostStatRow {
+  id: string
+  post_tag: string | null
+  variant_of?: string | null
+  channel: string
+  format: string | null
+  hook: string | null
+  pillar: string | null
+  length_bucket: 'short' | 'medium' | 'long' | null
+  hour_bucket: 'morning' | 'midday' | 'afternoon' | 'evening' | null
+  has_media: boolean
+  posted_at: string | null
+  visits: number
+  signups: number
+  engagement: { likes: number; reposts: number; replies: number }
+  tagged: boolean
+}
+
+export interface PostStatGroup {
+  key: string | null
+  posts: number
+  visits: number
+  signups: number
+  visits_per_post: number
+  visits_per_post_interval: { low: number; high: number } | null
+  signup_rate_interval: { low: number; high: number } | null
+  insufficient: boolean
+}
+
+export interface PostStatsView {
+  rows: PostStatRow[]
+  groups: Record<string, PostStatGroup[]>
+}
+
+export function fetchPostStats(weeks = 8): Promise<PostStatsView> {
+  return operatorRequest(`/operator/marketing/post-stats?weeks=${weeks}`)
+}
+
 export function fetchSpend(): Promise<{ entries: SpendEntry[] }> {
   return operatorRequest('/operator/marketing/spend')
 }
@@ -5837,4 +5879,50 @@ export function draftOperatorReply(id: string): Promise<{ draft: string }> {
     if (!res.ok) throw new Error((data.error as string) || 'Draft failed')
     return data as { draft: string }
   })
+}
+
+/** PRD-220: owner-generated emergency sheet — opt-in sections only. */
+export interface SheetSectionView {
+  id: string
+  title: string
+  items: { label: string; detail?: string }[]
+}
+export async function previewEmergencySheet(
+  sections: string[],
+): Promise<{ sections: SheetSectionView[] }> {
+  const res = await credFetch(`${getApiBase()}/family/emergency-sheet/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAuthToken()}` },
+    body: JSON.stringify({ sections }),
+  })
+  if (!res.ok) throw new Error('Could not build the sheet')
+  return res.json()
+}
+
+/** Referral link variants: campaign distinguishes which artefact brought the visit. */
+export function referralLink(code: string, campaign: 'sheet' | 'invite'): string {
+  return `${window.location.origin}/signup?ref=${encodeURIComponent(code)}&utm_source=referral&utm_medium=social&utm_campaign=${campaign}`
+}
+
+/** PRD-219: operator instruction -> LLM rewrite of a draft (draft/failed only). */
+export async function refineMarketingPost(
+  postId: string,
+  instruction: string,
+): Promise<{ post: { id: string; content: string } }> {
+  const res = await credFetch(
+    `${getApiBase()}/marketing/posts/${encodeURIComponent(postId)}/refine`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${getAuthToken()}`,
+      },
+      body: JSON.stringify({ instruction }),
+    },
+  )
+  if (!res.ok)
+    throw new Error(
+      ((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'Refine failed',
+    )
+  return res.json()
 }

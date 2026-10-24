@@ -165,6 +165,7 @@ function makeDb() {
   const users: Record<string, unknown>[] = []
   const leads: Record<string, unknown>[] = []
   const growthEvents: Record<string, unknown>[] = []
+  const metricsDaily: Record<string, unknown>[] = []
   const connectorCredentials: Record<string, unknown>[] = []
   const credsCol = {
     findOne: vi.fn(
@@ -226,9 +227,40 @@ function makeDb() {
     blog_posts: blogCol,
     users: listCol(users),
     leads: listCol(leads),
-    growth_events: listCol(growthEvents),
-    // The performance read asks whether the funnel rollups exist; none do in this fake.
-    metrics_daily: { findOne: async () => null, find: () => ({ toArray: async () => [] }) },
+    // Supports the two shapes post-stats uses: find (event list) and the
+    // $match + $group-by meta.utm_content aggregate for per-tag visits.
+    growth_events: {
+      ...listCol(growthEvents),
+      aggregate: (pipeline: Record<string, unknown>[]) => ({
+        toArray: async () => {
+          const group = pipeline.find((s) => s['$group']) as
+            { $group: { _id: string; count: { $sum: number } } } | undefined
+          if (!group) return []
+          const match = pipeline.find((s) => s['$match']) as
+            { $match: Record<string, unknown> } | undefined
+          const rows = match
+            ? growthEvents.filter((d) => matchesFilter(d, match.$match))
+            : growthEvents
+          const byKey = new Map<unknown, number>()
+          for (const r of rows) {
+            const k = dig(r, group.$group._id.replace(/^\$/, ''))
+            byKey.set(k, (byKey.get(k) ?? 0) + 1)
+          }
+          return [...byKey.entries()].map(([_id, count]) => ({ _id, count }))
+        },
+      }),
+    },
+    // Seeded in tests with journey rollup rows ({metric:'journey', dim, count}).
+    metrics_daily: {
+      findOne: async () => null,
+      find: (filter: Record<string, unknown>) => {
+        const rows = metricsDaily.filter((d) => matchesFilter(d, filter))
+        return {
+          project: () => ({ toArray: async () => rows }),
+          toArray: async () => rows,
+        }
+      },
+    },
   }
   return {
     db: { collection: withTenantKeys((name: string) => collections[name]) } as any,
@@ -243,6 +275,7 @@ function makeDb() {
     users,
     leads,
     growthEvents,
+    metricsDaily,
     connectorCredentials,
   }
 }
@@ -275,6 +308,7 @@ async function buildApp(
     users,
     leads,
     growthEvents,
+    metricsDaily,
     connectorCredentials,
   } = makeDb()
   const tenant = opts.tenant ?? TENANT
@@ -305,6 +339,7 @@ async function buildApp(
     users,
     leads,
     growthEvents,
+    metricsDaily,
     connectorCredentials,
   }
 }
@@ -814,8 +849,11 @@ describe('/marketing/posts/generate', () => {
     expect(res.statusCode).toBe(201)
     expect(seen[0]).toContain('The cover gap')
     expect(seen[0]).toContain('Most families miss it.')
+    const post = res.json().post
+    expect(post.post_tag).toMatch(/^p[0-9a-f]{8}$/)
+    expect(post.source_blog_slug).toBe('cover-gap')
     expect(seen[0]).toContain(
-      'Link to include verbatim: https://keel.example/blog/cover-gap?utm_source=bluesky&utm_medium=social&utm_campaign=lifekeel_social&utm_content=cover-gap',
+      `Link to include verbatim: https://keel.example/blog/cover-gap?utm_source=bluesky&utm_medium=social&utm_campaign=lifekeel_social&utm_content=${post.post_tag}`,
     )
   })
 
@@ -865,7 +903,7 @@ describe('/marketing/posts/generate', () => {
     })
     const post = res.json().post
     expect(post.content).toContain(
-      'https://keel.example/blog/cover-gap?utm_source=x&utm_medium=social&utm_campaign=lifekeel_social&utm_content=cover-gap',
+      `https://keel.example/blog/cover-gap?utm_source=x&utm_medium=social&utm_campaign=lifekeel_social&utm_content=${post.post_tag}`,
     )
     expect(post.content.length).toBeLessThanOrEqual(280)
   })
@@ -878,7 +916,8 @@ describe('/marketing/posts/generate', () => {
     const res = await app.inject({ method: 'POST', url: '/marketing/posts/generate', payload: GEN })
     const post = res.json().post
     expect(post.content).toContain('https://keel.example/signup?utm_source=x')
-    expect(post.content).toContain('utm_content=topic')
+    expect(post.post_tag).toMatch(/^p[0-9a-f]{8}$/)
+    expect(post.content).toContain(`utm_content=${post.post_tag}`)
   })
 
   it('preview mode returns variants without persisting — the operator picks one', async () => {
@@ -1451,13 +1490,13 @@ describe('learning loop — performance-informed generation', () => {
     expect(res.json().post.state).toBe('draft')
   })
 
-  it('credits signups attributed to the promoted slug into the winner line', async () => {
+  it('credits visits and signups joined by the post tag (and legacy slug) into the winner line', async () => {
     const seen: string[] = []
     const llm = async (_s: string, prompt: string) => {
       seen.push(prompt)
       return 'fresh draft'
     }
-    const { app, posts, users } = await buildApp({ llm })
+    const { app, posts, growthEvents, metricsDaily } = await buildApp({ llm })
     posts.push(
       pubPost({
         id: 'w1',
@@ -1468,17 +1507,93 @@ describe('learning loop — performance-informed generation', () => {
       }),
       pubPost({
         id: 'w2',
-        source_blog_slug: 'other-post',
+        post_tag: 'p1234abc',
         content: 'Second promoted post',
         metrics: { likes: 1 },
         metrics_at: new Date(),
       }),
     )
-    users.push({ attribution: { utm_medium: 'social', utm_source: 'x', utm_content: 'cover-gap' } })
+    // Visits are anonymous growth events keyed on the link's utm_content;
+    // signups are the journey rollup's last-touch rows — no user scans.
+    for (let i = 0; i < 7; i++)
+      growthEvents.push({ event: 'landing_view', meta: { utm_content: 'cover-gap' } })
+    metricsDaily.push(
+      { metric: 'journey', dim: 'last|signup|x|lifekeel_social|cover-gap', count: 1 },
+      { metric: 'journey', dim: 'first|signup|x|lifekeel_social|cover-gap', count: 1 }, // first-touch only — must not double count
+      { metric: 'journey', dim: 'last|signup|x|lifekeel_social|p1234abc', count: 2 },
+      { metric: 'journey', dim: 'last|profile|x|lifekeel_social|p1234abc', count: 2 }, // not a signup row
+      { metric: 'growth_event', dim: 'landing_view', count: 9 }, // not a journey row
+    )
     const res = await app.inject({ method: 'POST', url: '/marketing/posts/generate', payload: GEN })
     expect(res.statusCode).toBe(201)
     expect(seen[0]).toContain('cover gap nobody checks')
-    expect(seen[0]).toContain('1 signups/leads')
+    expect(seen[0]).toContain('7 visits')
+    expect(seen[0]).toContain('1 signups')
+    expect(seen[0]).toContain('2 signups')
+  })
+
+  it('labels a thin sample — a few visits is not a winner', async () => {
+    const seen: string[] = []
+    const llm = async (_s: string, prompt: string) => {
+      seen.push(prompt)
+      return 'fresh draft'
+    }
+    const { app, posts, growthEvents } = await buildApp({ llm })
+    posts.push(
+      pubPost({
+        id: 'w1',
+        post_tag: 'p0000001',
+        content: 'Barely seen post',
+        metrics: {},
+        metrics_at: new Date(),
+      }),
+      pubPost({
+        id: 'w2',
+        post_tag: 'p0000002',
+        content: 'Unseen post',
+        metrics: {},
+        metrics_at: new Date(),
+      }),
+    )
+    for (let i = 0; i < 3; i++)
+      growthEvents.push({ event: 'landing_view', meta: { utm_content: 'p0000001' } })
+    const res = await app.inject({ method: 'POST', url: '/marketing/posts/generate', payload: GEN })
+    expect(res.statusCode).toBe(201)
+    expect(seen[0]).not.toContain('Barely seen post')
+    expect(seen[0]).toContain('FLOP')
+  })
+
+  it('never reads user or lead records for the learning block', async () => {
+    const { db, posts } = await buildApp()
+    posts.push(
+      pubPost({
+        id: 'w1',
+        post_tag: 'p0000001',
+        content: 'a',
+        metrics: { likes: 15 },
+        metrics_at: new Date(),
+      }),
+      pubPost({
+        id: 'w2',
+        post_tag: 'p0000002',
+        content: 'b',
+        metrics: { likes: 1 },
+        metrics_at: new Date(),
+      }),
+    )
+    const guarded = new Proxy(db, {
+      get: (t, prop) =>
+        prop === 'collection'
+          ? (name: string) => {
+              if (name === 'users' || name === 'leads')
+                throw new Error(`learning block must not read ${name}`)
+              return (t as any).collection(name)
+            }
+          : (t as any)[prop],
+    })
+    const { learningContextBlock } = await import('../marketing-posts.js')
+    const block = await learningContextBlock(guarded, TENANT, 'x')
+    expect(block).toContain('WINNER')
   })
 
   it("never leaks another tenant's published posts into the prompt", async () => {
@@ -1492,13 +1607,13 @@ describe('learning loop — performance-informed generation', () => {
       pubPost({
         id: 'w1',
         content: 'Tenant one winner',
-        metrics: { likes: 5 },
+        metrics: { likes: 15 },
         metrics_at: new Date(),
       }),
       pubPost({
         id: 'w2',
         content: 'Tenant one runner-up',
-        metrics: { likes: 2 },
+        metrics: { likes: 12 },
         metrics_at: new Date(),
       }),
       pubPost({

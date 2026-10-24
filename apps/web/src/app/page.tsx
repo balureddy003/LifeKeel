@@ -36,6 +36,7 @@ import { HealthSummary } from '@/components/HealthSummary'
 import { ReadinessSparkline } from '@/components/ReadinessSparkline'
 import { ReadinessFeed } from '@/components/ReadinessFeed'
 import { PerceivedProtectionCard } from '@/components/PerceivedProtectionCard'
+import { InvitePartnerPrompt } from '@/components/InvitePartnerPrompt'
 import { useMode } from '@/lib/mode-context'
 import { useFamilyReadinessScore, useFamilyTimeline, useFamilyInsights } from '@/lib/useFamilyData'
 import { useAppStore } from '@/lib/store'
@@ -1056,6 +1057,7 @@ export default function HomePage() {
           daily checks found, straight below the score it explains. */}
       {/* PRD-141: one optional question per quarter; renders nothing unless due. */}
       <PerceivedProtectionCard />
+      <InvitePartnerPrompt />
 
       {hasLiveData && (
         <motion.div

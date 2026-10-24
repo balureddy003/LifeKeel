@@ -25,6 +25,8 @@ import { generateInviteCode } from './family-group.js'
 // Matches pack_25, the smallest existing credit pack — a reasonable
 // default reward size, not a magic number chosen for this feature alone.
 const REFERRAL_REWARD_CREDITS = 25
+/** Max rewarded referrals per referrer (PRD-220 abuse control). */
+export const REFERRAL_REWARD_CAP = 10
 
 async function getOrCreateReferralCode(db: Db, tenantId: string): Promise<string> {
   const col = getReferralCodesCollection(db)
@@ -48,7 +50,10 @@ async function getOrCreateReferralCode(db: Db, tenantId: string): Promise<string
 async function creditTenant(db: Db, tenantId: string, referredTenantId: string): Promise<void> {
   await getTenantCollection(db, 'tenants', tenantId).updateOne(
     {},
-    { $inc: { 'billing.credits_balance': REFERRAL_REWARD_CREDITS }, $set: { updated_at: new Date() } },
+    {
+      $inc: { 'billing.credits_balance': REFERRAL_REWARD_CREDITS },
+      $set: { updated_at: new Date() },
+    },
   )
   await recordLedgerEntry(db, {
     tenantId,
@@ -70,7 +75,10 @@ async function creditTenant(db: Db, tenantId: string, referredTenantId: string):
  */
 export async function rewardReferralIfPending(db: Db, referredTenantId: string): Promise<void> {
   const referralsCol = getReferralsCollection(db)
-  const referral = await referralsCol.findOne({ referred_tenant_id: referredTenantId, status: 'pending' })
+  const referral = await referralsCol.findOne({
+    referred_tenant_id: referredTenantId,
+    status: 'pending',
+  })
   if (!referral) return
 
   const result = await referralsCol.updateOne(
@@ -80,7 +88,14 @@ export async function rewardReferralIfPending(db: Db, referredTenantId: string):
   if (result.modifiedCount === 0) return
 
   const referrerTenantId = referral['referrer_tenant_id'] as string
-  await creditTenant(db, referrerTenantId, referredTenantId)
+  // PRD-220: cap rewards per referrer so a burst of attributed signups can't
+  // mint unlimited credits — the referral row still records the attribution.
+  const rewardedCount = await referralsCol.countDocuments({
+    referrer_tenant_id: referrerTenantId,
+    status: 'rewarded',
+  })
+  if (rewardedCount <= REFERRAL_REWARD_CAP)
+    await creditTenant(db, referrerTenantId, referredTenantId)
   await creditTenant(db, referredTenantId, referredTenantId)
 
   getAuditLogger()?.log({
@@ -103,7 +118,11 @@ export async function rewardReferralIfPending(db: Db, referredTenantId: string):
  * code, and the unique index on referred_tenant_id is the real guard
  * against double-attribution.
  */
-export async function attributeReferral(db: Db, referredTenantId: string, ref?: string): Promise<void> {
+export async function attributeReferral(
+  db: Db,
+  referredTenantId: string,
+  ref?: string,
+): Promise<void> {
   if (!ref?.trim()) return
   const code = ref.trim().toUpperCase()
   const codeDoc = await getReferralCodesCollection(db).findOne({ code })
@@ -139,9 +158,15 @@ export async function attributeReferral(db: Db, referredTenantId: string, ref?: 
 }
 
 export function registerReferralRoutes(fastify: FastifyInstance, db: Db): void {
-  getReferralCodesCollection(db).createIndex({ code: 1 }, { unique: true }).catch(() => {})
-  getReferralCodesCollection(db).createIndex({ tenant_id: 1 }, { unique: true }).catch(() => {})
-  getReferralsCollection(db).createIndex({ referred_tenant_id: 1 }, { unique: true }).catch(() => {})
+  getReferralCodesCollection(db)
+    .createIndex({ code: 1 }, { unique: true })
+    .catch(() => {})
+  getReferralCodesCollection(db)
+    .createIndex({ tenant_id: 1 }, { unique: true })
+    .catch(() => {})
+  getReferralsCollection(db)
+    .createIndex({ referred_tenant_id: 1 }, { unique: true })
+    .catch(() => {})
 
   fastify.get('/referrals/my-code', async (req) => {
     const { tenant_id } = req.authContext

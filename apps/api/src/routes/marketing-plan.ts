@@ -79,6 +79,10 @@ export function registerMarketingPlanRoutes(
             scheduled_at: p.scheduled_at ?? null,
             copy_check: checkCopy(p.content, 'social'),
             needs_image: missingImage(p),
+            media_url: p.media_url ?? null,
+            alt_text: p.alt_text ?? null,
+            format: p.features?.format ?? null,
+            hook: p.features?.hook ?? null,
           })),
       })),
     }

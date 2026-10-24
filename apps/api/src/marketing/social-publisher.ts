@@ -91,6 +91,7 @@ export interface SocialPublisher {
   createPost(args: CreatePostArgs): Promise<unknown>
 }
 
+import { createHash } from 'node:crypto'
 import type { Db } from 'mongodb'
 import { decryptEnveloped } from '../crypto/envelope.js'
 import { ConnectorActionExecutor } from '@lifekeel/workflows'
@@ -113,15 +114,19 @@ interface ChannelHandler {
 // X (Twitter) — API v2, user-context OAuth2 bearer.
 // ---------------------------------------------------------------------------
 
-function xHandler(token: string): ChannelHandler {
+function xHandler(
+  token: string,
+  source: 'env' | 'connection' = 'env',
+  account = 'env credential',
+): ChannelHandler {
   return {
     info: {
-      id: 'x:env',
+      id: `x:${source}`,
       name: 'X',
       identifier: 'x',
       disabled: false,
-      source: 'env',
-      account: 'env credential',
+      source,
+      account,
     },
     async publish(content, ctx) {
       const res = await providerFetch(
@@ -250,14 +255,8 @@ function blueskyHandler(
             collection: 'app.bsky.feed.post',
             // Deterministic record key = real dedupe: a retried write with
             // the same rkey is refused by the repo instead of double-posting.
-            ...(ctx.idempotencyKey
-              ? { rkey: ctx.idempotencyKey.replace(/[^a-zA-Z0-9-]/g, '') }
-              : {}),
-            record: {
-              $type: 'app.bsky.feed.post',
-              text: content,
-              createdAt: new Date().toISOString(),
-            },
+            ...(ctx.idempotencyKey ? { rkey: tidRkey(ctx.idempotencyKey) } : {}),
+            record: blueskyRecord(content),
           }),
         },
         {
@@ -275,6 +274,60 @@ function blueskyHandler(
       }
     },
   }
+}
+
+const TID_ALPHABET = '234567abcdefghijklmnopqrstuvwxyz'
+
+/** A TID-shaped rkey derived deterministically from the idempotency key —
+ *  Bluesky validates record keys as TIDs, so a raw hashed key is refused
+ *  ("Invalid TID string format") while a hash *in TID format* keeps the
+ *  dedupe property: a retried write replays the same rkey and is refused
+ *  instead of double-posting. */
+/** A bare URL in `text` renders as dead text on Bluesky — the post needs a
+ *  link facet (clickable) and an `app.bsky.embed.external` card (the rich
+ *  preview every other scheduler ships). Byte offsets, not char offsets. */
+export function blueskyRecord(content: string): Record<string, unknown> {
+  const encoder = new TextEncoder()
+  const facets: Record<string, unknown>[] = []
+  let firstUrl: string | undefined
+  for (const m of content.matchAll(/https?:\/\/\S+/g)) {
+    const url = m[0]
+    firstUrl ??= url
+    facets.push({
+      index: {
+        byteStart: encoder.encode(content.slice(0, m.index)).length,
+        byteEnd: encoder.encode(content.slice(0, m.index + url.length)).length,
+      },
+      features: [{ $type: 'app.bsky.richtext.facet#link', uri: url }],
+    })
+  }
+  const record: Record<string, unknown> = {
+    $type: 'app.bsky.feed.post',
+    text: content,
+    createdAt: new Date().toISOString(),
+  }
+  if (facets.length > 0) record['facets'] = facets
+  if (firstUrl)
+    record['embed'] = {
+      $type: 'app.bsky.embed.external',
+      external: {
+        uri: firstUrl,
+        title: 'LifeKeel',
+        description: 'One calm place for the family’s cover, runway and papers.',
+      },
+    }
+  return record
+}
+
+export function tidRkey(seed: string): string {
+  const h = createHash('sha256').update(seed).digest()
+  let n = h.readBigUInt64BE(0)
+  let s = ''
+  for (let i = 0; i < 13; i++) {
+    s = TID_ALPHABET[Number(n & 31n)] + s
+    n >>= 5n
+  }
+  return s
 }
 
 // ---------------------------------------------------------------------------
@@ -541,6 +594,14 @@ async function handlerForConnection(db: Db, conn: SocialConnectionDoc): Promise<
     if (!appPassword) throw new Error('bluesky connection: no app password stored')
     return blueskyHandler(conn.handle, appPassword, conn.service, 'connection')
   }
+  // The OAuth connect stores the user-context token on the social_connections
+  // row (mirroring Bluesky's app_password) — the connector_credentials doc is
+  // the display/registry row, not the publish credential.
+  if (conn.channel === 'x') {
+    const accessToken = await decryptEnveloped(db, conn.credentials['access_token'])
+    if (!accessToken) throw new Error('x connection: no user token stored')
+    return xHandler(accessToken, 'connection', conn.handle)
+  }
   throw new Error(`connection_unsupported:${conn.channel}`)
 }
 
@@ -684,17 +745,19 @@ export class DbSocialPublisher implements SocialPublisher {
     }
     const account = this.accountLabel(args.channel, cred.extra)
 
-    // X and Facebook fit the executor's generic action shape (single POST,
-    // path params from cred.extra, flat body). The executor also owns token
-    // decrypt + refresh-on-expiry + provider error surfacing.
+    // X posts via the dedicated handler — the executor's decryptIfNeeded
+    // can't read dek: envelope ciphertext (it passes ciphertext through as
+    // the Bearer token, which X rejects as "application-only"), so the token
+    // is decrypted here like LinkedIn/Threads below.
     if (args.channel === 'x') {
-      const exec = new ConnectorActionExecutor(this.db)
-      const res = await exec.execute(args.tenantId, 'twitter_x', 'createPosts', {
-        text: args.content,
+      const xToken = cred.access_token
+        ? await decryptEnveloped(this.db, cred.access_token)
+        : undefined
+      if (!xToken) throw new Error('x: stored credential has no access token')
+      const result = await xHandler(xToken, 'connection', account).publish(args.content, {
+        ...(args.idempotencyKey ? { idempotencyKey: args.idempotencyKey } : {}),
       })
-      if (!res.ok) throw new Error(res.error ?? `x publish failed: HTTP ${res.status}`)
-      const id = (res.body as { data?: { id?: string } } | null)?.data?.id
-      return { external_id: id, url: id ? `https://x.com/i/web/status/${id}` : undefined, account }
+      return { ...result, account }
     }
     if (args.channel === 'facebook') {
       if (!cred.extra?.['page_id']) {

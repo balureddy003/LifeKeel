@@ -17,6 +17,9 @@ import {
   siteLink,
   type MarketingPostDoc,
 } from '../routes/marketing-posts.js'
+import { postFeatures, uniquePostTag } from './post-stats.js'
+import { chooseFormat, chooseHook, loadFormats, loadStats, type StatDef } from './formats.js'
+import { cardUrl, type CardSpec } from './cards.js'
 
 export const PILLARS = ['chart', 'hard_day', 'cover_on_file', 'your_data', 'guides'] as const
 export type Pillar = (typeof PILLARS)[number]
@@ -211,6 +214,20 @@ export async function planWeek(
   for (const h of history) usage.set(h.brief_id, (usage.get(h.brief_id) ?? 0) + 1)
   const existingSlots = new Set(history.filter((h) => h.week_key === weekKey).map((h) => h.slot))
 
+  // PRD-219: formats and hooks rotate least-used-first across the week;
+  // past usage comes from post features so a format that already ran is
+  // deprioritised next week.
+  const defs = loadFormats()
+  const formatUsage = new Map<string, number>()
+  const hookUsage = new Map<string, number>()
+  for (const p of await posts.find({ tenant_id: tenantId }).toArray()) {
+    if (p.features?.format)
+      formatUsage.set(p.features.format, (formatUsage.get(p.features.format) ?? 0) + 1)
+    if (p.features?.hook) hookUsage.set(p.features.hook, (hookUsage.get(p.features.hook) ?? 0) + 1)
+  }
+  const takenFormats = new Set<string>()
+  const takenHooks = new Set<string>()
+
   const briefs = pickBriefs(usage)
   let createdItems = 0
   let createdPosts = 0
@@ -234,12 +251,61 @@ export async function planWeek(
     await items.insertOne(item)
     createdItems++
     for (const channel of channels) {
-      const link = siteLink(channel, brief.path, brief.id, `pillar_${brief.pillar}`)
-      const sourceBlock = `Topic: ${brief.title}\nFacts you may use (use nothing else):\n${brief.facts}${link ? `\nLink to include verbatim: ${link}` : ''}`
+      // Each post's own tag rides utm_content (PRD-218); the brief id lives on
+      // the post doc, not in the link.
+      const postTag = await uniquePostTag(posts)
+      const link = siteLink(channel, brief.path, postTag, `pillar_${brief.pillar}`)
+      const format = chooseFormat(defs.formats, channel, formatUsage, takenFormats)
+      const hook = chooseHook(defs.hooks, hookUsage, takenHooks)
+      // PRD-225: a stat-led draft gets a real sourced stat in its prompt.
+      let statLead = ''
+      if (format?.id === 'stat_of_week') {
+        const stat: StatDef = loadStats()[slot % loadStats().length]!
+        statLead = `Stat to open with: ${stat.stat} (source: ${stat.source})\n`
+      }
+      const sourceBlock = `${statLead}Topic: ${brief.title}\nFacts you may use (use nothing else):\n${brief.facts}${link ? `\nLink to include verbatim: ${link}` : ''}`
       const learning = await learningContextBlock(db, tenantId, channel)
-      const { content, generated } = await draftPostText(llm, channel, sourceBlock, link, learning)
+      const { content, generated } = await draftPostText(
+        llm,
+        channel,
+        sourceBlock,
+        link,
+        learning,
+        format ?? undefined,
+        hook,
+      )
+      if (format) {
+        takenFormats.add(format.id)
+        formatUsage.set(format.id, (formatUsage.get(format.id) ?? 0) + 1)
+      }
+      takenHooks.add(hook.id)
+      hookUsage.set(hook.id, (hookUsage.get(hook.id) ?? 0) + 1)
+
+      // PRD-227: the first slot of the week also gets a hook variant —
+      // same brief+format+channel, different hook, so the stats table can
+      // compare hooks apples-to-apples before the learner exists.
+      let variant_hook: string | undefined
+      if (slot === 0) {
+        const alt = chooseHook(defs.hooks, hookUsage, takenHooks)
+        if (alt.id !== hook.id) {
+          variant_hook = alt.id
+          takenHooks.add(alt.id)
+          hookUsage.set(alt.id, (hookUsage.get(alt.id) ?? 0) + 1)
+        }
+      }
+
+      // PRD-219: signed brand card for image-capable channels. No public API
+      // base → no card, the draft stays "needs image" rather than dead-linked.
+      const id = randomUUID()
+      let card: CardSpec | undefined
+      let media_url: string | undefined
+      if ((channel === 'instagram' || channel === 'facebook') && format?.card) {
+        card = { layout: format.card, headline: brief.title, sub: format.card_sub }
+        const url = cardUrl(id, card)
+        if (url) media_url = url
+      }
       await posts.insertOne({
-        id: randomUUID(),
+        id,
         tenant_id: tenantId,
         channel,
         integration_id: `${channel}:connection`,
@@ -250,11 +316,69 @@ export async function planWeek(
         generated,
         copy_check: checkCopy(content, 'social'),
         content_item_id: item.id,
+        brief_id: brief.id,
         pillar: brief.pillar,
+        post_tag: postTag,
+        features: postFeatures({
+          channel,
+          content,
+          pillar: brief.pillar,
+          scheduled_at: when,
+          format: format?.id ?? null,
+          hook: hook.id,
+          media_url,
+        }),
+        ...(card ? { card, alt_text: `${brief.title} — LifeKeel` } : {}),
+        ...(media_url ? { media_url } : {}),
         created_by: createdBy,
         created_at: new Date(),
       } as MarketingPostDoc)
       createdPosts++
+
+      if (variant_hook) {
+        const vTag = await uniquePostTag(posts)
+        const vLink = siteLink(channel, brief.path, vTag, `pillar_${brief.pillar}`)
+        const vBlock = `Topic: ${brief.title}\nFacts you may use (use nothing else):\n${brief.facts}${vLink ? `\nLink to include verbatim: ${vLink}` : ''}`
+        const { content: vContent, generated: vGen } = await draftPostText(
+          llm,
+          channel,
+          vBlock,
+          vLink,
+          learning,
+          format ?? undefined,
+          defs.hooks.find((h) => h.id === variant_hook),
+        )
+        const vid = randomUUID()
+        await posts.insertOne({
+          id: vid,
+          tenant_id: tenantId,
+          channel,
+          integration_id: `${channel}:connection`,
+          content: vContent,
+          campaign: `pillar_${brief.pillar}`,
+          scheduled_at: when,
+          state: 'draft',
+          generated: vGen,
+          copy_check: checkCopy(vContent, 'social'),
+          content_item_id: item.id,
+          brief_id: brief.id,
+          pillar: brief.pillar,
+          post_tag: vTag,
+          variant_of: id,
+          features: postFeatures({
+            channel,
+            content: vContent,
+            pillar: brief.pillar,
+            scheduled_at: when,
+            format: format?.id ?? null,
+            hook: variant_hook,
+            media_url,
+          }),
+          created_by: createdBy,
+          created_at: new Date(),
+        } as MarketingPostDoc)
+        createdPosts++
+      }
     }
   }
   return { week_key: weekKey, created_items: createdItems, created_posts: createdPosts }

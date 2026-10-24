@@ -6,11 +6,7 @@
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import Fastify from 'fastify'
-import {
-  registerReferralRoutes,
-  attributeReferral,
-  rewardReferralIfPending,
-} from '../referrals.js'
+import { registerReferralRoutes, attributeReferral, rewardReferralIfPending } from '../referrals.js'
 
 vi.mock('../../billing/credit-ledger.js', () => ({
   recordLedgerEntry: vi.fn(async () => null),
@@ -34,8 +30,11 @@ function makeFakeDb() {
       findOne: async (filter: Record<string, unknown>) =>
         store.find((d) => Object.entries(filter).every(([k, v]) => d[k] === v)) ?? null,
       find: (filter: Record<string, unknown>) => ({
-        toArray: async () => store.filter((d) => Object.entries(filter).every(([k, v]) => d[k] === v)),
+        toArray: async () =>
+          store.filter((d) => Object.entries(filter).every(([k, v]) => d[k] === v)),
       }),
+      countDocuments: async (filter: Record<string, unknown>) =>
+        store.filter((d) => Object.entries(filter).every(([k, v]) => d[k] === v)).length,
       insertOne: async (doc: Doc) => {
         for (const keys of uniqueKeys) {
           const dup = store.some((d) => keys.every((k) => d[k] === doc[k]))
@@ -44,7 +43,10 @@ function makeFakeDb() {
         store.push(doc)
         return { insertedId: 'x' }
       },
-      updateOne: async (filter: Record<string, unknown>, update: { $set?: Record<string, unknown>; $inc?: Record<string, number> }) => {
+      updateOne: async (
+        filter: Record<string, unknown>,
+        update: { $set?: Record<string, unknown>; $inc?: Record<string, number> },
+      ) => {
         const doc = store.find((d) => Object.entries(filter).every(([k, v]) => d[k] === v))
         if (!doc) return { matchedCount: 0, modifiedCount: 0 }
         if (update.$set) Object.assign(doc, update.$set)
@@ -52,7 +54,8 @@ function makeFakeDb() {
           for (const [path, amount] of Object.entries(update.$inc)) {
             // Only path actually used here: 'billing.credits_balance'
             const [a, b] = path.split('.')
-            ;(doc[a!] as Record<string, number>)[b!] = ((doc[a!] as Record<string, number>)[b!] ?? 0) + amount
+            ;(doc[a!] as Record<string, number>)[b!] =
+              ((doc[a!] as Record<string, number>)[b!] ?? 0) + amount
           }
         }
         return { matchedCount: 1, modifiedCount: 1 }
@@ -61,13 +64,17 @@ function makeFakeDb() {
     }
   }
 
-  const referralCodesCol = makeCol(referralCodes, [['code']], )
+  const referralCodesCol = makeCol(referralCodes, [['code']])
   const referralsCol = makeCol(referrals, [['referred_tenant_id']])
   const tenantsCol = makeCol(tenants)
 
   return {
     collection: (name: string) =>
-      name === 'referral_codes' ? referralCodesCol : name === 'referrals' ? referralsCol : tenantsCol,
+      name === 'referral_codes'
+        ? referralCodesCol
+        : name === 'referrals'
+          ? referralsCol
+          : tenantsCol,
     _referralCodes: referralCodes,
     _referrals: referrals,
     _tenants: tenants,
@@ -114,7 +121,11 @@ describe('PRD-112: attributeReferral (signup)', () => {
 
     await attributeReferral(db, REFEREE, 'abc123') // lowercase input, normalized to uppercase
     expect(db._referrals).toHaveLength(1)
-    expect(db._referrals[0]).toMatchObject({ referrer_tenant_id: REFERRER, referred_tenant_id: REFEREE, status: 'pending' })
+    expect(db._referrals[0]).toMatchObject({
+      referrer_tenant_id: REFERRER,
+      referred_tenant_id: REFEREE,
+      status: 'pending',
+    })
   })
 
   it('is a silent no-op for an invalid code — never throws', async () => {
@@ -145,7 +156,13 @@ describe('PRD-112: rewardReferralIfPending (first-submit reward)', () => {
 
   it('rewards both tenants exactly once and marks the referral rewarded', async () => {
     const db = makeFakeDb()
-    db._referrals.push({ referrer_tenant_id: REFERRER, referred_tenant_id: REFEREE, code: 'ABC123', status: 'pending', created_at: new Date() })
+    db._referrals.push({
+      referrer_tenant_id: REFERRER,
+      referred_tenant_id: REFEREE,
+      code: 'ABC123',
+      status: 'pending',
+      created_at: new Date(),
+    })
 
     await rewardReferralIfPending(db, REFEREE)
 
@@ -165,7 +182,13 @@ describe('PRD-112: rewardReferralIfPending (first-submit reward)', () => {
 
   it('does not reward a second time once already rewarded', async () => {
     const db = makeFakeDb()
-    db._referrals.push({ referrer_tenant_id: REFERRER, referred_tenant_id: REFEREE, code: 'ABC123', status: 'pending', created_at: new Date() })
+    db._referrals.push({
+      referrer_tenant_id: REFERRER,
+      referred_tenant_id: REFEREE,
+      code: 'ABC123',
+      status: 'pending',
+      created_at: new Date(),
+    })
 
     await rewardReferralIfPending(db, REFEREE)
     await rewardReferralIfPending(db, REFEREE) // second call — referral is now 'rewarded', not 'pending'
@@ -176,7 +199,13 @@ describe('PRD-112: rewardReferralIfPending (first-submit reward)', () => {
 
   it('a concurrent double-submit race rewards exactly once, not twice', async () => {
     const db = makeFakeDb()
-    db._referrals.push({ referrer_tenant_id: REFERRER, referred_tenant_id: REFEREE, code: 'ABC123', status: 'pending', created_at: new Date() })
+    db._referrals.push({
+      referrer_tenant_id: REFERRER,
+      referred_tenant_id: REFEREE,
+      code: 'ABC123',
+      status: 'pending',
+      created_at: new Date(),
+    })
 
     await Promise.all([rewardReferralIfPending(db, REFEREE), rewardReferralIfPending(db, REFEREE)])
 

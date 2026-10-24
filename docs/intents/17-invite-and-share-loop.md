@@ -12,9 +12,9 @@ next to the social channels in the operator economics view.
    or first completed section of the chart, whichever exists today), show one calm, dismissible
    card: "Add your partner so they can see this too". It opens the existing invite-code flow
    (`/family`, `invite/[code]`). Shown at most once per week, never after dismissal twice, never
-   to a family that already has a second login. First verify what PRD-110 has shipped
-   (`routes/family-group.ts`, web `app/invite/[code]`); if join is not complete, finish only the
-   piece this card needs and stop.
+   to a family that already has a second login. Verified during review: PRD-110 join is shipped
+   end-to-end (`routes/family-join.ts` request/approve/deny/code-reset, `app/invite/[code]`,
+   invite code surfaced in settings and home) — the prompt card is the only new work here.
 2. **Shareable emergency sheet.** A one-page sheet the owner generates from their own on-file
    records: who to call, where the key papers are, which accounts and policies exist (names the
    family already entered, no balances unless the owner ticks them). Properties:
@@ -32,8 +32,12 @@ next to the social channels in the operator economics view.
    `sheet_shared`, `referral_link_copied`. Meta carries only a short enum (never ids or text).
    Signups arriving with `ref=` are attributed `utm_source=referral`, `utm_medium=social`,
    `utm_campaign=sheet` or `invite` so they appear beside social channels in the funnel and
-   economics views with the same intervals. Add a "Referral" row to the channel table; do not
-   build a new report.
+   economics views with the same intervals. Mechanism: the shareable link is
+   `/signup?ref=<code>&utm_source=referral&utm_medium=social&utm_campaign=<sheet|invite>` —
+   `captureAttribution` already picks up utm_* client-side, so no server attribution change is
+   needed; `attributeReferral` today writes only the `referrals` row, which is why ref signups
+   currently read as `direct`. Add a "Referral" row to the channel table; do not build a new
+   report.
 5. **Abuse and cost controls.** Referral signups from the same device/IP burst are rate-limited with
    the existing limiter; credits stay capped per referrer (reuse PRD-112's cap or add one).
 

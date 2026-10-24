@@ -56,6 +56,12 @@ import { readRevenueSnapshot, readonlyStripeFromEnv, syncRevenue } from '../mark
 import { addSpend, deleteSpend, listSpend, validateSpend } from '../marketing/spend.js'
 import { readEconomics } from '../marketing/economics.js'
 import {
+  postStats,
+  signupsByContent,
+  visitsByContent,
+  type StatPost,
+} from '../marketing/post-stats.js'
+import {
   campaignsCol,
   resolveAudience,
   queueCampaignSend,
@@ -3239,6 +3245,43 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         },
         rollup_ready: await isRollupReady(db),
       }
+    },
+  )
+
+  /** GET /operator/marketing/post-stats — PRD-218 weekly posts table:
+   *  per-post visits/signups by tag plus grouped stats. Aggregate-only:
+   *  postStats emits no user ids or emails. */
+  app.get(
+    '/operator/marketing/post-stats',
+    { preHandler: requireOperator(db, 'marketing.read') },
+    async (request, reply) => {
+      const parsed = z
+        .object({ weeks: z.coerce.number().int().min(1).max(26).default(8) })
+        .safeParse(request.query)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues })
+      const since = new Date(Date.now() - parsed.data.weeks * 7 * 24 * 60 * 60 * 1000)
+      const [posts, visits, signups] = await Promise.all([
+        db
+          .collection('marketing_posts')
+          .find({ created_at: { $gte: since } })
+          .project({
+            id: 1,
+            post_tag: 1,
+            source_blog_slug: 1,
+            channel: 1,
+            pillar: 1,
+            features: 1,
+            published_at: 1,
+            scheduled_at: 1,
+            created_at: 1,
+            metrics: 1,
+          })
+          .toArray(),
+        visitsByContent(db, since),
+        signupsByContent(db, since),
+      ])
+      return postStats(posts as StatPost[], visits, signups)
     },
   )
 

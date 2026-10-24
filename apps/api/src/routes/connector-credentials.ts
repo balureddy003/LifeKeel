@@ -542,6 +542,40 @@ export function registerConnectorCredentialRoutes(
               },
             },
           )
+          // Mirror the user-context token onto social_connections so the
+          // publish path (handlerForConnection) reads the same store Bluesky
+          // uses — the connector_credentials row stays the OAuth registry.
+          await getTenantCollection<Record<string, unknown>>(
+            db,
+            'social_connections',
+            tenantId,
+          ).updateOne(
+            { channel: 'x' },
+            {
+              $set: {
+                tenant_id: tenantId,
+                channel: 'x',
+                handle: me.data.username,
+                credentials: {
+                  access_token: await encryptForTenant(db, tenantId, data.access_token),
+                  ...(data.refresh_token
+                    ? {
+                        refresh_token: await encryptForTenant(
+                          db,
+                          tenantId,
+                          data.refresh_token as string,
+                        ),
+                      }
+                    : {}),
+                },
+                status: 'active',
+                connected_by: 'oauth',
+                updated_at: new Date(),
+              },
+              $setOnInsert: { created_at: new Date() },
+            },
+            { upsert: true },
+          )
         }
       } catch {
         // display nicety only

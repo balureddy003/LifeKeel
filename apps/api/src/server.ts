@@ -156,6 +156,8 @@ import { registerFamilyGroupRoutes } from './routes/family-group.js'
 import { registerFamilyJoinRoutes } from './routes/family-join.js'
 import { registerReferralRoutes } from './routes/referrals.js'
 import { registerGrowthEventRoutes } from './routes/growth-events.js'
+import { registerMarketingCardRoutes } from './routes/marketing-card.js'
+import { registerEmergencySheetRoutes } from './routes/emergency-sheet.js'
 import { registerFamilyFinancialProfileRoutes } from './routes/family-financial-profile.js'
 import { registerLifeEventRoutes } from './routes/life-events.js'
 import { runChecklistReminderSweep } from './life-events/checklist-reminder.js'
@@ -534,6 +536,9 @@ try {
             // PRD-210: keep next week's pillar plan drafted for the weekly review.
             const { ensureWeeklyPlans } = await import('./marketing/content-plan.js')
             await ensureWeeklyPlans(workflowDb, taskLlmFor('marketing.social_draft.v1'))
+            // PRD-226: re-promote the top-visited guide not pushed in 30 days.
+            const { reviveGuides } = await import('./routes/marketing-posts.js')
+            await reviveGuides(workflowDb, taskLlmFor('marketing.social_draft.v1'))
           })
         } catch (err) {
           log.error({ err }, 'Marketing draft generation failed')
@@ -2241,6 +2246,8 @@ if (workflowDb) {
   registerFamilyJoinRoutes(app, workflowDb, auth)
   registerReferralRoutes(app, workflowDb)
   registerGrowthEventRoutes(app, workflowDb)
+  await registerMarketingCardRoutes(app, workflowDb)
+  await registerEmergencySheetRoutes(app, workflowDb)
   registerFamilyInboxRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerAssistantRoutes(app, workflowDb)
   registerSupportRoutes(app, workflowDb)

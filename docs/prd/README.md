@@ -417,6 +417,32 @@ beyond the existing Act machinery; 216 runs outside the engineering cadence;
 217 should land alongside 211 — shipping a live hosted path without the
 observability that would have caught this outage repeats the same mistake.
 
+## 22x — marketing engine: the self-improving loop
+
+Steps 2–6 of the marketing engine programme, written up from intents 15–19
+(`docs/intents/`); shared context in
+[marketing-engine-build-notes.md](../intents/marketing-engine-build-notes.md).
+
+1. [218-per-post-attribution.md](218-per-post-attribution.md) — a per-post
+   `utm_content` tag, features recorded at draft time, visits/signups per tag
+   in the rollup, and a weekly posts table on the Plan tab. Tier 0.
+2. [219-content-studio-minimal.md](219-content-studio-minimal.md) — three
+   post formats + a hook allow-list in `definitions/marketing-formats.yaml`,
+   deterministic no-model fallbacks, and signed brand-card images so
+   Instagram drafts become approvable. Tier 0/1.
+3. [220-emergency-sheet.md](220-emergency-sheet.md) — the invite/share loop:
+   partner-invite prompt on shipped PRD-110 mechanics, an owner-generated
+   opt-in emergency sheet that never lives at a URL, and referral links
+   attributed as `utm_source=referral` on shipped PRD-112 mechanics.
+   Tier 0/1. Counsel reviews the sheet wording once.
+4. [221-marketing-learner.md](221-marketing-learner.md) — **gated** on ~500
+   visits/month and 40+ tagged posts: a shadow-first allocation learner
+   (30% exploration floor, promotion gate, one-click veto, auto-revert) and a
+   deterministic weekly brief. Allocation only, never wording. Tier 0/1.
+
+Not a PRD: the distribution playbook (intent 18) is a document deliverable —
+`docs/marketing/distribution-playbook.md` — plus a tagged-link helper script.
+
 **Quiz retired (2026-10-20).** PRD-125, 201, 203, 204 and 205 describe the public readiness quiz and its result-save, trust-block and share extras. The quiz, its API route and share card were removed; `/readiness` now redirects to signup. Those documents stay for history and are not on the build order.
 
 ## Suggested build order for 138–147 and 203–206

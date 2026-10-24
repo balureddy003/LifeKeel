@@ -12,15 +12,18 @@ month. This intent is the smallest version that makes content visibly more varie
    - `myth_vs_file` — "a common assumption" versus "what a family can check on file".
    - `one_thing_to_check` — one small habit (a renewal date, a named beneficiary, where the papers
      are). Information, never advice.
-   - `hard_day_steps` — a calm numbered list of what a partner would need to find; thread on
-     X/Bluesky/Threads where the publisher supports it, single post elsewhere.
+   - `hard_day_steps` — a calm numbered list of what a partner would need to find, rendered as a
+     single post. (No publisher in `social-publisher.ts` posts multi-post threads today — verified
+     during review — so thread splitting is out of scope; keep an optional `thread: true` marker
+     in the schema for later, never acted on.)
    Each format has: `id`, `label`, `channels` it suits, `min_facts`, `draft_prompt`, `fallback`
    (a deterministic template used when no model is available), optional `card` layout name.
 2. **A hook allow-list** in the same file: `question`, `concrete_scene`, `myth_bust`, `checklist`,
    `plain_statement`, `claim`. Fear, urgency, scarcity, guarantees and "act now" are excluded by
    construction (a test asserts no hook text or example contains them).
 3. **Selection**: `chooseFormat(slot, channel, usage)` picks the least-used suitable format, a
-   different one per slot in a week, never a thread format on a channel without thread support.
+   different one per slot in a week, never a `thread` format on a channel without thread support
+   (which today means thread formats are never picked — no publisher supports them).
    Format and hook are written to `features.format` and `features.hook` (intent 15).
 4. **Drafting by format**: `draftPostText` takes `format` and `hook` and uses that format's prompt;
    the no-model fallback renders each format deterministically from brief facts.
@@ -28,10 +31,13 @@ month. This intent is the smallest version that makes content visibly more varie
    `sharp` (already a dependency), product palette, two layouts only (headline; myth/fact), sizes
    1080x1350 (Instagram) and 1200x630 (Facebook). Served by
    `GET /public/social-card/:postId.png?s=<hmac>`: the HMAC covers post id plus the card spec so URLs
-   cannot be guessed or edited; no auth; long `Cache-Control`; rate-limited. Plan drafts for those
-   channels get `media_url` set to the signed URL and `alt_text` stored, so the "needs image" block
-   from intent 14 clears and Instagram drafts become approvable. Text on a card is clamped and
-   wrapped; overflow is a test failure, not a clipped image.
+   cannot be guessed or edited; no auth; long `Cache-Control`; rate-limited. The signed URL must be
+   absolute against the API's own public origin (the env the deployment already uses for that — not
+   `LIFEKEEL_URL`, which is the *web* origin); when no public API base is configured, leave
+   `media_url` unset and the draft stays "needs image" rather than carrying a broken URL.
+   Plan drafts for those channels get `media_url` set to the signed URL and `alt_text` stored, so
+   the "needs image" block from intent 14 clears and Instagram drafts become approvable. Text on a
+   card is clamped and wrapped; overflow is a test failure, not a clipped image.
 6. **Briefs stay as they are** (the 12 in `content-plan.ts`) plus a small `briefs` YAML move is
    allowed but optional. **No AI brief proposals, no Briefs panel.**
 7. **Plan tab**: format and hook chips per draft, and a card preview where there is one. Reuse
@@ -68,8 +74,9 @@ any learning (intent 19).
   `signCard`/`verifyCard` following the existing HMAC token pattern in
   `routes/heartbeat-unsubscribe.ts` / `marketing/lifecycle-emails.ts`; reuse that secret source rather
   than adding a new secret store).
-- `apps/api/src/routes/marketing-card.ts` (public route; add to the open-routes allowlist in
-  `server.ts`; register rate limit).
+- `apps/api/src/routes/marketing-card.ts` (public route; add the `/public/` prefix to
+  `apps/api/src/security/public-routes.ts` — the allowlist server.ts consumes — in a new
+  protection group with a rate-limit note; register a rate limit).
 - `apps/api/src/routes/marketing-posts.ts`: `draftPostText` gains `format`, `hook`.
 - `apps/api/src/marketing/content-plan.ts`: call `chooseFormat` per slot, attach card spec and
   `media_url`, store `features`.

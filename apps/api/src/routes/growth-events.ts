@@ -56,7 +56,15 @@ export const KNOWN_EVENTS = new Set([
   'pwa_install_shown',
   'pwa_install_clicked',
   'pwa_install_installed',
+  // PRD-220: invite/share loop; meta carries only {src: sheet|invite|prompt|settings}.
+  'invite_prompt_shown',
+  'invite_prompt_clicked',
+  'sheet_generated',
+  'sheet_shared',
+  'referral_link_copied',
 ])
+
+const SHARE_SRCS = new Set(['sheet', 'invite', 'prompt', 'settings'])
 
 const INSTALL_PLATFORMS = new Set(['prompt', 'ios', 'ios_in_app'])
 
@@ -72,6 +80,16 @@ function eventMeta(event: string, meta: unknown): Record<string, unknown> | null
   if (event.startsWith('pwa_install_')) {
     const p = (meta as { p?: unknown } | null)?.p
     return typeof p === 'string' && INSTALL_PLATFORMS.has(p) ? { p } : null
+  }
+  if (
+    event === 'invite_prompt_shown' ||
+    event === 'invite_prompt_clicked' ||
+    event === 'sheet_generated' ||
+    event === 'sheet_shared' ||
+    event === 'referral_link_copied'
+  ) {
+    const s = (meta as { src?: unknown } | null)?.src
+    return typeof s === 'string' && SHARE_SRCS.has(s) ? { src: s } : null
   }
   return meta && typeof meta === 'object' ? (meta as Record<string, unknown>) : null
 }

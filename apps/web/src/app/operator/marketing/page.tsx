@@ -51,6 +51,7 @@ import { PostPreview } from './_components/PostPreview'
 import { ProfilesPanel } from './_components/ProfilesPanel'
 import { PostCalendar } from './_components/PostCalendar'
 import { PlanPanel } from './_components/PlanPanel'
+import { PostStatsPanel } from './_components/PostStatsPanel'
 import { FunnelPanel } from './_components/FunnelPanel'
 import { EconomicsPanel } from './_components/EconomicsPanel'
 import { ConnectionsPanel } from './_components/ConnectionsPanel'
@@ -495,7 +496,11 @@ export default function MarketingPage() {
                   ) && <p className="text-xs text-ink-tertiary">All OAuth channels connected.</p>}
                 </div>
                 <div>
-                  <p className="text-caption text-ink-tertiary mb-1.5">Bluesky — app password</p>
+                  <p className="text-caption text-ink-tertiary mb-1.5">
+                    Bluesky — app password
+                    {connections.some((c) => c.channel === 'bluesky') &&
+                      ' (connected — re-enter a fresh app password to reconnect)'}
+                  </p>
                   <div className="space-y-2">
                     <input
                       value={bskyHandle}
@@ -514,7 +519,11 @@ export default function MarketingPage() {
                       onClick={connect}
                       disabled={busy === 'connect' || !bskyHandle.trim() || !bskyPassword.trim()}
                     >
-                      {busy === 'connect' ? 'Verifying…' : 'Verify & connect'}
+                      {busy === 'connect'
+                        ? 'Verifying…'
+                        : connections.some((c) => c.channel === 'bluesky')
+                          ? 'Verify & reconnect'
+                          : 'Verify & connect'}
                     </GlassButton>
                   </div>
                 </div>
@@ -1001,7 +1010,12 @@ export default function MarketingPage() {
           )}
 
           {/* Calendar */}
-          {tab === 'plan' && <PlanPanel />}
+          {tab === 'plan' && (
+            <>
+              <PlanPanel />
+              <PostStatsPanel />
+            </>
+          )}
           {tab === 'calendar' && <PostCalendar posts={posts} />}
 
           {/* Performance */}

@@ -15,6 +15,7 @@ import {
   approvePlanPosts,
   fetchPlanWeek,
   generatePlanWeek,
+  refineMarketingPost,
   skipPlanItem,
   updateMarketingPost,
   type PlanPostView,
@@ -188,9 +189,40 @@ export function PlanPanel() {
                   <span className="text-xs font-semibold text-ink-secondary">
                     {p.channel} · {p.state}
                   </span>
+                  {(p.format || p.hook) && (
+                    <span className="ml-2 inline-flex gap-1 align-middle">
+                      {p.format && (
+                        <span className="rounded-full border border-family-500/25 px-1.5 py-0.5 text-[10px] text-family-400">
+                          {p.format}
+                        </span>
+                      )}
+                      {p.hook && (
+                        <span className="rounded-full border border-tint/15 px-1.5 py-0.5 text-[10px] text-ink-tertiary">
+                          {p.hook}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                  {p.media_url && (
+                    // Signed card preview (PRD-219) — the same URL the platform will fetch.
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={p.media_url}
+                      alt={p.alt_text ?? 'Card preview'}
+                      className="mt-1 h-20 rounded-lg border border-tint/[0.08]"
+                    />
+                  )}
                   <span className="block text-sm text-ink-primary whitespace-pre-wrap">
                     {p.content}
                   </span>
+                  {p.state === 'draft' && (
+                    <RefineField
+                      onRefine={async (instruction) => {
+                        await refineMarketingPost(p.id, instruction)
+                        await load()
+                      }}
+                    />
+                  )}
                   {p.needs_image && (
                     <ImageField
                       postId={p.id}
@@ -252,6 +284,47 @@ function canApprove(p: PlanPostView): boolean {
 }
 
 /** Instagram cannot post text alone: the draft stays unapprovable until it has an image. */
+/** LLM-assisted draft edit — operator types an instruction, the API rewrites
+ *  the draft and re-runs the copy guard (PRD-219). */
+function RefineField({ onRefine }: { onRefine: (instruction: string) => Promise<void> }) {
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  return (
+    <span className="block mt-1">
+      <span className="flex gap-2">
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Refine: shorter, one question, add urgency-free hook…"
+          aria-label="Refine this draft with an instruction"
+          className="glass-input flex-1 rounded-lg px-2 py-1 text-xs"
+        />
+        <button
+          type="button"
+          disabled={busy || text.trim().length < 3}
+          onClick={async () => {
+            setBusy(true)
+            setErr(null)
+            try {
+              await onRefine(text.trim())
+              setText('')
+            } catch (e) {
+              setErr(e instanceof Error ? e.message : 'Refine failed')
+            } finally {
+              setBusy(false)
+            }
+          }}
+          className="rounded-lg px-2 py-1 text-xs font-semibold bg-tint/[0.08] text-ink-secondary disabled:opacity-40"
+        >
+          {busy ? '…' : 'Refine'}
+        </button>
+      </span>
+      {err && <span className="block text-xs text-danger mt-1">{err}</span>}
+    </span>
+  )
+}
+
 function ImageField({
   postId,
   disabled,
