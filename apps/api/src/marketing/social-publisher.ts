@@ -114,15 +114,19 @@ interface ChannelHandler {
 // X (Twitter) — API v2, user-context OAuth2 bearer.
 // ---------------------------------------------------------------------------
 
-function xHandler(token: string): ChannelHandler {
+function xHandler(
+  token: string,
+  source: 'env' | 'connection' = 'env',
+  account = 'env credential',
+): ChannelHandler {
   return {
     info: {
-      id: 'x:env',
+      id: `x:${source}`,
       name: 'X',
       identifier: 'x',
       disabled: false,
-      source: 'env',
-      account: 'env credential',
+      source,
+      account,
     },
     async publish(content, ctx) {
       const res = await providerFetch(
@@ -590,6 +594,14 @@ async function handlerForConnection(db: Db, conn: SocialConnectionDoc): Promise<
     if (!appPassword) throw new Error('bluesky connection: no app password stored')
     return blueskyHandler(conn.handle, appPassword, conn.service, 'connection')
   }
+  // The OAuth connect stores the user-context token on the social_connections
+  // row (mirroring Bluesky's app_password) — the connector_credentials doc is
+  // the display/registry row, not the publish credential.
+  if (conn.channel === 'x') {
+    const accessToken = await decryptEnveloped(db, conn.credentials['access_token'])
+    if (!accessToken) throw new Error('x connection: no user token stored')
+    return xHandler(accessToken, 'connection', conn.handle)
+  }
   throw new Error(`connection_unsupported:${conn.channel}`)
 }
 
@@ -733,17 +745,19 @@ export class DbSocialPublisher implements SocialPublisher {
     }
     const account = this.accountLabel(args.channel, cred.extra)
 
-    // X and Facebook fit the executor's generic action shape (single POST,
-    // path params from cred.extra, flat body). The executor also owns token
-    // decrypt + refresh-on-expiry + provider error surfacing.
+    // X posts via the dedicated handler — the executor's decryptIfNeeded
+    // can't read dek: envelope ciphertext (it passes ciphertext through as
+    // the Bearer token, which X rejects as "application-only"), so the token
+    // is decrypted here like LinkedIn/Threads below.
     if (args.channel === 'x') {
-      const exec = new ConnectorActionExecutor(this.db)
-      const res = await exec.execute(args.tenantId, 'twitter_x', 'createPosts', {
-        text: args.content,
+      const xToken = cred.access_token
+        ? await decryptEnveloped(this.db, cred.access_token)
+        : undefined
+      if (!xToken) throw new Error('x: stored credential has no access token')
+      const result = await xHandler(xToken, 'connection', account).publish(args.content, {
+        ...(args.idempotencyKey ? { idempotencyKey: args.idempotencyKey } : {}),
       })
-      if (!res.ok) throw new Error(res.error ?? `x publish failed: HTTP ${res.status}`)
-      const id = (res.body as { data?: { id?: string } } | null)?.data?.id
-      return { external_id: id, url: id ? `https://x.com/i/web/status/${id}` : undefined, account }
+      return { ...result, account }
     }
     if (args.channel === 'facebook') {
       if (!cred.extra?.['page_id']) {
