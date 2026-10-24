@@ -2501,6 +2501,26 @@ describe('security monitoring', () => {
       await app.close()
     })
 
+    it('reports synced revenue that could not be linked to a family', async () => {
+      await db.collection('revenue_events').insertMany([
+        { invoice_id: 'u1', tenant_id: null, currency: 'gbp', net_pence: 799, paid_at: new Date() },
+        {
+          invoice_id: 'l1',
+          tenant_id: 'family-1',
+          currency: 'gbp',
+          net_pence: 799,
+          paid_at: new Date(),
+        },
+      ])
+      const app = await asOperator(['marketing_operator'])
+      const body = (
+        await app.inject({ method: 'GET', url: '/operator/marketing/economics?days=30' })
+      ).json()
+      expect(body.unattributed).toEqual({ invoices: 1, revenue_pence: 799 })
+      expect(body.notes.join(' ')).toMatch(/could not be linked to a family/)
+      await app.close()
+    })
+
     it('rejects a bad window or model', async () => {
       const app = await asOperator(['marketing_operator'])
       expect(

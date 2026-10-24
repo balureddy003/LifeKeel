@@ -256,6 +256,39 @@ describe('rollup folding', () => {
   })
 })
 
+describe('unattributed revenue', () => {
+  const noFunnel: { dim: string; count: number }[] = []
+  const view = (unattributed?: { invoices: number; revenue_pence: number }) =>
+    buildView(noFunnel, noFunnel, new Map(), {
+      days: 30,
+      model: 'first',
+      arpu_pence: null,
+      unattributed,
+    })
+
+  it('says plainly how much paid revenue could not be credited to any family', () => {
+    const v = view({ invoices: 3, revenue_pence: 2397 })
+    expect(v.unattributed).toEqual({ invoices: 3, revenue_pence: 2397 })
+    const note = v.notes.find((n) => /could not be linked to a family/.test(n))!
+    expect(note).toMatch(/£23\.97 from 3 paid invoices/)
+    expect(note).toMatch(/no channel is credited/)
+  })
+
+  it('reads naturally for a single invoice', () => {
+    expect(view({ invoices: 1, revenue_pence: 799 }).notes.join(' ')).toMatch(
+      /£7\.99 from 1 paid invoice in this window/,
+    )
+  })
+
+  it('stays silent when everything is linked, and defaults to zero when not supplied', () => {
+    expect(view({ invoices: 0, revenue_pence: 0 }).notes.join(' ')).not.toMatch(
+      /could not be linked/,
+    )
+    const v = view()
+    expect(v.unattributed).toEqual({ invoices: 0, revenue_pence: 0 })
+  })
+})
+
 describe('spend', () => {
   it('validates month, channel and amount', () => {
     expect(validateSpend({ month: '2026-10', channel: 'bluesky', amount_pence: 5000 })).toBeNull()
@@ -353,6 +386,76 @@ describe('readEconomics', () => {
     expect(row.spend_pence).toBe(2000)
     expect(row.cac_pence).toBe(667)
     expect(view.by_content.find((r) => r.key === 'p1')).toMatchObject({ signups: 12, visits: null })
+  })
+})
+
+describe('readEconomics unattributed revenue', () => {
+  let mongod: MongoMemoryServer
+  let client: MongoClient
+  let db: Db
+  beforeAll(async () => {
+    mongod = await MongoMemoryServer.create()
+    client = new MongoClient(mongod.getUri())
+    await client.connect()
+    db = client.db('economics-unattributed')
+  })
+  beforeEach(async () => {
+    await db.dropDatabase()
+  })
+  afterAll(async () => {
+    await client.close()
+    await mongod.stop()
+  })
+
+  it('counts only in-window GBP payments with no tenant, net of refunds', async () => {
+    const now = new Date('2026-10-20T12:00:00Z')
+    const day = (iso: string) => new Date(`${iso}T00:00:00Z`)
+    await db.collection('revenue_events').insertMany([
+      {
+        invoice_id: 'a',
+        tenant_id: null,
+        currency: 'gbp',
+        net_pence: 799,
+        paid_at: day('2026-10-10'),
+      }, // counted
+      { invoice_id: 'b', currency: 'gbp', net_pence: 500, paid_at: day('2026-10-12') }, // tenant missing entirely: counted
+      {
+        invoice_id: 'c',
+        tenant_id: null,
+        currency: 'gbp',
+        net_pence: 300,
+        paid_at: day('2026-10-14'),
+      }, // net after a 499 refund of 799: counted at 300
+      {
+        invoice_id: 'd',
+        tenant_id: 't1',
+        currency: 'gbp',
+        net_pence: 799,
+        paid_at: day('2026-10-10'),
+      }, // linked: not counted
+      {
+        invoice_id: 'e',
+        tenant_id: null,
+        currency: 'eur',
+        net_pence: 900,
+        paid_at: day('2026-10-10'),
+      }, // not GBP: not counted
+      {
+        invoice_id: 'f',
+        tenant_id: null,
+        currency: 'gbp',
+        net_pence: 799,
+        paid_at: day('2026-08-01'),
+      }, // outside 30 days: not counted
+    ])
+    const v = await readEconomics(db, { days: 30, model: 'first', arpu_pence: null, now })
+    expect(v.unattributed).toEqual({ invoices: 3, revenue_pence: 1599 })
+    expect(v.notes.join(' ')).toMatch(/£15\.99 from 3 paid invoices/)
+  })
+
+  it('is zero with no revenue data at all', async () => {
+    const v = await readEconomics(db, { days: 30, model: 'first', arpu_pence: null })
+    expect(v.unattributed).toEqual({ invoices: 0, revenue_pence: 0 })
   })
 })
 

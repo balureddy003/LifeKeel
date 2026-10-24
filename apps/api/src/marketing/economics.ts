@@ -188,6 +188,12 @@ export interface EconomicsView {
   /** Share of signups in the window with a captured last touch (last-touch model only). */
   last_touch_coverage: number | null
   arpu_pence: number | null
+  /**
+   * GBP revenue paid in the window that is not linked to any family (the Stripe
+   * subscription carries no tenant), so no channel can be credited for it.
+   * It is in Stripe totals; shown here so the gap is never silent.
+   */
+  unattributed: { invoices: number; revenue_pence: number }
   notes: string[]
 }
 
@@ -262,7 +268,12 @@ export function buildView(
   funnelRows: { dim: string; count: number }[],
   journeyRows: { dim: string; count: number }[],
   spendBySource: Map<string, number>,
-  opts: { days: number; model: AttributionModel; arpu_pence: number | null },
+  opts: {
+    days: number
+    model: AttributionModel
+    arpu_pence: number | null
+    unattributed?: { invoices: number; revenue_pence: number }
+  },
 ): EconomicsView {
   const f = foldRollups(funnelRows, journeyRows, opts.model)
   const common = (dim: 'source' | 'campaign' | 'content') => ({
@@ -309,6 +320,11 @@ export function buildView(
     notes.push(
       `Last touch was captured for ${Math.round(coverage * 100)}% of signups; the rest fall back to first touch.`,
     )
+  const unattributed = opts.unattributed ?? { invoices: 0, revenue_pence: 0 }
+  if (unattributed.invoices > 0)
+    notes.push(
+      `${gbp(unattributed.revenue_pence)} from ${unattributed.invoices} paid invoice${unattributed.invoices === 1 ? '' : 's'} in this window could not be linked to a family (the Stripe subscription has no tenant), so no channel is credited for it.`,
+    )
   notes.push(
     'Rates are shown with a 95% plausible range; rows marked insufficient are too thin to compare.',
   )
@@ -321,6 +337,7 @@ export function buildView(
     by_content,
     last_touch_coverage: coverage,
     arpu_pence: opts.arpu_pence,
+    unattributed,
     notes,
   }
 }
@@ -333,7 +350,7 @@ export async function readEconomics(
   const now = opts.now ?? new Date()
   const start = new Date(now.getTime() - (opts.days - 1) * 86_400_000)
   const since = start.toISOString().slice(0, 10)
-  const [funnel, journey, spend] = await Promise.all([
+  const [funnel, journey, spend, unlinked] = await Promise.all([
     db
       .collection('metrics_daily')
       .find(
@@ -349,11 +366,26 @@ export async function readEconomics(
       )
       .toArray(),
     listSpend(db, 1000),
+    db
+      .collection('revenue_events')
+      .aggregate<{ invoices: number; revenue: number }>([
+        { $match: { paid_at: { $gte: start }, currency: 'gbp', tenant_id: { $in: [null] } } },
+        { $group: { _id: null, invoices: { $sum: 1 }, revenue: { $sum: '$net_pence' } } },
+      ])
+      .toArray(),
   ])
   return buildView(
     funnel.map((r) => ({ dim: r['dim'] as string, count: r['count'] as number })),
     journey.map((r) => ({ dim: r['dim'] as string, count: r['count'] as number })),
     spendInWindow(spend, start, now),
-    { days: opts.days, model: opts.model, arpu_pence: opts.arpu_pence },
+    {
+      days: opts.days,
+      model: opts.model,
+      arpu_pence: opts.arpu_pence,
+      unattributed: {
+        invoices: unlinked[0]?.invoices ?? 0,
+        revenue_pence: unlinked[0]?.revenue ?? 0,
+      },
+    },
   )
 }
