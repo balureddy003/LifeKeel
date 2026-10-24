@@ -61,6 +61,20 @@ formats:
     fallback: |
       If something happens, a partner would need to find:
       1. {{facts}}
+  # PRD-225: sourced stat as the card headline — facts file lives in
+  # definitions/marketing-stats.yaml; each stat cites its source.
+  - id: stat_of_week
+    label: Stat of the week
+    status: active
+    channels: [bluesky, linkedin, x, threads, instagram, facebook]
+    card: headline
+    draft_prompt: |
+      Open with a real, sourced statistic about families and their paperwork
+      — then one sentence of what it means. Calm and factual, never
+      frightening. Information only.
+    card_sub: What the number means
+    fallback: |
+      {{facts}}
   # Held for counsel review of wording — never selected while status: held.
   - id: calendar_moment
     label: Calendar moment

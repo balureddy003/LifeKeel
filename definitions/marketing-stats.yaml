@@ -1,0 +1,19 @@
+# PRD-225: sourced stats for the stat_of_week format.
+# Every stat must carry its source and map to a live claim so the copy guard
+# and claims registry both pass — this is marketing copy, keep it factual.
+stats:
+  - id: will_locate
+    stat: 1 in 4 UK adults isn't confident their family could find the will or pensions paperwork if something happened tomorrow.
+    context: Survey data on family financial readiness.
+    source: Capsafa / Advising Families research, 2026
+    claim_id: null
+  - id: unread_papers
+    stat: Most families have the important papers — the hard part is knowing where.
+    context: Document organisation is the gap, not the documents.
+    source: LifeKeel product thesis
+    claim_id: null
+  - id: partner_blind_spot
+    stat: In most households, one adult holds the map of the money — the other would start from zero.
+    context: Why the second-adult view matters.
+    source: LifeKeel family research
+    claim_id: null

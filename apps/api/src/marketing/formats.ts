@@ -105,3 +105,27 @@ export function chooseHook(
 export function renderFormatFallback(format: FormatDef, facts: string): string {
   return format.fallback.replace('{{facts}}', facts.trim()).trim()
 }
+
+/** PRD-225: sourced stats for the stat_of_week format — same Zod/boot
+ *  pattern as the formats file. */
+const StatSchema = z.object({
+  id: z.string(),
+  stat: z.string().min(10),
+  context: z.string().max(200).optional(),
+  source: z.string().min(3),
+})
+export type StatDef = z.infer<typeof StatSchema>
+
+let statsCached: StatDef[] | null = null
+
+export function loadStats(): StatDef[] {
+  if (statsCached) return statsCached
+  const here = path.dirname(fileURLToPath(import.meta.url))
+  const file = path.resolve(here, '..', '..', '..', '..', 'definitions', 'marketing-stats.yaml')
+  const parsed = z
+    .object({ stats: z.array(StatSchema).min(1) })
+    .safeParse(loadYaml(fs.readFileSync(file, 'utf8')))
+  if (!parsed.success) throw new Error(`marketing-stats.yaml invalid: ${parsed.error.message}`)
+  statsCached = parsed.data.stats
+  return statsCached
+}

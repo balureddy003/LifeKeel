@@ -18,7 +18,7 @@ import {
   type MarketingPostDoc,
 } from '../routes/marketing-posts.js'
 import { postFeatures, uniquePostTag } from './post-stats.js'
-import { chooseFormat, chooseHook, loadFormats } from './formats.js'
+import { chooseFormat, chooseHook, loadFormats, loadStats, type StatDef } from './formats.js'
 import { cardUrl, type CardSpec } from './cards.js'
 
 export const PILLARS = ['chart', 'hard_day', 'cover_on_file', 'your_data', 'guides'] as const
@@ -255,9 +255,15 @@ export async function planWeek(
       // the post doc, not in the link.
       const postTag = await uniquePostTag(posts)
       const link = siteLink(channel, brief.path, postTag, `pillar_${brief.pillar}`)
-      const sourceBlock = `Topic: ${brief.title}\nFacts you may use (use nothing else):\n${brief.facts}${link ? `\nLink to include verbatim: ${link}` : ''}`
       const format = chooseFormat(defs.formats, channel, formatUsage, takenFormats)
       const hook = chooseHook(defs.hooks, hookUsage, takenHooks)
+      // PRD-225: a stat-led draft gets a real sourced stat in its prompt.
+      let statLead = ''
+      if (format?.id === 'stat_of_week') {
+        const stat: StatDef = loadStats()[slot % loadStats().length]!
+        statLead = `Stat to open with: ${stat.stat} (source: ${stat.source})\n`
+      }
+      const sourceBlock = `${statLead}Topic: ${brief.title}\nFacts you may use (use nothing else):\n${brief.facts}${link ? `\nLink to include verbatim: ${link}` : ''}`
       const learning = await learningContextBlock(db, tenantId, channel)
       const { content, generated } = await draftPostText(
         llm,
