@@ -23,83 +23,21 @@
  * failed call and never send unauthenticated.
  */
 
-import crypto from 'node:crypto'
+import {
+  GOOGLE_REFRESH_MARGIN_MS,
+  parseServiceAccount,
+  serviceAccountTokenSource,
+} from './google-auth.js'
 
 const METADATA_TOKEN_URL =
   'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token'
-const OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const CLOUD_PLATFORM_SCOPE = 'https://www.googleapis.com/auth/cloud-platform'
 
 /** Refresh this long before expiry so an in-flight call never carries a stale token. */
-const REFRESH_MARGIN_MS = 5 * 60_000
+const REFRESH_MARGIN_MS = GOOGLE_REFRESH_MARGIN_MS
 export interface VertexAuthOptions {
   fetchImpl?: typeof fetch
   now?: () => number
-}
-
-interface ServiceAccount {
-  client_email: string
-  private_key: string
-  token_uri?: string
-}
-
-function parseServiceAccount(raw: string | undefined): ServiceAccount | null {
-  if (!raw) return null
-  try {
-    const sa = JSON.parse(raw) as Partial<ServiceAccount>
-    if (typeof sa.client_email === 'string' && typeof sa.private_key === 'string') {
-      const acct: ServiceAccount = {
-        client_email: sa.client_email,
-        private_key: sa.private_key,
-      }
-      if (typeof sa.token_uri === 'string') acct.token_uri = sa.token_uri
-      return acct
-    }
-  } catch {
-    // fall through
-  }
-  return null
-}
-
-function b64url(input: string | Buffer): string {
-  return Buffer.from(input).toString('base64url')
-}
-
-function serviceAccountTokenSource(
-  account: ServiceAccount,
-  doFetch: typeof fetch,
-): () => Promise<{ token: string; expiresInMs: number }> {
-  return async () => {
-    const nowSec = Math.floor(Date.now() / 1000)
-    const tokenUri = account.token_uri ?? OAUTH_TOKEN_URL
-    const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))
-    const claims = b64url(
-      JSON.stringify({
-        iss: account.client_email,
-        scope: CLOUD_PLATFORM_SCOPE,
-        aud: tokenUri,
-        iat: nowSec,
-        exp: nowSec + 3600,
-      }),
-    )
-    const signature = crypto
-      .createSign('RSA-SHA256')
-      .update(`${header}.${claims}`)
-      .sign(account.private_key)
-    const res = await doFetch(tokenUri, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-        assertion: `${header}.${claims}.${b64url(signature)}`,
-      }),
-      signal: AbortSignal.timeout(10_000),
-    })
-    if (!res.ok) throw new Error(`Vertex token exchange failed: HTTP ${res.status}`)
-    const json = (await res.json()) as { access_token?: string; expires_in?: number }
-    if (!json.access_token) throw new Error('Vertex token exchange returned no access token')
-    return { token: json.access_token, expiresInMs: (json.expires_in ?? 3600) * 1000 }
-  }
 }
 
 function metadataTokenSource(doFetch: typeof fetch): () => Promise<{
@@ -132,7 +70,7 @@ export function vertexAccessTokenProvider(
   const now = opts.now ?? Date.now
   const account = parseServiceAccount(process.env['VERTEX_SERVICE_ACCOUNT_JSON'])
   const source = account
-    ? serviceAccountTokenSource(account, doFetch)
+    ? serviceAccountTokenSource(account, doFetch, CLOUD_PLATFORM_SCOPE, 'Vertex')
     : metadataTokenSource(doFetch)
 
   let cached: { token: string; refreshAt: number } | undefined
