@@ -112,6 +112,8 @@ export interface MarketingPostDoc {
   alt_text?: string
   /** PRD-219: the brand-card spec media_url renders — signing covers it. */
   card?: { layout: 'headline' | 'myth_fact'; headline: string; sub?: string }
+  /** PRD-227: links a hook-variant post to its pair post id. */
+  variant_of?: string
   /** Image URL for media-capable channels. Instagram REQUIRES it (its API
    *  has no text-only post); Facebook uses it as an attached photo. */
   media_url?: string

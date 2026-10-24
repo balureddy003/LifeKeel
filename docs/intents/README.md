@@ -81,3 +81,11 @@ suspected bug (reproduce first); 36 is an audit before fixes.
 | `40-short-link-click-tracking.md` | `/go/:tag` redirect counts clicks even when landing-page JS doesn't fire | extends PRD-218 |
 | `41-winner-requeue-and-timing-hints.md` | requeue winners as new drafts; hour_bucket hints on Plan tab | extends PRD-218; auto-timing stays with PRD-221 |
 | `42-per-channel-variants-and-card-gallery.md` | side-by-side per-channel edits + card grid | extends PRD-219 |
+
+## 43–45: content innovation pass
+
+| File | Concern | Overlaps |
+|---|---|---|
+| `43-stat-of-week-cards.md` | sourced stats as branded cards via existing pipeline | PRD-219 |
+| `44-guide-revival.md` | re-promote top-visited guides monthly with new tag | extends PRD-218 |
+| `45-hook-ab-variants.md` | one weekly slot emits a hook-variant pair | feeds PRD-221 priors |

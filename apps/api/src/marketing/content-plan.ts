@@ -275,6 +275,19 @@ export async function planWeek(
       takenHooks.add(hook.id)
       hookUsage.set(hook.id, (hookUsage.get(hook.id) ?? 0) + 1)
 
+      // PRD-227: the first slot of the week also gets a hook variant —
+      // same brief+format+channel, different hook, so the stats table can
+      // compare hooks apples-to-apples before the learner exists.
+      let variant_hook: string | undefined
+      if (slot === 0) {
+        const alt = chooseHook(defs.hooks, hookUsage, takenHooks)
+        if (alt.id !== hook.id) {
+          variant_hook = alt.id
+          takenHooks.add(alt.id)
+          hookUsage.set(alt.id, (hookUsage.get(alt.id) ?? 0) + 1)
+        }
+      }
+
       // PRD-219: signed brand card for image-capable channels. No public API
       // base → no card, the draft stays "needs image" rather than dead-linked.
       const id = randomUUID()
@@ -315,6 +328,51 @@ export async function planWeek(
         created_at: new Date(),
       } as MarketingPostDoc)
       createdPosts++
+
+      if (variant_hook) {
+        const vTag = await uniquePostTag(posts)
+        const vLink = siteLink(channel, brief.path, vTag, `pillar_${brief.pillar}`)
+        const vBlock = `Topic: ${brief.title}\nFacts you may use (use nothing else):\n${brief.facts}${vLink ? `\nLink to include verbatim: ${vLink}` : ''}`
+        const { content: vContent, generated: vGen } = await draftPostText(
+          llm,
+          channel,
+          vBlock,
+          vLink,
+          learning,
+          format ?? undefined,
+          defs.hooks.find((h) => h.id === variant_hook),
+        )
+        const vid = randomUUID()
+        await posts.insertOne({
+          id: vid,
+          tenant_id: tenantId,
+          channel,
+          integration_id: `${channel}:connection`,
+          content: vContent,
+          campaign: `pillar_${brief.pillar}`,
+          scheduled_at: when,
+          state: 'draft',
+          generated: vGen,
+          copy_check: checkCopy(vContent, 'social'),
+          content_item_id: item.id,
+          brief_id: brief.id,
+          pillar: brief.pillar,
+          post_tag: vTag,
+          variant_of: id,
+          features: postFeatures({
+            channel,
+            content: vContent,
+            pillar: brief.pillar,
+            scheduled_at: when,
+            format: format?.id ?? null,
+            hook: variant_hook,
+            media_url,
+          }),
+          created_by: createdBy,
+          created_at: new Date(),
+        } as MarketingPostDoc)
+        createdPosts++
+      }
     }
   }
   return { week_key: weekKey, created_items: createdItems, created_posts: createdPosts }
