@@ -94,6 +94,8 @@ const EXEMPT_COLLECTIONS = new Set([
   'revenue_events',
   'revenue_subscriptions',
   'revenue_sync',
+  // operator-entered channel spend: platform-level cost data, no tenant, no family content
+  'marketing_spend',
   'outcome_charges',
   'stripe_webhook_events',
   // commercial plane (pre-signup/operator-scoped). Leads matching a deleted

@@ -147,7 +147,15 @@ export async function buildJourneys(db: Db, range: { $gte: Date; $lte: Date }): 
   })
 }
 
-export const JOURNEY_STEPS = ['signup', 'profile', 'first_insight', 'paid', 'revenue'] as const
+/** `last_known` (last-touch model only) counts signups whose last touch was actually captured. */
+export const JOURNEY_STEPS = [
+  'signup',
+  'profile',
+  'first_insight',
+  'paid',
+  'revenue',
+  'last_known',
+] as const
 export type JourneyStep = (typeof JOURNEY_STEPS)[number]
 
 export const journeyDim = (
@@ -156,9 +164,7 @@ export const journeyDim = (
   t: Pick<Touch, 'source' | 'campaign' | 'content'>,
 ) => `${model}|${step}|${t.source}|${t.campaign}|${t.content}`
 
-export function parseJourneyDim(
-  dim: string,
-): {
+export function parseJourneyDim(dim: string): {
   model: AttributionModel
   step: JourneyStep
   source: string
@@ -198,6 +204,7 @@ export function journeyRows(journeys: Journey[], day: string): JourneyRow[] {
       if (j.first_insight) add(journeyDim(model, 'first_insight', t), 1)
       if (j.paid_at) add(journeyDim(model, 'paid', t), 1)
       if (j.revenue_pence > 0) add(journeyDim(model, 'revenue', t), j.revenue_pence)
+      if (model === 'last' && j.last_touch_known) add(journeyDim(model, 'last_known', t), 1)
     }
   }
   return [...sums].map(([dim, count]) => ({ day, metric: 'journey' as const, dim, count }))

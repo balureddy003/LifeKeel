@@ -56,6 +56,8 @@ export type OperatorAuditAction =
   | 'operator.autopilot.shadow_review'
   | 'operator.mission_control.batch'
   | 'operator.marketing.revenue_sync'
+  | 'operator.marketing.spend_add'
+  | 'operator.marketing.spend_delete'
   | 'operator.digest.send'
   | 'operator.ai_task.disable'
   | 'operator.ai_task.enable'

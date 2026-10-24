@@ -174,6 +174,7 @@ import { runWeeklyDigest } from './operator/weekly-digest.js'
 import { runLifecycleSweep } from './marketing/lifecycle-emails.js'
 import { runAutopilotSweep, ensureAutopilotIndexes } from './operator/autopilot.js'
 import { ensureRevenueIndexes, readonlyStripeFromEnv, syncRevenue } from './marketing/revenue.js'
+import { ensureMarketingSpendIndexes } from './marketing/spend.js'
 import { socialPublisherFromEnv, DbSocialPublisher } from './marketing/social-publisher.js'
 import { registerOperatorRoutes } from './routes/operator.js'
 import { registerOperatorStripeRoutes } from './routes/operator-stripe.js'
@@ -2250,6 +2251,7 @@ if (workflowDb) {
   registerMarketingPlanRoutes(app, workflowDb)
   ensureAutopilotIndexes(workflowDb)
   void ensureRevenueIndexes(workflowDb)
+  void ensureMarketingSpendIndexes(workflowDb)
   await registerOperatorRoutes(app, workflowDb)
   registerOperatorStripeRoutes(app, workflowDb)
   registerOperatorRetentionRoutes(app, workflowDb)

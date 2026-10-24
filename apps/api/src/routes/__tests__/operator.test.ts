@@ -2341,6 +2341,248 @@ describe('security monitoring', () => {
     })
   })
 
+  describe('marketing economics and spend', () => {
+    const asOperator = async (roles: string[]) => {
+      await db.collection('platform_operators').deleteMany({})
+      await db
+        .collection('platform_operators')
+        .insertOne({ user_id: 'operator-1', status: 'active', roles })
+      return buildApp()
+    }
+    const spend = {
+      month: '2026-10',
+      channel: 'bluesky',
+      amount_pence: 5000,
+      note: 'Boosted post',
+      reason: 'October channel spend',
+    }
+
+    it('records spend with an audit row, validates it, and lists it', async () => {
+      const app = await asOperator(['marketing_operator'])
+      const bad = await app.inject({
+        method: 'POST',
+        url: '/operator/marketing/spend',
+        payload: { ...spend, month: '2026-13' },
+      })
+      expect(bad.statusCode).toBe(400)
+      expect(bad.json().error).toMatch(/month/)
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url: '/operator/marketing/spend',
+            payload: { ...spend, amount_pence: -5 },
+          })
+        ).statusCode,
+      ).toBe(400)
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url: '/operator/marketing/spend',
+            payload: { ...spend, reason: 'no' },
+          })
+        ).statusCode,
+      ).toBe(400)
+
+      const ok = await app.inject({
+        method: 'POST',
+        url: '/operator/marketing/spend',
+        payload: spend,
+      })
+      expect(ok.statusCode).toBe(201)
+      expect(ok.json().entry).toMatchObject({
+        month: '2026-10',
+        channel: 'bluesky',
+        amount_pence: 5000,
+      })
+      const list = await app.inject({ method: 'GET', url: '/operator/marketing/spend' })
+      expect(list.json().entries).toHaveLength(1)
+      const audit = await db
+        .collection('operator_audit_log')
+        .findOne({ action: 'operator.marketing.spend_add' })
+      expect(audit).toMatchObject({
+        reason: 'October channel spend',
+        metadata: { channel: 'bluesky', amount_pence: 5000 },
+      })
+      await app.close()
+    })
+
+    it('normalises the channel to the attribution key', async () => {
+      const app = await asOperator(['marketing_operator'])
+      const res = await app.inject({
+        method: 'POST',
+        url: '/operator/marketing/spend',
+        payload: { ...spend, channel: '  BlueSky ' },
+      })
+      expect(res.statusCode).toBe(201)
+      expect(res.json().entry.channel).toBe('bluesky')
+      await app.close()
+    })
+
+    it('deletes spend with a reason and audits it; a missing entry is a 404', async () => {
+      const app = await asOperator(['marketing_operator'])
+      const id = (
+        await app.inject({ method: 'POST', url: '/operator/marketing/spend', payload: spend })
+      ).json().entry.id
+      expect(
+        (
+          await app.inject({
+            method: 'DELETE',
+            url: `/operator/marketing/spend/${id}`,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(400)
+      expect(
+        (
+          await app.inject({
+            method: 'DELETE',
+            url: `/operator/marketing/spend/${id}`,
+            payload: { reason: 'Entered twice' },
+          })
+        ).statusCode,
+      ).toBe(200)
+      expect(
+        (
+          await app.inject({
+            method: 'DELETE',
+            url: `/operator/marketing/spend/${id}`,
+            payload: { reason: 'Entered twice' },
+          })
+        ).statusCode,
+      ).toBe(404)
+      expect(
+        await db
+          .collection('operator_audit_log')
+          .countDocuments({ action: 'operator.marketing.spend_delete' }),
+      ).toBe(1)
+      await app.close()
+    })
+
+    it('reads need marketing.read and writes need marketing.manage', async () => {
+      const finance = await asOperator(['finance_operator']) // no marketing permissions
+      expect(
+        (await finance.inject({ method: 'GET', url: '/operator/marketing/economics' })).statusCode,
+      ).toBe(403)
+      expect(
+        (await finance.inject({ method: 'GET', url: '/operator/marketing/spend' })).statusCode,
+      ).toBe(403)
+      await finance.close()
+
+      const ops = await asOperator(['operations']) // marketing.read only
+      expect(
+        (await ops.inject({ method: 'GET', url: '/operator/marketing/economics' })).statusCode,
+      ).toBe(200)
+      expect(
+        (await ops.inject({ method: 'GET', url: '/operator/marketing/spend' })).statusCode,
+      ).toBe(200)
+      expect(
+        (await ops.inject({ method: 'POST', url: '/operator/marketing/spend', payload: spend }))
+          .statusCode,
+      ).toBe(403)
+      await ops.close()
+
+      const family = await buildApp('user-2')
+      expect(
+        (await family.inject({ method: 'GET', url: '/operator/marketing/economics' })).statusCode,
+      ).toBe(403)
+      await family.close()
+    })
+
+    it('returns an honest empty economics view before there is any data', async () => {
+      const app = await asOperator(['marketing_operator'])
+      const res = await app.inject({ method: 'GET', url: '/operator/marketing/economics' })
+      expect(res.statusCode).toBe(200)
+      const body = res.json()
+      expect(body).toMatchObject({ window_days: 90, model: 'first', revenue: { synced: false } })
+      expect(body.totals.confidence).toBe('insufficient')
+      expect(body.notes.join(' ')).toMatch(/Payback is blank/)
+      await app.close()
+    })
+
+    it('reports synced revenue that could not be linked to a family', async () => {
+      await db.collection('revenue_events').insertMany([
+        { invoice_id: 'u1', tenant_id: null, currency: 'gbp', net_pence: 799, paid_at: new Date() },
+        {
+          invoice_id: 'l1',
+          tenant_id: 'family-1',
+          currency: 'gbp',
+          net_pence: 799,
+          paid_at: new Date(),
+        },
+      ])
+      const app = await asOperator(['marketing_operator'])
+      const body = (
+        await app.inject({ method: 'GET', url: '/operator/marketing/economics?days=30' })
+      ).json()
+      expect(body.unattributed).toEqual({ invoices: 1, revenue_pence: 799 })
+      expect(body.notes.join(' ')).toMatch(/could not be linked to a family/)
+      await app.close()
+    })
+
+    it('rejects a bad window or model', async () => {
+      const app = await asOperator(['marketing_operator'])
+      expect(
+        (await app.inject({ method: 'GET', url: '/operator/marketing/economics?days=3' }))
+          .statusCode,
+      ).toBe(400)
+      expect(
+        (await app.inject({ method: 'GET', url: '/operator/marketing/economics?model=middle' }))
+          .statusCode,
+      ).toBe(400)
+      await app.close()
+    })
+
+    it('combines rollups, spend and synced revenue into per-source economics', async () => {
+      const today = new Date().toISOString().slice(0, 10)
+      const month = today.slice(0, 7)
+      const t = 'bluesky|pillar_chart|p1'
+      await db.collection('metrics_daily').insertMany([
+        {
+          _id: 'v' as never,
+          metric: 'funnel',
+          day: today,
+          dim: 'visit|bluesky|pillar_chart',
+          count: 200,
+        },
+        { _id: 's' as never, metric: 'journey', day: today, dim: `first|signup|${t}`, count: 20 },
+        { _id: 'p' as never, metric: 'journey', day: today, dim: `first|paid|${t}`, count: 4 },
+        {
+          _id: 'r' as never,
+          metric: 'journey',
+          day: today,
+          dim: `first|revenue|${t}`,
+          count: 3196,
+        },
+      ])
+      await db.collection('revenue_sync').insertOne({ _id: 'last' as never, synced_at: new Date() })
+      await db
+        .collection('revenue_subscriptions')
+        .insertOne({ subscription_id: 'sub', status: 'active', currency: 'gbp', mrr_pence: 799 })
+      const app = await asOperator(['marketing_operator'])
+      await app.inject({
+        method: 'POST',
+        url: '/operator/marketing/spend',
+        payload: { month, channel: 'bluesky', amount_pence: 30000, reason: 'This month' },
+      })
+      const res = await app.inject({ method: 'GET', url: '/operator/marketing/economics?days=30' })
+      const row = (
+        res.json().by_source as {
+          key: string
+          paid: number
+          cac_pence: number | null
+          confidence: string
+        }[]
+      ).find((r) => r.key === 'bluesky')!
+      expect(row).toMatchObject({ paid: 4, confidence: 'directional' })
+      expect(row.cac_pence).toBeGreaterThan(0)
+      expect(res.json().arpu_pence).toBe(799)
+      expect(res.json().revenue).toMatchObject({ synced: true, mrr_pence: 799 })
+      await app.close()
+    })
+  })
+
   describe('mission control', () => {
     const proposal = (id: string, kind: string, perm: string) => ({
       id,
