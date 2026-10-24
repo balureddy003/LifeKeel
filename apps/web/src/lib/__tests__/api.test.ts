@@ -283,6 +283,22 @@ describe('fetchAIResponse', () => {
     expect(result).toEqual({ content: 'Your emergency fund covers 0.33 months.', status: 'live' })
   })
 
+  it('passes the server data_as_of stamp through so stale answers are dated', async () => {
+    mockFetchOnce({
+      content: 'Your emergency fund covers 0.33 months.',
+      isLive: true,
+      data_as_of: '2026-10-24T10:00:00.000Z',
+    })
+    const result = await fetchAIResponse('How is my emergency fund?')
+    expect(result.dataAsOf).toBe('2026-10-24T10:00:00.000Z')
+  })
+
+  it('omits dataAsOf when the server sends none', async () => {
+    mockFetchOnce({ content: 'Generic answer.', isLive: false })
+    const result = await fetchAIResponse('How is my emergency fund?')
+    expect(result.dataAsOf).toBeUndefined()
+  })
+
   it('returns canned when the backend deliberately answers non-live', async () => {
     mockFetchOnce({ content: 'Generic answer.', isLive: false })
     const result = await fetchAIResponse('How is my emergency fund?')

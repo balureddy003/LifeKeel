@@ -22,7 +22,7 @@ Fast-path fixes, not PRDs. Each may resolve to a small PR once root-caused.
 |---|---|---|
 | 34 | ~~"Create Family Group" shown to accounts that have a family~~ **implemented — PR #243** | Was a transient-failure collapse on mount, not a race; now a retry state. |
 | 29 | OTP intermittency; `example.com` addresses fail | The front door. Every downstream metric is multiplied by signup success. |
-| 30 | Ask Keel previous-answer bleed; occasional lag | The surface users check the score against. Likely a stale snapshot — may fold into PRD-212's resolver. |
+| 30 | Ask Keel previous-answer bleed; occasional lag | **implemented — PR #245** — no server bleed path found; answers now carry `data_as_of`. |
 | 31 | Sandbox checkout → webhook → Plus unlock never verified e2e | Cheap to verify now; must be green before any Wave 4 monetization push. |
 
 **Exit:** each item reproduced, root-caused, fixed or filed as a defect.

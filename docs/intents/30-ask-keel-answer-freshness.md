@@ -33,3 +33,13 @@ subsume).
 
 **Becomes** — fast-path fix PR if the root cause is a stale snapshot/cache;
 otherwise folded into PRD-212's scope.
+
+---
+
+**Status: honesty layer shipped — PR #245.** Investigation found no
+server-side bleed path: `/assistant/ask` is stateless (no history sent, no
+answer cached; every ask reloads live data). What users perceived as bleed
+was an undated older answer still in the transcript — now stamped with
+"From your data as of HH:MM" via `data_as_of`. Remaining: stale *figures*
+inside a fresh answer are the upstream freshness problem → intent 22;
+latency → PRD-211.

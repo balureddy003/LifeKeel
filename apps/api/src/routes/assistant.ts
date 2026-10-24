@@ -586,6 +586,11 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
 
       const { profileDoc, familyDoc, insightDocs, unreviewedDocs, lifeEventContexts, legacyText } =
         await loadAssistantData(db, tenant_id, user_id)
+      // Freshness stamp (intent 30): every answer is generated against the
+      // data as it stood at this instant. The client renders it on the
+      // bubble so an older answer in the transcript reads honestly after
+      // the profile changes — "bleed" becomes visible rather than silent.
+      const dataAsOf = new Date().toISOString()
 
       let twin: MemberTwinResult | null = null
       if (member_id) {
@@ -613,6 +618,7 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
             isLive: true,
             verified: true,
             clarify: labels,
+            data_as_of: dataAsOf,
           })
         }
         if (intent?.kind === 'operation') {
@@ -660,6 +666,7 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
               verified: true,
               operation: answer.operation,
               provenance: answer.provenance,
+              data_as_of: dataAsOf,
             })
           }
           // Renderer declined or the presence check rejected its own output —
@@ -694,7 +701,12 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
           quarantined,
           ...(member_id ? { member_id } : {}),
         })
-        return reply.send({ content, isLive: true, ...(quarantined ? { quarantined } : {}) })
+        return reply.send({
+          content,
+          isLive: true,
+          data_as_of: dataAsOf,
+          ...(quarantined ? { quarantined } : {}),
+        })
       } catch (err) {
         req.log.warn({ err }, 'Assistant LLM call failed — falling back')
         recordRoute(db, quarantined ? 'quarantined' : 'fallback')
@@ -706,6 +718,7 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
         return reply.send({
           content: quarantined ? QUARANTINED_CONTENT : FALLBACK_CONTENT,
           isLive: false,
+          data_as_of: dataAsOf,
           ...(quarantined ? { quarantined } : {}),
         })
       }
