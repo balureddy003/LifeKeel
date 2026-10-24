@@ -134,7 +134,7 @@ describe('AI task gateway — no bypass paths', () => {
     }
   })
 
-  it('family-content tasks that a local model can serve allow only the self-hosted processor', () => {
+  it('non-sensitive tasks may run on approved hosted processors; only quarantine/device paths keep hosted providers out', () => {
     const registry = parseTaskRegistry(
       loadYaml(fs.readFileSync(path.join(repoRoot(), 'definitions', 'ai-tasks.yaml'), 'utf8')),
     )
@@ -149,6 +149,21 @@ describe('AI task gateway — no bypass paths', () => {
       'support.reply_draft.v1',
     ]) {
       const t = registry.get(id)!
+      expect(t.data_boundary, id).toBe('approved_hosted_provider')
+      expect(t.allowed_processors, id).toEqual([
+        'ollama',
+        'anthropic',
+        'openai',
+        'azure',
+        'vertex',
+        'groq',
+        'xai',
+      ])
+      expect(t.provider_retention_class, id).toBe('limited_abuse_log')
+    }
+    for (const id of ['assistant.answer.sensitive.v1', 'assistant.youth_answer.v1']) {
+      const t = registry.get(id)!
+      expect(t.data_boundary, id).toBe('lifekeel_infra_required')
       expect(t.allowed_processors, id).toEqual(['ollama'])
       expect(t.provider_retention_class, id).toBe('none')
     }
@@ -263,20 +278,25 @@ describe('AI processor registry (PRD-142)', () => {
     }
   })
 
-  it('no hosted processor is claimed as reviewed until the owner supplies terms', () => {
+  it('only owner-approved hosted processors are marked approved', () => {
     // If this fails because you approved a processor: good, update the list here
     // and make sure the entry carries real terms (the loader already insists).
     const approved = [...processors().values()].filter((e) => e.status === 'approved')
-    expect(approved.map((e) => e.id)).toEqual([])
+    expect(approved.map((e) => e.id)).toEqual(['azure', 'vertex', 'groq', 'xai'])
     for (const e of processors().values()) {
-      if (e.hosting === 'hosted') expect(e.status).toBe('unreviewed')
+      if (e.hosting === 'hosted' && !['azure', 'vertex', 'groq', 'xai'].includes(e.id))
+        expect(e.status).toBe('unreviewed')
     }
   })
 
-  it('a self-hosted-only task never lists a hosted processor, and groq is listed nowhere', () => {
+  it('a self-hosted-only task never lists a hosted processor, and sensitive tasks keep hosted providers out', () => {
     const p = processors()
     for (const [id, t] of tasks()) {
-      expect(t.allowed_processors ?? [], `${id} lists groq`).not.toContain('groq')
+      if (t.data_boundary !== 'approved_hosted_provider' && t.data_boundary !== 'lifekeel_infra') {
+        for (const hosted of ['groq', 'xai']) {
+          expect(t.allowed_processors ?? [], `${id} lists ${hosted}`).not.toContain(hosted)
+        }
+      }
       if (t.data_boundary === 'lifekeel_infra_required') {
         for (const proc of t.allowed_processors ?? [])
           expect(p.get(proc)!.hosting, `${id} lists hosted ${proc}`).toBe('self_hosted')
@@ -289,7 +309,13 @@ describe('AI processor registry (PRD-142)', () => {
       'ANTHROPIC_API_KEY',
       'OPENAI_API_KEY',
       'GROQ_API_KEY',
+      'XAI_API_KEY',
       'AZURE_OPENAI_ENDPOINT',
+      'VERTEX_PROJECT',
+      'VERTEX_LOCATION',
+      'VERTEX_SERVICE_ACCOUNT_JSON',
+      'VERTEX_REASONING_EFFORT',
+      'LIFEKEEL_LLM_PROVIDER',
       'OLLAMA_BASE_URL',
       'LOCAL_JUDGE_BASE_URL',
       'LOCAL_TEXT_ENABLED',
@@ -316,7 +342,10 @@ describe('AI processor registry (PRD-142)', () => {
 
     it('a lifekeel_infra task falls back to the hosted provider when the local model is off', () => {
       process.env['OPENAI_API_KEY'] = 'k'
-      const t = tasks().get('assistant.answer.v1')!
+      // answer_verified is the one remaining lifekeel_infra entry — it makes
+      // no model call, so the boundary is descriptive only.
+      const t = tasks().get('assistant.answer_verified.v1')!
+      expect(t.data_boundary).toBe('lifekeel_infra')
       expect(resolveServingProcessor(t)).toBe('openai')
       process.env['LOCAL_JUDGE_BASE_URL'] = 'http://local'
       process.env['LOCAL_TEXT_ENABLED'] = 'true'
@@ -331,12 +360,26 @@ describe('AI processor registry (PRD-142)', () => {
       delete process.env['GROQ_API_KEY']
       process.env['AZURE_OPENAI_ENDPOINT'] = 'https://x.openai.azure.com'
       expect(resolveServingProcessor(t)).toBe('azure')
+      process.env['VERTEX_PROJECT'] = 'p'
+      // Incumbent wins when both are configured — no silent flip on rollout.
+      expect(resolveServingProcessor(t)).toBe('azure')
+      // xAI scans last of all — a newly added key never takes precedence.
+      process.env['XAI_API_KEY'] = 'k'
+      expect(resolveServingProcessor(t)).toBe('azure')
+      delete process.env['XAI_API_KEY']
+      delete process.env['AZURE_OPENAI_ENDPOINT']
+      expect(resolveServingProcessor(t)).toBe('vertex')
+      // Operator override beats first-configured-key detection.
+      process.env['AZURE_OPENAI_ENDPOINT'] = 'https://x.openai.azure.com'
+      process.env['LIFEKEEL_LLM_PROVIDER'] = 'vertex'
+      expect(resolveServingProcessor(t)).toBe('vertex')
     })
 
-    it('with the shipped registries, the hosted fallback for a self-hosted-only task is flagged, and the self-hosted path is clean', () => {
+    it('with the shipped registries, an unreviewed hosted pick is flagged, and the required-local path is clean', () => {
       process.env['ANTHROPIC_API_KEY'] = 'k'
       const reg = processors()
       const classify = tasks().get('document.classify.v1')!
+      // anthropic is on classify's allowlist but stays unreviewed → flagged.
       const hosted = checkProcessorForTask(
         reg,
         classify,
@@ -344,24 +387,12 @@ describe('AI processor registry (PRD-142)', () => {
         'tier:fast',
         new Date(),
       )
-      expect(hosted?.reason).toBe('processor_not_allowed_for_task')
-      const answer = tasks().get('assistant.answer.v1')!
+      expect(hosted?.reason).toBe('processor_unreviewed')
+      const youth = tasks().get('assistant.youth_answer.v1')!
+      // A required-local task resolves to the self-hosted processor and is clean.
       expect(
-        checkProcessorForTask(
-          reg,
-          answer,
-          resolveServingProcessor(answer)!,
-          'tier:fast',
-          new Date(),
-        )?.reason,
-      ).toBe('processor_unreviewed')
-      process.env['LOCAL_JUDGE_BASE_URL'] = 'http://local'
-      process.env['LOCAL_TEXT_ENABLED'] = 'true'
-      for (const t of [classify, answer]) {
-        expect(
-          checkProcessorForTask(reg, t, resolveServingProcessor(t)!, 'tier:fast', new Date()),
-        ).toBeNull()
-      }
+        checkProcessorForTask(reg, youth, resolveServingProcessor(youth)!, 'tier:fast', new Date()),
+      ).toBeNull()
     })
   })
 
@@ -370,16 +401,23 @@ describe('AI processor registry (PRD-142)', () => {
     expect(processorEnforcementFromEnv(undefined, 'cloud')).toBe('enforce')
     expect(processorEnforcementFromEnv('', 'cloud')).toBe('enforce')
     expect(processorEnforcementFromEnv('banana', 'cloud')).toBe('enforce')
-    expect(processorEnforcementFromEnv('off', 'cloud')).toBe('off')
-    expect(processorEnforcementFromEnv('warn', 'cloud')).toBe('warn')
     expect(processorEnforcementFromEnv('enforce', 'dev')).toBe('enforce')
+  })
+
+  it('a downgrade outside dev needs a recorded AI_POLICY_EXCEPTION (R14)', () => {
+    expect(processorEnforcementFromEnv('off', 'cloud', null)).toBe('enforce')
+    expect(processorEnforcementFromEnv('warn', 'cloud', null)).toBe('enforce')
+    expect(processorEnforcementFromEnv('off', 'cloud', 'SEC-123')).toBe('off')
+    expect(processorEnforcementFromEnv('warn', 'cloud', 'SEC-123')).toBe('warn')
+    expect(processorEnforcementFromEnv('warn', 'dev', null)).toBe('warn')
   })
 
   it('hosted fallback for lifekeel_infra tasks is denied outside dev unless allowed', () => {
     expect(hostedFallbackAllowed(undefined, 'dev')).toBe(true)
     expect(hostedFallbackAllowed(undefined, 'cloud')).toBe(false)
     expect(hostedFallbackAllowed(undefined, 'airgap')).toBe(false)
-    expect(hostedFallbackAllowed('allow', 'cloud')).toBe(true)
+    expect(hostedFallbackAllowed('allow', 'cloud', null)).toBe(false)
+    expect(hostedFallbackAllowed('allow', 'cloud', 'SEC-123')).toBe(true)
     expect(hostedFallbackAllowed('deny', 'dev')).toBe(false)
   })
 
@@ -393,7 +431,10 @@ describe('AI processor registry (PRD-142)', () => {
       delete process.env['LOCAL_JUDGE_BASE_URL']
       delete process.env['LOCAL_TEXT_ENABLED']
       process.env['AI_HOSTED_FALLBACK'] = 'deny'
-      expect(() => taskLlm('assistant.answer.v1', 'tenant-1')).toThrow(/hosted fallback is denied/)
+      // answer_verified is the remaining lifekeel_infra entry.
+      expect(() => taskLlm('assistant.answer_verified.v1', 'tenant-1')).toThrow(
+        /hosted fallback is denied/,
+      )
     } finally {
       for (const [k, v] of [
         ['LOCAL_JUDGE_BASE_URL', saved.base],
@@ -420,11 +461,23 @@ describe('AI processor registry (PRD-142)', () => {
       sub_processors: null,
       review_due: null,
     })
-    expect(d.processors.every((p) => p.status !== 'approved')).toBe(true)
+    // Azure/Vertex owner-approved 2026-10-22, Groq + xAI 2026-10-23; the
+    // rest of hosted stays unreviewed. xAI's approval is conditional on ZDR
+    // being enabled on the team (its DPA requires it for Personal Data).
+    expect(byId['azure']?.status).toBe('approved')
+    expect(byId['vertex']?.status).toBe('approved')
+    expect(byId['groq']?.status).toBe('approved')
+    expect(byId['xai']?.status).toBe('approved')
+    expect(
+      d.processors.every(
+        (p) => ['azure', 'vertex', 'groq', 'xai'].includes(p.id) || p.status !== 'approved',
+      ),
+    ).toBe(true)
     const where = Object.fromEntries(d.tasks.map((t) => [t.task_id, t.where]))
     expect(where['draft.crisis_on_device.v1']).toBe('device')
     expect(where['assistant.youth_answer.v1']).toBe('lifekeel')
-    expect(where['assistant.answer.v1']).toBe('lifekeel_or_hosted')
+    expect(where['assistant.answer.v1']).toBe('hosted')
+    expect(where['assistant.answer_verified.v1']).toBe('lifekeel_or_hosted')
     expect(where['marketing.social_draft.v1']).toBe('hosted')
     expect(JSON.stringify(d)).not.toMatch(
       /dpa_date|breach_notice|terms_ref|not_reviewed|LOCAL_JUDGE/,

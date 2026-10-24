@@ -147,7 +147,7 @@ function makeDb() {
 async function buildApp(db: ReturnType<typeof makeDb>) {
   const app = Fastify()
   app.addHook('onRequest', async (request) => {
-    ;(request as any).authContext = { tenant_id: TENANT, user_id: 'user-1' }
+    ;(request as any).authContext = { tenant_id: TENANT, user_id: 'user-1', roles: ['admin'] }
   })
   registerAccountRoutes(app, db as never)
   return app
@@ -293,7 +293,19 @@ describe('POST /account/delete', () => {
     >
     expect(sendFilter['$or']).toEqual([
       { recipient: { $in: ['user-1'] } },
-      { email: { $in: ['Parent@Example.com'] } },
+      { email: { $in: ['Parent@Example.com', 'parent@example.com'] } },
+    ])
+
+    // R19: leads and sign-in history are keyed by email / user id, not tenant
+    const leadFilter = db.cols['leads']!.deleteMany.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(leadFilter).toEqual({ email: { $in: ['Parent@Example.com', 'parent@example.com'] } })
+    const loginFilter = db.cols['login_events']!.deleteMany.mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >
+    expect(loginFilter['$or']).toEqual([
+      { user_id: { $in: ['user-1'] } },
+      { email: { $in: ['Parent@Example.com', 'parent@example.com'] } },
     ])
   })
 })

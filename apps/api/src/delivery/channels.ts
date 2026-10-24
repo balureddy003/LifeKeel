@@ -17,6 +17,17 @@ import twilio from 'twilio'
 import sgMail from '@sendgrid/mail'
 import { formatMoney } from '@lifekeel/platform'
 import { buildAlertPushPayload } from './push-payload.js'
+import { emailFromAddress } from '../email/transport.js'
+import {
+  EMAIL_COLORS,
+  EMAIL_FONTS,
+  appUrl,
+  escapeHtml,
+  muted,
+  p,
+  renderEmail,
+  type EmailTone,
+} from '../email/layout.js'
 
 // ── Shared types ───────────────────────────────────────────────────────────────
 
@@ -286,85 +297,48 @@ export function buildEmailHtml(n: InsightNotification): {
   html: string
   text: string
 } {
-  const urgencyColor: Record<string, string> = {
-    critical: '#ef4444',
-    high: '#f97316',
-    medium: '#eab308',
-    low: '#22c55e',
+  const urgencyTone: Record<InsightNotification['urgency'], EmailTone> = {
+    critical: 'danger',
+    high: 'danger',
+    medium: 'warning',
+    low: 'success',
   }
-  const color = urgencyColor[n.urgency] ?? '#6366f1'
   const impact = impactRange(n)
   const conf = Math.round(n.or_score * 100)
   const clean_reasoning = n.reasoning?.replace(/\{\{[^}]+\}\}/g, '').trim() ?? ''
 
   const subject = `${URGENCY_EMOJI[n.urgency] ?? '⚡'} ${n.hypothesis} — ${conf}% confidence${impact ? ` · ${impact}` : ''}`
 
-  const html = `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#09090b;color:#fff;margin:0;padding:20px">
-  <div style="max-width:560px;margin:0 auto;background:#0c0c0e;border:1px solid rgba(255,255,255,0.08);border-radius:16px;overflow:hidden">
-    <!-- Header -->
-    <div style="background:#09090b;padding:20px 24px;border-bottom:1px solid rgba(255,255,255,0.06)">
-      <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;color:#6366f1;text-transform:uppercase">LifeKeel Studio</div>
-    </div>
-    <!-- Urgency badge + title -->
-    <div style="padding:24px 24px 0">
-      <div style="display:inline-block;background:${color}20;border:1px solid ${color}40;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:0.05em">${n.urgency}</div>
-      <h1 style="font-size:22px;font-weight:700;color:#fff;margin:12px 0 4px">${n.hypothesis}</h1>
-      <div style="font-size:13px;color:#71717a">${conf}% confidence (rules engine)</div>
-    </div>
-    ${
-      impact
-        ? `
-    <!-- Impact -->
-    <div style="padding:16px 24px">
-      <div style="background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:10px;padding:12px 16px">
-        <div style="font-size:11px;font-weight:600;color:#a1a1aa;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px">Estimated Impact</div>
-        <div style="font-size:24px;font-weight:700;color:#a78bfa">${impact}</div>
-      </div>
-    </div>`
-        : ''
-    }
-    ${
-      clean_reasoning
-        ? `
-    <!-- Reasoning -->
-    <div style="padding:0 24px 16px">
-      <div style="font-size:13px;color:#a1a1aa;line-height:1.6">${clean_reasoning.substring(0, 400)}</div>
-    </div>`
-        : ''
-    }
-    ${
-      n.recommended_actions?.length
-        ? `
-    <!-- Actions -->
-    <div style="padding:0 24px 20px">
-      <div style="font-size:11px;font-weight:600;color:#a1a1aa;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">Recommended Actions</div>
-      ${n.recommended_actions
+  const label = (text: string) =>
+    `<div style="margin:0 0 6px;font-family:${EMAIL_FONTS.mono};font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:${EMAIL_COLORS.muted};">${text}</div>`
+  const impactHtml = impact
+    ? `<div style="margin:0 0 20px;padding:14px 18px;background:${EMAIL_COLORS.page};border:1px solid ${EMAIL_COLORS.line};border-radius:12px;">${label('Estimated Impact')}<div style="font-family:${EMAIL_FONTS.display};font-size:28px;line-height:1.1;color:${EMAIL_COLORS.ink};">${escapeHtml(impact)}</div></div>`
+    : ''
+  const reasoningHtml = clean_reasoning ? p(escapeHtml(clean_reasoning.substring(0, 400))) : ''
+  const actionsHtml = n.recommended_actions?.length
+    ? `${label('Possible next steps')}<ol style="margin:0 0 16px;padding-left:20px;">${n.recommended_actions
         .slice(0, 3)
-        .map(
-          (a, i) =>
-            `<div style="display:flex;gap:8px;margin-bottom:6px"><span style="color:#6366f1;font-weight:700">${i + 1}.</span><span style="color:#e4e4e7;font-size:13px">${a}</span></div>`,
-        )
-        .join('')}
-    </div>`
-        : ''
-    }
-    <!-- CTA buttons -->
-    <div style="padding:20px 24px;background:rgba(255,255,255,0.02);border-top:1px solid rgba(255,255,255,0.06);display:flex;gap:12px;flex-wrap:wrap">
-      <a href="${n.approve_url}" style="display:inline-block;background:#16a34a;color:#fff;text-decoration:none;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600">✓ Approve</a>
-      <a href="${n.dismiss_url}" style="display:inline-block;background:rgba(255,255,255,0.08);color:#a1a1aa;text-decoration:none;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600">Dismiss</a>
-      ${n.why_url ? `<a href="${n.why_url}" style="display:inline-block;background:rgba(99,102,241,0.15);color:#a78bfa;text-decoration:none;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600">Why?</a>` : ''}
-      <a href="${n.action_url}" style="display:inline-block;background:rgba(99,102,241,0.15);color:#a78bfa;text-decoration:none;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600">View Details →</a>
-    </div>
-    <!-- Footer -->
-    <div style="padding:12px 24px;font-size:11px;color:#52525b">
-      LifeKeel Studio · <a href="${n.action_url}" style="color:#6366f1;text-decoration:none">Unsubscribe</a>
-    </div>
-  </div>
-</body>
-</html>`
+        .map((a) => `<li style="margin:0 0 6px;">${escapeHtml(a)}</li>`)
+        .join('')}</ol>`
+    : ''
+
+  const html = renderEmail({
+    preheader: `${conf}% confidence${impact ? ` · ${impact}` : ''}`,
+    badge: { label: n.urgency, tone: urgencyTone[n.urgency] ?? 'info' },
+    title: n.hypothesis,
+    bodyHtml:
+      muted(`${conf}% confidence (rules engine)`) + impactHtml + reasoningHtml + actionsHtml,
+    cta: { url: n.approve_url, label: '✓ Approve' },
+    secondaryLinks: [
+      { url: n.dismiss_url, label: 'Dismiss' },
+      ...(n.why_url ? [{ url: n.why_url, label: 'Why?' }] : []),
+      { url: n.action_url, label: 'View Details →' },
+    ],
+    footer: {
+      reason: 'You got this because email alerts are on for your family on LifeKeel.',
+      manageUrl: `${appUrl()}/settings#notifications`,
+    },
+  })
 
   const text = `${n.hypothesis} (${n.urgency.toUpperCase()}, ${conf}% confidence)${impact ? `\nEstimated impact: ${impact}` : ''}${clean_reasoning ? `\n\n${clean_reasoning.substring(0, 300)}` : ''}\n\nApprove: ${n.approve_url}\nDismiss: ${n.dismiss_url}${n.why_url ? `\nWhy: ${n.why_url}` : ''}\nDetails: ${n.action_url}`
 
@@ -434,10 +408,10 @@ export class EmailChannel {
   ): Promise<DeliveryResult> {
     try {
       const { subject, html, text } = buildEmailHtml(notification)
-      const fromEmail = process.env['SENDGRID_FROM_EMAIL'] ?? 'insights@lifekeel.dev'
+      const fromEmail = emailFromAddress() ?? 'insights@lifekeel.dev'
       await sgMail.send({
         to,
-        from: { email: fromEmail, name: fromName || 'LifeKeel Studio' },
+        from: { email: fromEmail, name: fromName || 'LifeKeel' },
         subject,
         html,
         text,

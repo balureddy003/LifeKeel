@@ -17,7 +17,10 @@ import { z } from 'zod'
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { getGrowthEventsCollection } from '../db.js'
-import { verifyUnsubscribeToken, verifyUserUnsubscribeToken } from '../marketing/lifecycle-emails.js'
+import {
+  verifyUnsubscribeToken,
+  verifyUserUnsubscribeToken,
+} from '../marketing/lifecycle-emails.js'
 
 const LeadSchema = z.object({
   email: z.string().trim().email().max(320),
@@ -25,10 +28,19 @@ const LeadSchema = z.object({
   source: z.string().trim().max(60).default('web'),
   score_band: z.string().trim().max(10).optional(),
   consent_marketing: z.literal(true),
-  attribution: z.record(z.unknown()).optional(),
+  attribution: z.record(z.string(), z.unknown()).optional(),
 })
 
-const ATTRIBUTION_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'referrer', 'landing_path', 'captured_at']
+const ATTRIBUTION_KEYS = [
+  'utm_source',
+  'utm_medium',
+  'utm_campaign',
+  'utm_content',
+  'utm_term',
+  'referrer',
+  'landing_path',
+  'captured_at',
+]
 
 export async function registerLeadRoutes(app: FastifyInstance, db: Db): Promise<void> {
   const leads = db.collection('leads')
@@ -38,12 +50,14 @@ export async function registerLeadRoutes(app: FastifyInstance, db: Db): Promise<
   app.post(
     '/leads',
     // Same ceiling as the quiz: unauthenticated, so the global limiter keys
-    // off req.ip. Keeps casual abuse down without a CAPTCHA.
-    { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
+    // off req.ip, then Turnstile (§4.1 group G).
+    { config: { rateLimit: { max: 5, timeWindow: '1 minute' }, turnstile: 'lead' } },
     async (req, reply) => {
       const parsed = LeadSchema.safeParse(req.body)
       if (!parsed.success) {
-        return reply.status(400).send({ error: 'Invalid lead submission', issues: parsed.error.issues })
+        return reply
+          .status(400)
+          .send({ error: 'Invalid lead submission', issues: parsed.error.issues })
       }
       const { email, name, source, score_band, consent_marketing, attribution } = parsed.data
       const normalizedEmail = email.toLowerCase()
@@ -52,7 +66,10 @@ export async function registerLeadRoutes(app: FastifyInstance, db: Db): Promise<
       const cleanAttribution = attribution
         ? Object.fromEntries(
             Object.entries(attribution)
-              .filter(([key, value]) => ATTRIBUTION_KEYS.includes(key) && typeof value === 'string' && value.length > 0)
+              .filter(
+                ([key, value]) =>
+                  ATTRIBUTION_KEYS.includes(key) && typeof value === 'string' && value.length > 0,
+              )
               .map(([key, value]) => [key, (value as string).slice(0, 300)]),
           )
         : undefined
@@ -88,7 +105,11 @@ export async function registerLeadRoutes(app: FastifyInstance, db: Db): Promise<
         // Anonymized funnel event — source and score band only, never the
         // email itself (same rule as the quiz's events).
         await getGrowthEventsCollection(db)
-          .insertOne({ event: 'lead_captured', meta: { source, ...(score_band ? { score_band } : {}) }, created_at: now })
+          .insertOne({
+            event: 'lead_captured',
+            meta: { source, ...(score_band ? { score_band } : {}) },
+            created_at: now,
+          })
           .catch(() => {})
 
         // Uniform response — doesn't reveal whether the email was already
@@ -96,7 +117,9 @@ export async function registerLeadRoutes(app: FastifyInstance, db: Db): Promise<
         return reply.send({ ok: true })
       } catch (err) {
         req.log.warn({ err }, 'Lead capture failed')
-        return reply.status(500).send({ error: "Couldn't save your details right now — please try again later." })
+        return reply
+          .status(500)
+          .send({ error: "Couldn't save your details right now — please try again later." })
       }
     },
   )
@@ -110,9 +133,12 @@ export async function registerLeadRoutes(app: FastifyInstance, db: Db): Promise<
     async (req, reply) => {
       const { id, sig } = req.query
       const done = (msg: string, status = 200) =>
-        reply.status(status).type('text/html').send(
-          `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:80vh;"><p style="max-width:420px;text-align:center;color:#444;">${msg}</p></body></html>`,
-        )
+        reply
+          .status(status)
+          .type('text/html')
+          .send(
+            `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:80vh;"><p style="max-width:420px;text-align:center;color:#444;">${msg}</p></body></html>`,
+          )
       if (!id || !sig || !verifyUnsubscribeToken(id, sig)) {
         return done('This unsubscribe link is invalid or has expired.', 400)
       }
@@ -120,7 +146,8 @@ export async function registerLeadRoutes(app: FastifyInstance, db: Db): Promise<
         { id },
         { $set: { suppressed: true, suppressed_at: new Date(), updated_at: new Date() } },
       )
-      if (result.matchedCount === 0) return done('This unsubscribe link is invalid or has expired.', 400)
+      if (result.matchedCount === 0)
+        return done('This unsubscribe link is invalid or has expired.', 400)
       return done("You're unsubscribed — no more emails from us.")
     },
   )
@@ -135,17 +162,20 @@ export async function registerLeadRoutes(app: FastifyInstance, db: Db): Promise<
     async (req, reply) => {
       const { id, sig } = req.query
       const done = (msg: string, status = 200) =>
-        reply.status(status).type('text/html').send(
-          `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:80vh;"><p style="max-width:420px;text-align:center;color:#444;">${msg}</p></body></html>`,
-        )
+        reply
+          .status(status)
+          .type('text/html')
+          .send(
+            `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:80vh;"><p style="max-width:420px;text-align:center;color:#444;">${msg}</p></body></html>`,
+          )
       if (!id || !sig || !verifyUserUnsubscribeToken(id, sig)) {
         return done('This unsubscribe link is invalid or has expired.', 400)
       }
-      const result = await db.collection('users').updateOne(
-        { id },
-        { $set: { email_opt_out: true, email_opt_out_at: new Date() } },
-      )
-      if (result.matchedCount === 0) return done('This unsubscribe link is invalid or has expired.', 400)
+      const result = await db
+        .collection('users')
+        .updateOne({ id }, { $set: { email_opt_out: true, email_opt_out_at: new Date() } })
+      if (result.matchedCount === 0)
+        return done('This unsubscribe link is invalid or has expired.', 400)
       return done("You're unsubscribed — you'll still get account emails, but no more marketing.")
     },
   )

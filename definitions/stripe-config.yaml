@@ -1,0 +1,70 @@
+# Stripe configuration as code (billing setup without the Dashboard).
+#
+# Read by apps/api/src/billing/stripe-config.ts and applied by the idempotent
+# reconciler in apps/api/src/billing/stripe-reconcile.ts, through:
+#   - `pnpm --filter @lifekeel/api stripe:reconcile` (dry-run by default)
+#   - `./scripts/provision-infra.sh stripe`
+#   - the operator console, Billing setup (dry-run, and apply for product /
+#     price / portal; webhook endpoints are created from infra only, because
+#     Stripe returns the signing secret exactly once and it must land in
+#     Secret Manager, not in a browser).
+#
+# Scope: this file configures how Stripe presents and notifies. It never
+# initiates a charge, a refund or a payout, and the API key it runs with
+# should be a restricted key without those permissions (see
+# docs/runbooks/stripe-setup.md).
+#
+# Prices are looked up by `lookup_key`, never by a hard-coded price_ id, so the
+# same code works against a sandbox and live mode. Stripe prices are immutable:
+# changing `unit_amount` creates a new price and moves the lookup key to it.
+
+version: 1
+
+product:
+  # Stored in the product's metadata so the reconciler finds it again by key
+  # rather than by a name someone may rename in the Dashboard.
+  key: keel_plus
+  name: Keel Plus
+  description: AI document reading and inbox summaries for your family chart.
+
+prices:
+  - lookup_key: keel_plus_gbp_monthly
+    plan: starter
+    currency: gbp
+    unit_amount: 799 # £7.99
+    interval: month
+
+webhook:
+  # Appended to the API origin, e.g. https://api.lifekeel.co.uk/billing/webhook
+  path: /billing/webhook
+  description: LifeKeel billing events (managed by definitions/stripe-config.yaml)
+  events:
+    - checkout.session.completed
+    - checkout.session.expired
+    - customer.subscription.updated
+    - customer.subscription.deleted
+    - invoice.payment_failed
+    - invoice.payment_succeeded
+    - charge.refunded
+    - charge.dispute.created
+    - charge.dispute.closed
+
+portal:
+  headline: Manage your Keel Plus subscription
+  # Relative to the web app origin; the origin comes from LIFEKEEL_URL.
+  default_return_path: /upgrade
+  features:
+    cancel:
+      # Cancelling keeps Keel Plus until the end of the period already paid for.
+      mode: at_period_end
+      reasons:
+        - too_expensive
+        - missing_features
+        - switched_service
+        - unused
+        - other
+    payment_method_update: true
+    invoice_history: true
+    customer_update:
+      - email
+      - address

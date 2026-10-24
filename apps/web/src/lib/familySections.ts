@@ -1,4 +1,15 @@
-import { Home, Briefcase, ShieldCheck, HeartPulse, Target, GraduationCap, House, TrendingUp, Landmark, Wallet } from 'lucide-react'
+import {
+  Home,
+  Briefcase,
+  ShieldCheck,
+  HeartPulse,
+  Target,
+  GraduationCap,
+  House,
+  TrendingUp,
+  Landmark,
+  Wallet,
+} from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { FamilyMember } from './types'
 import type { FinancialProfilePolicy, PolicyType } from './api'
@@ -127,9 +138,22 @@ export const ROLE_BRANCHES: Record<string, { label: string; icon: string; items:
     { label: 'Income', icon: 'Briefcase', items: ['Salary'] },
     { label: 'Protection', icon: 'ShieldCheck', items: ['Health Insurance'] },
   ],
-  child: [
-    { label: 'Future', icon: 'GraduationCap', items: ['Education Fund', 'Future Goals'] },
-  ],
+  child: [{ label: 'Future', icon: 'GraduationCap', items: ['Education Fund', 'Future Goals'] }],
+}
+
+// Minor units → "£1,234" — same local-helper convention as the pages.
+const gbp = (minor: number) => `£${Math.round(minor / 100).toLocaleString('en-GB')}`
+
+/**
+ * Aggregate cover totals from the financial profile's household section.
+ * Distinct from `policies[]` (per-policy records with provider/renewal) —
+ * a family can enter "£300k life cover" without ever recording a policy,
+ * which is exactly the case the Protection story below has to describe
+ * honestly instead of claiming nothing is on file.
+ */
+export interface CoverTotals {
+  lifeCoverMinor: number
+  incomeProtectionMonthlyMinor: number
 }
 
 /**
@@ -144,6 +168,11 @@ export const ROLE_BRANCHES: Record<string, { label: string; icon: string; items:
  * label, unchanged) when it doesn't, rather than a regression for
  * households that haven't filled the financial profile in yet.
  *
+ * `coverTotals` distinguishes "no policy details recorded" from "no cover
+ * at all": entering cover amounts in the wizard without adding individual
+ * policies used to read "No policies on file yet" — technically true but
+ * indistinguishable from having entered nothing.
+ *
  * Digital Twin gap audit (Phase 3): `policies` was previously shown
  * unfiltered on every member's Protection section — a person-scoped policy
  * (life/income protection/health/critical illness) explicitly attributed to
@@ -154,7 +183,11 @@ export const ROLE_BRANCHES: Record<string, { label: string; icon: string; items:
  * explicitly attributed to someone else is excluded. Household-wide types
  * (car/home/travel) are never filtered.
  */
-export function getMemberSections(member: FamilyMember, policies: FinancialProfilePolicy[] = []): MemberSection[] {
+export function getMemberSections(
+  member: FamilyMember,
+  policies: FinancialProfilePolicy[] = [],
+  coverTotals?: CoverTotals | null,
+): MemberSection[] {
   const sections: MemberSection[] = []
   const memberPolicies = policies.filter(
     (p) => !PERSON_SCOPED_POLICY_TYPES.has(p.type) || !p.member_id || p.member_id === member.id,
@@ -180,11 +213,24 @@ export function getMemberSections(member: FamilyMember, policies: FinancialProfi
     const cat = BRANCH_CATEGORY[branch.icon] ?? 'wealth'
     const isProtectionBranch = branch.icon === 'ShieldCheck'
     const renewalDays = isProtectionBranch ? soonestRenewalWithinWindow(memberPolicies) : null
-    const story = isProtectionBranch && memberPolicies.length > 0
-      ? `${memberPolicies.length} ${memberPolicies.length === 1 ? 'policy' : 'policies'}: ${[...new Set(memberPolicies.map((p) => POLICY_TYPE_LABELS[p.type]))].join(', ')}${renewalDays !== null ? ` · renews in ${renewalDays} ${renewalDays === 1 ? 'day' : 'days'}` : ''}`
-      : isProtectionBranch
-        ? 'No policies on file yet'
-        : `Tracks ${branch.items.join(', ')}`
+    const coverBits = isProtectionBranch
+      ? [
+          (coverTotals?.lifeCoverMinor ?? 0) > 0
+            ? `${gbp(coverTotals!.lifeCoverMinor)} life cover`
+            : '',
+          (coverTotals?.incomeProtectionMonthlyMinor ?? 0) > 0
+            ? `${gbp(coverTotals!.incomeProtectionMonthlyMinor)}/mo income protection`
+            : '',
+        ].filter(Boolean)
+      : []
+    const story =
+      isProtectionBranch && memberPolicies.length > 0
+        ? `${memberPolicies.length} ${memberPolicies.length === 1 ? 'policy' : 'policies'}: ${[...new Set(memberPolicies.map((p) => POLICY_TYPE_LABELS[p.type]))].join(', ')}${renewalDays !== null ? ` · renews in ${renewalDays} ${renewalDays === 1 ? 'day' : 'days'}` : ''}`
+        : isProtectionBranch && coverBits.length > 0
+          ? `${coverBits.join(' + ')} on file — no policy details recorded yet`
+          : isProtectionBranch
+            ? 'No policies on file yet'
+            : `Tracks ${branch.items.join(', ')}`
     const step = BRANCH_STEP[branch.icon]
     sections.push({
       id: `branch-${member.id}-${branch.label}`,

@@ -7,12 +7,22 @@
 import type { Db } from 'mongodb'
 import type { LlmGuardEvent } from './llm-guards.js'
 
-export type GuardEventSink = (events: LlmGuardEvent[]) => Promise<void>
+export type GuardEventSink = (
+  events: LlmGuardEvent[],
+  /** Optional caller attribution — e.g. { task_id } from a governed call —
+   *  persisted alongside call_site so guard spend is joinable per task. */
+  context?: { task_id?: string },
+) => Promise<void>
 
 export function createGuardEventSink(db: Db, callSite: string): GuardEventSink {
-  return async (events: LlmGuardEvent[]) => {
+  return async (events: LlmGuardEvent[], context) => {
     if (events.length === 0) return
-    const docs = events.map(e => ({ ...e, call_site: callSite, persisted_at: new Date() }))
+    const docs = events.map((e) => ({
+      ...e,
+      call_site: callSite,
+      ...(context?.task_id ? { task_id: context.task_id } : {}),
+      persisted_at: new Date(),
+    }))
     await db.collection('llm_guard_events').insertMany(docs)
   }
 }

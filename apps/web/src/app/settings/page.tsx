@@ -50,6 +50,7 @@ import {
   Copy,
   Gift,
   HeartPulse,
+  FileCheck2,
 } from 'lucide-react'
 import {
   exportAccountData,
@@ -537,7 +538,15 @@ export default function SettingsPage() {
     try {
       await inviteMember(memberName.trim(), memberEmail.trim(), memberRole, memberDob || undefined)
       haptic('success')
-      toast({ message: `${memberName.trim()} added to family` })
+      // Adding an adult only creates the pending roster entry — no invite
+      // goes out by itself. Point at the Invite action right away instead
+      // of letting "Not joined yet" read as a stuck invitation.
+      toast({
+        message:
+          memberRole === 'child'
+            ? `${memberName.trim()} added to family`
+            : `${memberName.trim()} added — tap Invite next to their name to send their invite`,
+      })
       resetAddMemberForm()
     } catch (err) {
       haptic('warning')
@@ -659,8 +668,24 @@ export default function SettingsPage() {
                     <span
                       className={`text-xs ${m.status === 'pending' ? 'text-warning' : 'text-success'}`}
                     >
-                      {memberStatusLabel(m.status)}
+                      {memberStatusLabel(m.status, m.role)}
                     </span>
+                    {/* Adding an adult only creates the roster entry — the
+                        actual invite (email or copyable link) lives on
+                        their member page, so give it a one-tap path here
+                        instead of leaving "Not joined yet" looking stuck. */}
+                    {m.status === 'pending' && m.role !== 'child' && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          haptic('light')
+                          router.push(`/member/${m.id}`)
+                        }}
+                        className="text-xs text-family-400 font-semibold px-2 py-1 rounded-lg bg-family-500/10"
+                      >
+                        Invite
+                      </button>
+                    )}
                     {m.role !== 'organizer' && (
                       <button
                         onClick={async (e) => {
@@ -1262,6 +1287,19 @@ export default function SettingsPage() {
             <div className="text-base font-medium">Activity Log</div>
             <div className="text-xs text-ink-tertiary mt-0.5">
               Every security-relevant action on your family's account
+            </div>
+          </ListRow>
+          <ListRow
+            icon={FileCheck2}
+            onClick={() => {
+              haptic('light')
+              router.push('/receipts')
+            }}
+            chevron
+          >
+            <div className="text-base font-medium">Receipts</div>
+            <div className="text-xs text-ink-tertiary mt-0.5">
+              What Keel proposed, who approved it, and what ran — in order, tamper-evident
             </div>
           </ListRow>
           <ListRow icon={Download} onClick={handleExport} chevron={!exporting}>

@@ -1,8 +1,10 @@
 name: Require green CI (reusable)
 
 # Called by every deploy workflow. Resolves the requested ref to one immutable
-# SHA, then refuses unless (1) that SHA is in main's history and (2) the CI
-# workflow succeeded on it. Deploys then check out the SHA, not the moving ref,
+# SHA, then refuses unless (1) that SHA is in main's history, (2) the CI
+# workflow succeeded on it, and (3) its production dependencies pass the
+# high-severity audit (R30: the PR-time Security run covered the PR head,
+# not this merge commit, and advisories land without code changes). Deploys then check out the SHA, not the moving ref,
 # so what was verified is exactly what ships.
 on:
   workflow_call:
@@ -12,8 +14,8 @@ on:
         required: true
     outputs:
       sha:
-        description: Verified commit SHA
-        value: ${{ jobs.verify.outputs.sha }}
+        description: Verified commit SHA (only set once every gate below passed)
+        value: ${{ jobs.gate.outputs.sha }}
 
 permissions:
   contents: read
@@ -49,3 +51,29 @@ jobs:
             echo "::error::No successful CI run for ${{ steps.resolve.outputs.sha }}. Wait for CI or fix it before deploying."
             exit 1
           fi
+
+  dependency-audit:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.verify.outputs.sha }}
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: No high or critical advisories in production dependencies
+        run: pnpm audit --prod --audit-level=high
+
+  gate:
+    needs: [verify, dependency-audit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      sha: ${{ needs.verify.outputs.sha }}
+    steps:
+      - run: echo "Release gates passed for ${{ needs.verify.outputs.sha }}"

@@ -24,6 +24,8 @@ import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { getFamilyGroupsCollection } from '../db.js'
 import { isFamilyOrganizer } from '../family/family-permissions.js'
 import { cascadeLegacyMemberRemoval } from './family-legacy.js'
+import { getAuditLogger } from '../audit/audit-log.js'
+import { displayNameError } from '../validation/display-name.js'
 
 const log = createLogger({ service: 'family-group', version: '0.0.0' })
 
@@ -159,8 +161,9 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
   // ── POST /family ─────────────────────────────────────────────────────────
   fastify.post<{ Body: { name: string } }>('/family', async (req, reply) => {
     const { tenant_id, user_id } = req.authContext
-    const name = req.body?.name?.trim()
-    if (!name) return reply.status(400).send({ error: 'Family name required' })
+    const nameError = displayNameError(req.body?.name, 'Family name')
+    if (nameError) return reply.status(400).send({ error: nameError })
+    const name = (req.body?.name as string).trim()
 
     const groups = groupsFor(tenant_id)
     const existing = await groups.findOne({})
@@ -203,8 +206,9 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
   // ── PATCH /family ────────────────────────────────────────────────────────
   fastify.patch<{ Body: { name: string } }>('/family', async (req, reply) => {
     const { tenant_id } = req.authContext
-    const name = req.body?.name?.trim()
-    if (!name) return reply.status(400).send({ error: 'Family name required' })
+    const nameError = displayNameError(req.body?.name, 'Family name')
+    if (nameError) return reply.status(400).send({ error: nameError })
+    const name = (req.body?.name as string).trim()
 
     if (!(await isFamilyOrganizer(db, tenant_id, req.authContext.user_id)))
       return reply.status(403).send({ error: 'Only the organizer can manage the family' })
@@ -227,6 +231,8 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
         ({} as { name: string; email: string; role: FamilyRole; date_of_birth?: string })
       if (!name?.trim() || !role)
         return reply.status(400).send({ error: 'Member name and role required' })
+      const memberNameError = displayNameError(name, 'Member name')
+      if (memberNameError) return reply.status(400).send({ error: memberNameError })
       if (!VALID_ROLES.includes(role)) {
         return reply
           .status(400)
@@ -310,12 +316,34 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
       return reply.status(403).send({ error: 'Only the organizer can manage the family' })
     if (req.params.id === req.authContext.user_id)
       return reply.status(409).send({ error: 'An organizer cannot remove themselves' })
-    const result = (await groupsFor(tenant_id).findOneAndUpdate(
+    const before = (await groupsFor(tenant_id).findOneAndUpdate(
       {},
       { $pull: { members: { id: req.params.id } }, $set: { updated_at: new Date() } },
-      { returnDocument: 'after' },
+      { returnDocument: 'before' },
     )) as FamilyGroupDoc | null
-    if (!result) return reply.status(404).send({ error: 'Family not found' })
+    if (!before) return reply.status(404).send({ error: 'Family not found' })
+    const removed = before.members.find((m) => m.id === req.params.id)
+    const result: FamilyGroupDoc = {
+      ...before,
+      members: before.members.filter((m) => m.id !== req.params.id),
+    }
+
+    // Removal ends access (R03): the linked login is marked removed (the
+    // auth hook and login both refuse it), every session it holds is
+    // revoked, and any outstanding invite for the entry dies with it.
+    if (removed) {
+      const userIds = [...new Set([removed.id, removed.user_id].filter((v): v is string => !!v))]
+      await db
+        .collection('users')
+        .updateMany(
+          { tenant_id, id: { $in: userIds }, roles: { $nin: ['owner'] } },
+          { $set: { status: 'removed', sessions_revoked_at: new Date(), updated_at: new Date() } },
+        )
+      await db.collection('family_member_invites').deleteMany({ tenant_id, member_id: removed.id })
+      getAuditLogger()?.fromRequest(req, 'family.member_removed', 'family_member', removed.id, {
+        had_login: Boolean(removed.user_id) || removed.status === 'active',
+      })
+    }
 
     // PRD-137: roles the removed member held on legacy documents flip to
     // 'unverified' rather than disappearing silently — the register keeps

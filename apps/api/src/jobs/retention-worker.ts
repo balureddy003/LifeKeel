@@ -1,5 +1,6 @@
 import type { Db } from 'mongodb'
 import { recordJobRun } from './job-runs.js'
+import { sweepPendingRegistrations } from './pending-registrations.js'
 
 export interface DataRetention {
   events_days: number
@@ -14,6 +15,17 @@ const DEFAULT_RETENTION: DataRetention = {
   workflow_runs_days: 90,
   agent_memory_days: 365,
 }
+
+/** Fixed windows for records not owned by one active household (R23). */
+export const PLATFORM_RETENTION_DAYS = {
+  leads: 730,
+  lifecycle_sends: 730,
+  growth_events: 395,
+  stripe_webhook_events: 400,
+  family_invite_sends: 7,
+  /** UK record-keeping for company accounts: 6 years after the end of the financial year. */
+  billing_after_deletion: 7 * 365,
+} as const
 
 /**
  * Age-based sweep of DERIVED data only: signals, insights, workflow runs and
@@ -59,9 +71,72 @@ export class RetentionWorker {
         deleted[collection] = (deleted[collection] ?? 0) + result.deletedCount
       }
     }
+    Object.assign(deleted, await this.sweepPlatformRecords())
+    // Unverified email-OTP signups older than 7 days (docs/data-retention.md).
+    Object.assign(deleted, await sweepPendingRegistrations(this.db))
     // Evidence that a sweep ran and what it removed (counts only; PRD-146).
     await recordJobRun(this.db, 'retention', deleted)
     return deleted
+  }
+
+  /**
+   * Records keyed by email or event rather than by an active household
+   * (R23). Each window is in docs/data-retention.md with its reason.
+   */
+  private async sweepPlatformRecords(): Promise<Record<string, number>> {
+    const ago = (days: number) => new Date(Date.now() - days * 86_400_000)
+    const out: Record<string, number> = {}
+    const sweep = async (collection: string, filter: Record<string, unknown>) => {
+      const r = await this.db.collection(collection).deleteMany(filter)
+      out[collection] = (out[collection] ?? 0) + r.deletedCount
+    }
+    // Marketing contacts with no activity for two years.
+    await sweep('leads', {
+      $or: [
+        { updated_at: { $lt: ago(PLATFORM_RETENTION_DAYS.leads) } },
+        { updated_at: { $exists: false }, created_at: { $lt: ago(PLATFORM_RETENTION_DAYS.leads) } },
+      ],
+    })
+    await sweep('lifecycle_sends', {
+      created_at: { $lt: ago(PLATFORM_RETENTION_DAYS.lifecycle_sends) },
+    })
+    await sweep('growth_events', {
+      created_at: { $lt: ago(PLATFORM_RETENTION_DAYS.growth_events) },
+    })
+    await sweep('stripe_webhook_events', {
+      status: 'completed',
+      processed_at: { $lt: ago(PLATFORM_RETENTION_DAYS.stripe_webhook_events) },
+    })
+    await sweep('family_invite_sends', {
+      created_at: { $lt: ago(PLATFORM_RETENTION_DAYS.family_invite_sends) },
+    })
+
+    // Billing evidence of a deleted household is kept for the tax period,
+    // then the ledger and the payment-provider identifiers go too.
+    const expired = await this.db
+      .collection('tenants')
+      .find(
+        {
+          status: 'deleted',
+          deleted_at: { $lt: ago(PLATFORM_RETENTION_DAYS.billing_after_deletion) },
+        },
+        { projection: { tenant_id: 1 } },
+      )
+      .toArray()
+    if (expired.length > 0) {
+      const ids = expired.map((t) => String(t['tenant_id']))
+      await sweep('credit_ledger', { tenant_id: { $in: ids } })
+      // Marketing-intelligence copies of the same payments (read from Stripe).
+      await sweep('revenue_events', { tenant_id: { $in: ids } })
+      await sweep('revenue_subscriptions', { tenant_id: { $in: ids } })
+      await this.db
+        .collection('tenants')
+        .updateMany(
+          { tenant_id: { $in: ids } },
+          { $unset: { stripe_customer_id: '', stripe_subscription_id: '', billing: '' } },
+        )
+    }
+    return out
   }
 }
 

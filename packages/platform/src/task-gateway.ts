@@ -27,7 +27,7 @@
 
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { createLogger } from './logger.js'
-import type { LlmFn } from './llm.js'
+import type { LlmCallOptions, LlmFn } from './llm.js'
 import type { DecisionFn, LocalDecisionRequest, LocalDecisionResult } from './local-decision.js'
 import { LlmInputGuard, LlmOutputGuard, type LlmGuardEvent } from './llm-guards.js'
 import { getCircuitBreaker } from './llm-circuit-breaker.js'
@@ -39,6 +39,7 @@ import {
   type ProcessorRegistry,
   type ProcessorViolation,
 } from './ai-processors.js'
+import type { LlmResponseCache } from './llm-response-cache.js'
 
 const log = createLogger({ service: 'task-gateway', version: '0.0.0' })
 
@@ -78,6 +79,16 @@ export interface AiTaskPolicy {
   guard_policy?: string
   /** Processor ids (definitions/ai-processors.yaml) that may serve this task. */
   allowed_processors?: string[]
+  /**
+   * Exact-match answer cache TTL (seconds) for this task. Absent/zero means
+   * the task is never cached — the default for anything conversational,
+   * context-dynamic or sensitive. When set, a governed call whose
+   * (task_id, resolved model, system, guarded prompt) hash matches a live
+   * entry in `llm_cache` returns the stored output without contacting a
+   * provider. Forbidden on `lifekeel_infra_required` and `device_only` —
+   * the quarantine and device paths must not leave extra retained copies.
+   */
+  cache_ttl_seconds?: number
 }
 
 export type TaskRegistry = Map<string, AiTaskPolicy>
@@ -162,6 +173,19 @@ export class TaskDeadlineError extends Error {
 }
 
 /**
+ * A call was refused because an operator disabled the task at runtime
+ * (PRD-217: platform_config.ai_disabled_tasks). Extends TaskPolicyError so
+ * every call site's existing policy-failure path applies — the honest
+ * fallback, never a silent swap to a different processor.
+ */
+export class TaskDisabledError extends TaskPolicyError {
+  constructor(taskId: string) {
+    super(`Task '${taskId}' is disabled by operator action`)
+    this.name = 'TaskDisabledError'
+  }
+}
+
+/**
  * Validate a parsed YAML document into a registry. Structural checks only —
  * the loader decides whether an invalid doc is fatal (production) or a
  * warning (dev), because a permissive dev default keeps local runs working
@@ -207,6 +231,22 @@ export function parseTaskRegistry(doc: unknown): TaskRegistry {
       throw new TaskPolicyError(
         `Task '${taskId}': allowed_processors must be empty for device_only tasks and non-empty for all others`,
       )
+    }
+    const cacheTtl = policy['cache_ttl_seconds']
+    if (cacheTtl !== undefined) {
+      if (typeof cacheTtl !== 'number' || !Number.isFinite(cacheTtl) || cacheTtl <= 0) {
+        throw new TaskPolicyError(
+          `Task '${taskId}' has invalid cache_ttl_seconds '${String(cacheTtl)}' — expected a positive number of seconds`,
+        )
+      }
+      if (
+        policy['data_boundary'] === 'lifekeel_infra_required' ||
+        policy['data_boundary'] === 'device_only'
+      ) {
+        throw new TaskPolicyError(
+          `Task '${taskId}' may not declare cache_ttl_seconds — ${String(policy['data_boundary'])} tasks never cache model output`,
+        )
+      }
     }
     registry.set(taskId, { ...(policy as unknown as AiTaskPolicy), task_id: taskId })
   }
@@ -297,7 +337,18 @@ export interface TaskGatewayDeps {
     model: string
     ok: boolean
     latency_ms: number
+    /** Why a refused call was refused — currently only 'disabled' (operator
+     *  switch). Absent on served/failed provider calls. */
+    outcome?: string
   }) => void
+  /**
+   * Runtime kill switch (PRD-217): when this returns true for a task, the
+   * governed fn refuses the call with TaskDisabledError before any provider
+   * is contacted — the caller's existing failure path serves its honest
+   * fallback. The app wires it to platform_config.ai_disabled_tasks (cached
+   * ~10s); absent means nothing is disabled.
+   */
+  isTaskDisabled?: (taskId: string) => boolean | Promise<boolean>
   /**
    * Fired at invocation time when a `on_device` task reaches the
    * server path — i.e. the device tier was unavailable or abstained and
@@ -307,6 +358,17 @@ export interface TaskGatewayDeps {
    * no content.
    */
   onDeviceEscalation?: (taskId: string) => void
+  /**
+   * Exact-match answer cache (llm-response-cache.ts). Consulted only for
+   * tasks whose policy declares `cache_ttl_seconds`; the key is
+   * SHA-256(task_id, resolved model, system, guarded prompt) under the
+   * caller's tenant, so entries never cross a tenant boundary. A hit
+   * returns the stored post-guard output — the provider is not contacted
+   * and no token usage is recorded (the ai_task_calls row is marked
+   * outcome 'cache_hit' so hit-rate stays measurable). Store failures
+   * degrade to an uncached call; they never fail one.
+   */
+  answerCache?: LlmResponseCache
 }
 
 /**
@@ -350,17 +412,51 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4)
 }
 
+/**
+ * PRD-217 runtime switch — refuses the call before any provider is
+ * contacted and records the refusal so the operator surface shows demand
+ * continuing against a deliberately-off task rather than silence.
+ */
+async function refuseIfDisabled(
+  deps: TaskGatewayDeps,
+  taskId: string,
+  tenantId: string,
+  model: string,
+): Promise<void> {
+  if (!deps.isTaskDisabled || !(await deps.isTaskDisabled(taskId))) return
+  try {
+    deps.onCall?.({
+      task_id: taskId,
+      tenant_id: tenantId,
+      model,
+      ok: false,
+      latency_ms: 0,
+      outcome: 'disabled',
+    })
+  } catch {
+    /* metrics must never fail a call */
+  }
+  throw new TaskDisabledError(taskId)
+}
+
 async function withDeadline<T>(
   taskId: string,
   deadlineMs: number,
-  fn: () => Promise<T>,
+  fn: (signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
+  const controller = new AbortController()
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     return await Promise.race([
-      fn(),
+      fn(controller.signal),
       new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new TaskDeadlineError(taskId, deadlineMs)), deadlineMs)
+        timer = setTimeout(() => {
+          // A racing-out deadline that leaves the provider running creates
+          // orphaned generations and backlog (the October Ask Keel outage).
+          // Abort so the transport actually stops.
+          controller.abort()
+          reject(new TaskDeadlineError(taskId, deadlineMs))
+        }, deadlineMs)
       }),
     ])
   } finally {
@@ -388,6 +484,7 @@ export function governedLlm(
   const outputGuard = new LlmOutputGuard({ tenantId })
 
   return async function governed(system: string, prompt: string, model?: string): Promise<string> {
+    await refuseIfDisabled(deps, taskId, tenantId, model ?? policy.primary_model)
     if (policy.preferred_execution === 'on_device') {
       try {
         deps.onDeviceEscalation?.(taskId)
@@ -421,24 +518,54 @@ export function governedLlm(
     const guardedPrompt = inputGuard.guard(prompt)
     const started = Date.now()
     let ok = false
+    let cacheHit = false
     try {
       // callOnce: the provider-level retry inside the router stays the
       // single transport retry layer; the breaker only counts outcomes.
-      const raw = await breaker.callOnce(() =>
-        withDeadline(taskId, policy.deadline_ms, () =>
-          llmCallContext.run({ task_id: taskId, tenant_id: tenantId }, () =>
-            base(system, guardedPrompt.value, resolvedModel),
+      const serveOnce = async (): Promise<string> => {
+        const raw = await breaker.callOnce(() =>
+          withDeadline(taskId, policy.deadline_ms, (signal) =>
+            llmCallContext.run({ task_id: taskId, tenant_id: tenantId }, () =>
+              base(system, guardedPrompt.value, resolvedModel, { signal }),
+            ),
           ),
-        ),
-      )
-      ok = true
-      const guardedOutput = outputGuard.guard(raw)
-      const events = [...guardedPrompt.events, ...guardedOutput.events]
-      if (events.length > 0) void deps.guardEventSink?.(events).catch(() => {})
-      return guardedOutput.value
+        )
+        ok = true
+        const guardedOutput = outputGuard.guard(raw)
+        const events = [...guardedPrompt.events, ...guardedOutput.events]
+        if (events.length > 0) {
+          void deps.guardEventSink?.(events, { task_id: taskId }).catch(() => {})
+        }
+        return guardedOutput.value
+      }
+      if (deps.answerCache && policy.cache_ttl_seconds) {
+        const result = await deps.answerCache.getOrCompute(
+          tenantId,
+          taskId,
+          {
+            task_id: taskId,
+            model: resolvedModel,
+            system,
+            prompt: guardedPrompt.value,
+          },
+          serveOnce,
+          { enabled: true, ttl_seconds: policy.cache_ttl_seconds },
+        )
+        ok = true
+        cacheHit = result.cache_hit
+        // The input guard still ran — its events (injection/PII signals on
+        // this prompt) are reported even though no output was generated.
+        if (cacheHit && guardedPrompt.events.length > 0) {
+          void deps.guardEventSink?.(guardedPrompt.events, { task_id: taskId }).catch(() => {})
+        }
+        return result.value
+      }
+      return await serveOnce()
     } catch (err) {
       const events: LlmGuardEvent[] = [...guardedPrompt.events]
-      if (events.length > 0) void deps.guardEventSink?.(events).catch(() => {})
+      if (events.length > 0) {
+        void deps.guardEventSink?.(events, { task_id: taskId }).catch(() => {})
+      }
       throw err
     } finally {
       try {
@@ -448,6 +575,7 @@ export function governedLlm(
           model: resolvedModel,
           ok,
           latency_ms: Date.now() - started,
+          ...(cacheHit ? { outcome: 'cache_hit' } : {}),
         })
       } catch {
         /* metrics must never fail a call */
@@ -463,7 +591,7 @@ export function governedLlm(
 export type VisionContent = Array<
   { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string; detail: 'high' } }
 >
-export type VisionFn = (content: VisionContent) => Promise<string>
+export type VisionFn = (content: VisionContent, opts?: LlmCallOptions) => Promise<string>
 
 /**
  * Wrap a VisionFn in the same policy as text calls: input guard on the
@@ -484,6 +612,7 @@ export function governedVision(
   const outputGuard = new LlmOutputGuard({ tenantId })
 
   return async function vision(content: VisionContent): Promise<string> {
+    await refuseIfDisabled(deps, taskId, tenantId, policy.primary_model)
     if (policy.preferred_execution === 'on_device') {
       try {
         deps.onDeviceEscalation?.(taskId)
@@ -507,8 +636,10 @@ export function governedVision(
     let ok = false
     try {
       const raw = await breaker.callOnce(() =>
-        withDeadline(taskId, policy.deadline_ms, () =>
-          llmCallContext.run({ task_id: taskId, tenant_id: tenantId }, () => base(guarded)),
+        withDeadline(taskId, policy.deadline_ms, (signal) =>
+          llmCallContext.run({ task_id: taskId, tenant_id: tenantId }, () =>
+            base(guarded, { signal }),
+          ),
         ),
       )
       ok = true
@@ -547,6 +678,7 @@ export function governedDecide(
   const inputGuard = new LlmInputGuard({ tenantId })
 
   return async function decide<T>(req: LocalDecisionRequest<T>): Promise<LocalDecisionResult<T>> {
+    await refuseIfDisabled(deps, taskId, tenantId, policy.primary_model)
     if (estimateTokens(req.system) + estimateTokens(req.prompt) > policy.max_input_tokens) {
       throw new TaskPolicyError(
         `Task '${taskId}' input exceeds its ${policy.max_input_tokens}-token ceiling`,
@@ -558,20 +690,20 @@ export function governedDecide(
     let ok = false
     try {
       const result = await breaker.callOnce(() =>
-        withDeadline(taskId, policy.deadline_ms, () =>
+        withDeadline(taskId, policy.deadline_ms, (signal) =>
           llmCallContext.run({ task_id: taskId, tenant_id: tenantId }, () =>
-            base({ ...req, prompt: guardedPrompt.value }),
+            base({ ...req, prompt: guardedPrompt.value }, { signal }),
           ),
         ),
       )
       ok = true
       if (guardedPrompt.events.length > 0) {
-        void deps.guardEventSink?.(guardedPrompt.events).catch(() => {})
+        void deps.guardEventSink?.(guardedPrompt.events, { task_id: taskId }).catch(() => {})
       }
       return result
     } catch (err) {
       if (guardedPrompt.events.length > 0) {
-        void deps.guardEventSink?.(guardedPrompt.events).catch(() => {})
+        void deps.guardEventSink?.(guardedPrompt.events, { task_id: taskId }).catch(() => {})
       }
       throw err
     } finally {

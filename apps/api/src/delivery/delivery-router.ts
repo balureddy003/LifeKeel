@@ -30,7 +30,9 @@ import { RealWebPushSender, type WebPushSubscription } from './web-push-sender.j
 import { CompositeMobilePushSender, FcmMobilePushSender } from './fcm-sender.js'
 import { recordDeliveryLatency } from '../routes/metrics.js'
 import { recordSpend, spendCost } from '../spend-ledger.js'
+import { activeEmailProvider } from '../email/transport.js'
 import { decideSend, maybeOfferDigestOnly, recordSent } from './notification-budget.js'
+import { resolveAlertEmail } from './alert-email.js'
 
 type Db = { collection: (name: string) => any }
 
@@ -445,7 +447,29 @@ export class DeliveryRouter {
     tenantId: string,
     opts?: { skipJudge?: boolean },
   ): Promise<DeliveryResult | null> {
-    const prefs = await this.getPreferences(tenantId)
+    const storedPrefs = await this.getPreferences(tenantId)
+    // Nothing in signup/onboarding ever writes a delivery_preferences doc,
+    // and email_to is only set when an organizer picked an address — so for
+    // most families the documented "email is the floor" channel had no
+    // address and could never fire. Resolve the floor from the roster and
+    // account, and when there's no prefs doc at all run with the same
+    // effective defaults /family/notifications already presents — but only
+    // when an address resolves; with neither prefs nor any reachable email
+    // there is genuinely nowhere to send, so keep the early return (a
+    // MoveJudge call for an undeliverable alert is pure waste).
+    const emailTo =
+      storedPrefs?.email_to ??
+      (await resolveAlertEmail(this.db as unknown as import('mongodb').Db, tenantId))
+    const prefs: DeliveryPreferences | null =
+      storedPrefs ??
+      (emailTo
+        ? {
+            tenant_id: tenantId,
+            enabled: true,
+            channels: ['web_push', 'email'],
+            min_urgency: 'low',
+          }
+        : null)
     if (!prefs || !prefs.enabled) return null
 
     // Urgency floor
@@ -517,7 +541,15 @@ export class DeliveryRouter {
     }
 
     for (const channel of prefs.channels) {
-      const result = await this.sendOnChannel(channel, prefs, tenantId, notification)
+      const result = await this.sendOnChannel(
+        channel,
+        prefs,
+        tenantId,
+        notification,
+        // The resolved floor address — covers a stored prefs doc that never
+        // had email_to set, and is what sendOnChannel falls back to anyway.
+        channel === 'email' ? { target: emailTo ?? undefined } : undefined,
+      )
       if (!result) continue // already delivered or channel not configured
 
       await this.recordReceipt(notification.insight_id, tenantId, result)
@@ -533,8 +565,10 @@ export class DeliveryRouter {
     // revoked permission, dead device) must not mean a lost alert, so fall back
     // to email when it was not already one of the tenant's channels. The
     // fallback is recorded on the ledger entry.
-    if (pushFailed && prefs.email_to && !prefs.channels.includes('email')) {
-      const result = await this.sendOnChannel('email', prefs, tenantId, notification)
+    if (pushFailed && emailTo && !prefs.channels.includes('email')) {
+      const result = await this.sendOnChannel('email', prefs, tenantId, notification, {
+        target: emailTo,
+      })
       if (result) {
         await this.recordReceipt(notification.insight_id, tenantId, result)
         lastResult = result
@@ -582,7 +616,7 @@ export class DeliveryRouter {
   private recordChannelSpend(
     result: DeliveryResult,
     tenantId: string,
-    provider: 'twilio' | 'sendgrid',
+    provider: 'twilio' | 'sendgrid' | 'resend',
     unit: 'sms' | 'whatsapp' | 'email',
     channel: Channel,
   ): void {
@@ -625,7 +659,13 @@ export class DeliveryRouter {
         prefs.business_name ?? 'LifeKeel',
         notification,
       )
-      this.recordChannelSpend(result, tenantId, 'sendgrid', 'email', channel)
+      this.recordChannelSpend(
+        result,
+        tenantId,
+        activeEmailProvider() ?? 'sendgrid',
+        'email',
+        channel,
+      )
       return result
     }
     if (channel === 'web_push' && this.webPush && prefs.web_push_enabled) {

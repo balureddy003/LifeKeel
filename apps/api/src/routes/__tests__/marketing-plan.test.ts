@@ -270,3 +270,116 @@ describe('/marketing/plan', () => {
     expect(res.json().approved).toBe(0)
   })
 })
+
+const oauth = (connector_id: string, extra: Record<string, unknown> = {}) => ({
+  tenant_id: 't1',
+  connector_id,
+  extra: { username: `${connector_id}-user` },
+  needs_reauth: false,
+  ...extra,
+})
+
+describe('/marketing/plan across every connected platform', () => {
+  it('drafts for OAuth-connected channels too, not only Bluesky', async () => {
+    await db.collection('social_connections').deleteMany({})
+    await db
+      .collection('connector_credentials')
+      .insertMany([oauth('twitter_x'), oauth('linkedin'), oauth('threads')])
+    const app = await buildApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/marketing/plan/generate',
+      payload: { week_start: WEEK },
+    })
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.created_posts).toBe(9) // 3 items × 3 platforms
+    expect(body.available_channels.sort()).toEqual(['linkedin', 'threads', 'x'])
+    const channels = new Set(
+      (await db.collection('marketing_posts').find({}).toArray()).map((p) => p['channel']),
+    )
+    expect(channels).toEqual(new Set(['x', 'linkedin', 'threads']))
+  })
+
+  it('skips a channel whose token has died and says so, instead of drafting for it', async () => {
+    await db
+      .collection('connector_credentials')
+      .insertMany([oauth('twitter_x'), oauth('linkedin', { needs_reauth: true })])
+    const app = await buildApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/marketing/plan/generate',
+      payload: { week_start: WEEK },
+    })
+    const body = res.json()
+    expect(body.available_channels.sort()).toEqual(['bluesky', 'x'])
+    expect(body.skipped_channels).toEqual([
+      expect.objectContaining({ channel: 'linkedin', status: 'needs_reauth' }),
+    ])
+    const channels = new Set(
+      (await db.collection('marketing_posts').find({}).toArray()).map((p) => p['channel']),
+    )
+    expect(channels.has('linkedin')).toBe(false)
+  })
+
+  it('ignores another tenant’s connections', async () => {
+    await db.collection('social_connections').deleteMany({})
+    await db
+      .collection('connector_credentials')
+      .insertOne({ ...oauth('twitter_x'), tenant_id: 'someone-else' })
+    const app = await buildApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/marketing/plan/generate',
+      payload: { week_start: WEEK },
+    })
+    expect(res.statusCode).toBe(409)
+    expect(res.json().error).toBe('no_channels')
+  })
+
+  it('will not let an Instagram draft be approved until it has an image', async () => {
+    await db.collection('connector_credentials').insertOne(oauth('instagram_business'))
+    const app = await buildApp()
+    const week = (
+      await app.inject({
+        method: 'POST',
+        url: '/marketing/plan/generate',
+        payload: { week_start: WEEK },
+      })
+    ).json()
+    type P = { id: string; channel: string; content_hash: string; needs_image: boolean }
+    const posts: P[] = week.items.flatMap((i: { posts: P[] }) => i.posts)
+    const ig = posts.filter((p) => p.channel === 'instagram')
+    expect(ig).toHaveLength(3)
+    expect(ig.every((p) => p.needs_image)).toBe(true)
+    expect(posts.filter((p) => p.channel !== 'instagram').every((p) => !p.needs_image)).toBe(true)
+
+    const refused = await app.inject({
+      method: 'POST',
+      url: '/marketing/plan/approve',
+      payload: { items: posts.map((p) => ({ post_id: p.id, content_hash: p.content_hash })) },
+    })
+    expect(refused.json().approved).toBe(3) // the Bluesky ones
+    expect(
+      refused.json().results.filter((r: { error?: string }) => r.error === 'image_required'),
+    ).toHaveLength(3)
+    expect(
+      await db
+        .collection('marketing_posts')
+        .countDocuments({ channel: 'instagram', state: 'approved' }),
+    ).toBe(0)
+
+    await db
+      .collection('marketing_posts')
+      .updateMany(
+        { channel: 'instagram' },
+        { $set: { media_url: 'https://cdn.example.com/a.png' } },
+      )
+    const retry = await app.inject({
+      method: 'POST',
+      url: '/marketing/plan/approve',
+      payload: { items: ig.map((p) => ({ post_id: p.id, content_hash: p.content_hash })) },
+    })
+    expect(retry.json().approved).toBe(3)
+  })
+})

@@ -1,7 +1,12 @@
 /**
  * Prometheus Metrics Endpoint
  *
- * GET /metrics — standard Prometheus text format (no auth required)
+ * GET /metrics — standard Prometheus text format. Requires
+ * `Authorization: Bearer ${METRICS_SCRAPE_TOKEN}` whenever that token is set,
+ * and outside dev the server refuses to boot without it
+ * (security/boot-guards.ts). The route stays on the open-routes list so the
+ * global auth hook does not try to read the opaque scrape token as a session
+ * JWT (CLOUDFLARE_INTEGRATION.md §8.4).
  *
  * Gauges / counters exported:
  *   lifekeel_engine_evaluations_total      counter
@@ -18,6 +23,7 @@
  */
 
 import type { FastifyInstance } from 'fastify'
+import { timingSafeEqual } from 'node:crypto'
 import { Registry, Counter, Gauge, Histogram, collectDefaultMetrics } from 'prom-client'
 import type { Engine, ScoreCalibrator } from '@lifekeel/engine'
 import { getAllCircuitBreakers } from '@lifekeel/platform'
@@ -25,6 +31,28 @@ import { getAllCircuitBreakers } from '@lifekeel/platform'
 // ── Singleton registry (created once, reused on hot-reload) ──────────────────
 
 let _registry: Registry | null = null
+
+/** Shared registry, for metric modules that live outside this file. */
+export function getMetricsRegistry(): Registry {
+  return getRegistry()
+}
+
+/**
+ * Scrape authorization. With a token configured, only an exact
+ * `Bearer <token>` passes (constant-time compare); a session JWT or any
+ * other credential is refused. With no token configured the endpoint is
+ * open, which boot guards only allow in dev.
+ */
+export function metricsScrapeAuthorized(
+  authorization: string | undefined,
+  expected: string | undefined,
+): boolean {
+  if (!expected) return true
+  if (!authorization?.startsWith('Bearer ')) return false
+  const given = Buffer.from(authorization.slice(7).trim())
+  const want = Buffer.from(expected)
+  return given.length === want.length && timingSafeEqual(given, want)
+}
 
 function getRegistry(): Registry {
   if (!_registry) {
@@ -62,6 +90,7 @@ let featureHashEvictions: Counter | null = null
 let featureHashCacheHits: Counter | null = null
 let featureHashCacheMisses: Counter | null = null
 let localModelCalls: Counter | null = null
+let localModelQueueRejections: Counter | null = null
 let processorViolations: Counter | null = null
 let localModelLatency: Histogram | null = null
 let localModelQueueWait: Histogram | null = null
@@ -73,6 +102,7 @@ let outputGuardBlocks: Counter | null = null
 let emailClassifyFailures: Counter | null = null
 let documentExtractionRetries: Counter | null = null
 let deviceEscalations: Counter | null = null
+let assistantAnswerRoutes: Counter | null = null
 
 function initMetrics(registry: Registry): void {
   if (evaluationsTotal) return // already initialised
@@ -216,6 +246,14 @@ function initMetrics(registry: Registry): void {
     labelNames: ['purpose', 'outcome'],
     registers: [registry],
   })
+  // PRD-215: work the bounded queue refused before it reached the model.
+  // queue_full = load shed; aborted = its deadline fired while it waited.
+  localModelQueueRejections = new Counter({
+    name: 'lifekeel_local_model_queue_rejections_total',
+    help: 'Local model calls refused before reaching the model, by reason (queue_full | aborted)',
+    labelNames: ['purpose', 'reason'],
+    registers: [registry],
+  })
   // PRD-142: a model call whose processor is not approved for the task. Reason
   // and mode only: no task ids or tenants as labels.
   processorViolations = new Counter({
@@ -282,6 +320,12 @@ function initMetrics(registry: Registry): void {
     name: 'lifekeel_device_escalations_total',
     help: 'Server-side invocations of on_device tasks (device tier unavailable/abstained) — the device-vs-hosted coverage signal',
     labelNames: ['task_id'],
+    registers: [registry],
+  })
+  assistantAnswerRoutes = new Counter({
+    name: 'lifekeel_assistant_answer_route_total',
+    help: 'How each /assistant/ask was answered — the generation-escape-rate signal (verified/clarified = deterministic, generated/fallback = model path)',
+    labelNames: ['route'],
     registers: [registry],
   })
 }
@@ -361,12 +405,37 @@ export function recordLocalModelCall(
   latencySeconds: number,
   queueWaitSeconds: number,
   costUsd = 0,
+  rejected?: 'queue_full' | 'aborted',
 ): void {
   initMetrics(getRegistry())
   if (costUsd > 0) localModelCost!.inc({ purpose }, costUsd)
   localModelCalls!.inc({ purpose, outcome: ok ? 'ok' : 'error' })
+  if (rejected) localModelQueueRejections!.inc({ purpose, reason: rejected })
   localModelLatency!.observe({ purpose }, latencySeconds)
   localModelQueueWait!.observe({ purpose }, queueWaitSeconds)
+}
+
+/**
+ * PRD-217: in-process self-hosted model queue stats for the operator AI
+ * surface — the mean wait for a concurrency slot across all purposes,
+ * computed from the queue-wait histogram's sum/count. A mean is honest:
+ * the histogram buckets don't support a trustworthy tail read-back.
+ */
+export function localModelQueueSummary(): {
+  calls: number
+  queue_wait_mean_s: number | null
+} {
+  initMetrics(getRegistry())
+  const metric = getRegistry().getSingleMetric('lifekeel_local_model_queue_wait_seconds')
+  const values =
+    (metric?.get() as { values?: { metricName?: string; value: number }[] } | undefined)?.values ??
+    []
+  const sumFor = (suffix: string) =>
+    values
+      .filter((v) => v.metricName === `lifekeel_local_model_queue_wait_seconds_${suffix}`)
+      .reduce((s, v) => s + v.value, 0)
+  const calls = sumFor('count')
+  return { calls, queue_wait_mean_s: calls > 0 ? sumFor('sum') / calls : null }
 }
 
 /** Email encoder: record what it did for one email (see email/classify.ts EncoderOutcome). */
@@ -402,6 +471,18 @@ export function recordEmailClassifyFailure(): void {
 export function recordDeviceEscalation(taskId: string): void {
   initMetrics(getRegistry())
   deviceEscalations!.inc({ task_id: taskId })
+}
+
+/**
+ * PRD-212: how /assistant/ask answered one question. The generation-escape
+ * rate is `generated / sum(all routes)`.
+ */
+export type AssistantAnswerRoute =
+  'emergency' | 'verified' | 'clarified' | 'generated' | 'fallback' | 'quarantined'
+
+export function recordAssistantAnswerRoute(route: AssistantAnswerRoute): void {
+  initMetrics(getRegistry())
+  assistantAnswerRoutes!.inc({ route })
 }
 
 export function recordDocumentExtractionRetries(count: number): void {
@@ -454,7 +535,10 @@ export async function registerMetricsRoutes(
   const registry = getRegistry()
   initMetrics(registry)
 
-  app.get('/metrics', async (_req, reply) => {
+  app.get('/metrics', async (req, reply) => {
+    if (!metricsScrapeAuthorized(req.headers.authorization, process.env['METRICS_SCRAPE_TOKEN'])) {
+      return reply.status(401).send({ error: 'Unauthorized' })
+    }
     // ── Engine metrics ──────────────────────────────────────────────────────
     const snap = engine.metrics.snapshot()
 

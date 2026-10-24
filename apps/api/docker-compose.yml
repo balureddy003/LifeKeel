@@ -1,15 +1,17 @@
-version: "3.9"
+version: '3.9'
 services:
   api:
     build:
       context: ../..
       dockerfile: ./apps/api/Dockerfile
     ports:
-      - "3001:3001"
+      - '127.0.0.1:3001:3001'
     environment:
       - MONGODB_URL=mongodb://mongodb:27017/lifekeel
       - REDIS_URL=redis://redis:6379
-      - JWT_SECRET=change-me-in-production
+      # Empty is fine locally (a random per-process secret is used); the API
+      # refuses a short or missing secret outside dev/test.
+      - JWT_SECRET=${JWT_SECRET:-}
       - PORT=3001
     depends_on:
       - mongodb
@@ -21,14 +23,15 @@ services:
   mongodb:
     image: mongo:7
     ports:
-      - "27017:27017"
+      # Loopback only (R35): no authentication is configured on these.
+      - '127.0.0.1:27017:27017'
     volumes:
       - mongo_data:/data/db
 
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - '127.0.0.1:6379:6379'
 
 volumes:
   mongo_data:

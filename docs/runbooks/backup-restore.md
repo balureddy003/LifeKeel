@@ -16,38 +16,48 @@ MongoDB version.
 ## Backup
 
 ```
-MONGODB_URL=... ./scripts/ops/backup.sh [backup_dir]
+MONGODB_URL=... BACKUP_AGE_RECIPIENT=age1... ./scripts/ops/backup.sh [backup_dir]
 ```
 
-Writes a timestamped `mongodump --archive --gzip` of `$MONGODB_DB`
-(default `lifekeel`). Until managed PITR lands, schedule this daily off-box
-and keep ≥30 days.
+Pipes `mongodump --archive --gzip` of `$MONGODB_DB` (default `lifekeel`)
+straight into `age`, so no plaintext dump touches disk, and writes
+`erasure-journal-<stamp>.json.age` next to it: every tenant being or already
+deleted. Files are `0600` in a `0700` directory. Keep the age identity in a
+secrets manager, never with the archives, and store journals somewhere
+independent of the database. Until managed PITR lands, schedule this daily
+off-box and keep ≥30 days. `ALLOW_UNENCRYPTED_BACKUP=1` exists for local
+drills only.
 
 ## Restore
 
 ```
-MONGODB_URL=... ./scripts/ops/restore.sh <archive> [--drop]
+MONGODB_URL=... BACKUP_AGE_IDENTITY=/path/to/identity \
+  ERASURE_JOURNAL_FILE=erasure-journal-<newest>.json.age \
+  ./scripts/ops/restore.sh <archive> [--drop]
 ```
 
-- **Without `--drop`** (merge into a live DB): existing docs win on `_id`
-  conflicts, so tombstoned tenants keep `status:'deleted'` — the erasure
-  replay below is still required to re-wipe resurrected rows.
-- **With `--drop`** (disaster restore): the script exports tombstoned
-  `tenant_id`s before dropping and re-marks them after — a stale backup
-  otherwise un-deletes accounts by restoring `status:'active'`.
-- **Then, always, before reopening traffic:**
-  ```
-  MONGODB_URL=... pnpm --filter @lifekeel/api exec tsx src/jobs/erasure-replay.ts
-  ```
-  The daily 04:30 cron (`withCronLock 'erasure-replay'` in server.ts) covers
-  it automatically — the manual run just doesn't wait for it.
+The script does the reconciliation itself:
+
+1. Collects erased tenants (`deleting` and `deleted`) from the target and
+   from the journal. A target with no tenants (fresh disaster recovery) must
+   be given `ERASURE_JOURNAL_FILE`, or `ALLOW_RESTORE_WITHOUT_JOURNAL=1` after
+   confirming no deletion happened since the backup.
+2. Turns maintenance mode on before restoring and keeps it on.
+3. Restores, re-marks every collected tenant `deleting`, and runs the erasure
+   replay, which finishes each wipe and re-closes its receipt.
+4. Turns maintenance mode off only if the replay succeeded. If it failed,
+   fix the cause and re-run
+   `pnpm --filter @lifekeel/api exec tsx src/jobs/erasure-replay.ts`, then
+   clear `platform_config.maintenance_mode`.
+
+The connection string is never printed.
 
 ## Verification after restore
 
 1. `/health/ready` on a canary deploy; migrations report the expected
    version (intent 08 gate).
 2. `db.tenants.countDocuments({status:'deleted'})` matches the pre-restore
-   count; replay reports `tenants_replayed` ≥ 0 with no errors.
+   count plus every journal entry; replay reports `tenants_replayed` ≥ 0 with no errors.
 3. Spot-check one live tenant end-to-end (login → feed → one insight).
 
 ## Restore drill — first evidence (2026-10-19)

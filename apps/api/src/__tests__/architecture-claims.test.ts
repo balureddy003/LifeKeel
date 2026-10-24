@@ -53,6 +53,8 @@ const KNOWN_ERASURE_GAPS = new Set<string>([])
 // per-tenant wipe, with the reason each is exempt. Membership in this set
 // is a decision — keep the reason accurate.
 const EXEMPT_COLLECTIONS = new Set([
+  // platform-wide markers (e.g. the documents schema floor, §7.9): no tenant data
+  'platform_markers',
   // audit + security trail (7-yr retention stated in account.ts header)
   'audit_log',
   // PRD-146: proof that a deletion ran (counts by category, no content), kept 7 years like audit_log
@@ -60,7 +62,8 @@ const EXEMPT_COLLECTIONS = new Set([
   'operator_audit_log',
   // PRD-208: platform-level evidence register (owner, renewal date); holds no family data
   'trust_evidence',
-  'login_events',
+  // R06: hashes of signed-out session tokens only, 31-day TTL, no identity
+  'revoked_sessions',
   // operator control plane
   'operator_alerts',
   'operator_digests',
@@ -68,6 +71,12 @@ const EXEMPT_COLLECTIONS = new Set([
   'platform_operators',
   'platform_config',
   'platform_config_history',
+  // PRD-217/212/215 AI-health telemetry: per-call metadata (task, model,
+  // outcome, latency), per-day route counts, and per-day cascade-funnel
+  // counts — global aggregates, no tenant id or content
+  'ai_task_calls',
+  'assistant_answer_routes',
+  'ai_cascade_funnel',
   // infra state (not family data)
   'cron_locks',
   'migrations',
@@ -80,16 +89,22 @@ const EXEMPT_COLLECTIONS = new Set([
   'tenant_usage',
   // billing/financial record (retained as the ledger of what happened)
   'credit_ledger',
+  // marketing-intelligence revenue read from Stripe: what was paid, kept as the
+  // financial record like credit_ledger. Amounts and dates only; no content.
+  'revenue_events',
+  'revenue_subscriptions',
+  'revenue_sync',
+  // operator-entered channel spend: platform-level cost data, no tenant, no family content
+  'marketing_spend',
   'outcome_charges',
   'stripe_webhook_events',
-  // commercial plane (pre-signup/operator-scoped; lead emails handled by
-  // the lead-suppression path, not account deletion)
+  // commercial plane (pre-signup/operator-scoped). Leads matching a deleted
+  // account's email are removed by CUSTOM_DELETES (R19).
   'campaigns',
   'case_studies',
   'blog_posts',
   'groups',
   'invite_codes',
-  'leads',
   'promo_codes',
   'promo_rate_limits',
   'promo_redemptions',
@@ -292,9 +307,14 @@ describe('architecture claims: session, login, and signed-link hardening', () =>
     expect(opportunistic).not.toBeNull()
     const block = opportunistic![0]
     expect(block).toContain('ctx.mfa_pending')
-    expect(block).toContain('sessions_revoked_at')
-    expect(block).toContain("'suspended'")
-    expect(block).toContain("status: { $in: ['active', 'trial'] }")
+    // The checks live in one shared function (auth/liveness.ts), also used
+    // by the email-OTP verify step, so the two paths can't drift.
+    expect(block).toContain('checkAccountLiveness(')
+    expect(block).toContain('issuedAtSeconds: ctx.iat')
+    const liveness = readSrc('apps/api/src/auth/liveness.ts')
+    expect(liveness).toContain('sessions_revoked_at')
+    expect(liveness).toContain("'suspended'")
+    expect(liveness).toContain("status: { $in: ['active', 'trial'] }")
   })
 
   it('delivery signing has no weak secret fallback — missing secret fails closed', () => {
@@ -370,12 +390,16 @@ describe('architecture claims: erasure survives backup restore', () => {
     expect(readSrc('apps/api/src/erasure.ts')).toContain('export async function eraseTenantData')
   })
 
-  it('restore.sh preserves tombstones across a --drop restore', () => {
+  it('restore.sh keeps erased accounts erased across a --drop restore (R15)', () => {
     const src = readSrc('scripts/ops/restore.sh')
     // Without this, a stale backup un-deletes accounts: the restored
     // tenants row carries status:'active' and replay finds nothing.
-    expect(src).toContain("status: 'deleted'")
-    expect(src).toContain('tombstoned tenant_ids')
+    // In-progress deletions count too, and a fresh target needs the journal.
+    expect(src).toContain("['deleting', 'deleted']")
+    expect(src).toContain('ERASURE_JOURNAL_FILE')
+    expect(src).toContain("status: 'deleting'")
+    expect(src).toContain('maintenance_mode')
+    expect(src).toContain('erasure-replay.ts')
   })
 })
 

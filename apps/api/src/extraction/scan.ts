@@ -27,6 +27,27 @@ export function scanConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
   return Boolean(env['CLAMD_HOST'])
 }
 
+/**
+ * Whether a file must be scanned before any parser (OCR, PDF extraction)
+ * touches it (R25). MALWARE_SCAN_REQUIRED=true|false; outside local dev/test
+ * the default is true, so with no scanner configured files are stored but
+ * not parsed. Sealed vault files are ciphertext and can't be scanned here.
+ */
+export function scanRequired(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = env['MALWARE_SCAN_REQUIRED']
+  if (raw === 'true') return true
+  if (raw === 'false') return false
+  const nodeEnv = env['NODE_ENV']
+  return !(!nodeEnv || nodeEnv === 'development' || nodeEnv === 'test')
+}
+
+/** May a parser run on a file with this scan result? */
+export function mayParse(scan: ScanResult, env: NodeJS.ProcessEnv = process.env): boolean {
+  if (scan.result === 'clean') return true
+  if (scan.result === 'not_performed') return !scanRequired(env)
+  return false
+}
+
 export function scanUpload(
   data: Buffer,
   opts: { host?: string; port?: number; timeoutMs?: number } = {},
@@ -75,4 +96,41 @@ export function scanUpload(
       socket.write(Buffer.alloc(4)) // zero-length chunk ends the stream
     })
   })
+}
+
+/**
+ * Age of clamd's signature database, from `VERSION`
+ * ("ClamAV 1.4.1/27431/Thu Oct 23 08:21:52 2026"). Null when no scanner is
+ * configured or it did not answer. The scan worker treats definitions older
+ * than 48 h as a scanner error, so a stale engine never reports `clean`
+ * (CLOUDFLARE_INTEGRATION.md §8.3).
+ */
+export function clamdDefinitionsAgeSeconds(
+  opts: { host?: string; port?: number; timeoutMs?: number; now?: Date } = {},
+): Promise<number | null> {
+  const host = opts.host ?? process.env['CLAMD_HOST']
+  if (!host) return Promise.resolve(null)
+  const port = opts.port ?? Number(process.env['CLAMD_PORT'] ?? 3310)
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host, port })
+    let reply = ''
+    const done = (v: number | null) => {
+      socket.destroy()
+      resolve(v)
+    }
+    socket.setTimeout(opts.timeoutMs ?? 5000, () => done(null))
+    socket.on('error', () => done(null))
+    socket.on('data', (d) => {
+      reply += d.toString()
+    })
+    socket.on('end', () => done(parseDefinitionsAge(reply, opts.now ?? new Date())))
+    socket.on('connect', () => socket.write('zVERSION\0'))
+  })
+}
+
+export function parseDefinitionsAge(versionReply: string, now: Date): number | null {
+  const parts = versionReply.replace(/\0/g, '').trim().split('/')
+  const stamp = parts[2] ? Date.parse(parts[2]) : NaN
+  if (Number.isNaN(stamp)) return null
+  return Math.max(0, Math.round((now.getTime() - stamp) / 1000))
 }

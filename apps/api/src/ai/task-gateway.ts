@@ -31,7 +31,9 @@ import {
   governedDecide,
   governedLlm,
   governedVision,
+  LlmResponseCache,
   llmCallContext,
+  MongoLlmCacheStore,
   parseTaskRegistry,
   repoRoot,
   resolveTaskPolicy,
@@ -49,11 +51,13 @@ import {
 } from '@lifekeel/platform'
 import { createLogger } from '@lifekeel/platform'
 import { deploymentConfig } from '../config/deployment.js'
+import { currentLlmProviderOverride, getPlatformConfig } from '../operator/platform-config.js'
 import { checkPlanSpendBudget } from '../spend-ledger.js'
 import { familyDataLlmFromEnv, localDecisionFromEnv } from '../local-model.js'
 import {
   recordDeviceEscalation,
   recordLocalModelCall,
+  recordLlmCacheHitMiss,
   recordProcessorViolation,
 } from '../routes/metrics.js'
 
@@ -68,17 +72,47 @@ let llmBudgetGuard: LlmBudgetGuard
 export type ProcessorEnforcement = 'off' | 'warn' | 'enforce'
 
 /**
+ * A deliberate, reviewed exception to the AI data-use defaults, named by a
+ * reference such as a ticket id (R14). Outside `dev`, weakening processor
+ * enforcement or allowing hosted fallback without one is ignored and logged,
+ * so a stray environment variable can't quietly send family content to an
+ * unapproved processor.
+ */
+export function aiPolicyException(
+  raw: string | undefined = process.env['AI_POLICY_EXCEPTION'],
+): string | null {
+  const value = raw?.trim()
+  return value ? value.slice(0, 120) : null
+}
+
+/**
  * AI_PROCESSOR_ENFORCEMENT (PRD-142). Local-first default: outside `dev` an
  * unapproved processor is refused (`enforce`); in `dev` it is logged and
  * counted but served (`warn`) so local work needs no reviewed processors.
- * Set `warn` explicitly to run a non-dev deployment without approvals.
+ * Outside `dev`, `warn` or `off` takes effect only with AI_POLICY_EXCEPTION.
  */
 export function processorEnforcementFromEnv(
   raw: string | undefined = process.env['AI_PROCESSOR_ENFORCEMENT'],
   mode: string = deploymentConfig.mode,
+  exception: string | null = aiPolicyException(),
 ): ProcessorEnforcement {
   const fallback: ProcessorEnforcement = mode === 'dev' ? 'warn' : 'enforce'
-  if (raw === 'off' || raw === 'warn' || raw === 'enforce') return raw
+  if (raw === 'off' || raw === 'warn' || raw === 'enforce') {
+    if (mode !== 'dev' && raw !== 'enforce') {
+      if (!exception) {
+        log.error(
+          { value: raw },
+          'AI_PROCESSOR_ENFORCEMENT downgrade ignored outside dev without AI_POLICY_EXCEPTION; enforcing',
+        )
+        return 'enforce'
+      }
+      log.warn(
+        { value: raw, exception },
+        'AI processor enforcement downgraded under a recorded exception',
+      )
+    }
+    return raw
+  }
   if (raw) log.error({ value: raw }, `Invalid AI_PROCESSOR_ENFORCEMENT, using '${fallback}'`)
   return fallback
 }
@@ -87,14 +121,15 @@ export function processorEnforcementFromEnv(
  * Whether a `lifekeel_infra` task may fall back to a hosted provider when the
  * self-hosted model is off. Local-first: denied outside `dev`, so family
  * content never silently leaves LifeKeel infra. `AI_HOSTED_FALLBACK=allow`
- * re-enables it deliberately.
+ * re-enables it deliberately, and outside `dev` only with AI_POLICY_EXCEPTION.
  */
 export function hostedFallbackAllowed(
   raw: string | undefined = process.env['AI_HOSTED_FALLBACK'],
   mode: string = deploymentConfig.mode,
+  exception: string | null = aiPolicyException(),
 ): boolean {
-  if (raw === 'allow') return true
   if (raw === 'deny') return false
+  if (raw === 'allow') return mode === 'dev' || exception !== null
   return mode === 'dev'
 }
 
@@ -120,9 +155,11 @@ export function resolveServingProcessor(policy: AiTaskPolicy): string | null {
     case 'lifekeel_infra_required':
       return 'ollama'
     case 'lifekeel_infra':
-      return localTextConfigured() ? 'ollama' : processorForProvider(detectActiveProvider())
+      return localTextConfigured()
+        ? 'ollama'
+        : processorForProvider(currentLlmProviderOverride() ?? detectActiveProvider())
     default:
-      return processorForProvider(detectActiveProvider())
+      return processorForProvider(currentLlmProviderOverride() ?? detectActiveProvider())
   }
 }
 
@@ -186,8 +223,43 @@ export function initTaskGateway(db: Db): void {
       onProcessorViolation,
     },
     guardEventSink: createGuardEventSink(db, 'task-gateway'),
+    // Exact-match answer cache (llm_cache collection, TTL-indexed, tenant-
+    // keyed, erasure-catalogued): only tasks that declare cache_ttl_seconds
+    // consult it — a hit serves the stored output with zero provider spend
+    // and an outcome 'cache_hit' row in ai_task_calls.
+    answerCache: new LlmResponseCache(
+      new MongoLlmCacheStore(db),
+      3_600_000,
+      (tenantId, task, hit) => recordLlmCacheHitMiss(tenantId, task, hit),
+    ),
+    // PRD-217 disable→fallback switch: audited operator flag in
+    // platform_config, ~10s cached — a refused call throws TaskDisabledError
+    // and the caller's existing failure path serves its honest fallback.
+    isTaskDisabled: async (taskId) =>
+      (await getPlatformConfig(db)).ai_disabled_tasks.includes(taskId),
     onCall: (e) => {
       if (!e.ok) recordLocalModelCall('task', false, e.latency_ms / 1000, 0, 0)
+      // PRD-217: one metadata row per governed call — /operator/ai-health
+      // aggregates these into per-task outcome mix and latency percentiles.
+      // Task/model/outcome/latency only — prompt and completion content
+      // never lands here.
+      const policy = registry.get(e.task_id)
+      try {
+        void db
+          .collection('ai_task_calls')
+          .insertOne({
+            task_id: e.task_id,
+            model: e.model,
+            ok: e.ok,
+            latency_ms: e.latency_ms,
+            outcome: e.outcome ?? null,
+            processor: policy ? resolveServingProcessor(policy) : null,
+            created_at: new Date(),
+          })
+          .catch(() => {})
+      } catch {
+        /* telemetry must never fail a call */
+      }
     },
     // Device-first metric: fired per actual server-side invocation of a
     // on_device task — the device tier was unavailable or abstained.
@@ -256,7 +328,10 @@ function recordUsage(u: LlmTokenUsage): void {
 }
 
 function cloudLlm(): LlmFn {
-  cloudBase ??= createLlmRouterFromEnv({ onUsage: recordUsage })
+  cloudBase ??= createLlmRouterFromEnv({
+    onUsage: recordUsage,
+    providerOverride: currentLlmProviderOverride,
+  })
   return cloudBase
 }
 
@@ -361,14 +436,17 @@ export async function taskVision(taskId: string, tenantId: string): Promise<Visi
   const vision = await resolveVisionClient()
   if (!vision) return undefined
   const { client, model, provider } = vision
-  const base: VisionFn = async (content) => {
+  const base: VisionFn = async (content, opts) => {
     const started = Date.now()
-    const response = await client.chat.completions.create({
-      model,
-      messages: [{ role: 'user', content }],
-      max_tokens: policy.max_output_tokens,
-      temperature: 0,
-    })
+    const response = await client.chat.completions.create(
+      {
+        model,
+        messages: [{ role: 'user', content }],
+        max_tokens: policy.max_output_tokens,
+        temperature: 0,
+      },
+      { signal: opts?.signal },
+    )
     const usage = response.usage
     if (usage) {
       recordUsage({

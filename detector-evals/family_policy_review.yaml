@@ -29,10 +29,24 @@ cases:
       - rule_id: policy_attributed_to_removed_member
         min_or_score: 0.65
 
+  - id: stale-renewal
+    description: A renewal date on file is already in the past — record may be stale or cover lapsed
+    event_type: family.policy_review
+    data:
+      overlap_count: 0
+      orphaned_policy_count: 0
+      stale_renewal_count: 2
+      stale_renewal_descriptions: 'car policy with Acme held by the household, renewal date 34 days in the past'
+      stale_renewal_monthly_premium_minor: 6700
+    expected_insights:
+      - rule_id: policy_renewal_date_in_past
+        min_or_score: 0.75
+
   - id: clean-register
     description: Single policy per (type, holder), all attributions current
     event_type: family.policy_review
     data:
       overlap_count: 1
       orphaned_policy_count: 0
+      stale_renewal_count: 0
     expected_insights: []

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard,
+  Compass,
   Users,
   Building2,
   UserPlus,
@@ -13,6 +14,7 @@ import {
   Megaphone,
   ShieldCheck,
   Activity,
+  Bot,
   SlidersHorizontal,
   ScrollText,
   LifeBuoy,
@@ -27,6 +29,12 @@ import { useOperatorSession } from './OperatorSession'
  *  items without one are visible to every operator. Filtering is a UX
  *  nicety only; the routes enforce the same check server-side. */
 const links = [
+  {
+    href: '/operator/mission',
+    label: 'Mission Control',
+    icon: Compass,
+    permission: 'overview.read',
+  },
   { href: '/operator', label: 'Overview', icon: LayoutDashboard, permission: 'overview.read' },
   { href: '/operator/users', label: 'Users', icon: Users, permission: 'users.read' },
   { href: '/operator/tenants', label: 'Tenants', icon: Building2, permission: 'tenants.read' },
@@ -51,6 +59,12 @@ const links = [
     href: '/operator/operations',
     label: 'Operations',
     icon: Activity,
+    permission: 'operations.read',
+  },
+  {
+    href: '/operator/ai',
+    label: 'AI Health',
+    icon: Bot,
     permission: 'operations.read',
   },
   {

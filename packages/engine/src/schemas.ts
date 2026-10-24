@@ -23,7 +23,7 @@ export const EvidenceTrailSchema = z.object({
   rule_evidence: z.object({
     rule_id: z.string(),
     condition_expression: z.string(),
-    matched_variables: z.record(z.union([z.string(), z.number(), z.boolean()])),
+    matched_variables: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])),
     or_score: z.number(),
     threshold_used: z.number(),
     threshold_basis: z.string(),
@@ -93,7 +93,7 @@ export const ActionIntentSchema = z.object({
   type: z.enum(['send_email', 'send_whatsapp', 'crm_tag', 'log_only']),
   /** Human-readable label — also the dedup key against `actions`. */
   label: z.string(),
-  params: z.record(z.unknown()).optional(),
+  params: z.record(z.string(), z.unknown()).optional(),
 })
 export type ActionIntent = z.infer<typeof ActionIntentSchema>
 
@@ -188,7 +188,7 @@ export const TriggerSchema = z.object({
    * the insight's metadata (hypothesis/urgency/category).
    * Capped at scalar fields only (no nested objects) to keep the document lean.
    */
-  feature_snapshot: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
+  feature_snapshot: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
   /**
    * Carries DetectorRule.dedup_window_ms onto the insight itself so the
    * persistence layer (which has no direct access to the rule config) can
@@ -393,7 +393,7 @@ export type CddFilter = z.infer<typeof CddFilterSchema>
 export const CddActionSchema = z.object({
   type: z.enum(['notify', 'webhook', 'create_task', 'approve', 'custom']),
   name: z.string(),
-  params: z.record(z.unknown()).default({}),
+  params: z.record(z.string(), z.unknown()).default({}),
   on_success: z.array(z.lazy((): z.ZodTypeAny => CddActionSchema)).optional(),
   on_failure: z.array(z.lazy((): z.ZodTypeAny => CddActionSchema)).optional(),
   requires_approval: z.boolean().default(false),

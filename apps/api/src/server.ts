@@ -1,5 +1,6 @@
 import './env.js'
 import { installMailpitTransport } from './dev/mailpit.js'
+import { installResendTransport } from './email/transport.js'
 
 import { randomUUID } from 'node:crypto'
 
@@ -27,6 +28,14 @@ import Fastify from 'fastify'
 import cookie from '@fastify/cookie'
 import cors from '@fastify/cors'
 import rateLimit from '@fastify/rate-limit'
+import { Redis } from 'ioredis'
+import { isDevOrTest, rootSigningSecret } from './auth/signing-key.js'
+import { isSessionTokenRevoked, revokeSessionToken } from './auth/session-revocation.js'
+import { checkAccountLiveness, INACTIVE_USER_STATUSES } from './auth/liveness.js'
+import { redactUrl, scrubSecrets } from './observability/redact.js'
+import { apiDocsEnabled, collectBootGuards } from './security/boot-guard-registry.js'
+import { registerTurnstile, turnstileConfig } from './security/turnstile.js'
+import { openPrefixes } from './security/public-routes.js'
 import multipart from '@fastify/multipart'
 import helmet from '@fastify/helmet'
 import compress from '@fastify/compress'
@@ -66,6 +75,8 @@ import {
 } from './routes/metrics.js'
 import { initAuditLogger } from './audit/audit-log.js'
 import { registerAuthUserRoutes } from './routes/auth-users.js'
+import { registerAuthOtpRoutes } from './routes/auth-otp.js'
+import { ensureOtpIndexes } from './auth/otp.js'
 import {
   clearSessionCookie,
   isOriginAllowedForCookieAuth,
@@ -111,7 +122,11 @@ import {
   runCampaignSendJob,
   type CampaignSendJob,
 } from './marketing/campaigns.js'
-import { retryFailedDocuments } from './ocr/retry-failed.js'
+import { dispatchPendingOcr, retryFailedDocuments } from './ocr/retry-failed.js'
+import { registerDocumentUploadRoutes } from './routes/documents-uploads.js'
+import { ensureQuotaIndexes } from './documents/quota.js'
+import { ensureDeletionIndexes } from './documents/deletion.js'
+import { assertDocumentsSchemaFloor } from './documents/storage.js'
 import {
   withCronLock,
   acquireCronLock,
@@ -154,11 +169,17 @@ import {
   pollMarketingEngagement,
 } from './routes/marketing-posts.js'
 import { runMetricsRollup } from './jobs/metrics-rollup.js'
+import { runAiHealthAlert } from './jobs/ai-health-alert.js'
 import { runWeeklyDigest } from './operator/weekly-digest.js'
 import { runLifecycleSweep } from './marketing/lifecycle-emails.js'
 import { runAutopilotSweep, ensureAutopilotIndexes } from './operator/autopilot.js'
+import { ensureRevenueIndexes, readonlyStripeFromEnv, syncRevenue } from './marketing/revenue.js'
+import { ensureMarketingSpendIndexes } from './marketing/spend.js'
+import { checkConnectedProfiles } from './marketing/profile-sync.js'
+import { profileReader } from './marketing/profile-reader.js'
 import { socialPublisherFromEnv, DbSocialPublisher } from './marketing/social-publisher.js'
 import { registerOperatorRoutes } from './routes/operator.js'
+import { registerOperatorStripeRoutes } from './routes/operator-stripe.js'
 import { getPlatformConfig, registerPublicStatusRoute } from './operator/platform-config.js'
 import { registerDetectorEvalRoutes, detectorEvalDir } from './routes/detector-evals.js'
 import {
@@ -190,11 +211,15 @@ import { registerFamilyContinuityRoutes } from './routes/family-continuity.js'
 import { registerFamilyCashflowRoutes } from './routes/family-cashflow.js'
 import { registerFamilyAssetRoutes } from './routes/family-assets.js'
 import { registerFamilyLegacyRoutes } from './routes/family-legacy.js'
+import { registerFamilyReceiptRoutes } from './routes/family-receipts.js'
+import { registerFamilyScopeContractRoutes } from './routes/family-scope-contracts.js'
+import { ensureScopeContractIndexes } from './family/scope-contracts.js'
 import { registerMarketingPlanRoutes } from './routes/marketing-plan.js'
 import { registerMarketingProfileRoutes } from './routes/marketing-profiles.js'
 import { registerLeadRoutes } from './routes/leads.js'
 import { registerHeartbeatUnsubscribeRoutes } from './routes/heartbeat-unsubscribe.js'
 import { registerSendgridWebhookRoutes } from './routes/webhooks-sendgrid.js'
+import { registerResendWebhookRoutes } from './routes/webhooks-resend.js'
 import { sendOpsAlert } from './operator/ops-alerts.js'
 import { registerFamilySignalSchemas } from './family/family-signal-schemas.js'
 
@@ -213,7 +238,9 @@ await initTelemetry('lifekeel-api')
 
 const log = createLogger({ service: 'api', version: process.env['npm_package_version'] ?? '0.0.0' })
 
-installMailpitTransport()
+// Mailpit (dev capture) wins over any real provider; Resend takes over
+// sgMail.send when RESEND_API_KEY is set, SendGrid stays the default.
+if (!installMailpitTransport()) installResendTransport()
 
 // These are instantiated before MongoDB connects — they degrade gracefully
 // when DB is unavailable (calibrator/thresholds use identity/fallback values)
@@ -238,11 +265,8 @@ const engine = new Engine({
 
 const connectorLoader = new ConnectorLoader()
 const eventGenerator = new EventGenerator()
-const jwtSecret = process.env['JWT_SECRET'] ?? ''
-if (process.env['NODE_ENV'] === 'production' && jwtSecret.length < 32) {
-  throw new Error('JWT_SECRET must be set to a strong value in production')
-}
-const auth = new AuthService(jwtSecret || 'change-me-in-production')
+// Throws outside dev/test when JWT_SECRET is missing or short (R41).
+const auth = new AuthService(rootSigningSecret())
 if (process.env['LIFEKEEL_LICENSE_KEY'] && process.env['LIFEKEEL_LICENSE_PUBLIC_KEY']) {
   const license = await validateLicenseKey(
     process.env['LIFEKEEL_LICENSE_KEY'],
@@ -310,6 +334,17 @@ try {
   // the jobs role fires crons.)
   await ensureSpendIndexes(workflowDb)
   ensureTenantKeyIndexes(workflowDb) // per-tenant DEK store (B4)
+  await ensureOtpIndexes(workflowDb) // email OTP chains and send budgets
+  await ensureQuotaIndexes(workflowDb) // shared upload reservations (§7.12)
+  await ensureDeletionIndexes(workflowDb) // fenced-delete tombstones (§7.7)
+  // Rollback floor (§7.9): refuse to serve a database holding documents this
+  // build cannot read.
+  try {
+    await assertDocumentsSchemaFloor(workflowDb)
+  } catch (err) {
+    log.error({ err }, 'FATAL: documents schema floor')
+    process.exit(1)
+  }
 
   // Queue connection is role-agnostic: API routes publish jobs and inspect
   // queue health; consumers below are the gated part.
@@ -446,6 +481,27 @@ try {
       log.info({}, 'Document OCR retry cron started')
     }
 
+    // OCR hand-off for documents the scan worker promoted to 'clean'
+    // (CLOUDFLARE_INTEGRATION.md §7.3). Claimed per row, so one dispatch
+    // per document across replicas; free plans go to 'stored'.
+    cron.schedule(
+      '* * * * *',
+      async () => {
+        try {
+          await withCronLock(workflowDb, 'document-ocr-dispatch', () =>
+            dispatchPendingOcr(
+              workflowDb,
+              taskDecideFor('document.extract.v1', localDecisionFromEnv('ocr')),
+              (tenantId) => taskVision('document.extract.v1', tenantId),
+            ),
+          )
+        } catch (err) {
+          log.error({ err }, 'Document OCR dispatch cron failed')
+        }
+      },
+      { missedExecutionTolerance: 30_000, noOverlap: true },
+    )
+
     // Marketing publish sweep — every minute. Channels can't hold schedules,
     // so approved posts with a due scheduled_at are dispatched here; the lock
     // plus the 'publishing' claim guard against double-posting.
@@ -503,6 +559,45 @@ try {
       { missedExecutionTolerance: 600_000 },
     )
 
+    // Stripe revenue (read-only) — daily at 04:15. Feeds channel economics;
+    // a no-op until STRIPE_READONLY_KEY (a restricted rk_ key) is set.
+    cron.schedule(
+      '15 4 * * *',
+      async () => {
+        try {
+          await withCronLock(workflowDb, 'revenue-sync', async () => {
+            const result = await syncRevenue(workflowDb, readonlyStripeFromEnv())
+            if (result.configured) log.info({ ...result }, 'Revenue sync run')
+          })
+        } catch (err) {
+          log.error({ err }, 'Revenue sync failed')
+        }
+      },
+      { missedExecutionTolerance: 3_600_000 },
+    )
+    log.info({}, 'Revenue sync cron started')
+
+    // Daily profile check — 07:10. Read-only: reads each connected
+    // platform's live profile and records drift against the approved text. It
+    // never writes to a platform; fixing a profile is a human act.
+    cron.schedule(
+      '10 7 * * *',
+      async () => {
+        try {
+          await withCronLock(workflowDb, 'profile-check', async () => {
+            const r = await checkConnectedProfiles(workflowDb, {
+              connectorRead: profileReader(workflowDb),
+            })
+            log.info({ checked: r.checked, failed: r.failed.length }, 'Profile check run')
+          })
+        } catch (err) {
+          log.error({ err }, 'Profile check failed')
+        }
+      },
+      { missedExecutionTolerance: 3_600_000 },
+    )
+    log.info({}, 'Daily profile check cron started')
+
     // Daily metrics rollup — hourly at :40. Recomputes today + yesterday
     // (late-arriving events) into metrics_daily; first run backfills 90 days.
     // Operator dashboards read the rollup instead of scanning raw events.
@@ -521,6 +616,25 @@ try {
       { missedExecutionTolerance: 1_800_000 },
     )
     log.info({}, 'Metrics rollup cron started')
+
+    // AI task failure-share check every 10 minutes (PRD-217) — the October
+    // outage fell back on every call for days before a manual probe found
+    // it; this pages ops within minutes of a task-level collapse.
+    cron.schedule(
+      '*/10 * * * *',
+      async () => {
+        try {
+          await withCronLock(workflowDb, 'ai-health-alert', async () => {
+            const result = await runAiHealthAlert(workflowDb)
+            if (result.alerted.length > 0) log.warn({ ...result }, 'AI task failure alert fired')
+          })
+        } catch (err) {
+          log.error({ err }, 'AI health alert cron failed')
+        }
+      },
+      { missedExecutionTolerance: 60_000 },
+    )
+    log.info({}, 'AI health alert cron started')
 
     // Autopilot sweep — hourly. Evaluates only enabled, off-cooldown Tier 0/1
     // rules; each act writes an autopilot_actions ledger row (dedup-keyed so a
@@ -1408,8 +1522,41 @@ if (process.env['NODE_ENV'] === 'production' && connectorLoader.count === 0) {
   process.exit(1)
 }
 
+// Flags that open a public surface are refused outside dev (§8.4 of
+// CLOUDFLARE_INTEGRATION.md): demo tokens, API docs without a recorded
+// exception, and /metrics without a scrape token.
+{
+  const guards = collectBootGuards(process.env, deploymentConfig.mode)
+  for (const exception of guards.exceptions)
+    log.warn({ exception }, 'Boot guard exception in effect')
+  if (guards.violations.length > 0) {
+    log.error({ violations: guards.violations }, 'FATAL: boot guard violations. Refusing to start.')
+    process.exit(1)
+  }
+}
+const DOCS_ENABLED = apiDocsEnabled(process.env, deploymentConfig.mode)
+const OPEN_ROUTE_PREFIXES = openPrefixes({ docsEnabled: DOCS_ENABLED })
+
+const trustedProxyHops = Number(
+  process.env['TRUST_PROXY_HOPS'] ?? (deploymentConfig.mode === 'dev' ? 0 : 1),
+)
 const app = Fastify({
-  logger: true,
+  // Request logs carry the path with token-like segments and every query
+  // string removed (R22): OAuth codes, invite and action tokens, reset links.
+  logger: {
+    serializers: {
+      req: (req: { method: string; url: string; id: string }) => ({
+        method: req.method,
+        url: redactUrl(req.url),
+        id: req.id,
+      }),
+    },
+  },
+  // Client IP for rate limits and login telemetry (R24): trust exactly the
+  // proxy hops in front of us (Cloud Run: 1), never arbitrary
+  // X-Forwarded-For values a client sends.
+  trustProxy:
+    trustedProxyHops > 0 ? (_address: string, hop: number) => hop < trustedProxyHops : false,
   rewriteUrl: rewriteVersionedUrl,
   // Signed delivery action tokens (/a/:token) exceed the 100-char default.
   routerOptions: { maxParamLength: 512 },
@@ -1477,11 +1624,12 @@ app.setErrorHandler((error: Error & { statusCode?: number }, request, reply) => 
   // Log unexpected errors and return a generic 500
   request.log.error({ err: error }, 'Unhandled error')
   // Alert on 5xx errors (rate-limited per error fingerprint)
+  const route = request.routeOptions.url ?? redactUrl(request.url)
   void sendOpsAlert({
     title: 'API 5xx Error',
-    message: `${error.message}\nRoute: ${request.method} ${request.url}`,
+    message: `${scrubSecrets(error.message)}\nRoute: ${request.method} ${route}`,
     severity: 'critical',
-    fingerprint: `5xx:${request.method}:${request.url}`,
+    fingerprint: `5xx:${request.method}:${route}`,
     tenant_id: request.authContext?.tenant_id,
   })
   reply.status(500).send({
@@ -1497,23 +1645,43 @@ await app.register(swagger, {
   openapi: {
     info: {
       title: 'LifeKeel API',
-      description: 'AI decision platform for SMBs — detectors, connectors, and outcome packs.',
+      description: 'LifeKeel family API — household profile, documents, insights and connectors.',
       version: '0.1.0',
     },
   },
   transform: jsonSchemaTransform,
 })
-await app.register(swaggerUi, {
-  routePrefix: '/documentation',
-  uiConfig: { docExpansion: 'list', deepLinking: false },
-})
+// The interactive route inventory is a local tool, not a public page (API9).
+// Outside dev it needs ENABLE_API_DOCS=true plus a recorded API_DOCS_EXCEPTION
+// (boot guard above); when off, /documentation is not on the open list either.
+if (DOCS_ENABLED) {
+  await app.register(swaggerUi, {
+    routePrefix: '/documentation',
+    uiConfig: { docExpansion: 'list', deepLinking: false },
+  })
+}
 
 // Rate limiting — keyed by tenant_id when authenticated, IP otherwise.
 // Limits are generous in dev (1000/min) and calibrated for production cloud mode.
+// Shared counters across instances when Redis is configured (R24); a Redis
+// outage degrades to letting requests through rather than failing them.
+const rateLimitRedis = process.env['REDIS_URL']
+  ? new Redis(process.env['REDIS_URL'], {
+      connectTimeout: 2000,
+      maxRetriesPerRequest: 1,
+      enableOfflineQueue: false,
+    })
+  : undefined
+rateLimitRedis?.on('error', () => {})
 await app.register(rateLimit, {
   global: true,
   max: deploymentConfig.maxWorkflowRunsPerMinute,
   timeWindow: '1 minute',
+  // preHandler runs after the auth hook, so authenticated requests are
+  // counted per tenant as the key generator intends (R24). Route-level
+  // limits on the public auth endpoints stay keyed by IP.
+  hook: 'preHandler',
+  ...(rateLimitRedis ? { redis: rateLimitRedis, skipOnError: true } : {}),
   keyGenerator: (req) => {
     // Use tenant_id from JWT when available — prevents IP-sharing bypass
     const auth = (req as unknown as { authContext?: { tenant_id: string } }).authContext
@@ -1535,6 +1703,11 @@ await app.register(rateLimit, {
   allowList: (req) =>
     req.url === '/health' || req.url === '/engine/health' || req.url.startsWith('/documentation'),
 })
+
+// Turnstile (CLOUDFLARE_INTEGRATION.md §5): routes opt in with
+// config.turnstile. Registered after the rate limiter so its preHandler runs
+// second — floods are rejected before any siteverify round trip.
+registerTurnstile(app, { config: () => turnstileConfig(process.env, deploymentConfig.mode) })
 
 // Multipart support for file uploads (50 MB limit)
 await app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } })
@@ -1560,52 +1733,21 @@ app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (request, bo
 // ─── Auth middleware ──────────────────────────────────────────────────────────
 
 app.addHook('onRequest', async (request, reply) => {
-  // PRD-110: '/family/join' is deliberately NOT a prefix of the organizer-only
-  // '/family/access-requests*' endpoints below — this array is matched by
-  // startsWith, so '/family/join-requests' would have made those public too.
-  const open = [
-    '/health',
-    '/engine/health',
-    '/status',
-    '/metrics',
-    '/auth/token',
-    '/auth/demo-token',
-    '/auth/signup',
-    '/auth/login',
-    '/auth/logout',
-    '/auth/mfa/verify',
-    '/auth/sso/',
-    '/auth/google/',
-    '/auth/github/',
-    '/auth/request-password-reset',
-    '/auth/reset-password',
-    '/auth/verify-email',
-    '/auth/resend-verification',
-    '/entitlements/plans',
-    '/blog/posts',
-    '/a/',
-    '/why/',
-    '/verify/',
-    '/webhooks/',
-    '/inbound/',
-    '/insights/cleanup-stale-all',
-    '/billing/webhook',
-    '/documentation',
-    '/documentation/json',
-    '/documentation/uiOptions',
-    '/documentation/static',
-    '/growth/events',
-    '/trust',
-    '/leads',
-    '/users/unsubscribe',
-    '/heartbeat/unsubscribe',
-    '/family/join',
-    '/family/invite/',
-  ]
+  // The inventory and its protection groups live in security/public-routes.ts.
   if (/^\/connectors\/[^/]+\/oauth\/callback/.test(request.url)) return
   if (/^\/auth\/(google|github)\/callback/.test(request.url)) return
   if (/^\/auth\/(google|github)\/exchange/.test(request.url)) return
-  if (open.some((p) => request.url.startsWith(p))) {
+  // Public routes can also consume the ambient session cookie (dual-mode
+  // resend/verification). Apply CSRF checks before their opportunistic auth
+  // path, not only in the protected-route branch below.
+  if (
+    !extractBearerToken(request.headers.authorization) &&
+    readSessionCookie(request) &&
+    !isOriginAllowedForCookieAuth(request)
+  ) {
+    return reply.status(403).send({ error: 'Origin not allowed' })
+  }
+  if (OPEN_ROUTE_PREFIXES.some((p) => request.url.startsWith(p))) {
     // Dual-mode open routes (e.g. /auth/resend-verification) behave
     // differently when a valid Bearer token rides along — authenticate it
     // opportunistically instead of dropping it. A bad/absent token just
@@ -1624,27 +1766,17 @@ app.addHook('onRequest', async (request, reply) => {
         // account's JWT verified fine and was treated as signed in).
         if (ctx.mfa_pending) throw new Error('mfa_pending token on open route')
         if (workflowDb) {
-          const user = await workflowDb
-            .collection('users')
-            .findOne(
-              { tenant_id: ctx.tenant_id, id: ctx.user_id },
-              { projection: { status: 1, sessions_revoked_at: 1 } },
-            )
-          if (user?.['status'] === 'suspended') throw new Error('user suspended')
-          const revokedAt = user?.['sessions_revoked_at'] as Date | undefined
-          if (
-            revokedAt &&
-            ctx.iat !== undefined &&
-            ctx.iat <= Math.floor(revokedAt.getTime() / 1000)
+          if (await isSessionTokenRevoked(workflowDb, opportunistic)) throw new Error('signed out')
+          const live = await checkAccountLiveness(
+            workflowDb,
+            { tenant_id: ctx.tenant_id, user_id: ctx.user_id },
+            {
+              ...(ctx.iat !== undefined ? { issuedAtSeconds: ctx.iat } : {}),
+              allowMissingUser: Boolean(ctx.demo) || deploymentConfig.mode === 'dev',
+              skipTenantCheck: deploymentConfig.mode === 'dev',
+            },
           )
-            throw new Error('session revoked')
-          if (deploymentConfig.mode !== 'dev') {
-            const tenant = await workflowDb.collection('tenants').findOne({
-              $or: [{ tenant_id: ctx.tenant_id }, { id: ctx.tenant_id }],
-              status: { $in: ['active', 'trial'] },
-            })
-            if (!tenant) throw new Error('tenant not active')
-          }
+          if (!live.ok) throw new Error(live.reason)
         }
         request.authContext = ctx
       } catch {
@@ -1674,6 +1806,9 @@ app.addHook('onRequest', async (request, reply) => {
     if (ctx.mfa_pending) return reply.status(401).send({ error: 'MFA verification required' })
     let authedUser: Record<string, unknown> | null = null
     if (workflowDb) {
+      // Logout revokes the exact token server-side (R06).
+      if (await isSessionTokenRevoked(workflowDb, token))
+        return reply.status(401).send({ error: 'Session ended' })
       const user = await workflowDb
         .collection('users')
         .findOne(
@@ -1681,8 +1816,15 @@ app.addHook('onRequest', async (request, reply) => {
           { projection: { status: 1, sessions_revoked_at: 1, last_seen_at: 1 } },
         )
       authedUser = user
+      // A token for a user row that no longer exists (deleted, or moved out
+      // of this household) is not a session (R03). Demo and local dev
+      // tokens name synthetic users.
+      if (!user && !ctx.demo && deploymentConfig.mode !== 'dev')
+        return reply.status(401).send({ error: 'Invalid token' })
       if (user?.['status'] === 'suspended')
         return reply.status(401).send({ error: 'User suspended' })
+      if (INACTIVE_USER_STATUSES.has(user?.['status'] as string))
+        return reply.status(401).send({ error: 'Session ended' })
       // Operator session revocation: reject tokens issued before
       // sessions_revoked_at. JWT iat is seconds; <= guards a token minted
       // in the same second the revocation landed.
@@ -1819,8 +1961,10 @@ function authorizationAction(method: string, url: string): ProductAction {
 app.post<{ Body: { tenant_id: string; user_id?: string } }>(
   '/auth/token',
   async (request, reply) => {
-    if (process.env['NODE_ENV'] === 'production' && !process.env['ALLOW_DEMO_TOKENS']) {
-      return reply.status(403).send({ error: 'Demo tokens disabled in production' })
+    // Any deploy outside local dev/test, not only NODE_ENV=production (R41):
+    // this mints an admin token for any tenant named in the body.
+    if (!isDevOrTest() && !process.env['ALLOW_DEMO_TOKENS']) {
+      return reply.status(403).send({ error: 'Demo tokens disabled outside local development' })
     }
     const { tenant_id, user_id = 'studio_user' } = request.body
     if (!tenant_id) return reply.status(400).send({ error: 'tenant_id required' })
@@ -1829,11 +1973,20 @@ app.post<{ Body: { tenant_id: string; user_id?: string } }>(
   },
 )
 
-/** POST /auth/logout — clears the httpOnly session cookie. Deliberately on
- *  the open-routes list: a logout must succeed even with an expired/invalid
- *  session, and clearing a cookie is harmless to call without auth. Bearer
- *  clients are unaffected (they just drop their token client-side). */
-app.post('/auth/logout', async (_request, reply) => {
+/** POST /auth/logout — clears the httpOnly session cookie and revokes the
+ *  presented token server-side, so a copy of it stops working too (R06).
+ *  Deliberately on the open-routes list: a logout must succeed even with an
+ *  expired/invalid session. */
+app.post('/auth/logout', async (request, reply) => {
+  const token = extractBearerToken(request.headers.authorization) ?? readSessionCookie(request)
+  if (token && workflowDb) {
+    try {
+      await auth.verify(token)
+      await revokeSessionToken(workflowDb, token)
+    } catch {
+      /* an invalid or expired token needs no revocation */
+    }
+  }
   clearSessionCookie(reply)
   return reply.send({ ok: true })
 })
@@ -1845,8 +1998,8 @@ app.post('/auth/logout', async (_request, reply) => {
  *  if acme-corp has real provider connections in the database, a demo visitor
  *  cannot see or use them. */
 app.get('/auth/demo-token', async (_request, reply) => {
-  if (process.env['NODE_ENV'] === 'production' && !process.env['ALLOW_DEMO_TOKENS']) {
-    return reply.status(403).send({ error: 'Demo tokens disabled in production' })
+  if (!isDevOrTest() && !process.env['ALLOW_DEMO_TOKENS']) {
+    return reply.status(403).send({ error: 'Demo tokens disabled outside local development' })
   }
   const token = await auth.sign({
     sub: 'demo_user',
@@ -2068,6 +2221,7 @@ await registerInsightRoutes(
   deliveryRouter,
 )
 await registerAuthUserRoutes(app, auth)
+await registerAuthOtpRoutes(app, auth)
 if (workflowDb) {
   await registerSocialAuthRoutes(app, auth, workflowDb)
 }
@@ -2077,6 +2231,7 @@ if (workflowDb) {
   registerBillingRoutes(app, workflowDb)
   registerBlogRoutes(app, workflowDb)
   registerDocumentRoutes(app, workflowDb, engine, insightsDeliveryHook)
+  registerDocumentUploadRoutes(app, workflowDb)
   registerVaultRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerAuditLogRoutes(app, workflowDb)
   registerAutomationSettingsRoutes(app, workflowDb)
@@ -2103,9 +2258,13 @@ if (workflowDb) {
   registerFamilyCashflowRoutes(app, workflowDb)
   registerFamilyAssetRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerFamilyLegacyRoutes(app, workflowDb, engine, insightsDeliveryHook)
+  registerFamilyReceiptRoutes(app, workflowDb)
+  registerFamilyScopeContractRoutes(app, workflowDb)
+  await ensureScopeContractIndexes(workflowDb)
   await registerLeadRoutes(app, workflowDb)
   await registerHeartbeatUnsubscribeRoutes(app, workflowDb)
   registerSendgridWebhookRoutes(app, workflowDb)
+  registerResendWebhookRoutes(app, workflowDb)
   await registerFamilyFinancialProfileRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerLifeEventRoutes(app, workflowDb)
   registerPushRoutes(app, workflowDb, deliveryRouter)
@@ -2114,7 +2273,10 @@ if (workflowDb) {
   registerMarketingProfileRoutes(app, workflowDb)
   registerMarketingPlanRoutes(app, workflowDb)
   ensureAutopilotIndexes(workflowDb)
+  void ensureRevenueIndexes(workflowDb)
+  void ensureMarketingSpendIndexes(workflowDb)
   await registerOperatorRoutes(app, workflowDb)
+  registerOperatorStripeRoutes(app, workflowDb)
   registerOperatorRetentionRoutes(app, workflowDb)
   registerOperatorDeletionRoutes(app, workflowDb)
   registerDetectorEvalRoutes(app, workflowDb, engine, detectorEvalDir(ROOT))

@@ -109,12 +109,35 @@ scorer warm-start can use it.
   `localDecisionFromEnv` escapes its `taskDecide` wrapper. Unknown task_ids
   fail closed outside dev. The processor registry
   (`definitions/ai-processors.yaml`, per-task `allowed_processors`) is checked
-  before every call, but in `AI_PROCESSOR_ENFORCEMENT=warn` (the default) a
-  violation is logged and counted, not blocked: every hosted processor ships
-  `unreviewed` because no terms have been supplied, so `enforce` would refuse
-  every hosted call today. A `lifekeel_infra` task still falls back to a hosted
-  provider when `LOCAL_TEXT_ENABLED` is off; the check flags it, it does not
-  stop it. Provider no-training and retention terms, Gmail Limited Use
+  before every call. Outside `dev` the default is `enforce` (an unapproved
+  processor is refused) and hosted fallback for `lifekeel_infra` tasks is
+  denied; in `dev` the default is `warn`. A non-dev downgrade (`warn`, `off`,
+  `AI_HOSTED_FALLBACK=allow`) only takes effect with a recorded
+  `AI_POLICY_EXCEPTION` reference and is logged at boot. Azure OpenAI and
+  Google Cloud Vertex AI are the approved hosted processors (2026-10-22,
+  `limited_abuse_log` retention recorded conservatively on both, tolerated on
+  non-sensitive tasks only); Groq is also approved (2026-10-23 — no default
+  inference retention, self-serve ZDR via Console → Data Controls; keep to
+  `limited_abuse_log` in the registry until that toggle is on); xAI is approved
+  **conditional on ZDR being enabled** — its Sept-2026 DPA makes non-ZDR
+  processing of Personal Data a material breach, so the Console team toggle
+  must be on before any task routes there (`x-zero-data-retention:true`
+  response header confirms). Anthropic and
+  openai stay `unreviewed` and are refused in a non-dev deployment. The active provider picks in order:
+  explicit provider config, then the operator's audited
+  `platform_config.llm_provider_override` (the `/operator/configuration`
+  switch — runtime, no redeploy), then model-name match, then
+  `LIFEKEEL_LLM_PROVIDER`, then the first configured credential (anthropic →
+  openai → azure → vertex → groq → xai → ollama — newest providers scan last so a
+  new key can't silently flip a live deployment). The override is global: it also
+  wins for `tier:*` calls, and a model that doesn't exist on the picked
+  provider fails there rather than rerouting. A runtime pick still passes
+  the processor check per task — selecting an unapproved or unconfigured
+  provider refuses calls, it does not silently fall back.
+  Vertex auth is OAuth only — the service's GCP service account on Cloud Run,
+  or `VERTEX_SERVICE_ACCOUNT_JSON` off-GCP; express-mode API keys do not work
+  on its OpenAI-compatible endpoint.
+  Provider no-training and retention terms, Gmail Limited Use
   exclusion from cross-tenant scorers, and a consent flow for third-party AI
   remain procedural. Do not claim rule 3 is technically enforced by code
   alone; see ARCHITECTURE.md §8.15 for the full list.
@@ -142,6 +165,16 @@ Detail on what each check catches (and cannot):
   new family signal means: (1) extend the financial-profile schema in
   `apps/api/src/routes/family-financial-profile.ts`, (2) add/extend a
   detector YAML, (3) surface it in `apps/web`'s financial-profile form.
+- **Model-serving split is decided (2026-10):** general interactive
+  generation (Ask Keel, drafts) runs on a small hosted processor behind the
+  gateway — never the CPU-local model. CPU-local serving of interactive
+  generation was measured (50s p50 vs a 30s deadline) and is closed. Local
+  serving remains only for quarantined tasks (`lifekeel_infra_required`)
+  and `device_only` work — non-sensitive batch tasks moved to
+  `approved_hosted_provider` on 2026-10-24 when the GCP Ollama service was
+  decommissioned for cost. See ARCHITECTURE.md §8.4b and
+  `docs/reviews/decision-local-interactive-closed-2026-10.md` — do not
+  re-propose `LOCAL_TEXT_ENABLED` for general interactive traffic.
 
 ## Known gotchas (discovered the hard way this session — don't rediscover them)
 

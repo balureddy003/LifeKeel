@@ -41,8 +41,9 @@ Each stage is idempotent and separately runnable: `./scripts/provision-infra.sh 
 ### `gcp` — project plumbing
 
 Enables the APIs (`run`, `artifactregistry`, `secretmanager`, `firebasehosting`,
-`siteverification`, `iam`), creates the `lifekeel-docker` Artifact Registry
-repo, and creates two deploy service accounts:
+`siteverification`, `iam`, `aiplatform` — Vertex AI Gemini), creates the
+`lifekeel-docker` Artifact Registry repo, and creates two deploy service
+accounts:
 
 - `github-deploy` — `run.admin`, `artifactregistry.writer`,
   `iam.serviceAccountUser`, `storage.admin` → exported to
@@ -51,7 +52,10 @@ repo, and creates two deploy service accounts:
   (becomes `FIREBASE_SA_KEY`)
 
 It also grants the default compute SA `secretmanager.secretAccessor`, since the
-Cloud Run service mounts secrets without an explicit runtime SA.
+Cloud Run service mounts secrets without an explicit runtime SA, plus
+`aiplatform.user` so the API's identity can call Vertex AI via ADC — no key is
+stored anywhere (off-GCP deployments use `VERTEX_SERVICE_ACCOUNT_JSON`
+instead).
 
 ### `secrets` — Secret Manager values
 
@@ -106,6 +110,15 @@ Sets the vars the workflows read (`FIREBASE_PROJECT_ID`, `GCP_REGION`,
 `NEXT_PUBLIC_API_URL`, `CORS_ORIGIN` covering every `app.*` host) and uploads
 the SA keys as `GCP_SA_KEY` / `FIREBASE_SA_KEY` / `GCP_PROJECT_ID` secrets.
 Delete `deploy-out/` afterwards.
+
+### `stripe` — billing setup as code
+
+Not part of `all` (it needs a Stripe key). Makes the Stripe account match
+`definitions/stripe-config.yaml`: product, price (by `lookup_key`), webhook endpoint and Customer Portal.
+Dry-run by default; `STRIPE_APPLY=1` applies, and a live key also needs `STRIPE_ALLOW_LIVE=1`. When it creates
+the webhook endpoint, the one-time signing secret goes from a `0600` temp file straight into
+`lifekeel-stripe-webhook-secret`; redeploy the API afterwards. Full detail:
+[runbooks/stripe-setup.md](runbooks/stripe-setup.md).
 
 ### `status` — verify
 

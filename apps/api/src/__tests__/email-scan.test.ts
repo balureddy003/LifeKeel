@@ -5,6 +5,7 @@
  * scan doesn't reprocess the same mail.
  */
 
+import { EventEmitter } from 'node:events'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
 const fetchRecentEmailsMock = vi.fn()
@@ -31,7 +32,22 @@ vi.mock('mongodb', async (importOriginal) => {
   return {
     ...actual,
     GridFSBucket: vi.fn().mockImplementation(function FakeGridFSBucket() {
-      return { openUploadStream: vi.fn(() => ({ end: uploadStreamEnd, id: 'fake-gridfs-id' })) }
+      return {
+        // Emits 'finish' after end(), like the real write stream: the
+        // storage seam awaits it before inserting the metadata row.
+        openUploadStream: vi.fn(() => {
+          const stream = new EventEmitter() as EventEmitter & {
+            id: string
+            end: (b: Buffer) => void
+          }
+          stream.id = 'fake-gridfs-id'
+          stream.end = (b: Buffer) => {
+            uploadStreamEnd(b)
+            queueMicrotask(() => stream.emit('finish'))
+          }
+          return stream
+        }),
+      }
     }),
   }
 })
@@ -254,7 +270,7 @@ describe('scanTenantInbox', () => {
             {
               filename: 'policy.pdf',
               contentType: 'application/pdf',
-              content: Buffer.from('fake pdf'),
+              content: Buffer.from('%PDF-1.4 fake pdf'),
             },
           ],
         }),

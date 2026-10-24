@@ -12,6 +12,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import Fastify from 'fastify'
 import { registerFamilyJoinRoutes } from '../family-join.js'
 import { hashPassword } from '../auth-users.js'
+import { createHash } from 'node:crypto'
 
 const TENANT = 'tenant-join-test'
 const ORGANIZER_ID = 'organizer-user-1'
@@ -55,6 +56,10 @@ function match(doc: Record<string, unknown>, filter: Record<string, unknown>): b
     // 'members.id' — the dotted-path filter the routes use for positional
     // updates on the roster array.
     if (k === 'members.id') return (doc['members'] as { id: string }[]).some((m) => m.id === v)
+    if (v && typeof v === 'object' && '$in' in (v as Record<string, unknown>))
+      return ((v as { $in: unknown[] }).$in).includes(doc[k])
+    if (v && typeof v === 'object' && '$gte' in (v as Record<string, unknown>))
+      return (doc[k] as Date) >= ((v as { $gte: Date }).$gte)
     return doc[k] === v
   })
 }
@@ -127,8 +132,15 @@ function makeFakeDb(state: FakeState) {
     createIndex: async () => undefined,
   }
 
+  const inviteSends: Record<string, unknown>[] = []
+  const inviteSendsCol = {
+    countDocuments: async (filter: Record<string, unknown>) => inviteSends.filter((d) => match(d, filter)).length,
+    insertOne: async (doc: Record<string, unknown>) => { inviteSends.push(doc); return { insertedId: 'x' } },
+  }
+
   return {
     collection: (name: string) => {
+      if (name === 'family_invite_sends') return inviteSendsCol
       if (name === 'users') return usersCol
       if (name === 'family_groups') return familyGroupsCol
       if (name === 'family_join_requests') return joinRequestsCol
@@ -144,7 +156,7 @@ vi.mock('../../db.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../db.js')>()
   return {
     ...actual,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     getDb: async () => makeFakeDb(state) as any,
   }
 })
@@ -157,7 +169,7 @@ async function buildApp(callerId: string | null) {
   app.addHook('onRequest', async (request) => {
     if (callerId) (request as any).authContext = { tenant_id: TENANT, user_id: callerId }
   })
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   registerFamilyJoinRoutes(app, makeFakeDb(state) as any, fakeAuth as any)
   return app
 }
@@ -339,7 +351,32 @@ describe('POST /family/members/:id/invite (PRD-123)', () => {
     const invite = state.memberInvites[0]!
     expect(invite['member_id']).toBe(PENDING_MEMBER_ID)
     expect(invite['email']).toBe('sam@example.com')
-    expect(String(res.json().invite_url)).toContain(String(invite['token']))
+    // R39: only the token's hash is stored; the raw token exists in the link alone.
+    const raw = String(res.json().invite_url).split('/invite/')[1]!
+    expect(invite['token']).toBe(createHash('sha256').update(raw).digest('hex'))
+    expect(invite['token']).not.toBe(raw)
+  })
+
+  it('R08: an adult-labelled member under 18 cannot be invited to a sign-in', async () => {
+    const members = state.familyGroups[0]!['members'] as Record<string, unknown>[]
+    const teen = new Date()
+    teen.setUTCFullYear(teen.getUTCFullYear() - 15)
+    members.push({ id: 'teen-1', name: 'Teen', email: 'teen@example.com', role: 'adult', status: 'pending', date_of_birth: teen.toISOString().slice(0, 10), joined_at: '2026-01-01T00:00:00.000Z' })
+    const app = await buildApp(ORGANIZER_ID)
+    const res = await app.inject({ method: 'POST', url: '/family/members/teen-1/invite', payload: {} })
+    expect(res.statusCode).toBe(400)
+    expect(state.memberInvites).toHaveLength(0)
+  })
+
+  it('R08: acceptance re-checks age — a member who became a child since the invite cannot accept', async () => {
+    const app = await buildApp(ORGANIZER_ID)
+    const res = await app.inject({ method: 'POST', url: `/family/members/${PENDING_MEMBER_ID}/invite`, payload: {} })
+    const raw = String(res.json().invite_url).split('/invite/')[1]!
+    const members = state.familyGroups[0]!['members'] as Record<string, unknown>[]
+    members.find((m) => m['id'] === PENDING_MEMBER_ID)!['role'] = 'child'
+    const accept = await app.inject({ method: 'POST', url: '/family/invite/accept', payload: { token: raw, password: 'password123' } })
+    expect(accept.statusCode).toBe(400)
+    expect(state.users.find((u) => u['email'] === 'sam@example.com')).toBeUndefined()
   })
 
   it('403s for a non-organizer roster member', async () => {
@@ -388,7 +425,7 @@ describe('GET /family/invite/:token and POST /family/invite/accept (PRD-123)', (
   async function inviteSam(app: Awaited<ReturnType<typeof buildApp>>): Promise<string> {
     const res = await app.inject({ method: 'POST', url: `/family/members/${PENDING_MEMBER_ID}/invite`, payload: {} })
     expect(res.statusCode).toBe(201)
-    return String(state.memberInvites.at(-1)!['token'])
+    return String(res.json().invite_url).split('/invite/')[1]!
   }
 
   it('resolves the token to member + family names without exposing financial data', async () => {
@@ -466,8 +503,8 @@ describe('GET /family/invite/:token and POST /family/invite/accept (PRD-123)', (
     expect(res.statusCode).toBe(409)
     // Even if an invite somehow exists (email registered between invite and
     // accept), accept refuses cross-tenant linking too.
-    state.memberInvites.push({ id: 'stale', tenant_id: TENANT, member_id: PENDING_MEMBER_ID, email: 'sam@example.com', token: 'tok1', expires_at: new Date(Date.now() + 10000), created_at: new Date() })
-    const accept = await app.inject({ method: 'POST', url: '/family/invite/accept', payload: { token: 'tok1', password: 'password123' } })
+    state.memberInvites.push({ id: 'stale', tenant_id: TENANT, member_id: PENDING_MEMBER_ID, email: 'sam@example.com', token: 'aa11bb22cc33dd44ee55', expires_at: new Date(Date.now() + 10000), created_at: new Date() })
+    const accept = await app.inject({ method: 'POST', url: '/family/invite/accept', payload: { token: 'aa11bb22cc33dd44ee55', password: 'password123' } })
     expect(accept.statusCode).toBe(409)
   })
 
@@ -476,8 +513,8 @@ describe('GET /family/invite/:token and POST /family/invite/accept (PRD-123)', (
     const token = await inviteSam(app)
     await app.inject({ method: 'POST', url: '/family/invite/accept', payload: { token, password: 'password123' } })
     // A second invite created before the first was used should fail on accept.
-    state.memberInvites.push({ id: 'stale', tenant_id: TENANT, member_id: PENDING_MEMBER_ID, email: 'sam@example.com', token: 'stale-token', expires_at: new Date(Date.now() + 10000), created_at: new Date() })
-    const res = await app.inject({ method: 'POST', url: '/family/invite/accept', payload: { token: 'stale-token', password: 'password123' } })
+    state.memberInvites.push({ id: 'stale', tenant_id: TENANT, member_id: PENDING_MEMBER_ID, email: 'sam@example.com', token: 'ff66ee77dd88cc99bb00', expires_at: new Date(Date.now() + 10000), created_at: new Date() })
+    const res = await app.inject({ method: 'POST', url: '/family/invite/accept', payload: { token: 'ff66ee77dd88cc99bb00', password: 'password123' } })
     expect(res.statusCode).toBe(400)
   })
 })

@@ -28,6 +28,14 @@ export interface LocalDecisionConfig {
    */
   maxConcurrent?: number
   /**
+   * Max calls allowed to WAIT for a concurrency slot (PRD-215). Beyond this a
+   * call is refused immediately with LocalDecisionQueueFullError rather than
+   * queueing behind work it could never overtake before its deadline. The
+   * caller's failure path decides whether that is retryable. Default:
+   * unlimited (a caller signal abort still drops the wait either way).
+   */
+  maxQueue?: number
+  /**
    * Extra request headers, resolved per call (so short-lived tokens can refresh).
    * Used for service-to-service auth, e.g. a Cloud Run identity token.
    */
@@ -45,26 +53,62 @@ export interface LocalDecisionCallEvent {
   queued_ms: number
   /** Time spent in the model call itself, including retries. */
   latency_ms: number
+  /**
+   * Set when the call was refused before reaching the model: the wait queue
+   * was full, or the caller's signal aborted while queued. `ok` is false and
+   * `latency_ms` is ~0 in both cases.
+   */
+  rejected?: 'queue_full' | 'aborted'
 }
 
-/** Minimal FIFO semaphore. */
+/**
+ * Minimal FIFO semaphore with a bounded, abort-aware wait queue (PRD-215).
+ * A caller signal aborting mid-wait removes the waiter entirely — it never
+ * takes a slot to run a call whose request is already dead.
+ */
 class Semaphore {
   private active = 0
-  private readonly waiters: Array<() => void> = []
-  constructor(private readonly limit: number) {}
+  private readonly waiters: Array<{ grant: () => void }> = []
+  constructor(
+    private readonly limit: number,
+    private readonly maxQueue: number,
+  ) {}
 
-  async acquire(): Promise<void> {
+  acquire(signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) return Promise.reject(signal.reason ?? new Error('aborted'))
     if (this.active < this.limit) {
       this.active += 1
-      return
+      return Promise.resolve()
     }
-    await new Promise<void>((resolve) => this.waiters.push(resolve))
+    if (this.waiters.length >= this.maxQueue) {
+      return Promise.reject(
+        new LocalDecisionQueueFullError(
+          `Local model queue full (${this.maxQueue} waiting) — refusing work that could not start in time`,
+        ),
+      )
+    }
+    return new Promise<void>((resolve, reject) => {
+      const waiter = {
+        grant: () => {
+          cleanup()
+          resolve()
+        },
+      }
+      const onAbort = () => {
+        const idx = this.waiters.indexOf(waiter)
+        if (idx >= 0) this.waiters.splice(idx, 1)
+        reject(signal?.reason ?? new Error('aborted'))
+      }
+      const cleanup = () => signal?.removeEventListener('abort', onAbort)
+      this.waiters.push(waiter)
+      signal?.addEventListener('abort', onAbort, { once: true })
+    })
   }
 
   release(): void {
     const next = this.waiters.shift()
     if (next)
-      next() // hand the slot straight to the next waiter
+      next.grant() // hand the slot straight to the next waiter
     else this.active -= 1
   }
 }
@@ -84,7 +128,10 @@ export interface LocalDecisionResult<T> {
   latency_ms: number
 }
 
-export type DecisionFn = <T>(req: LocalDecisionRequest<T>) => Promise<LocalDecisionResult<T>>
+export type DecisionFn = <T>(
+  req: LocalDecisionRequest<T>,
+  opts?: { signal?: AbortSignal },
+) => Promise<LocalDecisionResult<T>>
 
 export class LocalDecisionError extends Error {
   constructor(
@@ -93,6 +140,18 @@ export class LocalDecisionError extends Error {
   ) {
     super(message)
     this.name = 'LocalDecisionError'
+  }
+}
+
+/**
+ * The bounded wait queue refused this call outright (PRD-215). Distinct from
+ * a model failure: nothing was attempted, so the caller can treat it as
+ * shed-load (retry next sweep) rather than an outage signal.
+ */
+export class LocalDecisionQueueFullError extends LocalDecisionError {
+  constructor(message: string) {
+    super(message)
+    this.name = 'LocalDecisionQueueFullError'
   }
 }
 
@@ -107,45 +166,68 @@ export function createLocalDecisionFn(cfg: LocalDecisionConfig): DecisionFn {
   const maxTokens = cfg.maxTokens ?? 256
   const doFetch = cfg.fetchImpl ?? fetch
   const gate =
-    cfg.maxConcurrent && cfg.maxConcurrent > 0 ? new Semaphore(cfg.maxConcurrent) : undefined
+    cfg.maxConcurrent && cfg.maxConcurrent > 0
+      ? new Semaphore(cfg.maxConcurrent, cfg.maxQueue ?? Number.POSITIVE_INFINITY)
+      : undefined
 
-  return async function decide<T>(req: LocalDecisionRequest<T>): Promise<LocalDecisionResult<T>> {
+  return async function decide<T>(
+    req: LocalDecisionRequest<T>,
+    opts?: { signal?: AbortSignal },
+  ): Promise<LocalDecisionResult<T>> {
     const queuedAt = Date.now()
-    await gate?.acquire()
-    const started = Date.now()
+    const report = (e: Omit<LocalDecisionCallEvent, 'model'>) => {
+      try {
+        cfg.onCall?.({ model: cfg.model, ...e })
+      } catch {
+        /* metrics must never fail a call */
+      }
+    }
+    let started: number
+    try {
+      await gate?.acquire(opts?.signal)
+      started = Date.now()
+    } catch (err) {
+      // Refused before reaching the model: a full queue shed the work, or the
+      // caller's deadline fired while it waited. queued_ms still records how
+      // long it sat — the wait is the sizing signal either way.
+      report({
+        ok: false,
+        queued_ms: Date.now() - queuedAt,
+        latency_ms: 0,
+        rejected: err instanceof LocalDecisionQueueFullError ? 'queue_full' : 'aborted',
+      })
+      throw err
+    }
+    // The slot is held; a signal that fires now aborts the transport via
+    // callModel, not the queue.
     let ok = false
     try {
-      const result = await callModel(req, started)
+      const result = await callModel(req, started, opts?.signal)
       ok = true
       return result
     } finally {
       gate?.release()
-      try {
-        cfg.onCall?.({
-          model: cfg.model,
-          ok,
-          queued_ms: started - queuedAt,
-          latency_ms: Date.now() - started,
-        })
-      } catch {
-        /* metrics must never fail a call */
-      }
+      report({ ok, queued_ms: started - queuedAt, latency_ms: Date.now() - started })
     }
   }
 
   async function callModel<T>(
     req: LocalDecisionRequest<T>,
     started: number,
+    callerSignal?: AbortSignal,
   ): Promise<LocalDecisionResult<T>> {
     let lastError: unknown
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      if (callerSignal?.aborted) break // request already dead — don't burn an attempt
       try {
         const extraHeaders = cfg.getHeaders ? await cfg.getHeaders() : {}
         const res = await doFetch(`${baseUrl}/api/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...extraHeaders },
-          signal: AbortSignal.timeout(timeoutMs),
+          signal: callerSignal
+            ? AbortSignal.any([callerSignal, AbortSignal.timeout(timeoutMs)])
+            : AbortSignal.timeout(timeoutMs),
           body: JSON.stringify({
             model: cfg.model,
             stream: false,

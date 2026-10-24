@@ -16,7 +16,9 @@ import {
   hashState,
   type DualApprovalDoc,
 } from '../operator/dual-control.js'
+import { SUPPORT_DRAFT_SYSTEM_PROMPT } from '../operator/support-draft.js'
 import { sendPasswordResetEmail } from '../auth-email.js'
+import { hashAuthToken } from './auth-users.js'
 import { recordLedgerEntry, getLedgerHistory } from '../billing/credit-ledger.js'
 import { queueManager } from '../queue/QueueManager.js'
 import { WEBHOOK_INGEST_QUEUE } from '../queue/WebhookQueue.js'
@@ -27,7 +29,13 @@ import {
   type PlatformConfig,
 } from '../operator/platform-config.js'
 import { getLoginEventsCollection } from '../db.js'
-import { taskLlm, taskLlmFor } from '../ai/task-gateway.js'
+import {
+  taskLlm,
+  taskLlmFor,
+  getTaskRegistry,
+  getProcessorRegistry,
+  resolveServingProcessor,
+} from '../ai/task-gateway.js'
 import { computeTenantHealth } from '../operator/tenant-health.js'
 import { isRollupReady, readDailyRollup } from '../jobs/metrics-rollup.js'
 import { getRunbooks } from '../operator/runbooks.js'
@@ -36,9 +44,17 @@ import {
   getAutopilotRule,
   NEVER_AUTONOMOUS,
   PROPOSAL_HANDLERS,
+  SHADOW_PROMOTION,
+  reviewShadowRow,
+  shadowStats,
   type AutopilotActionDoc,
 } from '../operator/autopilot.js'
 import { runWeeklyDigest } from '../operator/weekly-digest.js'
+import { approveProposal, rejectProposal } from '../operator/proposal-resolution.js'
+import { buildDecisions } from '../operator/mission-control.js'
+import { readRevenueSnapshot, readonlyStripeFromEnv, syncRevenue } from '../marketing/revenue.js'
+import { addSpend, deleteSpend, listSpend, validateSpend } from '../marketing/spend.js'
+import { readEconomics } from '../marketing/economics.js'
 import {
   campaignsCol,
   resolveAudience,
@@ -49,7 +65,9 @@ import {
 } from '../marketing/campaigns.js'
 import { lifecycleSendsCol } from '../marketing/lifecycle-emails.js'
 import { platformUnitEconomics } from '../spend-ledger.js'
-import { formatMicroDollars } from '@lifekeel/platform'
+import { calibrationSummary, CALIBRATION_MATCH_WINDOW_DAYS } from '../life-events/calibration.js'
+import { localModelQueueSummary } from './metrics.js'
+import { formatMicroDollars, getAllCircuitBreakers } from '@lifekeel/platform'
 import type { SupportCaseDoc, SupportMessage } from './support.js'
 
 const QuerySchema = z.object({
@@ -773,17 +791,18 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         { id: request.params.id },
         {
           $set: {
-            password_reset_token: token,
+            password_reset_token_hash: hashAuthToken(token),
             password_reset_expires: new Date(Date.now() + 60 * 60 * 1000),
             updated_at: new Date(),
           },
+          $unset: { password_reset_token: '' },
         },
       )
       const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
       await sendPasswordResetEmail(
         user['email'] as string,
         user['name'] as string,
-        `${appUrl}/reset-password/confirm?token=${token}`,
+        `${appUrl}/reset-password/confirm#token=${token}`,
       )
       await audit.log(
         request,
@@ -1826,6 +1845,8 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       sources.set(source, row)
     }
 
+    const revenueSnapshot = await readRevenueSnapshot(db)
+
     return {
       window_days: 30,
       totals: {
@@ -1841,9 +1862,16 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         paying_tenants: payingTenantDocs.length,
         paying_30d: newPayers.length,
         trialing_tenants: trialing.size,
-        // Only starter ("Keel Plus") has a real price — £7.99/mo. Dormant
-        // growth/enterprise tiers count toward paying totals but not MRR.
-        mrr_pence: payingTenantDocs.filter((t) => t['plan'] === 'starter').length * 799,
+        // Once Stripe revenue has been synced (read-only), MRR is what is
+        // actually being paid. Until then it is the old estimate: only starter
+        // ("Keel Plus") has a real price — £7.99/mo — so dormant tiers count
+        // toward paying totals but not MRR.
+        mrr_pence: revenueSnapshot.synced
+          ? revenueSnapshot.mrr_pence
+          : payingTenantDocs.filter((t) => t['plan'] === 'starter').length * 799,
+        mrr_source: revenueSnapshot.synced ? ('stripe' as const) : ('estimate' as const),
+        revenue_30d_pence: revenueSnapshot.synced ? revenueSnapshot.revenue_30d_pence : null,
+        revenue_last_sync_at: revenueSnapshot.last_sync_at,
         currency: 'GBP',
         median_days_to_paid: medianDaysToPaid,
       },
@@ -2319,8 +2347,10 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         { id: campaign.id, status: 'draft' },
         { $set: { status: 'sending' } },
       )
-      if (claimed.modifiedCount === 0)
+      if (claimed.modifiedCount === 0) {
+        await gate.release()
         return reply.status(409).send({ error: `Campaign already ${campaign.status}` })
+      }
       try {
         const stats = await queueCampaignSend(db, campaign)
         const after = await campaigns.findOne({ id: campaign.id })
@@ -2340,6 +2370,11 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         // state it can't leave — pending claims are skipped by a retry's
         // claimSend only if the recipient was already settled.
         await campaigns.updateOne({ id: campaign.id }, { $set: { status: 'draft' } })
+        // Hand the four-eyes approval back too — the campaign is a draft again,
+        // so the same confirmed approval can be retried once the cause
+        // (email provider, queue) is fixed instead of re-requesting a second
+        // operator.
+        await gate.release()
         throw err
       }
     },
@@ -2775,7 +2810,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         `Case subject: ${doc['subject']}\n\nThread so far:\n${thread}\n\nDraft a reply for the operator.`
       try {
         const draft = await taskLlm('support.reply_draft.v1', doc['tenant_id'] as string)(
-          `You draft support replies for LifeKeel operators. Write a helpful, honest reply to the customer's latest message. Never give financial/investment/insurance/legal advice or recommend specific providers. If the request needs an account change (billing, deletion, reset), say the team will handle it — never promise specifics you can't verify. Plain text, 2–5 sentences, no greeting sign-off boilerplate beyond a name placeholder if needed.`,
+          SUPPORT_DRAFT_SYSTEM_PROMPT,
           prompt,
         )
         return { draft }
@@ -2922,6 +2957,9 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   const autopilotActions = db.collection('autopilot_actions')
   const AutopilotUpdateSchema = z.object({
     enabled: z.boolean().optional(),
+    /** shadow = log "would do" only; live = act. shadow → live is gated on
+     *  the rule's reviewed precision (SHADOW_PROMOTION). */
+    mode: z.enum(['shadow', 'live']).optional(),
     max_blast_radius: z.number().int().min(1).max(500).optional(),
     cooldown_minutes: z.number().int().min(5).max(10080).optional(),
     reason: z.string().trim().min(5).max(500),
@@ -2931,15 +2969,28 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     '/operator/autopilot',
     { preHandler: requireOperator(db, 'operations.read') },
     async () => {
-      const [ruleRows, recent] = await Promise.all([
+      const [ruleRows, recent, paused] = await Promise.all([
         listAutopilotRules(db),
         autopilotActions
           .find({}, { projection: { _id: 0 } })
           .sort({ created_at: -1 })
           .limit(50)
           .toArray(),
+        getPlatformConfig(db).then((c) => c.autopilot_paused),
       ])
-      return { rules: ruleRows, recent_actions: recent, never_autonomous: NEVER_AUTONOMOUS }
+      const rules = await Promise.all(
+        ruleRows.map(async (r) => ({
+          ...r,
+          shadow: r.mode === 'shadow' ? await shadowStats(db, r.rule) : null,
+        })),
+      )
+      return {
+        rules,
+        recent_actions: recent,
+        never_autonomous: NEVER_AUTONOMOUS,
+        paused,
+        shadow_promotion: SHADOW_PROMOTION,
+      }
     },
   )
 
@@ -2955,19 +3006,40 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         return reply
           .status(404)
           .send({ error: 'Unknown autopilot rule — not in the automatable registry' })
-      const { enabled, max_blast_radius, cooldown_minutes, reason } = parsed.data
+      const { enabled, mode, max_blast_radius, cooldown_minutes, reason } = parsed.data
       if (
         enabled === undefined &&
+        mode === undefined &&
         max_blast_radius === undefined &&
         cooldown_minutes === undefined
       ) {
         return reply.status(400).send({ error: 'Nothing to update' })
+      }
+      if (mode === 'live') {
+        // Promotion gate: a rule that has been shadowing only goes live once
+        // an operator has verified enough of its "would do" rows as right.
+        const current = (await listAutopilotRules(db)).find((r) => r.rule === rule.id)
+        if (current?.mode === 'shadow') {
+          const stats = await shadowStats(db, rule.id)
+          if (!stats.promotable) {
+            return reply.status(409).send({
+              error:
+                `Shadow track record too thin to go live: ${stats.reviewed} reviewed ` +
+                `(need ${SHADOW_PROMOTION.min_reviewed}), ` +
+                `${stats.precision === null ? 'no verdicts yet' : `${Math.round(stats.precision * 100)}% right`} ` +
+                `(need ${SHADOW_PROMOTION.min_precision * 100}%)`,
+              code: 'shadow_not_promotable',
+              shadow: stats,
+            })
+          }
+        }
       }
       const set: Record<string, unknown> = {
         updated_by: request.operatorContext?.user_id,
         updated_at: new Date(),
       }
       if (enabled !== undefined) set['enabled'] = enabled
+      if (mode !== undefined) set['mode'] = mode
       if (max_blast_radius !== undefined) set['max_blast_radius'] = max_blast_radius
       if (cooldown_minutes !== undefined) set['cooldown_minutes'] = cooldown_minutes
       await autopilotRules.updateOne(
@@ -2975,13 +3047,48 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         { $set: set, $setOnInsert: { rule: rule.id } },
         { upsert: true },
       )
-      await audit.log(request, 'operator.autopilot.update', 'autopilot_rule', rule.id, reason, {
-        changes: { enabled, max_blast_radius, cooldown_minutes },
-      })
+      await audit.log(
+        request,
+        mode !== undefined ? 'operator.autopilot.mode' : 'operator.autopilot.update',
+        'autopilot_rule',
+        rule.id,
+        reason,
+        { changes: { enabled, mode, max_blast_radius, cooldown_minutes } },
+      )
       const updated = await autopilotRules.findOne({ rule: rule.id }, { projection: { _id: 0 } })
       return {
         rule: { ...rule.defaults, ...updated, label: rule.label, description: rule.description },
       }
+    },
+  )
+
+  /** Operator's verdict on one shadow row — "would that have been right?".
+   *  These verdicts are the only thing that can unlock shadow → live. */
+  app.post<{ Params: { id: string } }>(
+    '/operator/autopilot/shadow/:id/review',
+    { preHandler: requireOperator(db, 'operations.manage') },
+    async (request, reply) => {
+      const parsed = z
+        .object({ verdict: z.enum(['right', 'wrong']), reason: z.string().trim().min(5).max(500) })
+        .safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid review', issues: parsed.error.issues })
+      const reviewed = await reviewShadowRow(
+        db,
+        request.params.id,
+        parsed.data.verdict,
+        request.operatorContext?.user_id ?? 'unknown',
+      )
+      if (!reviewed) return reply.status(404).send({ error: 'Shadow row not found' })
+      await audit.log(
+        request,
+        'operator.autopilot.shadow_review',
+        'autopilot_action',
+        request.params.id,
+        parsed.data.reason,
+        { rule: reviewed.rule, verdict: parsed.data.verdict },
+      )
+      return { ok: true, shadow: await shadowStats(db, reviewed.rule) }
     },
   )
 
@@ -3022,67 +3129,15 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
         return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-      const action = await autopilotActions.findOne({ id: request.params.id })
-      if (!action || action['status'] !== 'proposed' || !action['proposal']) {
-        return reply.status(404).send({ error: 'Proposal not found or already resolved' })
-      }
-      const proposal = action['proposal'] as NonNullable<AutopilotActionDoc['proposal']>
-      const roles = (request.operatorContext?.roles ?? []) as PlatformRole[]
-      if (!hasOperatorPermission(roles, proposal.required_permission as OperatorPermission)) {
-        return reply
-          .status(403)
-          .send({ error: `This proposal requires ${proposal.required_permission}` })
-      }
-      const handler = PROPOSAL_HANDLERS[proposal.kind]
-      if (!handler)
-        return reply.status(400).send({ error: `Unknown proposal kind: ${proposal.kind}` })
-
-      // Claim first: proposed → approved is atomic, so two racing approvers
-      // can't both execute the underlying mutation. A crash mid-handler
-      // leaves 'approved' — visible as stuck, never silently re-run.
-      const claim = await autopilotActions.updateOne(
-        { id: action['id'], status: 'proposed' },
-        {
-          $set: {
-            status: 'approved',
-            resolved_by: request.operatorContext?.user_id,
-            resolved_at: new Date(),
-          },
-        },
-      )
-      if (claim.modifiedCount === 0)
-        return reply.status(409).send({ error: 'Proposal already resolved' })
-
-      let result: string
-      let finalStatus: 'executed' | 'failed' = 'executed'
-      try {
-        result = await handler(db, proposal.payload, {
-          llmFor: taskLlmFor('marketing.social_draft.v1'),
-        })
-      } catch (err) {
-        finalStatus = 'failed'
-        result = String(err).slice(0, 300)
-      }
-      await autopilotActions.updateOne(
-        { id: action['id'] },
-        { $set: { status: finalStatus, result } },
-      )
-      await audit.log(
+      const out = await approveProposal(
+        db,
+        audit,
         request,
-        'operator.autopilot.approve',
-        'autopilot_action',
-        action['id'] as string,
+        request.params.id,
         parsed.data.reason,
-        {
-          kind: proposal.kind,
-          target: action['target_id'],
-          status: finalStatus,
-          result,
-        },
+        taskLlmFor('marketing.social_draft.v1'),
       )
-      if (finalStatus === 'failed')
-        return reply.status(502).send({ error: `Proposal execution failed: ${result}` })
-      return { ok: true, result }
+      return reply.status(out.status).send(out.body)
     },
   )
 
@@ -3095,27 +3150,294 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
       const parsed = ReasonSchema.safeParse(request.body)
       if (!parsed.success)
         return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
-      const result = await autopilotActions.updateOne(
-        { id: request.params.id, status: 'proposed' },
-        {
-          $set: {
-            status: 'rejected',
-            result: parsed.data.reason,
-            resolved_by: request.operatorContext?.user_id,
-            resolved_at: new Date(),
-          },
+      const out = await rejectProposal(db, audit, request, request.params.id, parsed.data.reason)
+      return reply.status(out.status).send(out.body)
+    },
+  )
+
+  // ── Marketing revenue (read-only Stripe) ────────────────────────────────
+  // Revenue truth for marketing intelligence. The sync reads Stripe with a
+  // restricted key only (STRIPE_READONLY_KEY) and writes our own
+  // revenue_events / revenue_subscriptions; it can never change billing.
+
+  app.get(
+    '/operator/marketing/revenue',
+    { preHandler: requireOperator(db, 'marketing.read') },
+    async () => ({
+      ...(await readRevenueSnapshot(db)),
+      stripe_configured: Boolean(process.env['STRIPE_READONLY_KEY']),
+    }),
+  )
+
+  app.post(
+    '/operator/marketing/revenue/sync',
+    { preHandler: requireOperator(db, 'operations.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      let source
+      try {
+        source = readonlyStripeFromEnv()
+      } catch (err) {
+        return reply.status(400).send({ error: (err as Error).message })
+      }
+      if (!source)
+        return reply.status(409).send({
+          error:
+            'STRIPE_READONLY_KEY is not set — create a restricted read-only key in Stripe first',
+          code: 'stripe_readonly_not_configured',
+        })
+      try {
+        const result = await syncRevenue(db, source)
+        await audit.log(
+          request,
+          'operator.marketing.revenue_sync',
+          'revenue',
+          'stripe',
+          parsed.data.reason,
+          { ...result },
+        )
+        return result
+      } catch (err) {
+        request.log.error({ err }, 'Revenue sync failed')
+        return reply.status(502).send({ error: 'Stripe revenue sync failed' })
+      }
+    },
+  )
+
+  // ── Marketing economics — which channels bring paying families ──────────
+  // Aggregate-only: counts by source / campaign / content item with plausible
+  // ranges and a confidence label. Spend is typed in by an operator (no
+  // ad-platform API); revenue comes from the read-only Stripe sync above.
+
+  const EconomicsQuerySchema = z.object({
+    days: z.coerce.number().int().min(7).max(365).default(90),
+    model: z.enum(['first', 'last']).default('first'),
+  })
+
+  app.get(
+    '/operator/marketing/economics',
+    { preHandler: requireOperator(db, 'marketing.read') },
+    async (request, reply) => {
+      const parsed = EconomicsQuerySchema.safeParse(request.query)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues })
+      const snapshot = await readRevenueSnapshot(db)
+      const arpu =
+        snapshot.synced && snapshot.active_subscriptions > 0
+          ? Math.round(snapshot.mrr_pence / snapshot.active_subscriptions)
+          : null
+      const view = await readEconomics(db, { ...parsed.data, arpu_pence: arpu })
+      return {
+        ...view,
+        revenue: {
+          synced: snapshot.synced,
+          last_sync_at: snapshot.last_sync_at,
+          mrr_pence: snapshot.synced ? snapshot.mrr_pence : null,
+          livemode: snapshot.livemode,
         },
-      )
-      if (result.matchedCount === 0)
-        return reply.status(404).send({ error: 'Proposal not found or already resolved' })
+        rollup_ready: await isRollupReady(db),
+      }
+    },
+  )
+
+  const SpendCreateSchema = z.object({
+    month: z.string(),
+    channel: z.string().trim().toLowerCase(),
+    amount_pence: z.number(),
+    note: z.string().trim().max(200).optional(),
+    reason: z.string().trim().min(5).max(500),
+  })
+
+  app.get(
+    '/operator/marketing/spend',
+    { preHandler: requireOperator(db, 'marketing.read') },
+    async () => ({ entries: await listSpend(db) }),
+  )
+
+  app.post(
+    '/operator/marketing/spend',
+    { preHandler: requireOperator(db, 'marketing.manage') },
+    async (request, reply) => {
+      const parsed = SpendCreateSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid spend entry', issues: parsed.error.issues })
+      const { reason, ...input } = parsed.data
+      const problem = validateSpend(input)
+      if (problem) return reply.status(400).send({ error: problem })
+      const entry = await addSpend(db, input, request.operatorContext?.user_id ?? 'unknown')
       await audit.log(
         request,
-        'operator.autopilot.reject',
-        'autopilot_action',
-        request.params.id,
+        'operator.marketing.spend_add',
+        'marketing_spend',
+        entry.id,
+        reason,
+        {
+          month: entry.month,
+          channel: entry.channel,
+          amount_pence: entry.amount_pence,
+        },
+      )
+      return reply.status(201).send({ entry })
+    },
+  )
+
+  app.delete<{ Params: { id: string } }>(
+    '/operator/marketing/spend/:id',
+    { preHandler: requireOperator(db, 'marketing.manage') },
+    async (request, reply) => {
+      const parsed = ReasonSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'A reason of at least 5 characters is required' })
+      const removed = await deleteSpend(db, request.params.id)
+      if (!removed) return reply.status(404).send({ error: 'Spend entry not found' })
+      await audit.log(
+        request,
+        'operator.marketing.spend_delete',
+        'marketing_spend',
+        removed.id,
         parsed.data.reason,
+        { month: removed.month, channel: removed.channel, amount_pence: removed.amount_pence },
       )
       return { ok: true }
+    },
+  )
+
+  // ── Mission Control — one ranked list of decisions waiting on a human ───
+  // Read-only aggregation (operator/mission-control.ts) plus a batch endpoint
+  // that is deliberately narrow: only autopilot proposals (approve/reject) and
+  // alert acknowledgements. Posts, campaigns, four-eyes approvals and erasure
+  // are never batched — they publish or destroy, so each keeps its own click
+  // (intent 03; CLAUDE.md trust tiers). Every item goes through the same
+  // permission check, atomic claim and audit row as its single-item route.
+
+  app.get(
+    '/operator/mission-control',
+    { preHandler: requireOperator(db, 'overview.read') },
+    async (request) => {
+      const operator = request.operatorContext!
+      const [decisions, config] = await Promise.all([
+        buildDecisions(db, { user_id: operator.user_id, roles: operator.roles }),
+        getPlatformConfig(db),
+      ])
+      return { decisions, autopilot_paused: config.autopilot_paused }
+    },
+  )
+
+  const BatchSchema = z.object({
+    items: z
+      .array(
+        z.object({
+          id: z.string().min(3).max(200),
+          action: z.enum(['approve', 'reject', 'ack']),
+        }),
+      )
+      .min(1)
+      .max(20),
+    reason: z.string().trim().min(5).max(500),
+  })
+
+  app.post(
+    '/operator/mission-control/batch',
+    { preHandler: requireOperator(db, 'overview.read', { stepUp: true }) },
+    async (request, reply) => {
+      const parsed = BatchSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid batch', issues: parsed.error.issues })
+      const { items, reason } = parsed.data
+      if (new Set(items.map((i) => i.id)).size !== items.length)
+        return reply.status(400).send({ error: 'Duplicate items in batch' })
+
+      // Validate the whole batch's shape before touching anything — a
+      // non-batchable item rejects the request rather than half-applying it.
+      const parsedItems = items.map((item) => {
+        const cut = item.id.indexOf(':')
+        return { ...item, kind: item.id.slice(0, cut), rawId: item.id.slice(cut + 1) }
+      })
+      for (const item of parsedItems) {
+        const ok =
+          (item.kind === 'proposal' && (item.action === 'approve' || item.action === 'reject')) ||
+          (item.kind === 'alert' && item.action === 'ack')
+        if (!ok)
+          return reply.status(400).send({
+            error: `Not batchable: ${item.id} (${item.action}). Only proposal approve/reject and alert ack are.`,
+          })
+      }
+
+      const roles = (request.operatorContext?.roles ?? []) as PlatformRole[]
+      const results: { id: string; ok: boolean; status: number; error?: string }[] = []
+      for (const item of parsedItems) {
+        try {
+          if (item.kind === 'proposal' && item.action === 'approve') {
+            const out = await approveProposal(
+              db,
+              audit,
+              request,
+              item.rawId,
+              reason,
+              taskLlmFor('marketing.social_draft.v1'),
+            )
+            results.push({
+              id: item.id,
+              ok: out.status === 200,
+              status: out.status,
+              ...(out.status === 200 ? {} : { error: String(out.body['error']) }),
+            })
+          } else if (item.kind === 'proposal') {
+            if (!hasOperatorPermission(roles, 'operations.manage')) {
+              results.push({
+                id: item.id,
+                ok: false,
+                status: 403,
+                error: 'Missing operator permission: operations.manage',
+              })
+              continue
+            }
+            const out = await rejectProposal(db, audit, request, item.rawId, reason)
+            results.push({
+              id: item.id,
+              ok: out.status === 200,
+              status: out.status,
+              ...(out.status === 200 ? {} : { error: String(out.body['error']) }),
+            })
+          } else {
+            const now = new Date()
+            await alerts.updateOne(
+              { dedup_key: item.rawId },
+              {
+                $set: {
+                  status: 'ack',
+                  updated_by: request.operatorContext?.user_id,
+                  updated_at: now,
+                  snoozed_until: null,
+                },
+                $setOnInsert: { dedup_key: item.rawId, created_at: now },
+              },
+              { upsert: true },
+            )
+            await audit.log(request, 'operator.alert.ack', 'alert', item.rawId, reason)
+            results.push({ id: item.id, ok: true, status: 200 })
+          }
+        } catch (err) {
+          // One item failing must not abort the rest — report it per item.
+          request.log.error({ err, id: item.id }, 'Mission Control batch item failed')
+          results.push({ id: item.id, ok: false, status: 500, error: 'Unexpected error' })
+        }
+      }
+      await audit.log(
+        request,
+        'operator.mission_control.batch',
+        'mission_control',
+        'batch',
+        reason,
+        {
+          requested: items.length,
+          succeeded: results.filter((r) => r.ok).length,
+          failed: results.filter((r) => !r.ok).length,
+        },
+      )
+      return { results }
     },
   )
 
@@ -3423,6 +3745,361 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     },
   )
 
+  // ── AI gateway health (PRD-217) ────────────────────────────────────────
+  // The October Ask Keel outage was invisible because nothing surfaced the
+  // model path: every call fell back for days and no operator view noticed.
+  // This endpoint is metadata-only by design — task ids, models, outcomes,
+  // latencies, costs, registry status. Prompt and completion content never
+  // leaves the guarded path, and this surface must never carry it.
+
+  // One metadata row per governed call, written by the gateway's onCall
+  // hook. Read pattern: task × time window.
+  db.collection('ai_task_calls')
+    .createIndex({ task_id: 1, created_at: -1 })
+    .catch(() => {})
+  db.collection('ai_task_calls')
+    .createIndex({ created_at: 1 }, { expireAfterSeconds: 30 * 24 * 3600 })
+    .catch(() => {})
+  db.collection('assistant_answer_routes')
+    .createIndex({ day: 1 })
+    .catch(() => {})
+  db.collection('ai_cascade_funnel')
+    .createIndex({ day: 1 })
+    .catch(() => {})
+  db.collection('life_change_calibration')
+    .createIndex({ tenant_id: 1, fired_at: -1 })
+    .catch(() => {})
+
+  function percentile(sorted: number[], p: number): number | null {
+    if (sorted.length === 0) return null
+    const idx = Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1)
+    return sorted[Math.max(0, idx)]!
+  }
+
+  app.get<{ Querystring: { days?: string } }>(
+    '/operator/ai-health',
+    { preHandler: requireOperator(db, 'operations.read') },
+    async (request) => {
+      const days = Math.min(30, Math.max(1, Number(request.query.days) || 7))
+      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+      const sinceDay = since.toISOString().slice(0, 10)
+
+      const [
+        callRows,
+        costRows,
+        answerRows,
+        guardRows,
+        guardTaskRows,
+        funnelRows,
+        shadowRows,
+        config,
+      ] = await Promise.all([
+        db
+          .collection('ai_task_calls')
+          .aggregate([
+            { $match: { created_at: { $gte: since } } },
+            {
+              $group: {
+                _id: '$task_id',
+                calls: { $sum: 1 },
+                // Calls refused by the operator switch are not provider
+                // failures — they get their own count so a deliberately-off
+                // task doesn't read as an outage.
+                failures: {
+                  $sum: {
+                    $cond: [
+                      { $and: [{ $eq: ['$ok', false] }, { $ne: ['$outcome', 'disabled'] }] },
+                      1,
+                      0,
+                    ],
+                  },
+                },
+                disabled_refusals: {
+                  $sum: { $cond: [{ $eq: ['$outcome', 'disabled'] }, 1, 0] },
+                },
+                latencies: { $push: '$latency_ms' },
+                processors: { $addToSet: '$processor' },
+              },
+            },
+          ])
+          .toArray(),
+        db
+          .collection('llm_usage')
+          .aggregate([
+            { $match: { created_at: { $gte: since } } },
+            {
+              $group: {
+                _id: '$workflow_id',
+                cost_microdollars: { $sum: '$cost_microdollars' },
+                billed_calls: { $sum: 1 },
+              },
+            },
+          ])
+          .toArray(),
+        db
+          .collection('assistant_answer_routes')
+          .aggregate([
+            { $match: { day: { $gte: sinceDay } } },
+            { $group: { _id: '$route', count: { $sum: '$count' } } },
+          ])
+          .toArray(),
+        db
+          .collection('llm_guard_events')
+          .aggregate([
+            { $match: { persisted_at: { $gte: since } } },
+            // Event type + action only — never field_path or content hashes.
+            { $group: { _id: { type: '$type', action: '$action' }, count: { $sum: 1 } } },
+          ])
+          .toArray(),
+        // PRD-215 P8: output-guard rejections per task, deduped by call_id —
+        // a flagged call is spend that did not produce a clean result, so it
+        // is subtracted from the accepted count in cost_per_correct.
+        db
+          .collection('llm_guard_events')
+          .aggregate([
+            {
+              $match: {
+                persisted_at: { $gte: since },
+                type: 'forbidden_output',
+                task_id: { $exists: true },
+              },
+            },
+            { $group: { _id: '$task_id', flagged_call_ids: { $addToSet: '$call_id' } } },
+          ])
+          .toArray(),
+        db
+          .collection('ai_cascade_funnel')
+          .aggregate([
+            { $match: { day: { $gte: sinceDay } } },
+            {
+              $group: {
+                _id: { task_id: '$task_id', stage: '$stage' },
+                count: { $sum: '$count' },
+              },
+            },
+          ])
+          .toArray(),
+        // PRD-213: delivery-judge shadow evidence — outcome counts only,
+        // never insight content (rows carry ids + decisions only already).
+        db
+          .collection('judge_shadow_results')
+          .aggregate([
+            { $match: { created_at: { $gte: since } } },
+            { $group: { _id: '$outcome', count: { $sum: 1 } } },
+          ])
+          .toArray(),
+        getPlatformConfig(db),
+      ])
+
+      const callsByTask = new Map(callRows.map((r) => [r['_id'] as string, r]))
+      const costByTask = new Map(costRows.map((r) => [r['_id'] as string, r]))
+      const guardFlaggedByTask = new Map(
+        guardTaskRows.map((r) => [r['_id'] as string, (r['flagged_call_ids'] as string[]).length]),
+      )
+      const breakers = getAllCircuitBreakers()
+
+      // Every registered task appears, including silent ones — a task that
+      // exists but never calls is itself signal (e.g. a dead pipeline).
+      const tasks = [...getTaskRegistry().values()].map((policy) => {
+        const stats = callsByTask.get(policy.task_id)
+        const calls = (stats?.['calls'] as number | undefined) ?? 0
+        const failures = (stats?.['failures'] as number | undefined) ?? 0
+        const disabledRefusals = (stats?.['disabled_refusals'] as number | undefined) ?? 0
+        const latencies = ((stats?.['latencies'] as number[] | undefined) ?? [])
+          .slice()
+          .sort((a, b) => a - b)
+        const breakerKey = `task:${policy.task_id}`
+        const cost =
+          (costByTask.get(policy.task_id)?.['cost_microdollars'] as number | undefined) ?? 0
+        // PRD-215 P8: accepted = provider calls that returned a usable
+        // result, minus calls whose output the guard had to reject.
+        const acceptedCalls = calls - failures - disabledRefusals
+        const guardRejected = guardFlaggedByTask.get(policy.task_id) ?? 0
+        const correctCalls = Math.max(0, acceptedCalls - guardRejected)
+        return {
+          task_id: policy.task_id,
+          data_boundary: policy.data_boundary,
+          budget_class: policy.budget_class,
+          deadline_ms: policy.deadline_ms,
+          primary_model: policy.primary_model,
+          serving_processor: resolveServingProcessor(policy),
+          breaker_state: breakers.get(breakerKey)?.getState() ?? 'closed',
+          disabled: config.ai_disabled_tasks.includes(policy.task_id),
+          calls,
+          failures,
+          disabled_refusals: disabledRefusals,
+          accepted_calls: acceptedCalls,
+          guard_rejected_calls: guardRejected,
+          correct_calls: correctCalls,
+          failure_rate: calls > 0 ? Math.round((failures / calls) * 1000) / 1000 : 0,
+          p50_ms: percentile(latencies, 50),
+          p95_ms: percentile(latencies, 95),
+          cost_microdollars: cost,
+          cost_per_correct_microdollars: correctCalls > 0 ? Math.round(cost / correctCalls) : null,
+        }
+      })
+
+      const answerMix = Object.fromEntries(answerRows.map((r) => [r['_id'], r['count']])) as Record<
+        string,
+        number
+      >
+      const answerTotal = Object.values(answerMix).reduce((s, n) => s + n, 0)
+      const generatedCount = (answerMix['generated'] as number | undefined) ?? 0
+
+      return {
+        generated_at: new Date().toISOString(),
+        window_days: days,
+        tasks,
+        processors: [...getProcessorRegistry().values()].map((e) => ({
+          id: e.id,
+          name: e.name,
+          hosting: e.hosting,
+          status: e.status,
+          reviewed_at: e.reviewed_at,
+          review_due: e.review_due,
+          review_lapsed: e.status === 'approved' && Date.parse(e.review_due) < Date.now(),
+        })),
+        assistant_answer_mix: {
+          ...answerMix,
+          total: answerTotal,
+          // PRD-212's KPI — the share of asks that needed a model call.
+          generation_escape_rate:
+            answerTotal > 0 ? Math.round((generatedCount / answerTotal) * 1000) / 1000 : null,
+        },
+        guard_events: guardRows.map((r) => ({
+          type: (r['_id'] as { type: string }).type,
+          action: (r['_id'] as { action: string }).action,
+          count: r['count'],
+        })),
+        // PRD-215: per-task cascade tier counts (rules / encoder / model).
+        // generator_share is the share settled by the model itself — the
+        // regression signal the alert job pages on.
+        cascade_funnel: funnelRows.map((r) => ({
+          task_id: (r['_id'] as { task_id: string }).task_id,
+          stage: (r['_id'] as { stage: string }).stage,
+          count: r['count'],
+        })),
+        // PRD-213: the local judge earns authority only when
+        // shadow_more_permissive holds at zero for the window.
+        judge_shadow: {
+          outcomes: Object.fromEntries(
+            shadowRows.map((r) => [r['_id'] as string, r['count'] as number]),
+          ),
+          shadow_more_permissive:
+            (shadowRows.find((r) => r['_id'] === 'shadow_more_permissive')?.['count'] as
+              number | undefined) ?? 0,
+        },
+        disabled_tasks: config.ai_disabled_tasks,
+        local_model: localModelQueueSummary(),
+      }
+    },
+  )
+
+  // ── Drift-sentinel calibration (PRD-213 M4) ─────────────────────────────
+  // The widening gate's evidence surface: how the shadow-only candidate
+  // signals are performing per tenant — fired→matched is the precision
+  // proxy, abstained→matched the abstention band's miss rate. Reason codes
+  // only; never profile values (the nudge may not name its guess, and this
+  // surface must not leak it either).
+
+  app.get<{ Querystring: { tenant?: string; days?: string } }>(
+    '/operator/life-change-calibration',
+    { preHandler: requireOperator(db, 'tenants.read') },
+    async (request, reply) => {
+      const tenantId = request.query.tenant
+      if (!tenantId) {
+        return reply.status(400).send({ error: 'tenant=<tenant_id> is required' })
+      }
+      const days = Math.min(365, Math.max(1, Number(request.query.days) || 90))
+      return {
+        tenant_id: tenantId,
+        window_days: days,
+        match_window_days: CALIBRATION_MATCH_WINDOW_DAYS,
+        reasons: await calibrationSummary(db, tenantId, days),
+      }
+    },
+  )
+
+  // ── AI task runtime switch (PRD-217) ───────────────────────────────────
+  // Disable → the gateway refuses the task with TaskDisabledError before any
+  // provider is contacted; the caller's existing failure path serves its
+  // honest fallback (never a silent swap to another processor). Enable
+  // restores it. Both directions are reasoned + audited; tasks whose data
+  // must stay on LifeKeel infra (lifekeel_infra_required) additionally need
+  // a second operator's confirmation — the same four-eyes gate as tenant
+  // suspension.
+
+  const AiTaskStateSchema = z.object({
+    enabled: z.boolean(),
+    reason: z.string().min(5).max(500),
+    confirmation_id: z.string().optional(),
+  })
+
+  app.post<{ Params: { taskId: string } }>(
+    '/operator/ai-tasks/:taskId/state',
+    { preHandler: requireOperator(db, 'operations.manage', { stepUp: true }) },
+    async (request, reply) => {
+      const parsed = AiTaskStateSchema.safeParse(request.body)
+      if (!parsed.success)
+        return reply.status(400).send({ error: 'Invalid body', issues: parsed.error.issues })
+      const { enabled, reason } = parsed.data
+      const policy = getTaskRegistry().get(request.params.taskId)
+      if (!policy) return reply.status(404).send({ error: 'Unknown AI task' })
+
+      const before = await getPlatformConfig(db)
+      const currentlyDisabled = before.ai_disabled_tasks.includes(policy.task_id)
+      if (currentlyDisabled === !enabled)
+        return reply
+          .status(409)
+          .send({ error: `Task is already ${enabled ? 'enabled' : 'disabled'}` })
+
+      const action = enabled ? 'operator.ai_task.enable' : 'operator.ai_task.disable'
+      // Disabling OR re-enabling a quarantine-boundary task changes what a
+      // family's most sensitive asks can reach — four-eyes either way.
+      if (policy.data_boundary === 'lifekeel_infra_required') {
+        const gate = await checkDualApproval(db, audit, request, {
+          action,
+          targetType: 'ai_task',
+          targetId: policy.task_id,
+          payload: { enabled },
+          permission: 'operations.manage',
+          reason,
+        })
+        if (gate.kind !== 'proceed') return reply.status(gate.status).send(gate.body)
+      }
+
+      if (enabled) {
+        await configCol.updateOne(
+          { key: CONFIG_DOC_KEY },
+          {
+            $pullAll: { ai_disabled_tasks: [policy.task_id] },
+            $set: { updated_by: request.operatorContext?.user_id, updated_at: new Date() },
+          },
+        )
+      } else {
+        await configCol.updateOne(
+          { key: CONFIG_DOC_KEY },
+          {
+            $addToSet: { ai_disabled_tasks: policy.task_id },
+            $set: { updated_by: request.operatorContext?.user_id, updated_at: new Date() },
+          },
+          { upsert: true },
+        )
+      }
+      await configHistory.insertOne({
+        changes: { ai_disabled_tasks: enabled ? 'remove' : 'add' },
+        task_id: policy.task_id,
+        before: before.ai_disabled_tasks,
+        changed_by: request.operatorContext?.user_id,
+        reason,
+        created_at: new Date(),
+      })
+      invalidatePlatformConfigCache()
+      await audit.log(request, action, 'ai_task', policy.task_id, reason)
+      return { ok: true, task_id: policy.task_id, enabled }
+    },
+  )
+
   /** Manual retry of a failed reminder delivery — resets it to 'scheduled'
    *  with zeroed attempts so the next dispatcher run takes a fresh shot.
    *  Audited like every other operator mutation. */
@@ -3519,7 +4196,7 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
   // configuration.read; every write is reasoned, audited, and kept in
   // platform_config_history.
 
-  const configCol = db.collection('platform_config')
+  const configCol = db.collection<{ key: string } & Partial<PlatformConfig>>('platform_config')
   const configHistory = db.collection('platform_config_history')
 
   app.get(
@@ -3552,8 +4229,14 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
     maintenance_mode: z.boolean().optional(),
     signups_enabled: z.boolean().optional(),
     marketing_paused: z.boolean().optional(),
+    autopilot_paused: z.boolean().optional(),
     /** null clears a scheduled window; object sets/replaces it. */
     maintenance_window: MaintenanceWindowSchema.nullable().optional(),
+    /** Runtime LLM provider pick; 'auto'/null clears back to router detection. */
+    llm_provider_override: z
+      .enum(['auto', 'anthropic', 'openai', 'azure', 'vertex', 'ollama', 'groq', 'xai'])
+      .nullable()
+      .optional(),
     reason: z.string().min(5).max(500),
   })
 
@@ -3575,13 +4258,24 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         maintenance_mode: changes.maintenance_mode ?? before.maintenance_mode,
         signups_enabled: changes.signups_enabled ?? before.signups_enabled,
         marketing_paused: changes.marketing_paused ?? before.marketing_paused,
+        autopilot_paused: changes.autopilot_paused ?? before.autopilot_paused,
         maintenance_window:
           changes.maintenance_window === undefined
             ? before.maintenance_window
             : changes.maintenance_window,
+        // 'auto' and null both mean "router decides" — stored as null.
+        llm_provider_override:
+          changes.llm_provider_override === undefined
+            ? before.llm_provider_override
+            : changes.llm_provider_override === 'auto' || changes.llm_provider_override === null
+              ? null
+              : changes.llm_provider_override,
+        // Never set via the generic config write — only the audited
+        // /operator/ai-tasks/:taskId/state route touches it (PRD-217).
+        ai_disabled_tasks: before.ai_disabled_tasks,
       }
-      const changedKeys = (Object.keys(changes) as (keyof PlatformConfig)[]).filter(
-        (k) => changes[k] !== before[k],
+      const changedKeys = (Object.keys(changes) as (keyof typeof changes)[]).filter(
+        (k) => changes[k] !== before[k as keyof PlatformConfig],
       )
       if (changedKeys.length === 0) return reply.status(400).send({ error: 'No effective changes' })
 
@@ -3590,6 +4284,8 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         {
           $set: {
             ...changes,
+            // Stored normalized — 'auto' and explicit null both become null.
+            llm_provider_override: next.llm_provider_override,
             updated_by: request.operatorContext?.user_id,
             updated_at: new Date(),
           },

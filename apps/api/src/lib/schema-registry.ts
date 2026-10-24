@@ -1,6 +1,6 @@
 /**
  * Signal Schema Validation Pipeline
- * 
+ *
  * Validates incoming signals against registered schemas.
  * Provides graceful degradation for invalid signals.
  */
@@ -33,7 +33,11 @@ export interface SchemaRegistry {
   register(schema: SchemaDefinition): void
   get(signalType: string, version?: string): SchemaDefinition | undefined
   validate(signal: Record<string, unknown>, signalType: string, version?: string): ValidationResult
-  checkCompatibility(signalType: string, signalVersion: string, detectorVersion: string): CompatibilityResult
+  checkCompatibility(
+    signalType: string,
+    signalVersion: string,
+    detectorVersion: string,
+  ): CompatibilityResult
 }
 
 export class SignalSchemaRegistry implements SchemaRegistry {
@@ -49,9 +53,13 @@ export class SignalSchemaRegistry implements SchemaRegistry {
     return this.schemas.get(key)
   }
 
-  validate(signal: Record<string, unknown>, signalType: string, version = '0.0.0'): ValidationResult {
+  validate(
+    signal: Record<string, unknown>,
+    signalType: string,
+    version = '0.0.0',
+  ): ValidationResult {
     const schema = this.get(signalType, version)
-    
+
     if (!schema) {
       return {
         valid: false,
@@ -75,7 +83,7 @@ export class SignalSchemaRegistry implements SchemaRegistry {
       schema.schema.parse(signal)
     } catch (err) {
       if (err instanceof z.ZodError) {
-        for (const issue of err.errors) {
+        for (const issue of err.issues) {
           errors.push(`${issue.path.join('.')}: ${issue.message}`)
         }
       } else {
@@ -98,9 +106,13 @@ export class SignalSchemaRegistry implements SchemaRegistry {
     }
   }
 
-  checkCompatibility(signalType: string, signalVersion: string, detectorVersion: string): CompatibilityResult {
+  checkCompatibility(
+    signalType: string,
+    signalVersion: string,
+    detectorVersion: string,
+  ): CompatibilityResult {
     const schema = this.get(signalType, signalVersion)
-    
+
     if (!schema) {
       return {
         compatible: false,
@@ -115,14 +127,20 @@ export class SignalSchemaRegistry implements SchemaRegistry {
     }
 
     const detectorVer = parseVersion(detectorVersion)
-    const minVer = schema.min_compatible_version ? parseVersion(schema.min_compatible_version) : null
-    const maxVer = schema.max_compatible_version ? parseVersion(schema.max_compatible_version) : null
+    const minVer = schema.min_compatible_version
+      ? parseVersion(schema.min_compatible_version)
+      : null
+    const maxVer = schema.max_compatible_version
+      ? parseVersion(schema.max_compatible_version)
+      : null
 
     // Check if detector version is within compatible range
     if (minVer) {
-      if (detectorVer[0] < minVer[0] || 
-          (detectorVer[0] === minVer[0] && detectorVer[1] < minVer[1]) ||
-          (detectorVer[0] === minVer[0] && detectorVer[1] === minVer[1] && detectorVer[2] < minVer[2])) {
+      if (
+        detectorVer[0] < minVer[0] ||
+        (detectorVer[0] === minVer[0] && detectorVer[1] < minVer[1]) ||
+        (detectorVer[0] === minVer[0] && detectorVer[1] === minVer[1] && detectorVer[2] < minVer[2])
+      ) {
         return {
           compatible: false,
           reason: `Detector version ${detectorVersion} is below minimum compatible version ${schema.min_compatible_version}`,
@@ -131,9 +149,11 @@ export class SignalSchemaRegistry implements SchemaRegistry {
     }
 
     if (maxVer) {
-      if (detectorVer[0] > maxVer[0] ||
-          (detectorVer[0] === maxVer[0] && detectorVer[1] > maxVer[1]) ||
-          (detectorVer[0] === maxVer[0] && detectorVer[1] === maxVer[1] && detectorVer[2] > maxVer[2])) {
+      if (
+        detectorVer[0] > maxVer[0] ||
+        (detectorVer[0] === maxVer[0] && detectorVer[1] > maxVer[1]) ||
+        (detectorVer[0] === maxVer[0] && detectorVer[1] === maxVer[1] && detectorVer[2] > maxVer[2])
+      ) {
         return {
           compatible: false,
           reason: `Detector version ${detectorVersion} is above maximum compatible version ${schema.max_compatible_version}`,

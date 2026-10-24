@@ -27,28 +27,41 @@ import {
   cancelReminder,
   fetchAutomationSettings,
   fetchReminders,
+  fetchScopeContracts,
   updateAutomationSettings,
   type AutomationSettings,
   type PolicyReminder,
+  type ScopeContract,
 } from '@/lib/api'
 
 export default function AutomationSettingsPage() {
   const [settings, setSettings] = useState<AutomationSettings | null>(null)
   const [reminders, setReminders] = useState<PolicyReminder[]>([])
+  const [contracts, setContracts] = useState<ScopeContract[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const toast = useToast()
 
   useEffect(() => {
-    Promise.all([fetchAutomationSettings(), fetchReminders()]).then(([s, r]) => {
-      setSettings(s)
-      setReminders(r)
-      setLoading(false)
-    })
+    Promise.all([fetchAutomationSettings(), fetchReminders(), fetchScopeContracts()]).then(
+      ([s, r, c]) => {
+        setSettings(s)
+        setReminders(r)
+        setContracts(c)
+        setLoading(false)
+      },
+    )
   }, [])
 
-  const applyPatch = async (patch: Partial<Pick<AutomationSettings, 'dry_run_mode' | 'renewal_reminders_enabled' | 'auto_execute_enabled'>>) => {
+  const applyPatch = async (
+    patch: Partial<
+      Pick<
+        AutomationSettings,
+        'dry_run_mode' | 'renewal_reminders_enabled' | 'auto_execute_enabled'
+      >
+    >,
+  ) => {
     if (!settings || saving) return
     const previous = settings
     haptic('light')
@@ -65,7 +78,9 @@ export default function AutomationSettingsPage() {
     }
     if (!updated) {
       setSettings(previous)
-      setSaveError("That didn't save — your previous setting is still in place. Try again in a moment.")
+      setSaveError(
+        "That didn't save — your previous setting is still in place. Try again in a moment.",
+      )
       return
     }
     setSettings(updated)
@@ -78,12 +93,22 @@ export default function AutomationSettingsPage() {
       toast({ message: "Couldn't cancel that reminder — try again" })
       return
     }
-    setReminders((rs) => rs.map((r) => (r.id === id ? { ...r, status: 'cancelled', cancelled_reason: 'user_cancelled' } : r)))
+    setReminders((rs) =>
+      rs.map((r) =>
+        r.id === id ? { ...r, status: 'cancelled', cancelled_reason: 'user_cancelled' } : r,
+      ),
+    )
   }
 
   const trustEntries = Object.entries(settings?.trust_level_by_workflow ?? {})
-  const upcomingReminders = reminders.filter((r) => r.status === 'scheduled' || r.status === 'sending')
-  const recentAutomatic = reminders.filter((r) => r.status === 'sent' || r.status === 'failed' || r.status === 'cancelled').slice(-5).reverse()
+  const upcomingReminders = reminders.filter(
+    (r) => r.status === 'scheduled' || r.status === 'sending',
+  )
+  const recentAutomatic = reminders
+    .filter((r) => r.status === 'sent' || r.status === 'failed' || r.status === 'cancelled')
+    .slice(-5)
+    .reverse()
+  const renewalContract = contracts.find((c) => c.scope_id === 'policy_renewal_reminders')
 
   return (
     <div className="px-5 pt-2 pb-8 space-y-5">
@@ -107,12 +132,14 @@ export default function AutomationSettingsPage() {
                 <div className="flex-1">
                   <div className="text-base font-semibold text-ink-primary">Dry-run mode</div>
                   <p className="text-sm text-ink-secondary leading-relaxed mt-1">
-                    When on, approving an insight records your decision and shows what would have run —
-                    no emails, messages, or external changes actually happen.
+                    When on, approving an insight records your decision and shows what would have
+                    run — no emails, messages, or external changes actually happen.
                   </p>
                   <div className="flex items-center justify-between mt-4">
                     <span className="text-sm font-medium text-ink-primary">
-                      {settings?.dry_run_mode ? 'On — nothing is sent' : 'Off — approved actions run for real'}
+                      {settings?.dry_run_mode
+                        ? 'On — nothing is sent'
+                        : 'Off — approved actions run for real'}
                     </span>
                     <button
                       role="switch"
@@ -138,25 +165,57 @@ export default function AutomationSettingsPage() {
             </GlassCard>
           </motion.div>
 
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+          >
             <GlassCard className="p-5">
               <div className="flex items-start gap-3">
                 <BellRing size={20} className="text-family-400 shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <div className="text-base font-semibold text-ink-primary">Policy renewal reminders</div>
+                  <div className="text-base font-semibold text-ink-primary">
+                    Policy renewal reminders
+                  </div>
                   <p className="text-sm text-ink-secondary leading-relaxed mt-1">
-                    Keel automatically reminds you on your devices before a policy on your financial
-                    profile renews — nothing is sent to your insurer, and no changes are made.
+                    {renewalContract?.terms_text ??
+                      'Keel automatically reminds you on your devices before a policy on your financial profile renews.'}
                   </p>
+                  {renewalContract && (
+                    <p className="text-xs text-ink-tertiary leading-relaxed mt-1">
+                      {renewalContract.boundary_text}
+                    </p>
+                  )}
+
+                  {renewalContract?.state === 'suspended' && (
+                    <div className="mt-3 rounded-xl bg-warning/10 border border-warning/20 px-3 py-2">
+                      <p className="text-xs font-medium text-warning">
+                        Paused automatically —{' '}
+                        {renewalContract.suspend_reason === 'repeated_delivery_failure'
+                          ? "reminders weren't reaching your devices"
+                          : 'something went wrong'}
+                        . Turn it back on to re-grant the scope.
+                      </p>
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between mt-4">
                     <span className="text-sm font-medium text-ink-primary">
-                      {settings?.renewal_reminders_enabled ? 'On — Keel reminds you' : 'Off'}
+                      {settings?.renewal_reminders_enabled
+                        ? 'On — Keel reminds you'
+                        : renewalContract?.state === 'suspended'
+                          ? 'Paused'
+                          : 'Off'}
                     </span>
                     <button
                       role="switch"
                       aria-checked={settings?.renewal_reminders_enabled ?? false}
                       aria-label="Policy renewal reminders"
-                      onClick={() => applyPatch({ renewal_reminders_enabled: !settings?.renewal_reminders_enabled })}
+                      onClick={() =>
+                        applyPatch({
+                          renewal_reminders_enabled: !settings?.renewal_reminders_enabled,
+                        })
+                      }
                       disabled={saving || settings === null}
                       className={`relative w-12 h-7 rounded-full transition-colors disabled:opacity-40 ${
                         settings?.renewal_reminders_enabled ? 'bg-family-500' : 'bg-tint/10'
@@ -164,7 +223,9 @@ export default function AutomationSettingsPage() {
                     >
                       <span
                         className={`absolute top-0.5 w-6 h-6 rounded-full bg-white transition-transform ${
-                          settings?.renewal_reminders_enabled ? 'translate-x-[22px]' : 'translate-x-0.5'
+                          settings?.renewal_reminders_enabled
+                            ? 'translate-x-[22px]'
+                            : 'translate-x-0.5'
                         }`}
                       />
                     </button>
@@ -172,11 +233,14 @@ export default function AutomationSettingsPage() {
 
                   {upcomingReminders.length > 0 && (
                     <div className="mt-4 space-y-2">
-                      <div className="text-xs font-semibold text-ink-tertiary uppercase tracking-wide">Coming up</div>
+                      <div className="text-xs font-semibold text-ink-tertiary uppercase tracking-wide">
+                        Coming up
+                      </div>
                       {upcomingReminders.map((r) => (
                         <div key={r.id} className="flex items-center justify-between gap-2">
                           <span className="text-sm text-ink-secondary truncate">
-                            {r.policy.provider} {r.policy.type.replace(/_/g, ' ')} — renews {r.renewal_date}
+                            {r.policy.provider} {r.policy.type.replace(/_/g, ' ')} — renews{' '}
+                            {r.renewal_date}
                           </span>
                           <button
                             onClick={() => handleCancelReminder(r.id)}
@@ -191,12 +255,44 @@ export default function AutomationSettingsPage() {
 
                   {recentAutomatic.length > 0 && (
                     <div className="mt-4 space-y-1.5">
-                      <div className="text-xs font-semibold text-ink-tertiary uppercase tracking-wide">Keel handled automatically</div>
+                      <div className="text-xs font-semibold text-ink-tertiary uppercase tracking-wide">
+                        Keel handled automatically
+                      </div>
                       {recentAutomatic.map((r) => (
                         <div key={r.id} className="text-sm text-ink-tertiary truncate">
-                          {r.status === 'sent' ? 'Reminded' : r.status === 'failed' ? 'Couldn’t send' : 'Cancelled'} · {r.policy.provider} {r.policy.type.replace(/_/g, ' ')} · {r.renewal_date}
+                          {r.status === 'sent'
+                            ? 'Reminded'
+                            : r.status === 'failed'
+                              ? 'Couldn’t send'
+                              : 'Cancelled'}{' '}
+                          · {r.policy.provider} {r.policy.type.replace(/_/g, ' ')} ·{' '}
+                          {r.renewal_date}
                         </div>
                       ))}
+                    </div>
+                  )}
+
+                  {renewalContract && renewalContract.state !== 'not_granted' && (
+                    <div className="mt-4 pt-3 border-t border-tint/[0.06]">
+                      <div className="text-xs font-semibold text-ink-tertiary uppercase tracking-wide">
+                        The grant
+                      </div>
+                      <p className="text-xs text-ink-tertiary mt-1.5 leading-relaxed">
+                        {renewalContract.state === 'granted' && renewalContract.granted_at
+                          ? `Granted ${new Date(renewalContract.granted_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })} · contract v${renewalContract.template_version}`
+                          : renewalContract.state === 'collapsed' && renewalContract.collapsed_at
+                            ? `Collapsed ${new Date(renewalContract.collapsed_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}${renewalContract.collapse_reason ? ` — ${renewalContract.collapse_reason}` : ''}`
+                            : renewalContract.state === 'suspended' && renewalContract.suspended_at
+                              ? `Suspended ${new Date(renewalContract.suspended_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`
+                              : `Contract v${renewalContract.template_version}`}
+                      </p>
+                      {renewalContract.adjustments.length > 0 && (
+                        <p className="text-xs text-ink-tertiary mt-1 leading-relaxed">
+                          {renewalContract.adjustments.length} automatic downward adjustment
+                          {renewalContract.adjustments.length === 1 ? '' : 's'} on record — scope
+                          only ever widens when you grant it again.
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -204,12 +300,18 @@ export default function AutomationSettingsPage() {
             </GlassCard>
           </motion.div>
 
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+          >
             <GlassCard className="p-5">
               <div className="flex items-start gap-3">
                 <Zap size={20} className="text-family-400 shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <div className="text-base font-semibold text-ink-primary">Let Keel act on earned trust</div>
+                  <div className="text-base font-semibold text-ink-primary">
+                    Let Keel act on earned trust
+                  </div>
                   <p className="text-sm text-ink-secondary leading-relaxed mt-1">
                     Once a kind of insight has earned full trust (5 approvals), Keel records its
                     recommendations as done automatically — after a one-hour window for you to
@@ -224,7 +326,9 @@ export default function AutomationSettingsPage() {
                       role="switch"
                       aria-checked={settings?.auto_execute_enabled ?? false}
                       aria-label="Let Keel act on earned trust"
-                      onClick={() => applyPatch({ auto_execute_enabled: !settings?.auto_execute_enabled })}
+                      onClick={() =>
+                        applyPatch({ auto_execute_enabled: !settings?.auto_execute_enabled })
+                      }
                       disabled={saving || settings === null}
                       className={`relative w-12 h-7 rounded-full transition-colors disabled:opacity-40 ${
                         settings?.auto_execute_enabled ? 'bg-family-500' : 'bg-tint/10'
@@ -242,15 +346,19 @@ export default function AutomationSettingsPage() {
             </GlassCard>
           </motion.div>
 
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+          >
             <GlassCard className="p-5">
               <div className="flex items-start gap-3">
                 <TrendingUp size={20} className="text-family-400 shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <div className="text-base font-semibold text-ink-primary">Trust Keel earns</div>
                   <p className="text-sm text-ink-secondary leading-relaxed mt-1">
-                    Every time you approve a recommendation, Keel's trust for that kind of action grows.
-                    It's earned, not set — which is why there's no edit control here.
+                    Every time you approve a recommendation, Keel's trust for that kind of action
+                    grows. It's earned, not set — which is why there's no edit control here.
                   </p>
                   {trustEntries.length === 0 ? (
                     <p className="text-sm text-ink-tertiary mt-3">
@@ -278,13 +386,17 @@ export default function AutomationSettingsPage() {
             </GlassCard>
           </motion.div>
 
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
             <GlassCard className="p-5">
               <p className="text-sm text-ink-secondary leading-relaxed">
                 Approving an insight goes through its own review screen first. Earned-trust mode is
                 the only exception, and only for kinds of insight you've approved five times — and
-                even then, never for anything that sends a message or changes something outside Keel.
-                Dry-run decides whether approved actions actually dispatch.
+                even then, never for anything that sends a message or changes something outside
+                Keel. Dry-run decides whether approved actions actually dispatch.
               </p>
             </GlassCard>
           </motion.div>

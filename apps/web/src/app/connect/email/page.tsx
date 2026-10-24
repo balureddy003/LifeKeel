@@ -9,7 +9,13 @@ import { GoogleIcon } from '@/components/GoogleIcon'
 import { PasswordInput } from '@/components/PasswordInput'
 import { haptic } from '@/lib/haptics'
 import { useAppStore } from '@/lib/store'
-import { connectEmail, scanEmailInbox, startGmailOAuth, EMAIL_PROVIDER_OPTIONS } from '@/lib/api'
+import {
+  connectEmail,
+  resolveOAuthReturnParams,
+  scanEmailInbox,
+  startGmailOAuth,
+  EMAIL_PROVIDER_OPTIONS,
+} from '@/lib/api'
 
 export default function ConnectEmailPage() {
   const router = useRouter()
@@ -38,7 +44,10 @@ export default function ConnectEmailPage() {
   const [error, setError] = useState<string | null>(null)
   const [connected, setConnected] = useState(false)
   const [scanning, setScanning] = useState(false)
-  const [scanResult, setScanResult] = useState<{ scanned: number; inboxItemsCreated: number } | null>(null)
+  const [scanResult, setScanResult] = useState<{
+    scanned: number
+    inboxItemsCreated: number
+  } | null>(null)
 
   const provider = EMAIL_PROVIDER_OPTIONS.find((p) => p.id === providerId)
   const isCustom = providerId === 'custom'
@@ -54,14 +63,23 @@ export default function ConnectEmailPage() {
   // Suspense boundary on a statically-exported page (see upgrade/page.tsx
   // for the same pattern already used elsewhere in this app).
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('connected') === 'email') {
-      const email = params.get('email')
-      if (email) setUsername(email)
-      setConnectorConnected('email', true)
-      setConnected(true)
-    } else if (params.get('connect') === 'gmail' && params.get('error')) {
-      setError(`Google sign-in didn't complete: ${params.get('error')}`)
+    let cancelled = false
+    void resolveOAuthReturnParams().then((params) => {
+      if (cancelled) return
+      if (params.get('connected') === 'email') {
+        const email = params.get('email')
+        if (email) setUsername(email)
+        setConnectorConnected('email', true)
+        setConnected(true)
+      } else if (params.get('connect') === 'gmail' && params.get('error')) {
+        setError(`Google sign-in didn't complete: ${params.get('error')}`)
+      }
+      if (window.location.search.includes('complete=')) {
+        window.history.replaceState({}, '', window.location.pathname)
+      }
+    })
+    return () => {
+      cancelled = true
     }
   }, [setConnectorConnected])
 
@@ -123,8 +141,8 @@ export default function ConnectEmailPage() {
         <GlassCard className="p-4 border-success/20 flex items-start gap-3">
           <CheckCircle2 size={20} className="text-success flex-shrink-0 mt-0.5" />
           <div className="text-sm text-ink-secondary">
-            {username} is connected. We're scanning your inbox in the background — financial emails will start
-            showing up in your Inbox shortly.
+            {username} is connected. We're scanning your inbox in the background — financial emails
+            will start showing up in your Inbox shortly.
           </div>
         </GlassCard>
 
@@ -159,7 +177,11 @@ export default function ConnectEmailPage() {
 
   return (
     <div className="px-5 pt-2 pb-10 space-y-5">
-      <PageHeader title="Connect Email" backHref="/connect" subtitle="Works with any provider — not just Gmail" />
+      <PageHeader
+        title="Connect Email"
+        backHref="/connect"
+        subtitle="Works with any provider — not just Gmail"
+      />
 
       <GlassCard className="p-4">
         <div className="text-sm font-semibold text-ink-secondary mb-3">Provider</div>
@@ -168,7 +190,10 @@ export default function ConnectEmailPage() {
             <button
               key={p.id}
               type="button"
-              onClick={() => { haptic('light'); setProviderId(p.id) }}
+              onClick={() => {
+                haptic('light')
+                setProviderId(p.id)
+              }}
               aria-pressed={providerId === p.id}
               className={`rounded-xl py-2.5 px-3 text-sm font-semibold text-left transition-all ${
                 providerId === p.id ? 'bg-family-500 text-white' : 'glass text-ink-secondary'
@@ -182,20 +207,32 @@ export default function ConnectEmailPage() {
 
       <AnimatePresence>
         {providerId === 'gmail' && (
-          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="space-y-4">
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="space-y-4"
+          >
             <button
               type="button"
               onClick={handleGoogleConnect}
               disabled={googleConnecting}
               className="w-full glass rounded-2xl py-4 flex items-center justify-center gap-2.5 text-base font-semibold text-ink-primary disabled:opacity-60"
             >
-              {googleConnecting ? <Loader2 size={20} className="animate-spin" /> : <GoogleIcon size={20} />}
+              {googleConnecting ? (
+                <Loader2 size={20} className="animate-spin" />
+              ) : (
+                <GoogleIcon size={20} />
+              )}
               {googleConnecting ? 'Redirecting to Google…' : 'Continue with Google'}
             </button>
             {!showManualGmail && (
               <button
                 type="button"
-                onClick={() => { haptic('light'); setShowManualGmail(true) }}
+                onClick={() => {
+                  haptic('light')
+                  setShowManualGmail(true)
+                }}
                 className="w-full text-center text-xs text-ink-tertiary underline underline-offset-2"
               >
                 Trouble signing in with Google? Connect manually instead
@@ -214,7 +251,11 @@ export default function ConnectEmailPage() {
 
       <AnimatePresence>
         {isCustom && (
-          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+          >
             <GlassCard className="p-4 space-y-3">
               <label className="block">
                 <div className="text-xs text-ink-tertiary mb-1.5">IMAP host</div>
@@ -260,7 +301,9 @@ export default function ConnectEmailPage() {
               />
             </label>
             <div>
-              <label htmlFor="imap-password" className="block text-xs text-ink-tertiary mb-1.5">Password</label>
+              <label htmlFor="imap-password" className="block text-xs text-ink-tertiary mb-1.5">
+                Password
+              </label>
               <PasswordInput
                 id="imap-password"
                 value={password}
@@ -288,8 +331,8 @@ export default function ConnectEmailPage() {
           <div className="glass rounded-2xl p-4 flex items-start gap-2">
             <ShieldCheck size={16} className="text-ink-tertiary flex-shrink-0 mt-0.5" />
             <p className="text-xs text-ink-tertiary leading-relaxed">
-              Your password is encrypted at rest and used only to read your inbox over a secure connection (IMAP).
-              We test the connection before saving anything.
+              Your password is encrypted at rest and used only to read your inbox over a secure
+              connection (IMAP). We test the connection before saving anything.
             </p>
           </div>
 

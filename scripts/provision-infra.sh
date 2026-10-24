@@ -13,7 +13,18 @@
 #   run-map    Cloud Run domain mappings for api.<domain>
 #   dns        push the collected records to Hostinger (surgical overwrite —
 #              only the names/types we own are replaced; MX etc. untouched)
+#   resend     create the Resend sender domain (open/click tracking on),
+#              write its DKIM/SPF/tracking records into the Hostinger DNS
+#              plan, create the email event webhook -> api.<domain>
+#              /webhooks/resend, and store RESEND_API_KEY +
+#              RESEND_WEBHOOK_SECRET in Secret Manager + .env
 #   github     set repo Actions variables; upload SA keys as secrets
+#   stripe     make Stripe match definitions/stripe-config.yaml (product, price,
+#              webhook endpoint, Customer Portal) — dry-run unless STRIPE_APPLY=1.
+#              Not part of `all`: it needs a Stripe key. See docs/runbooks/stripe-setup.md
+#   operator   seed platform_operators super_admin docs in the prod MongoDB
+#              (needs PLATFORM_OPERATOR_USER_IDS — LifeKeel user ids from
+#              users.id / GET /auth/me, comma-separated; NOT emails)
 #   status     dig/curl every host we just wired up
 #
 # Run everything:   ./scripts/provision-infra.sh all
@@ -96,6 +107,7 @@ step_gcp() {
     run.googleapis.com artifactregistry.googleapis.com \
     secretmanager.googleapis.com firebasehosting.googleapis.com \
     firebase.googleapis.com iam.googleapis.com \
+    aiplatform.googleapis.com \
     siteverification.googleapis.com --project "$GCP_PROJECT"
 
   if ! gcloud artifacts repositories describe "$AR_REPO" --location "$GCP_REGION" >/dev/null 2>&1; then
@@ -142,6 +154,10 @@ step_gcp() {
   gcloud projects add-iam-policy-binding "$GCP_PROJECT" \
     --member "serviceAccount:${num}-compute@developer.gserviceaccount.com" \
     --role roles/secretmanager.secretAccessor >/dev/null
+  # Vertex AI Gemini — the API's identity calls aiplatform via ADC, no key.
+  gcloud projects add-iam-policy-binding "$GCP_PROJECT" \
+    --member "serviceAccount:${num}-compute@developer.gserviceaccount.com" \
+    --role roles/aiplatform.user >/dev/null
 
   echo "SA keys written to $OUT_DIR/ — upload via the 'github' step, then delete."
 }
@@ -151,7 +167,8 @@ step_gcp() {
 SECRET_NAMES="lifekeel-mongodb-url lifekeel-redis-url lifekeel-jwt-secret
 lifekeel-settings-encryption-key lifekeel-google-client-id lifekeel-google-client-secret
 lifekeel-stripe-secret-key lifekeel-stripe-webhook-secret lifekeel-openai-api-key
-lifekeel-vapid-public-key lifekeel-vapid-private-key lifekeel-vapid-subject"
+lifekeel-vapid-public-key lifekeel-vapid-private-key lifekeel-vapid-subject
+lifekeel-resend-api-key lifekeel-resend-webhook-secret"
 
 step_secrets() {
   say "Secret Manager"
@@ -346,6 +363,7 @@ step_github() {
   gh variable set API_BASE_URL        --body "https://api.$PRIMARY_DOMAIN" --repo "$GH_REPO"
   gh variable set NEXT_PUBLIC_API_URL --body "https://api.$PRIMARY_DOMAIN" --repo "$GH_REPO"
   gh variable set CORS_ORIGIN         --body "$cors"                 --repo "$GH_REPO"
+  gh variable set EMAIL_FROM          --body "${EMAIL_FROM:-accounts@mail.$PRIMARY_DOMAIN}" --repo "$GH_REPO"
 
   gh secret set GCP_PROJECT_ID --body "$GCP_PROJECT" --repo "$GH_REPO"
   [ -f "$OUT_DIR/gcp-sa-key.json" ] \
@@ -355,6 +373,255 @@ step_github() {
     && gh secret set FIREBASE_SA_KEY --repo "$GH_REPO" < "$OUT_DIR/firebase-sa-key.json" \
     || warn "firebase-sa-key.json missing — run 'gcp' step first"
   warn "SA keys now in $OUT_DIR/ — delete the directory once secrets are confirmed"
+}
+
+# ---------------------------------------------------------------------------
+# stripe — billing setup as code. Dry-run by default.
+#   STRIPE_RECONCILE_KEY   restricted key (rk_...); falls back to the
+#                          lifekeel-stripe-secret-key secret in Secret Manager
+#   STRIPE_APPLY=1         actually make the changes (default: print the diff)
+#   STRIPE_ALLOW_LIVE=1    required to apply against a LIVE key
+# When the run creates the webhook endpoint, Stripe returns its signing secret
+# exactly once. It goes straight from a 0600 temp file into Secret Manager
+# (lifekeel-stripe-webhook-secret) and is never printed or kept.
+step_stripe() {
+  say "Stripe (config as code)"
+  need pnpm
+  local key="${STRIPE_RECONCILE_KEY:-}"
+  if [ -z "$key" ]; then
+    key=$(gcloud secrets versions access latest --secret lifekeel-stripe-secret-key --project "$GCP_PROJECT" 2>/dev/null || true)
+    [ -n "$key" ] && echo "  using key from Secret Manager (lifekeel-stripe-secret-key)"
+  fi
+  [ -n "$key" ] || { warn "no Stripe key: set STRIPE_RECONCILE_KEY (restricted key) and re-run"; return 1; }
+
+  local api_sub; api_sub=$(echo "$RUN_SUBDOMAINS" | awk '{print $1}')
+  local args=(--api-origin "https://$api_sub.$PRIMARY_DOMAIN" --app-origin "https://app.$PRIMARY_DOMAIN")
+  local secret_file=""
+  if [ "${STRIPE_APPLY:-0}" = "1" ]; then
+    secret_file=$(mktemp); chmod 600 "$secret_file"
+    args+=(--apply --webhook-secret-file "$secret_file")
+    [ "${STRIPE_ALLOW_LIVE:-0}" = "1" ] && args+=(--allow-live)
+  else
+    echo "  dry-run — set STRIPE_APPLY=1 to apply"
+  fi
+
+  local rc=0
+  STRIPE_RECONCILE_KEY="$key" pnpm --filter @lifekeel/api run stripe:reconcile "${args[@]}" || rc=$?
+
+  if [ -n "$secret_file" ]; then
+    if [ -s "$secret_file" ]; then
+      gcloud secrets versions add lifekeel-stripe-webhook-secret --data-file="$secret_file" --project "$GCP_PROJECT" >/dev/null
+      echo "  webhook signing secret stored in lifekeel-stripe-webhook-secret"
+      echo "  -> redeploy the API (Deploy API workflow) so the new revision reads it"
+    fi
+    rm -f "$secret_file"
+  fi
+  # Exit 2 = drift found in a dry-run; surface it without failing 'all'-style chains.
+  [ "$rc" = "2" ] && { warn "drift found (see above)"; return 0; }
+  return "$rc"
+}
+
+# ---------------------------------------------------------------------------
+# Resend — provider-side setup the deploy can't do: the sender domain's DKIM/
+# SPF records (Resend recommends a subdomain — RESEND_DOMAIN defaults to
+# mail.<primary>), click/open tracking (required for the webhook's
+# email.opened/clicked parity with SendGrid), and the event webhook itself.
+# DNS records land in the Hostinger plan (deploy-out/dns-<apex>.json) — the
+# `dns` step applies them; verification is idempotent so re-running after
+# propagation is the normal flow.
+step_resend() {
+  say "Resend: sender domain + webhook ($GCP_PROJECT)"
+
+  # API key from env or .env (same unquoted read as step_secrets).
+  local key="${RESEND_API_KEY:-}"
+  if [ -z "$key" ] && [ -f .env ]; then
+    key=$(grep -E '^RESEND_API_KEY=' .env | tail -1 | cut -d= -f2- \
+      | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'\$//")
+  fi
+  [ -n "$key" ] || { warn "RESEND_API_KEY not set — get one at resend.com/api-keys"; return 1; }
+
+  local api="https://api.resend.com"
+  local domain="${RESEND_DOMAIN:-mail.$PRIMARY_DOMAIN}"
+  local region="${RESEND_REGION:-eu-west-1}"
+  local endpoint="https://api.$PRIMARY_DOMAIN/webhooks/resend"
+  local events='["email.delivered","email.opened","email.clicked","email.bounced","email.failed","email.complained"]'
+
+  resend_api() { # method path [body]
+    local method="$1" path="$2" body="${3:-}"
+    if [ -n "$body" ]; then
+      curl -sf -X "$method" -H "Authorization: Bearer $key" \
+        -H 'Content-Type: application/json' -d "$body" "$api/$path" 2>/dev/null
+    else
+      curl -sf -X "$method" -H "Authorization: Bearer $key" "$api/$path" 2>/dev/null
+    fi
+  }
+
+  sm_upsert() { # secret-name value — create if absent, then add a version.
+    gcloud secrets describe "$1" --project "$GCP_PROJECT" >/dev/null 2>&1 \
+      || gcloud secrets create "$1" --replication-policy=automatic --project "$GCP_PROJECT" >/dev/null
+    printf '%s' "$2" | gcloud secrets versions add "$1" --data-file=- \
+      --project "$GCP_PROJECT" >/dev/null \
+      && echo "  secret: $1" || warn "couldn't write $1"
+  }
+
+  # Runtime only ever calls POST /emails — a send-only key is the right
+  # least-privilege credential to ship. Persist it unconditionally.
+  sm_upsert lifekeel-resend-api-key "$key"
+
+  # Managing domains/webhooks needs broader scope than send-only keys have.
+  # Probe once: a restricted key 401s on GET /domains — keep the key (it's
+  # correct for runtime) and print the dashboard path instead of dying.
+  local probe; probe=$(resend_api GET "domains" || true)
+  if ! printf '%s' "${probe:-null}" | jq -e '.data != null' >/dev/null 2>&1; then
+    warn "RESEND_API_KEY is send-only — it can't manage domains/webhooks, which is"
+    warn "fine for runtime (send is all the API does). Finish in the Resend dashboard:"
+    warn "  1. Domains → Add Domain → $domain (region $region) → enable open+click"
+    warn "     tracking; copy its DKIM/SPF records into the $PRIMARY_DOMAIN DNS zone"
+    warn "  2. Webhooks → $endpoint → events: $events"
+    warn "  3. Store the whsec_… signing secret in lifekeel-resend-webhook-secret + .env"
+    warn "  4. Set EMAIL_FROM (repo variable) to an address on $domain"
+    warn "(or re-run 'resend' with a full-access RESEND_API_KEY to automate 1–3)"
+    return 0
+  fi
+
+  # Create or reuse the domain, then fetch its record set.
+  local dom_id dom
+  dom=$(resend_api POST "domains" \
+    "{\"name\":\"$domain\",\"region\":\"$region\",\"open_tracking\":true,\"click_tracking\":true,\"tracking_subdomain\":\"links\"}" || true)
+  dom_id=$(printf '%s' "${dom:-null}" | jq -r '.id // empty')
+  if [ -z "$dom_id" ]; then
+    dom_id=$(echo "$probe" | jq -r --arg n "$domain" \
+      '.data[]? | select(.name == $n) | .id' | head -1)
+    [ -n "$dom_id" ] || { warn "couldn't create/find domain $domain in Resend — check the API key"; return 1; }
+    echo "  domain exists: $domain ($dom_id)"
+  else
+    echo "  domain created: $domain ($dom_id)"
+  fi
+  dom=$(resend_api GET "domains/$dom_id" || echo '{}')
+
+  # Which apex zone owns this sender domain — records go into that plan file.
+  local apex=""
+  for d in $APEX_DOMAINS; do
+    case "$domain" in "$d"|*".$d") apex="$d"; break ;; esac
+  done
+  if [ -z "$apex" ]; then
+    warn "$domain isn't under any APEX_DOMAINS zone — add its DNS records manually:"
+    echo "$dom" | jq -r '.records[]? | "  \(.name)\t\(.type)\t\(.value)"'
+  else
+    # Record names come back either relative to the sender domain
+    # (resend._domainkey, send) or FQDN (links.mail.example.com). Normalize
+    # to the zone-relative name the Hostinger plan uses; MX content needs
+    # "priority host"; TXT values lose their zone-file quoting.
+    echo "$dom" | jq -r '.records[]? | [.name, .type, .value, (.priority // "")] | @tsv' \
+      | while IFS=$'\t' read -r name type value priority; do
+        # Resend record names are relative to the parent zone of the sender
+        # domain: for mail.<apex> they already carry the "mail" label
+        # (send.mail, resend._domainkey.mail). Handle all three shapes —
+        # FQDN, zone-relative, and sender-domain-relative — without ever
+        # producing a doubled label like send.mail.mail.<apex>.
+        local sub="${domain%.$apex}"
+        fqdn=$name
+        case "$fqdn" in
+          *".$apex"|"$apex") ;;               # already an FQDN
+          *".$sub")          fqdn="$fqdn.$apex" ;;   # zone-relative: send.mail
+          *)                 fqdn="$fqdn.$domain" ;; # sender-relative: resend._domainkey
+        esac
+        rel=$fqdn;  case "$rel" in   *".$apex") rel="${rel%.$apex}" ;; "$apex") rel="@" ;; esac
+        case "$type" in
+          MX)  value="${priority:-10} $value" ;;
+          TXT) value="${value#\"}"; value="${value%\"}" ;;
+        esac
+        plan_add "$apex" "$rel" "$type" "$value"
+        echo "  dns plan: $rel.$apex $type"
+      done
+    warn "run the 'dns' step to push these to Hostinger, then re-run 'resend' to verify"
+  fi
+
+  # Kick verification (idempotent — safe before and after DNS lands).
+  resend_api POST "domains/$dom_id/verify" >/dev/null \
+    && echo "  verification requested" || warn "verify call failed — retry after DNS propagates"
+  echo "$dom" | jq -r '.records[]? | "  \(.record // "?") \(.status)"' | sort -u | sed 's/^/  status:/'
+
+  # Event webhook → api.<primary>/webhooks/resend. The list endpoint omits
+  # signing_secret; GET /webhooks/:id returns it, so re-running recovers it.
+  local wh wh_id wh_secret
+  wh=$(resend_api GET "webhooks" || true)
+  wh_id=$(printf '%s' "${wh:-null}" | jq -r --arg e "$endpoint" \
+    '[.data[]? | select(.endpoint == $e)] | first | .id // empty')
+  if [ -n "$wh_id" ]; then
+    wh_secret=$(resend_api GET "webhooks/$wh_id" 2>/dev/null \
+      | jq -r '.signing_secret // empty')
+  fi
+  wh_secret="${wh_secret:-}"
+  if [ -n "$wh_secret" ]; then
+    echo "  webhook exists: $endpoint"
+  else
+    wh=$(resend_api POST "webhooks" "{\"endpoint\":\"$endpoint\",\"events\":$events}" || true)
+    wh_secret=$(printf '%s' "${wh:-null}" | jq -r '.signing_secret // empty')
+    [ -n "$wh_secret" ] && echo "  webhook created: $endpoint" \
+      || warn "webhook create failed — add $endpoint in the Resend dashboard for the events: $events"
+  fi
+
+  if [ -n "$wh_secret" ]; then
+    sm_upsert lifekeel-resend-webhook-secret "$wh_secret"
+    if [ -f .env ] && ! grep -qE '^RESEND_WEBHOOK_SECRET=' .env; then
+      sed -i '' -e 's/^# RESEND_WEBHOOK_SECRET=whsec_\.\.\./RESEND_WEBHOOK_SECRET='"$wh_secret"'/' .env 2>/dev/null \
+        || echo "RESEND_WEBHOOK_SECRET=$wh_secret" >> .env
+      echo "  .env: RESEND_WEBHOOK_SECRET set"
+    fi
+  fi
+
+  # Sender address must live on the verified domain — operators override
+  # via the EMAIL_FROM repo variable (deploy-api.yml env_vars).
+  local from="${EMAIL_FROM:-accounts@$domain}"
+  warn "EMAIL_FROM should be an address on $domain (suggest: $from)"
+}
+
+# ---------------------------------------------------------------------------
+# Seeds DB-managed super_admins — the durable operator path (ARCHITECTURE.md
+# §14.2). Deliberately NOT PLATFORM_OPERATOR_USER_IDS on Cloud Run: env vars
+# set via `gcloud run services update` are wiped by the next deploy (the
+# workflow's env_vars block replaces the set), and a standing env super_admin
+# is exactly the break-glass backdoor PLATFORM_OPERATOR_BOOTSTRAP_UNTIL
+# exists to retire.
+step_operator() {
+  say "Platform operators → platform_operators ($GCP_PROJECT)"
+
+  local ids="${PLATFORM_OPERATOR_USER_IDS:-}"
+  if [ -z "$ids" ] && [ -f .env ]; then
+    ids=$(grep -E '^PLATFORM_OPERATOR_USER_IDS=' .env | tail -1 | cut -d= -f2- \
+      | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'\$//")
+  fi
+  if [ -z "$ids" ]; then
+    warn "no PLATFORM_OPERATOR_USER_IDS — set it to the PROD user id(s) first"
+    warn "(sign in on the deployed app, GET /auth/me → user_id — not the dev id)"
+    return 1
+  fi
+
+  local db="${MONGODB_DB:-lifekeel}" uri
+  uri=$(gcloud secrets versions access latest \
+        --secret=lifekeel-mongodb-url --project "$GCP_PROJECT" 2>/dev/null) \
+    || { warn "can't read lifekeel-mongodb-url — grant $(gcloud config get-value account 2>/dev/null) roles/secretmanager.secretAccessor"
+         return 1; }
+
+  need mongosh
+  local uid
+  echo "$ids" | tr ',' '\n' | while IFS= read -r uid; do
+    uid=$(echo "$uid" | tr -d '[:space:]')
+    [ -n "$uid" ] || continue
+    # Keep the id out of arbitrary eval — user ids are generated hex; reject
+    # anything that couldn't be one rather than quoting around it.
+    case "$uid" in *[!a-zA-Z0-9_-]*) warn "skipping '$uid' — not a valid user id"; continue ;; esac
+    mongosh "$uri" --quiet --eval "
+      db.getSiblingDB('$db').platform_operators.updateOne(
+        { user_id: '$uid' },
+        { \$setOnInsert: { user_id: '$uid', roles: ['super_admin'], status: 'active' } },
+        { upsert: true }
+      )" >/dev/null \
+      && echo "  super_admin seeded: $uid" \
+      || warn "seed failed for $uid — Atlas IP allowlist blocking this machine? (then insert via Atlas console: $db.platform_operators)"
+  done
+  echo "  done — sign in on the deployed app and open /operator"
 }
 
 # ---------------------------------------------------------------------------
@@ -394,14 +661,17 @@ need gcloud; need jq; need curl; need dig
 
 for step in "$@"; do
   case "$step" in
-    all)      step_gcp; step_secrets; step_firebase; step_verify; step_run_map; step_dns; step_github; step_status ;;
+    all)      step_gcp; step_secrets; step_firebase; step_verify; step_run_map; step_resend; step_dns; step_github; step_status ;;
     gcp)      step_gcp ;;
     secrets)  step_secrets ;;
     firebase) step_firebase ;;
     verify)   step_verify ;;
     run-map)  step_run_map ;;
+    resend)   step_resend ;;
     dns)      step_dns ;;
     github)   step_github ;;
+    stripe)   step_stripe ;;
+    operator) step_operator ;;
     status)   step_status ;;
     *) echo "unknown step: $step" >&2; exit 1 ;;
   esac

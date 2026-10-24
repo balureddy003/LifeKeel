@@ -24,7 +24,9 @@ export interface ExternalAccountDoc extends Record<string, unknown> {
   display_name: string
   account_type: string
   currency: string
-  balance_minor: number
+  balance_minor: number | null
+  /** Set only when the provider actually returned a balance. */
+  balance_synced_at?: Date
   synced_at: Date
 }
 
@@ -84,6 +86,7 @@ export async function syncAccountInfo(
           currency: account.currency,
           balance_minor: account.balance_minor,
           synced_at: now,
+          ...(account.balance_minor !== null ? { balance_synced_at: now } : {}),
         },
       },
       { upsert: true },

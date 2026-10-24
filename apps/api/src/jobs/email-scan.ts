@@ -14,14 +14,17 @@
 
 import { randomUUID } from 'node:crypto'
 import { decryptEnveloped, encryptForTenant } from '../crypto/envelope.js'
-import { GridFSBucket, type Db } from 'mongodb'
+import type { Db } from 'mongodb'
+import { writeGridfs } from '../documents/storage.js'
 import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import {
   fetchRecentEmails,
   searchPolicyEmails,
+  type FetchedEmail,
   type ImapCredentials,
 } from '../email/imap-client.js'
 import { refreshGoogleAccessToken } from '../email/gmail-oauth.js'
+import { fetchRecentGmail, searchPolicyGmail } from '../email/gmail-api.js'
 import { classifyEmail } from '../email/classify.js'
 import { localDecisionFromEnv, emailEncoderFromEnv } from '../local-model.js'
 import { taskLlm, taskDecide } from '../ai/task-gateway.js'
@@ -32,6 +35,8 @@ import {
 } from '../routes/metrics.js'
 import { acquireCronLock, releaseCronLock } from './cron-lock.js'
 import { processDocument } from '../ocr/extract.js'
+import { mayParse, scanUpload } from '../extraction/scan.js'
+import { signatureMatchesMime } from '../extraction/file-signature.js'
 import { effectivePlan, hasFeature } from '../entitlements.js'
 import type { InboxItemDoc } from '../routes/family-inbox.js'
 
@@ -59,8 +64,11 @@ type EmailConnectorCredentialDoc = Record<string, unknown> & {
     access_token?: string
     refresh_token?: string
     token_expires_at?: Date | string
+    provider?: string
   }
   last_synced_uid?: number
+  /** Gmail REST cursor: newest internalDate seen, epoch seconds (see email/gmail-api.ts). */
+  last_synced_gmail_at?: number
   /** When the queue fan-out last enqueued this mailbox (see enqueueConnectedInboxScans). */
   scan_enqueued_at?: Date
   last_synced_at?: Date
@@ -183,9 +191,26 @@ export async function scanTenantInbox(
   }
   const docExtractionEnabled = hasFeature('document_ai_extraction', plan)
 
-  const creds = await toImapCredentials(db, credentialDoc)
-  if (!creds) {
-    return { scanned: 0, inboxItemsCreated: 0, documentsCreated: 0 }
+  // Gmail OAuth mailboxes read through the REST API under gmail.readonly
+  // (R38); everything else is IMAP. Each keeps its own cursor field because
+  // IMAP UIDs and Gmail timestamps are not comparable.
+  const useGmailApi =
+    credentialDoc.auth_type === 'oauth' && credentialDoc.extra?.provider === 'gmail'
+  const cursorField = useGmailApi ? 'last_synced_gmail_at' : 'last_synced_uid'
+  const previousCursor = credentialDoc[cursorField] as number | undefined
+
+  let fetchRecent: () => Promise<{ emails: FetchedEmail[]; highestUid: number }>
+  let searchPolicy: (sinceDays: number) => Promise<FetchedEmail[]>
+  if (useGmailApi) {
+    const accessToken = await resolveOAuthAccessToken(db, credentialDoc)
+    if (!accessToken) return { scanned: 0, inboxItemsCreated: 0, documentsCreated: 0 }
+    fetchRecent = () => fetchRecentGmail(accessToken, { sinceUid: previousCursor, limit: 25 })
+    searchPolicy = (sinceDays) => searchPolicyGmail(accessToken, { sinceDays })
+  } else {
+    const creds = await toImapCredentials(db, credentialDoc)
+    if (!creds) return { scanned: 0, inboxItemsCreated: 0, documentsCreated: 0 }
+    fetchRecent = () => fetchRecentEmails(creds, { sinceUid: previousCursor, limit: 25 })
+    searchPolicy = (sinceDays) => searchPolicyEmails(creds, { sinceDays })
   }
 
   // A look-back is a one-off targeted search for policy mail; it must not
@@ -193,11 +218,8 @@ export async function scanTenantInbox(
   // newest hit but older than the cursor's next scan would be skipped.
   const lookBack = opts.lookBackDays !== undefined
   const { emails, highestUid } = lookBack
-    ? {
-        emails: await searchPolicyEmails(creds, { sinceDays: opts.lookBackDays! }),
-        highestUid: undefined,
-      }
-    : await fetchRecentEmails(creds, { sinceUid: credentialDoc.last_synced_uid, limit: 25 })
+    ? { emails: await searchPolicy(opts.lookBackDays!), highestUid: undefined }
+    : await fetchRecent()
 
   const result: ScanResult = { scanned: emails.length, inboxItemsCreated: 0, documentsCreated: 0 }
   if (emails.length === 0) return result
@@ -215,7 +237,6 @@ export async function scanTenantInbox(
   const encoderCfg = emailEncoderFromEnv()
   const encoder = encoderCfg ? { ...encoderCfg, onOutcome: recordEmailEncoderOutcome } : undefined
   const inboxItems = db.collection<InboxItemDoc>('inbox_items')
-  const bucket = new GridFSBucket(db, { bucketName: 'documents' })
   const documents = getTenantCollection<Record<string, unknown>>(db, 'documents', tenantId)
 
   // Emails the model could not classify. The cursor is held just before the
@@ -235,7 +256,30 @@ export async function scanTenantInbox(
       decide,
       prefilter: true,
       encoder,
-      onStage: recordEmailFunnelStage,
+      onStage: (stage) => {
+        recordEmailFunnelStage(stage)
+        // PRD-215: also persist the funnel — global day × task × stage counts
+        // only (no tenant, no content). Powers the generator-share regression
+        // check in the AI-health alert job and /operator/ai-health.
+        const day = new Date().toISOString().slice(0, 10)
+        db.collection<{
+          _id: string
+          day: string
+          task_id: string
+          stage: string
+          count: number
+          updated_at: Date
+        }>('ai_cascade_funnel')
+          .updateOne(
+            { _id: `${day}|email.policy_relevance.v1|${stage}` },
+            {
+              $inc: { count: 1 },
+              $set: { day, task_id: 'email.policy_relevance.v1', stage, updated_at: new Date() },
+            },
+            { upsert: true },
+          )
+          .catch(() => {})
+      },
     })
     if (classification.failed) {
       recordEmailClassifyFailure()
@@ -289,18 +333,34 @@ export async function scanTenantInbox(
 
     for (const attachment of email.attachments) {
       if (!DOCUMENT_MIME_ALLOWLIST.has(attachment.contentType)) continue
+      // Hostile mail is the likeliest source of a malformed file (R25): the
+      // bytes must match the declared type, an infected file is dropped, and
+      // an unscanned one is kept but not parsed when a scan is required.
+      if (!signatureMatchesMime(attachment.content, attachment.contentType)) continue
+      const scan = await scanUpload(attachment.content)
+      if (scan.result === 'infected') {
+        log.warn(
+          { tenantId, messageId: email.messageId },
+          'Email attachment dropped by malware scan',
+        )
+        continue
+      }
+      const parseAllowed = docExtractionEnabled && mayParse(scan)
 
       const documentId = randomUUID()
-      const uploadStream = bucket.openUploadStream(attachment.filename, {
-        metadata: {
+      // Known gap (CLOUDFLARE_INTEGRATION.md §7.13): mailbox attachments still
+      // go to GridFS, not the R2 quarantine + scan job; dual-read covers them.
+      const fileId = await writeGridfs(
+        db,
+        attachment.filename,
+        {
           tenant_id: tenantId,
           document_id: documentId,
           mime_type: attachment.contentType,
           uploaded_at: new Date(),
         },
-      })
-      uploadStream.end(attachment.content)
-      const fileId = uploadStream.id
+        attachment.content,
+      )
 
       await documents.insertOne({
         id: documentId,
@@ -310,15 +370,16 @@ export async function scanTenantInbox(
         category: 'other',
         // Same free/paid split as the upload route (documents.ts): the
         // stored blob is always kept, the vision OCR is the paid step.
-        status: docExtractionEnabled ? 'uploaded' : 'stored',
+        status: parseAllowed ? 'uploaded' : 'stored',
         uploaded_at: new Date(),
         file_id: fileId,
         source: 'email',
+        scan_result: scan.result,
         email_message_id: email.messageId,
       })
       result.documentsCreated += 1
 
-      if (docExtractionEnabled) {
+      if (parseAllowed) {
         // Awaited (not fire-and-forget like the upload route) — there's no
         // HTTP response waiting on this, and awaiting keeps attachments
         // processed one at a time rather than bursting many concurrent
@@ -358,7 +419,7 @@ export async function scanTenantInbox(
     stillRetrying.push(failed.uid)
   }
   if (stillRetrying.length > 0 && highestUid !== undefined) {
-    cursor = Math.max(credentialDoc.last_synced_uid ?? 0, Math.min(...stillRetrying) - 1)
+    cursor = Math.max(previousCursor ?? 0, Math.min(...stillRetrying) - 1)
     result.classificationRetries = stillRetrying.length
     log.warn(
       { tenantId, retrying: stillRetrying.length, cursor },
@@ -374,7 +435,7 @@ export async function scanTenantInbox(
     { connector_id: credentialDoc.connector_id },
     {
       $set: {
-        ...(cursor !== undefined ? { last_synced_uid: cursor } : {}),
+        ...(cursor !== undefined ? { [cursorField]: cursor } : {}),
         last_synced_at: new Date(),
       },
     },

@@ -9,6 +9,7 @@ import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
 import { RegionSwitch } from '@/components/RegionSwitch'
 import { AuthShell } from '@/components/landing/AuthShell'
+import { Turnstile, useTurnstile } from '@/components/security/Turnstile'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -19,6 +20,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const { signIn, verifyMfaCode, signInWithProvider } = useAuth()
   const router = useRouter()
+  const captcha = useTurnstile()
 
   // OAuth callbacks redirect back here as /login?error=<code> on failure —
   // surface a real message instead of landing silently. The codes come from
@@ -56,7 +58,13 @@ export default function LoginPage() {
     setLoading(true)
     setError(null)
     try {
-      const result = await signIn(email, password)
+      const result = await signIn(email, password, { turnstileToken: captcha.consume() })
+      if (result.otpRequired) {
+        // Emailed code is the second step (CLOUDFLARE_INTEGRATION.md §6.5).
+        haptic('light')
+        router.push('/verify-otp')
+        return
+      }
       if (result.mfaRequired) {
         // Second step — swap to the authenticator-code entry instead of
         // navigating. The pending token stays in memory in auth-context.
@@ -208,11 +216,19 @@ export default function LoginPage() {
               />
             </div>
 
+            <Turnstile
+              ref={captcha.ref}
+              action="login"
+              appearance="interaction-only"
+              onToken={captcha.onToken}
+              onExpire={captcha.onExpire}
+            />
+
             <div id="login-error" role="alert" className="lk-err">
               {error ?? ''}
             </div>
 
-            <button type="submit" className="lk-btn" disabled={loading}>
+            <button type="submit" className="lk-btn" disabled={loading || !captcha.ready}>
               {loading ? 'Signing in...' : 'Sign In'}
             </button>
             <Link href="/reset-password" className="lk-textlink" onClick={() => haptic('light')}>

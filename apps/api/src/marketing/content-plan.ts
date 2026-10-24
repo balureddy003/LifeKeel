@@ -6,6 +6,7 @@
  * Planning only ever creates drafts (Tier 0). Nothing is published until a person approves the week
  * (routes/marketing-plan.ts), and the existing cron sweep dispatches approved posts at their time.
  */
+import { plannableChannels } from './channels.js'
 import { createHash, randomUUID } from 'node:crypto'
 import type { Db } from 'mongodb'
 import type { LlmFn } from '@lifekeel/platform'
@@ -289,12 +290,9 @@ export async function ensureWeeklyPlans(
   let drafted = 0
   for (const s of optedIn) {
     const tenantId = s['tenant_id'] as string
-    const channels = (
-      await db
-        .collection('social_connections')
-        .find({ tenant_id: tenantId, status: 'active' })
-        .toArray()
-    ).map((c) => c['channel'] as string)
+    // Every healthy channel — Bluesky and the OAuth platforms alike. A channel
+    // whose token has died is skipped here and reported by the health view.
+    const { channels } = await plannableChannels(db, tenantId, now)
     drafted += await ensureNextWeekPlanned(db, tenantId, channels, llmFor(tenantId), now)
   }
   return drafted

@@ -7,8 +7,11 @@
  *   anthropic  — Claude 3 Haiku / Sonnet / Opus  (ANTHROPIC_API_KEY)
  *   openai     — GPT-4o, GPT-4o-mini, o1, o3     (OPENAI_API_KEY)
  *   azure      — Azure OpenAI deployments         (AZURE_OPENAI_*)
+ *   vertex     — Google Cloud Vertex AI Gemini    (VERTEX_PROJECT/VERTEX_LOCATION,
+ *                                                VERTEX_SERVICE_ACCOUNT_JSON or ADC)
  *   ollama     — local models via Ollama HTTP API  (OLLAMA_BASE_URL)
  *   groq       — Llama 3 / Mixtral via Groq        (GROQ_API_KEY)
+ *   xai        — Grok via xAI                      (XAI_API_KEY)
  *
  * Usage:
  *   const llm = createLlmRouter()          // reads env vars automatically
@@ -20,10 +23,12 @@
 
 import { createLogger } from './logger.js'
 import { ollamaNumCtx } from './ollama-options.js'
+import { vertexAccessTokenProvider } from './vertex-auth.js'
 
 const log = createLogger({ service: 'llm', version: '0.0.0' })
 
-export type LlmProvider = 'anthropic' | 'openai' | 'azure' | 'ollama' | 'groq' | 'auto'
+export type LlmProvider =
+  'anthropic' | 'openai' | 'azure' | 'vertex' | 'ollama' | 'groq' | 'xai' | 'auto'
 
 // ── Azure Endpoint Validation ─────────────────────────────────────────────────────
 
@@ -104,10 +109,24 @@ export const DEFAULT_TIER_MODELS: Record<LlmProvider, Record<ReasoningTier, stri
     balanced: 'llama-3.1-70b-versatile',
     powerful: 'llama-3.1-70b-versatile', // Groq doesn't have o-series yet
   },
+  xai: {
+    // grok-4.3 is the floor of the current lineup (the grok-4-fast-* slugs
+    // retired May 2026 and now redirect to grok-4.3).
+    fast: 'grok-4.3',
+    balanced: 'grok-4.3',
+    powerful: 'grok-4.7',
+  },
   azure: {
     fast: 'gpt-4o-mini',
     balanced: 'gpt-4o',
     powerful: 'gpt-4o',
+  },
+  // Gemini 2.5 family retired Oct 2026 — 3.5/4 are the GA lines. Bare model
+  // ids; callVertex adds the `google/` publisher prefix Vertex requires.
+  vertex: {
+    fast: 'gemini-3.5-flash-lite',
+    balanced: 'gemini-3.5-flash',
+    powerful: 'gemini-4-argon',
   },
   ollama: {
     fast: 'llama3.2:3b',
@@ -196,10 +215,34 @@ export interface LlmConfig {
   azureDeployment?: string
   /** Azure API version */
   azureApiVersion?: string
+  /** Google Cloud project for Vertex AI (OAuth mode). */
+  vertexProject?: string
+  /** Vertex location — 'global' (best availability) or a region like 'europe-west1' (data residency). */
+  vertexLocation?: string
+  /**
+   * Per-call auth-header resolver — same pattern as ollamaHeaders. Vertex's
+   * OpenAI-compatible surface accepts only OAuth2 access tokens (~1h TTL), so
+   * a static key cannot work; defaults to vertexAccessTokenProvider() which
+   * mints them from VERTEX_SERVICE_ACCOUNT_JSON or the metadata server.
+   */
+  vertexHeaders?: () => Promise<Record<string, string>>
+  /**
+   * Thinking floor sent as reasoning_effort. Gemini 3.x/4 cannot disable
+   * thinking ('none' was 2.5-only); 'low' is the universal floor. Reasoning
+   * tokens bill as output.
+   */
+  vertexReasoningEffort?: 'minimal' | 'low' | 'medium' | 'high'
   /** Ollama base URL (default: http://localhost:11434) */
   ollamaBaseUrl?: string
   /** Extra headers for Ollama calls, resolved per call (e.g. a Cloud Run identity token). */
   ollamaHeaders?: () => Promise<Record<string, string>>
+  /**
+   * Runtime provider override — a per-call sync accessor (e.g. the operator's
+   * platform-config switch) consulted before model-name detection and env
+   * fallback, so the pick can change without a redeploy and applies to
+   * tier-string calls too. Returning null/undefined means "no override."
+   */
+  providerOverride?: () => LlmProvider | null | undefined
   /** Default model if caller doesn't specify */
   defaultModel?: string
   /** Max tokens to generate (default: 2048) */
@@ -219,8 +262,19 @@ export interface LlmConfig {
   onUsage?: LlmUsageCallback
 }
 
+/** Optional per-call controls. `signal` aborts the provider request — the
+ * task gateway's deadline uses it so an expired call frees the model. */
+export interface LlmCallOptions {
+  signal?: AbortSignal
+}
+
 /** The canonical LLM function type used everywhere in LifeKeel */
-export type LlmFn = (system: string, prompt: string, model?: string) => Promise<string>
+export type LlmFn = (
+  system: string,
+  prompt: string,
+  model?: string,
+  opts?: LlmCallOptions,
+) => Promise<string>
 
 /**
  * Model → provider routing table.
@@ -253,6 +307,17 @@ const MODEL_PROVIDER_MAP: Record<string, LlmProvider> = {
   'llama-3.1-8b-instant': 'groq',
   'mixtral-8x7b-32768': 'groq',
   'gemma2-9b-it': 'groq',
+  // Vertex AI Gemini
+  'gemini-3.5-flash-lite': 'vertex',
+  'gemini-3.5-flash': 'vertex',
+  'gemini-3.8-flash': 'vertex',
+  'gemini-4-argon': 'vertex',
+  'gemini-3.1-pro': 'vertex',
+  // xAI Grok — grok-4-fast-* retired May 2026 → redirect to grok-4.3
+  'grok-4.3': 'xai',
+  'grok-4.5': 'xai',
+  'grok-4.6': 'xai',
+  'grok-4.7': 'xai',
 }
 
 function detectProviderFromModel(model: string): LlmProvider | null {
@@ -263,19 +328,53 @@ function detectProviderFromModel(model: string): LlmProvider | null {
   if (model.startsWith('gpt-') || model.startsWith('o1') || model.startsWith('o3')) return 'openai'
   if (model.startsWith('llama') || model.startsWith('mixtral') || model.startsWith('gemma'))
     return 'groq'
+  if (model.startsWith('gemini') || model.startsWith('google/gemini')) return 'vertex'
+  if (model.startsWith('grok')) return 'xai'
   return null
+}
+
+/**
+ * Operator override: when set, the named provider wins over env-key detection
+ * for every call that didn't name a model belonging to another provider.
+ * Fixes first-configured-key-wins ambiguity when several providers are
+ * provisioned at once — the operator selects the active one deliberately.
+ */
+function envProviderOverride(): LlmProvider | null {
+  const name = process.env['LIFEKEEL_LLM_PROVIDER']
+  if (!name || name === 'auto') return null
+  const providers: readonly string[] = [
+    'anthropic',
+    'openai',
+    'azure',
+    'vertex',
+    'ollama',
+    'groq',
+    'xai',
+  ]
+  return providers.includes(name) ? (name as LlmProvider) : null
 }
 
 function resolveProvider(cfg: LlmConfig, model: string): LlmProvider {
   if (cfg.provider && cfg.provider !== 'auto') return cfg.provider
+  // Operator runtime override — a global routing decision, so it beats the
+  // per-call model name as well as env detection. A model that doesn't exist
+  // on the chosen provider fails at the provider rather than rerouting.
+  const runtime = cfg.providerOverride?.()
+  if (runtime) return runtime
   // Auto-detect from model name
   const fromModel = detectProviderFromModel(model)
   if (fromModel) return fromModel
-  // Fall back to whichever API key is available
+  const override = envProviderOverride()
+  if (override) return override
+  // Fall back to whichever API key is available. New providers go last so a
+  // newly-configured key never silently flips an existing deployment — use
+  // the operator override or LIFEKEEL_LLM_PROVIDER to promote one.
   if (process.env['ANTHROPIC_API_KEY']) return 'anthropic'
   if (process.env['OPENAI_API_KEY']) return 'openai'
-  if (process.env['GROQ_API_KEY']) return 'groq'
   if (process.env['AZURE_OPENAI_ENDPOINT']) return 'azure'
+  if (process.env['VERTEX_PROJECT']) return 'vertex'
+  if (process.env['GROQ_API_KEY']) return 'groq'
+  if (process.env['XAI_API_KEY']) return 'xai'
   if (
     process.env['OLLAMA_BASE_URL'] ||
     model.startsWith('llama') ||
@@ -297,18 +396,28 @@ const BASE_DELAY_MS = 500
  * Wraps an LLM call with exponential backoff retry on transient errors.
  * Retries on: rate limits (429), server errors (5xx), network errors.
  * Does NOT retry on auth errors (401/403) or bad requests (400/422).
+ *
+ * PRD-215: the backoff sleep is abort-aware — a caller signal that fires
+ * mid-backoff stops the wait and the retry loop instead of sleeping out the
+ * full delay on a request that is already dead.
  */
 async function withRetry<T>(
   fn: () => Promise<T>,
+  signal?: AbortSignal,
   retries = MAX_RETRIES,
   delayMs = BASE_DELAY_MS,
 ): Promise<T> {
   let lastErr: unknown
   for (let attempt = 0; attempt <= retries; attempt++) {
+    if (signal?.aborted) throw signal.reason ?? lastErr ?? new Error('aborted')
     try {
       return await fn()
     } catch (err) {
       lastErr = err
+      // A caller-aborted call (task deadline, client disconnect) must not be
+      // retried — the request it served is already gone.
+      if ((err as Error).name === 'AbortError') break
+
       const isRetryable =
         // Rate limit or server error from HTTP status in message
         (err instanceof Error &&
@@ -334,7 +443,21 @@ async function withRetry<T>(
         },
         'LLM attempt failed — retrying',
       )
-      await new Promise((r) => setTimeout(r, wait))
+      // Sleep capped by the caller's deadline: an abort during backoff breaks
+      // the loop immediately rather than burning the remaining delay.
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          cleanup()
+          resolve()
+        }, wait)
+        const onAbort = () => {
+          clearTimeout(timer)
+          cleanup()
+          reject(signal?.reason ?? lastErr)
+        }
+        const cleanup = () => signal?.removeEventListener('abort', onAbort)
+        signal?.addEventListener('abort', onAbort, { once: true })
+      })
     }
   }
   throw lastErr
@@ -362,19 +485,23 @@ async function callAnthropic(
   maxTokens: number,
   temperature: number,
   onUsage?: LlmUsageCallback,
+  signal?: AbortSignal,
 ): Promise<string> {
   const { default: Anthropic } = await import('@anthropic-ai/sdk')
   // Singleton client — reuse across calls to avoid connection pool exhaustion
   const client = getCachedClient(`anthropic:${apiKey}`, () => new Anthropic({ apiKey }))
   return withRetry(async () => {
     const t0 = Date.now()
-    const response = await client.messages.create({
-      model,
-      max_tokens: maxTokens,
-      temperature,
-      system,
-      messages: [{ role: 'user', content: prompt }],
-    })
+    const response = await client.messages.create(
+      {
+        model,
+        max_tokens: maxTokens,
+        temperature,
+        system,
+        messages: [{ role: 'user', content: prompt }],
+      },
+      { signal },
+    )
     onUsage?.({
       input_tokens: response.usage.input_tokens,
       output_tokens: response.usage.output_tokens,
@@ -385,7 +512,7 @@ async function callAnthropic(
     const block = response.content[0]
     if (!block || block.type !== 'text') throw new Error('Anthropic: no text block in response')
     return block.text
-  })
+  }, signal)
 }
 
 async function callOpenAI(
@@ -396,6 +523,7 @@ async function callOpenAI(
   maxTokens: number,
   temperature: number,
   onUsage?: LlmUsageCallback,
+  signal?: AbortSignal,
 ): Promise<string> {
   const { default: OpenAI } = await import('openai')
   // Singleton client — reuse across calls to avoid connection pool exhaustion
@@ -404,17 +532,20 @@ async function callOpenAI(
   const isReasoningModel = model.startsWith('o1') || model.startsWith('o3')
   return withRetry(async () => {
     const t0 = Date.now()
-    const response = await client.chat.completions.create({
-      model,
-      max_tokens: isReasoningModel ? null : (maxTokens as number | null),
-      temperature: isReasoningModel ? null : (temperature as number | null),
-      messages: isReasoningModel
-        ? [{ role: 'user', content: `${system}\n\n${prompt}` }]
-        : [
-            { role: 'system', content: system },
-            { role: 'user', content: prompt },
-          ],
-    })
+    const response = await client.chat.completions.create(
+      {
+        model,
+        max_tokens: isReasoningModel ? null : (maxTokens as number | null),
+        temperature: isReasoningModel ? null : (temperature as number | null),
+        messages: isReasoningModel
+          ? [{ role: 'user', content: `${system}\n\n${prompt}` }]
+          : [
+              { role: 'system', content: system },
+              { role: 'user', content: prompt },
+            ],
+      },
+      { signal },
+    )
     if (response.usage) {
       onUsage?.({
         input_tokens: response.usage.prompt_tokens,
@@ -425,7 +556,7 @@ async function callOpenAI(
       })
     }
     return response.choices[0]?.message.content ?? ''
-  })
+  }, signal)
 }
 
 async function callAzure(
@@ -439,6 +570,7 @@ async function callAzure(
   temperature: number,
   foundry = false,
   onUsage?: LlmUsageCallback,
+  signal?: AbortSignal,
 ): Promise<string> {
   const { default: OpenAI } = await import('openai')
   // Singleton client — reuse across calls to avoid connection pool exhaustion.
@@ -464,15 +596,18 @@ async function callAzure(
   )
   return withRetry(async () => {
     const t0 = Date.now()
-    const response = await client.chat.completions.create({
-      model: deployment,
-      max_tokens: maxTokens as number | null,
-      temperature,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: prompt },
-      ],
-    })
+    const response = await client.chat.completions.create(
+      {
+        model: deployment,
+        max_tokens: maxTokens as number | null,
+        temperature,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: prompt },
+        ],
+      },
+      { signal },
+    )
     if (response.usage) {
       onUsage?.({
         input_tokens: response.usage.prompt_tokens,
@@ -483,7 +618,7 @@ async function callAzure(
       })
     }
     return response.choices[0]?.message.content ?? ''
-  })
+  }, signal)
 }
 
 async function callGroq(
@@ -494,6 +629,7 @@ async function callGroq(
   maxTokens: number,
   temperature: number,
   onUsage?: LlmUsageCallback,
+  signal?: AbortSignal,
 ): Promise<string> {
   // Groq uses OpenAI-compatible API — singleton client
   const { default: OpenAI } = await import('openai')
@@ -503,15 +639,18 @@ async function callGroq(
   )
   return withRetry(async () => {
     const t0 = Date.now()
-    const response = await client.chat.completions.create({
-      model,
-      max_tokens: maxTokens as number | null,
-      temperature,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: prompt },
-      ],
-    })
+    const response = await client.chat.completions.create(
+      {
+        model,
+        max_tokens: maxTokens as number | null,
+        temperature,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: prompt },
+        ],
+      },
+      { signal },
+    )
     if (response.usage) {
       onUsage?.({
         input_tokens: response.usage.prompt_tokens,
@@ -522,7 +661,126 @@ async function callGroq(
       })
     }
     return response.choices[0]?.message.content ?? ''
-  })
+  }, signal)
+}
+
+/**
+ * xAI Grok — OpenAI-compatible at api.x.ai/v1. The DPA requires Personal
+ * Data to be processed only via the ZDR-enabled API: the team's Zero Data
+ * Retention toggle must be on in the xAI Console before any governed task
+ * routes here (response header x-zero-data-retention confirms it).
+ */
+async function callXai(
+  system: string,
+  prompt: string,
+  model: string,
+  apiKey: string,
+  maxTokens: number,
+  temperature: number,
+  onUsage?: LlmUsageCallback,
+  signal?: AbortSignal,
+): Promise<string> {
+  const { default: OpenAI } = await import('openai')
+  const client = getCachedClient(
+    `xai:${apiKey}`,
+    () => new OpenAI({ apiKey, baseURL: 'https://api.x.ai/v1' }),
+  )
+  return withRetry(async () => {
+    const t0 = Date.now()
+    const response = await client.chat.completions.create(
+      {
+        model,
+        max_tokens: maxTokens as number | null,
+        temperature,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: prompt },
+        ],
+      },
+      { signal },
+    )
+    if (response.usage) {
+      onUsage?.({
+        input_tokens: response.usage.prompt_tokens,
+        output_tokens: response.usage.completion_tokens,
+        model,
+        provider: 'xai',
+        latency_ms: Date.now() - t0,
+      })
+    }
+    return response.choices[0]?.message.content ?? ''
+  }, signal)
+}
+
+const VERTEX_TIMEOUT_MS = 120_000
+
+/**
+ * Vertex AI Gemini on the OpenAI-compatible surface — fetch-based, not the
+ * OpenAI SDK, because auth is a per-call header resolver (OAuth tokens expire
+ * hourly; a static SDK apiKey cannot refresh).
+ *
+ * Endpoint shape:
+ *   global   → https://aiplatform.googleapis.com/v1/projects/P/locations/global/endpoints/openapi/chat/completions
+ *   regional → https://{loc}-aiplatform.googleapis.com/v1/projects/P/locations/{loc}/endpoints/openapi/chat/completions
+ *
+ * The model name in the request body needs the `google/` publisher prefix.
+ * `reasoning_effort` maps to thinking levels — 'none' is invalid on Gemini
+ * 3.x/4 (thinking floor is 'minimal'/'low'), and reasoning tokens bill as
+ * output, so 'low' is the default.
+ */
+async function callVertex(
+  system: string,
+  prompt: string,
+  model: string,
+  project: string,
+  location: string,
+  getHeaders: () => Promise<Record<string, string>>,
+  reasoningEffort: string,
+  maxTokens: number,
+  temperature: number,
+  onUsage?: LlmUsageCallback,
+  signal?: AbortSignal,
+): Promise<string> {
+  const host =
+    location === 'global'
+      ? 'https://aiplatform.googleapis.com'
+      : `https://${location}-aiplatform.googleapis.com`
+  const url = `${host}/v1/projects/${project}/locations/${location}/endpoints/openapi/chat/completions`
+  const body = {
+    model: model.startsWith('google/') ? model : `google/${model}`,
+    stream: false,
+    max_tokens: maxTokens,
+    temperature,
+    reasoning_effort: reasoningEffort,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: prompt },
+    ],
+  }
+  return withRetry(async () => {
+    const t0 = Date.now()
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(await getHeaders()) },
+      body: JSON.stringify(body),
+      signal: signal ?? AbortSignal.timeout(VERTEX_TIMEOUT_MS),
+    })
+    if (!res.ok) throw new Error(`Vertex HTTP ${res.status}: ${await res.text()}`)
+    const data = (await res.json()) as {
+      choices?: { message?: { content?: string } }[]
+      usage?: { prompt_tokens?: number; completion_tokens?: number }
+    }
+    if (data.usage) {
+      onUsage?.({
+        input_tokens: data.usage.prompt_tokens ?? 0,
+        output_tokens: data.usage.completion_tokens ?? 0,
+        model,
+        provider: 'vertex',
+        latency_ms: Date.now() - t0,
+      })
+    }
+    return data.choices?.[0]?.message?.content ?? ''
+  }, signal)
 }
 
 const OLLAMA_TIMEOUT_MS = 180_000
@@ -536,6 +794,7 @@ async function callOllama(
   temperature: number,
   getHeaders?: () => Promise<Record<string, string>>,
   onUsage?: LlmUsageCallback,
+  signal?: AbortSignal,
 ): Promise<string> {
   const url = `${baseUrl}/api/chat`
   const body = {
@@ -555,8 +814,11 @@ async function callOllama(
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(getHeaders ? await getHeaders() : {}) },
         body: JSON.stringify(body),
-        // CPU-served models are slow but must not hang a request forever.
-        signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS),
+        // CPU-served models are slow but must not hang a request forever, and a
+        // caller abort (task deadline) must stop the in-flight generation.
+        signal: signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(OLLAMA_TIMEOUT_MS)])
+          : AbortSignal.timeout(OLLAMA_TIMEOUT_MS),
       })
     } catch (err) {
       // withRetry retries anything whose message contains "timeout"; a call that
@@ -581,7 +843,7 @@ async function callOllama(
       })
     }
     return data.message?.content ?? ''
-  })
+  }, signal)
 }
 
 // ── Public factory ─────────────────────────────────────────────────────────────
@@ -618,7 +880,13 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
   const maxTokens = cfg.maxTokens ?? 2048
   const temperature = cfg.temperature ?? 0.3
 
-  return async function llmRouter(system: string, prompt: string, model?: string): Promise<string> {
+  return async function llmRouter(
+    system: string,
+    prompt: string,
+    model?: string,
+    opts?: LlmCallOptions,
+  ): Promise<string> {
+    const signal = opts?.signal
     // Support tier strings: 'tier:fast' | 'tier:balanced' | 'tier:powerful'
     let resolvedModel = model ?? defaultModel
     if (resolvedModel.startsWith('tier:')) {
@@ -641,6 +909,7 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
             maxTokens,
             temperature,
             cfg.onUsage,
+            signal,
           )
         }
 
@@ -655,6 +924,7 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
             maxTokens,
             temperature,
             cfg.onUsage,
+            signal,
           )
         }
 
@@ -703,6 +973,37 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
             temperature,
             foundry,
             cfg.onUsage,
+            signal,
+          )
+        }
+
+        case 'vertex': {
+          const project = cfg.vertexProject ?? process.env['VERTEX_PROJECT'] ?? ''
+          const location = cfg.vertexLocation ?? process.env['VERTEX_LOCATION'] ?? 'global'
+          if (!project) throw new Error('VERTEX_PROJECT not set')
+          // Lazily construct the default token provider only when a vertex
+          // call actually runs — building it eagerly would read
+          // VERTEX_SERVICE_ACCOUNT_JSON / hit the metadata server for
+          // deployments that never route here. Cached: the provider's token
+          // cache lives in its closure, so a fresh one per call would defeat
+          // it (and hit the token endpoint every request).
+          const getHeaders =
+            cfg.vertexHeaders ??
+            getCachedClient('vertex:default-headers', () => vertexAccessTokenProvider())
+          const effort =
+            cfg.vertexReasoningEffort ?? process.env['VERTEX_REASONING_EFFORT'] ?? 'low'
+          return await callVertex(
+            system,
+            prompt,
+            resolvedModel,
+            project,
+            location,
+            getHeaders,
+            effort,
+            maxTokens,
+            temperature,
+            cfg.onUsage,
+            signal,
           )
         }
 
@@ -717,6 +1018,22 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
             maxTokens,
             temperature,
             cfg.onUsage,
+            signal,
+          )
+        }
+
+        case 'xai': {
+          const apiKey = cfg.apiKey ?? process.env['XAI_API_KEY'] ?? ''
+          if (!apiKey) throw new Error('XAI_API_KEY not set')
+          return await callXai(
+            system,
+            prompt,
+            resolvedModel,
+            apiKey,
+            maxTokens,
+            temperature,
+            cfg.onUsage,
+            signal,
           )
         }
 
@@ -732,6 +1049,7 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
             temperature,
             cfg.ollamaHeaders,
             cfg.onUsage,
+            signal,
           )
         }
 
@@ -758,15 +1076,22 @@ export function createLlmRouterFromEnv(cfg: LlmConfig = {}): LlmFn {
     log.info({ provider: provider ?? 'none' }, 'Active LLM provider')
     loggedEnvProvider = true
   }
-  return createLlmRouter({ ...cfg, provider: cfg.provider ?? provider ?? 'anthropic' })
+  // 'auto' leaves resolution dynamic per call — providerOverride → model
+  // name → LIFEKEEL_LLM_PROVIDER → env scan. Baking the detected provider in
+  // here would shadow the runtime override for every call on this router.
+  return createLlmRouter({ ...cfg, provider: cfg.provider ?? 'auto' })
 }
 
 /** The provider createLlmRouterFromEnv would pick right now, from the environment. */
 export function detectActiveProvider(): LlmProvider | null {
+  const override = envProviderOverride()
+  if (override) return override
   if (process.env['ANTHROPIC_API_KEY']) return 'anthropic'
   if (process.env['OPENAI_API_KEY']) return 'openai'
-  if (process.env['GROQ_API_KEY']) return 'groq'
   if (process.env['AZURE_OPENAI_ENDPOINT']) return 'azure'
+  if (process.env['VERTEX_PROJECT']) return 'vertex'
+  if (process.env['GROQ_API_KEY']) return 'groq'
+  if (process.env['XAI_API_KEY']) return 'xai'
   if (process.env['OLLAMA_BASE_URL']) return 'ollama'
   return null
 }
@@ -776,7 +1101,9 @@ export const DEFAULT_MODELS: Record<LlmProvider, string> = {
   anthropic: 'claude-haiku-4-5',
   openai: 'gpt-4o-mini',
   azure: 'gpt-4o',
+  vertex: 'gemini-3.5-flash',
   groq: 'llama-3.1-70b-versatile',
+  xai: 'grok-4.3',
   ollama: 'llama3.1',
   auto: 'claude-haiku-4-5',
 }

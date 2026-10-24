@@ -1183,8 +1183,9 @@ export async function registerInsightRoutes(
 
       // The confirmation form posts from the API's own origin — anything
       // else presenting a browser Origin header is a cross-site attempt.
-      // (Non-browser clients omit Origin; the token is still their gate.)
-      if (!isOriginAllowedForCookieAuth(request)) {
+      // (Non-browser clients omit Origin; the token is still their gate —
+      // so the check only fires when an Origin header is present.)
+      if (request.headers.origin && !isOriginAllowedForCookieAuth(request)) {
         return reply
           .status(403)
           .type('text/html')

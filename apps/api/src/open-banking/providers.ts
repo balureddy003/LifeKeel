@@ -28,7 +28,8 @@ export interface ExternalAccount {
   display_name: string
   account_type: AccountType
   currency: string
-  balance_minor: number
+  /** null when the provider call didn't fetch a balance — unknown is not zero (R28). */
+  balance_minor: number | null
 }
 
 /** Stored credential shape (decrypted on read — access_token is written
@@ -149,10 +150,9 @@ const truelayerProvider: AccountInfoProvider = {
       account_type: TRUELAYER_TYPE_MAP[a.account_type ?? ''] ?? 'other',
       currency: a.currency ?? 'GBP',
       // /accounts doesn't return balances — a follow-up /balance call per
-      // account would. Balance stays 0 until a real AISP onboarding makes
-      // that round-trip worth its latency; the account list itself is the
-      // plumbing being exercised here.
-      balance_minor: 0,
+      // account would. Until that is wired the balance is unknown (null),
+      // never a fabricated 0 that would read as a verified empty account.
+      balance_minor: null,
     }))
     log.info({ count: accounts.length }, 'TrueLayer accounts listed')
     return accounts

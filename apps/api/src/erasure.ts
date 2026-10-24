@@ -15,7 +15,13 @@
  * CUSTOM_DELETES below instead.
  */
 import type { Db } from 'mongodb'
-import { GridFSBucket } from 'mongodb'
+import {
+  countTenantGridfs,
+  deleteTenantGridfs,
+  deleteTenantVaultObjects,
+} from './documents/storage.js'
+import { purgeTenantObjects } from './documents/deletion.js'
+import { hasCredential } from './documents/r2.js'
 
 export const DELETABLE_COLLECTIONS = [
   // ── identity + family-authored data ──
@@ -36,8 +42,15 @@ export const DELETABLE_COLLECTIONS = [
   'family_cashflow_entries',
   'family_scenarios',
   'family_continuity_state',
+  'rehearsal_records', // PRD-214 M3 — dated continuity rehearsals
+  'life_change_calibration', // PRD-213 M4 — shadow-only drift-sentinel rows
   'family_join_requests',
   'family_member_invites',
+  'family_invite_sends', // R43 daily invitation counter
+  'oauth_pending_grants', // R37 parked connector grants (encrypted, 10-minute TTL)
+  'otp_chains', // email OTP challenges (CLOUDFLARE_INTEGRATION.md §6.2.1)
+  'document_tombstones', // fenced-delete markers (§7.7); the objects are purged below
+  'tenant_quota', // storage reservations (§7.12)
   'family_life_change_nudge_state',
   'feed_mutes',
   'legacy_contacts',
@@ -57,6 +70,7 @@ export const DELETABLE_COLLECTIONS = [
   'readiness_events',
   'heartbeat_sends',
   'tenant_settings',
+  'scope_contracts', // PRD-214 — earned-scope grant/collapse artifacts
   'connector_credentials',
   'action_receipts',
   'agent_memory',
@@ -117,6 +131,8 @@ export const DELETABLE_COLLECTIONS = [
   // Per-tenant envelope keys (B4) — wiping these is the crypto-shred: every
   // dek:-format ciphertext for the tenant becomes permanently undecryptable.
   'tenant_keys',
+  // Daily read-only check of each connected social API (ok / error text only).
+  'channel_checks',
 ] as const
 
 // Tenant-tagged collections whose key is NOT a top-level `tenant_id`.
@@ -145,7 +161,32 @@ export const CUSTOM_DELETES: ReadonlyArray<{
     collection: 'lifecycle_sends',
     filter: (c) => ({ $or: [{ recipient: { $in: c.userIds } }, { email: { $in: c.userEmails } }] }),
   },
+  // R19: a lead captured before signup is keyed by email only, not tenant.
+  { collection: 'leads', filter: (c) => ({ email: { $in: c.userEmails } }) },
+  // R19: sign-in telemetry links user id, email and IP for 30 days; an
+  // erased account's rows go now rather than at TTL.
+  {
+    collection: 'login_events',
+    filter: (c) => ({ $or: [{ user_id: { $in: c.userIds } }, { email: { $in: c.userEmails } }] }),
+  },
+  // Daily upload counters are keyed "<tenant_id>:<yyyymmdd>" (48 h TTL).
+  {
+    collection: 'tenant_quota_days',
+    filter: (c) => ({ _id: { $regex: `^${escapeRegex(c.tenantId)}:` } }),
+  },
+  // Email-OTP send budgets are keyed "<user_id>:<window>", not by tenant.
+  {
+    collection: 'otp_send_windows',
+    filter: (c) =>
+      c.userIds.length === 0
+        ? { _id: { $in: [] } }
+        : { _id: { $regex: `^(${c.userIds.map(escapeRegex).join('|')}):` } },
+  },
 ]
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^$()|[\]{}\\]/g, '\\$&')
+}
 
 /**
  * What a family would call each kind of data, for receipts. Collections not
@@ -173,6 +214,8 @@ export const ERASURE_CATEGORY: Record<string, string> = {
   llm_spans: 'AI working data',
   llm_usage: 'AI working data',
   llm_guard_events: 'AI working data',
+  leads: 'marketing contact record',
+  login_events: 'sign-in history',
 }
 export const OTHER_CATEGORY = 'other family data'
 const categoryOf = (collection: string) => ERASURE_CATEGORY[collection] ?? OTHER_CATEGORY
@@ -207,27 +250,36 @@ export async function eraseTenantDataReport(db: Db, tenantId: string): Promise<E
   const deleteCtx = {
     tenantId,
     userIds: memberUsers.map((u) => String(u['id'])),
-    userEmails: memberUsers.map((u) => String(u['email'])),
+    // Both spellings: users are stored lowercased, older lead rows may not be.
+    userEmails: [
+      ...new Set(
+        memberUsers.flatMap((u) => [String(u['email']), String(u['email']).toLowerCase()]),
+      ),
+    ],
   }
   const removed: { category: string; count: number }[] = []
 
-  // GridFS document blobs are keyed by metadata.tenant_id — delete them
-  // before the metadata rows below so a partial failure leaves orphaned
-  // metadata (harmless: unreferenced) rather than orphaned blobs with no
-  // way to identify whose they were.
-  const files = await db
-    .collection('documents.files')
-    .find({ 'metadata.tenant_id': tenantId })
-    .project({ _id: 1 })
-    .toArray()
-  const bucket = new GridFSBucket(db, { bucketName: 'documents' })
-  for (const f of files) {
-    try {
-      await bucket.delete(f._id)
-      removed.push({ category: categoryOf('documents.files'), count: 1 })
-    } catch {
-      /* blob may already be gone */
-    }
+  // Document bytes go before the metadata rows below, so a partial failure
+  // leaves orphaned metadata (harmless: unreferenced) rather than orphaned
+  // bytes with no way to identify whose they were. GridFS blobs are keyed by
+  // metadata.tenant_id; R2 objects by the `{tenant_id}/` prefix in all three
+  // buckets (CLOUDFLARE_INTEGRATION.md §7.7). Workers and upload routes
+  // refuse a tenant whose status is 'deleting', and the erasure-replay job
+  // re-runs this wipe, which is the second pass for anything an unexpired
+  // presigned URL wrote in between.
+  removed.push({
+    category: categoryOf('documents.files'),
+    count: await deleteTenantGridfs(db, tenantId),
+  })
+  if (r2Configured()) {
+    removed.push({
+      category: categoryOf('documents.files'),
+      count: await purgeTenantObjects(tenantId),
+    })
+    removed.push({
+      category: categoryOf('documents.files'),
+      count: await deleteTenantVaultObjects(tenantId),
+    })
   }
 
   for (const d of CUSTOM_DELETES) {
@@ -245,9 +297,7 @@ export async function eraseTenantDataReport(db: Db, tenantId: string): Promise<E
   const residual: { category: string; count: number }[] = []
   residual.push({
     category: categoryOf('documents.files'),
-    count: await db
-      .collection('documents.files')
-      .countDocuments({ 'metadata.tenant_id': tenantId }),
+    count: await countTenantGridfs(db, tenantId),
   })
   for (const d of CUSTOM_DELETES) {
     residual.push({
@@ -262,6 +312,11 @@ export async function eraseTenantDataReport(db: Db, tenantId: string): Promise<E
     })
   }
   return { removed: tally(removed), residual: tally(residual) }
+}
+
+/** R2 credentials present: R2 prefixes are part of the wipe. */
+function r2Configured(): boolean {
+  return hasCredential('delete') || hasCredential('presign') || hasCredential('vault')
 }
 
 /** The wipe without the report, for callers that only need it done (replay of tombstones). */

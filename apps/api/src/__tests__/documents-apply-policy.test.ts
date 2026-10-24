@@ -79,6 +79,7 @@ async function buildApp(db: any) {
     ;(request as any).authContext = {
       tenant_id: request.headers['x-test-tenant'],
       user_id: 'user-1',
+      roles: ['admin'],
     }
   })
   registerDocumentRoutes(app, db)

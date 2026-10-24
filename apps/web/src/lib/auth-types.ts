@@ -56,7 +56,8 @@ export const ROLE_EMOJI: Record<FamilyRole, string> = {
   child: '🧒',
 }
 
-/** What to show for a member's status. "Pending" alone read as an unsent invite on members who were simply added in setup. */
-export function memberStatusLabel(status: 'pending' | 'active' | string): string {
-  return status === 'pending' ? 'Not joined yet' : 'Active'
+/** What to show for a member's status. "Pending" alone read as an unsent invite on members who were simply added in setup. Children never get their own sign-in — the invite flow rejects minors server-side — so a pending child gets a label describing who manages the record, not an invitation that can never be accepted. */
+export function memberStatusLabel(status: 'pending' | 'active' | string, role?: string): string {
+  if (status !== 'pending') return 'Active'
+  return role === 'child' ? 'Managed by adults' : 'Not joined yet'
 }

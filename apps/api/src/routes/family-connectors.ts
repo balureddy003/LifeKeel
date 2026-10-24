@@ -31,7 +31,7 @@ import type { Db } from 'mongodb'
 import { z } from 'zod'
 import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { encryptForTenant } from '../crypto/envelope.js'
-import { testImapConnection } from '../email/imap-client.js'
+import { testImapConnection, validateImapEndpoint } from '../email/imap-client.js'
 import { findProviderPreset } from '../email/providers.js'
 import { scanTenantInbox } from '../jobs/email-scan.js'
 import {
@@ -143,6 +143,11 @@ export function registerFamilyConnectorRoutes(fastify: FastifyInstance, db: Db):
           .status(400)
           .send({ error: 'host and port are required (or pass a known provider id)' })
       }
+      if (typeof host !== 'string' || host.length > 253 || typeof body.username !== 'string') {
+        return reply.status(400).send({ error: 'Invalid host or username' })
+      }
+      const endpointError = validateImapEndpoint(Number(port), useTls)
+      if (endpointError) return reply.status(400).send({ error: endpointError })
 
       const testResult = await testImapConnection({
         host,
@@ -319,8 +324,11 @@ export function registerFamilyConnectorRoutes(fastify: FastifyInstance, db: Db):
         name: a.display_name,
         type: a.account_type,
         currency: a.currency,
-        balance_minor: a.balance_minor,
+        balance_minor: a.balance_minor ?? null,
+        balance_known: typeof a.balance_minor === 'number',
         synced_at: a.synced_at instanceof Date ? a.synced_at.toISOString() : a.synced_at,
+        balance_synced_at:
+          a.balance_synced_at instanceof Date ? a.balance_synced_at.toISOString() : null,
       })),
     }
   })

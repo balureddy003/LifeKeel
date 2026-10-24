@@ -99,7 +99,13 @@ export class LlmResponseCache {
 
     const ttlMs = this.resolveTtlMs(task, config)
     const inputHash = this.hash(input)
-    const cached = await this.store.get<T>(tenantId, task, inputHash)
+    let cached: LlmCacheEntry<T> | null = null
+    try {
+      cached = await this.store.get<T>(tenantId, task, inputHash)
+    } catch {
+      // A store outage is a miss, never a call failure — the cache is an
+      // optimisation, not a dependency.
+    }
     if (cached && cached.expires_at > new Date()) {
       this.onHitMiss?.(tenantId, task, true)
       return { value: cached.value, cache_hit: true }
@@ -107,14 +113,18 @@ export class LlmResponseCache {
 
     const value = await compute()
     const now = new Date()
-    await this.store.set({
-      tenant_id: tenantId,
-      task,
-      input_hash: inputHash,
-      value,
-      created_at: now,
-      expires_at: new Date(now.getTime() + ttlMs),
-    })
+    try {
+      await this.store.set({
+        tenant_id: tenantId,
+        task,
+        input_hash: inputHash,
+        value,
+        created_at: now,
+        expires_at: new Date(now.getTime() + ttlMs),
+      })
+    } catch {
+      // Write failure never fails an otherwise successful call.
+    }
     this.onHitMiss?.(tenantId, task, false)
     return { value, cache_hit: false }
   }
@@ -144,21 +154,23 @@ export class MongoLlmCacheStore implements LlmCacheStore {
   private async ensureIndex(): Promise<void> {
     if (this.initialized) return
     try {
-      await this.db.collection('llm_cache').createIndex(
-        { expires_at: 1 },
-        { expireAfterSeconds: 0 },
-      )
-      await this.db.collection('llm_cache').createIndex(
-        { tenant_id: 1, task: 1, input_hash: 1 },
-        { unique: true },
-      )
+      await this.db
+        .collection('llm_cache')
+        .createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 })
+      await this.db
+        .collection('llm_cache')
+        .createIndex({ tenant_id: 1, task: 1, input_hash: 1 }, { unique: true })
     } catch {
       // Index creation may fail if already exists or in test env — non-fatal
     }
     this.initialized = true
   }
 
-  async get<T>(tenantId: string, task: string, inputHash: string): Promise<LlmCacheEntry<T> | null> {
+  async get<T>(
+    tenantId: string,
+    task: string,
+    inputHash: string,
+  ): Promise<LlmCacheEntry<T> | null> {
     await this.ensureIndex()
     const doc = await this.db.collection('llm_cache').findOne({
       tenant_id: tenantId,
@@ -178,11 +190,13 @@ export class MongoLlmCacheStore implements LlmCacheStore {
 
   async set<T>(entry: LlmCacheEntry<T>): Promise<void> {
     await this.ensureIndex()
-    await this.db.collection('llm_cache').replaceOne(
-      { tenant_id: entry.tenant_id, task: entry.task, input_hash: entry.input_hash },
-      { ...entry },
-      { upsert: true },
-    )
+    await this.db
+      .collection('llm_cache')
+      .replaceOne(
+        { tenant_id: entry.tenant_id, task: entry.task, input_hash: entry.input_hash },
+        { ...entry },
+        { upsert: true },
+      )
   }
 }
 

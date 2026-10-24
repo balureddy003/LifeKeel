@@ -73,6 +73,18 @@ async function seedEverything(tenant: string) {
     .collection('referrals')
     .insertOne({ referrer_tenant_id: tenant, referred_tenant_id: 'someone' })
   await db.collection('lifecycle_sends').insertOne({ recipient: uid, email: `${tenant}@x.test` })
+  // R19: email- and user-keyed records outside the tenant key.
+  await db.collection('leads').insertOne({ email: `${tenant}@x.test`, consent_marketing: true })
+  await db
+    .collection('login_events')
+    .insertOne({ user_id: uid, email: `${tenant}@x.test`, ip: '203.0.113.9' })
+  // Keyed by id prefix, not tenant_id (CLOUDFLARE_INTEGRATION.md §6.2.2, §7.12).
+  await db
+    .collection('otp_send_windows')
+    .insertOne({ _id: `${uid}:cool` as never, expires_at: new Date() })
+  await db
+    .collection('tenant_quota_days')
+    .insertOne({ _id: `${tenant}:20261023` as never, uploads: 1 })
   await blob(tenant)
 }
 const countFor = async (tenant: string) => {
@@ -84,33 +96,41 @@ const countFor = async (tenant: string) => {
 }
 
 describe('erasure leaves nothing and touches no one else', () => {
-  it('removes a row from every listed collection, the blob and the custom-keyed rows, with a clean check', async () => {
-    await seedEverything(A)
-    await seedEverything(B)
-    const before = await countFor(B)
-    const report = await eraseTenantDataReport(db, A)
+  // Seeds ~95 collections for two tenants against a real server; slow under a parallel run.
+  it(
+    'removes a row from every listed collection, the blob and the custom-keyed rows, with a clean check',
+    { timeout: 30_000 },
+    async () => {
+      await seedEverything(A)
+      await seedEverything(B)
+      const before = await countFor(B)
+      const report = await eraseTenantDataReport(db, A)
 
-    expect(report.residual).toEqual([])
-    expect(await countFor(A)).toBe(0)
-    expect(await db.collection('growth_events').countDocuments({ 'meta.tenant_id': A })).toBe(0)
-    expect(await db.collection('referrals').countDocuments({ referrer_tenant_id: A })).toBe(0)
-    expect(await db.collection('lifecycle_sends').countDocuments({ recipient: `u-${A}` })).toBe(0)
+      expect(report.residual).toEqual([])
+      expect(await countFor(A)).toBe(0)
+      expect(await db.collection('growth_events').countDocuments({ 'meta.tenant_id': A })).toBe(0)
+      expect(await db.collection('referrals').countDocuments({ referrer_tenant_id: A })).toBe(0)
+      expect(await db.collection('lifecycle_sends').countDocuments({ recipient: `u-${A}` })).toBe(0)
+      expect(await db.collection('leads').countDocuments({ email: `${A}@x.test` })).toBe(0)
+      expect(await db.collection('login_events').countDocuments({ user_id: `u-${A}` })).toBe(0)
+      expect(await db.collection('leads').countDocuments({ email: `${B}@x.test` })).toBe(1)
 
-    // Tenant B is exactly as it was, in every collection.
-    expect(await countFor(B)).toBe(before)
-    expect(await db.collection('growth_events').countDocuments({ 'meta.tenant_id': B })).toBe(1)
-    expect(await db.collection('lifecycle_sends').countDocuments({ recipient: `u-${B}` })).toBe(1)
+      // Tenant B is exactly as it was, in every collection.
+      expect(await countFor(B)).toBe(before)
+      expect(await db.collection('growth_events').countDocuments({ 'meta.tenant_id': B })).toBe(1)
+      expect(await db.collection('lifecycle_sends').countDocuments({ recipient: `u-${B}` })).toBe(1)
 
-    const total = report.removed.reduce((n, r) => n + r.count, 0)
-    expect(total).toBeGreaterThanOrEqual(DELETABLE_COLLECTIONS.length + CUSTOM_DELETES.length)
-    expect(report.removed.map((r) => r.category)).toEqual(
-      expect.arrayContaining([
-        'account',
-        'documents and what was read from them',
-        'notification devices',
-      ]),
-    )
-  })
+      const total = report.removed.reduce((n, r) => n + r.count, 0)
+      expect(total).toBeGreaterThanOrEqual(DELETABLE_COLLECTIONS.length + CUSTOM_DELETES.length)
+      expect(report.removed.map((r) => r.category)).toEqual(
+        expect.arrayContaining([
+          'account',
+          'documents and what was read from them',
+          'notification devices',
+        ]),
+      )
+    },
+  )
 
   it('is safe to run again and then reports nothing removed', async () => {
     await seedEverything(A)
@@ -128,6 +148,7 @@ describe('POST /account/delete', () => {
       ;(req as unknown as { authContext: unknown }).authContext = {
         tenant_id: tenant,
         user_id: userId,
+        roles: ['admin'],
       }
     })
     registerAccountRoutes(app, db)
@@ -157,11 +178,19 @@ describe('POST /account/delete', () => {
     expect(receipt.backups).toMatchObject({ retention_days: 35 })
     expect(receipt.backups.statement).toMatch(/up to 35 days/)
     expect(receipt.processors.length).toBeGreaterThan(0)
-    expect(
-      receipt.processors.every((p: { stated_retention: string }) =>
-        /Not confirmed/.test(p.stated_retention),
-      ),
-    ).toBe(true)
+    // Approved processors state their real retention terms (PRD-211);
+    // unreviewed ones stay "Not confirmed".
+    const expected: Record<string, RegExp> = {
+      azure: /abuse monitoring/,
+      vertex: /abuse monitoring/,
+      groq: /abuse monitoring/, // limited_abuse_log until ZDR is enabled
+      xai: /keeps no copy/, // zero_data_retention — DPA requires ZDR
+      anthropic: /Not confirmed/,
+      openai: /Not confirmed/,
+    }
+    for (const p of receipt.processors as { id: string; stated_retention: string }[]) {
+      expect(p.stated_retention, p.id).toMatch(expected[p.id] ?? /Not confirmed/)
+    }
     expect(receipt.kept.join(' ')).toMatch(/7 years/)
     expect(receipt).not.toHaveProperty('tenant_id')
 
@@ -443,5 +472,30 @@ describe('retention sweep', () => {
     expect(await db.collection('documents').countDocuments({ tenant_id: A })).toBe(1)
     expect(await db.collection('family_financial_profile').countDocuments({ tenant_id: A })).toBe(1)
     expect(await db.collection('job_runs').countDocuments({ job: 'retention', signals: 1 })).toBe(1)
+  })
+
+  it('sweeps marketing-intelligence revenue copies with the billing evidence of a deleted household, and only then', async () => {
+    const longAgo = new Date(Date.now() - 8 * 365 * 86_400_000)
+    const recent = new Date(Date.now() - 30 * 86_400_000)
+    await db.collection('tenants').insertMany([
+      { tenant_id: 'gone-old', status: 'deleted', deleted_at: longAgo },
+      { tenant_id: 'gone-recent', status: 'deleted', deleted_at: recent },
+      { tenant_id: 'alive', status: 'active' },
+    ])
+    for (const t of ['gone-old', 'gone-recent', 'alive']) {
+      await db
+        .collection('revenue_events')
+        .insertOne({ invoice_id: `in_${t}`, tenant_id: t, net_pence: 799 })
+      await db
+        .collection('revenue_subscriptions')
+        .insertOne({ subscription_id: `sub_${t}`, tenant_id: t })
+    }
+    const out = await new RetentionWorker(db).run()
+    expect(out['revenue_events']).toBe(1)
+    expect(out['revenue_subscriptions']).toBe(1)
+    expect(await db.collection('revenue_events').distinct('tenant_id')).toEqual(
+      expect.arrayContaining(['gone-recent', 'alive']),
+    )
+    expect(await db.collection('revenue_events').countDocuments({ tenant_id: 'gone-old' })).toBe(0)
   })
 })

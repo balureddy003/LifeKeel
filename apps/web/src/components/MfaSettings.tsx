@@ -23,8 +23,9 @@ import {
   setBiometricLockEnabled,
 } from '@/lib/native'
 import { ShieldCheck, Copy, Fingerprint } from 'lucide-react'
+import { getSessionToken } from '@/lib/session-token'
 
-type Stage = 'idle' | 'setup' | 'recovery' | 'disabling'
+type Stage = 'idle' | 'enabling' | 'setup' | 'recovery' | 'disabling'
 
 // Every authed API call in the app sends the stored Bearer token as a
 // fallback for browsers that block the cross-site session cookie (Safari
@@ -32,7 +33,7 @@ type Stage = 'idle' | 'setup' | 'recovery' | 'disabling'
 // be cookie-only, so in production /auth/mfa/* came back 401 for exactly
 // the users whose cookies didn't flow.
 function authHeaders(base: Record<string, string> = {}): Record<string, string> {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('lifekeel_token') : null
+  const token = typeof window !== 'undefined' ? getSessionToken() : null
   return token ? { ...base, Authorization: `Bearer ${token}` } : base
 }
 
@@ -112,13 +113,17 @@ export function MfaSettings() {
     setBusy(true)
     setError(null)
     try {
+      // The API asks for the password before issuing a secret, so a
+      // borrowed or stolen session can't enrol its own authenticator.
       const res = await credFetch(`${getApiBase()}/auth/mfa/setup`, {
         method: 'POST',
-        headers: authHeaders(),
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ password }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'Could not start setup.')
       setSecret(data.secret)
+      setPassword('')
       setStage('setup')
       haptic('light')
     } catch (err) {
@@ -187,7 +192,7 @@ export function MfaSettings() {
           onClick={() => {
             if (enabled === false) {
               setError(null)
-              startSetup()
+              setStage('enabling')
             } else if (enabled === true) {
               setError(null)
               setStage('disabling')
@@ -212,6 +217,36 @@ export function MfaSettings() {
         onClose={() => !busy && setStage('idle')}
         label="Two-factor authentication"
       >
+        {stage === 'enabling' && (
+          <div className="space-y-4 pb-4">
+            <div>
+              <div className="text-base font-semibold mb-1">Turn on two-factor</div>
+              <p className="text-sm text-ink-tertiary leading-relaxed">
+                Enter your password to continue.
+              </p>
+            </div>
+            <PasswordInput
+              id="mfa-enable-password"
+              placeholder="Password"
+              value={password}
+              onChange={setPassword}
+              autoComplete="current-password"
+            />
+            {error && (
+              <p role="status" className="text-sm text-danger text-center">
+                {error}
+              </p>
+            )}
+            <button
+              onClick={startSetup}
+              disabled={!password || busy}
+              className="w-full bg-family-500 text-white font-semibold rounded-2xl py-3.5 text-sm disabled:opacity-40"
+            >
+              {busy ? 'Checking...' : 'Continue'}
+            </button>
+          </div>
+        )}
+
         {stage === 'setup' && (
           <div className="space-y-4 pb-4">
             <div>

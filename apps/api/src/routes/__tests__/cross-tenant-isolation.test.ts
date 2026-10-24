@@ -61,32 +61,51 @@ function makeFakeCollection() {
   })
   return {
     createIndex: vi.fn(async () => ({})),
-    insertOne: vi.fn(async (doc: Record<string, unknown>) => { docs.push(doc); return { insertedId: 'stub' } }),
-    findOne: vi.fn(async (filter: Record<string, unknown> = {}) => docs.find((d) => matchesFilter(d, filter)) ?? null),
-    find: vi.fn((filter: Record<string, unknown> = {}) => cursor(docs.filter((d) => matchesFilter(d, filter)))),
-    countDocuments: vi.fn(async (filter: Record<string, unknown> = {}) => docs.filter((d) => matchesFilter(d, filter)).length),
-    updateOne: vi.fn(async (filter: Record<string, unknown>, update: { $set?: Record<string, unknown> }) => {
-      const doc = docs.find((d) => matchesFilter(d, filter))
-      if (doc && update.$set) Object.assign(doc, update.$set)
-      return { acknowledged: true, matchedCount: doc ? 1 : 0 }
+    insertOne: vi.fn(async (doc: Record<string, unknown>) => {
+      docs.push(doc)
+      return { insertedId: 'stub' }
     }),
+    findOne: vi.fn(
+      async (filter: Record<string, unknown> = {}) =>
+        docs.find((d) => matchesFilter(d, filter)) ?? null,
+    ),
+    find: vi.fn((filter: Record<string, unknown> = {}) =>
+      cursor(docs.filter((d) => matchesFilter(d, filter))),
+    ),
+    countDocuments: vi.fn(
+      async (filter: Record<string, unknown> = {}) =>
+        docs.filter((d) => matchesFilter(d, filter)).length,
+    ),
+    updateOne: vi.fn(
+      async (filter: Record<string, unknown>, update: { $set?: Record<string, unknown> }) => {
+        const doc = docs.find((d) => matchesFilter(d, filter))
+        if (doc && update.$set) Object.assign(doc, update.$set)
+        return { acknowledged: true, matchedCount: doc ? 1 : 0 }
+      },
+    ),
     // Returns the document directly (not wrapped in `.value`) and null on
     // no match — matches the real MongoDB driver's shape, which
     // family-financial-profile.ts's KEEL-006 optimistic-concurrency check
     // depends on.
-    findOneAndUpdate: vi.fn(async (filter: Record<string, unknown>, update: { $set?: Record<string, unknown>; $inc?: Record<string, number> }, options?: { upsert?: boolean }) => {
-      let doc = docs.find((d) => matchesFilter(d, filter))
-      if (!doc && options?.upsert) {
-        doc = { ...filter }
-        docs.push(doc)
-      }
-      if (!doc) return null
-      if (update.$set) Object.assign(doc, update.$set)
-      if (update.$inc) {
-        for (const [k, v] of Object.entries(update.$inc)) doc[k] = ((doc[k] as number) ?? 0) + v
-      }
-      return doc
-    }),
+    findOneAndUpdate: vi.fn(
+      async (
+        filter: Record<string, unknown>,
+        update: { $set?: Record<string, unknown>; $inc?: Record<string, number> },
+        options?: { upsert?: boolean },
+      ) => {
+        let doc = docs.find((d) => matchesFilter(d, filter))
+        if (!doc && options?.upsert) {
+          doc = { ...filter }
+          docs.push(doc)
+        }
+        if (!doc) return null
+        if (update.$set) Object.assign(doc, update.$set)
+        if (update.$inc) {
+          for (const [k, v] of Object.entries(update.$inc)) doc[k] = ((doc[k] as number) ?? 0) + v
+        }
+        return doc
+      },
+    ),
     _docs: docs,
   }
 }
@@ -94,13 +113,19 @@ function makeFakeCollection() {
 function makeFakeDb(names: string[]) {
   const collections = new Map(names.map((n) => [n, makeFakeCollection()]))
   return {
-    db: { collection: (name: string) => collections.get(name) ?? (collections.set(name, makeFakeCollection()), collections.get(name)) } as any,
+    db: {
+      collection: (name: string) =>
+        collections.get(name) ??
+        (collections.set(name, makeFakeCollection()), collections.get(name)),
+    } as any,
     collections,
   }
 }
 
 function authHook(tenantId: string) {
-  return async (request: any) => { request.authContext = { tenant_id: tenantId, user_id: `${tenantId}-user` } }
+  return async (request: any) => {
+    request.authContext = { tenant_id: tenantId, user_id: `${tenantId}-user` }
+  }
 }
 
 const BASE_PROFILE = {
@@ -131,14 +156,18 @@ const BASE_PROFILE = {
 
 describe('KEEL-009: HTTP-level cross-tenant isolation', () => {
   describe('family-financial-profile.ts (via real getTenantCollection)', () => {
-    it('tenant B cannot read tenant A\'s financial profile via GET /family/financial-profile', async () => {
+    it("tenant B cannot read tenant A's financial profile via GET /family/financial-profile", async () => {
       const engine = new Engine({ detectorsDir: DETECTORS_DIR, strictValidation: false })
       await engine.load()
       const { db } = makeFakeDb(['family_financial_profile'])
 
       const app = Fastify()
       app.addHook('onRequest', async (request: any) => {
-        request.authContext = { tenant_id: request.headers['x-test-tenant'], user_id: 'user-1' }
+        request.authContext = {
+          tenant_id: request.headers['x-test-tenant'],
+          user_id: 'user-1',
+          roles: ['admin'],
+        }
       })
       await registerFamilyFinancialProfileRoutes(app, db, engine)
 
@@ -168,14 +197,18 @@ describe('KEEL-009: HTTP-level cross-tenant isolation', () => {
   })
 
   describe('family-group.ts (via real getTenantCollection)', () => {
-    it('tenant B cannot read tenant A\'s family via GET /family, and can create their own', async () => {
+    it("tenant B cannot read tenant A's family via GET /family, and can create their own", async () => {
       const { db } = makeFakeDb(['family_groups', 'users'])
 
       const app = Fastify()
       app.addHook('onRequest', authHook(TENANT_A))
       registerFamilyGroupRoutes(app, db)
 
-      const createA = await app.inject({ method: 'POST', url: '/family', payload: { name: 'The A Family' } })
+      const createA = await app.inject({
+        method: 'POST',
+        url: '/family',
+        payload: { name: 'The A Family' },
+      })
       expect(createA.statusCode).toBe(201)
 
       const appB = Fastify()
@@ -188,7 +221,11 @@ describe('KEEL-009: HTTP-level cross-tenant isolation', () => {
       // Tenant B must still be able to create their OWN family — proves
       // the earlier null wasn't from some global "family already exists"
       // guard leaking across tenants.
-      const createB = await appB.inject({ method: 'POST', url: '/family', payload: { name: 'The B Family' } })
+      const createB = await appB.inject({
+        method: 'POST',
+        url: '/family',
+        payload: { name: 'The B Family' },
+      })
       expect(createB.statusCode).toBe(201)
       expect(createB.json().family.name).toBe('The B Family')
 
@@ -222,7 +259,7 @@ describe('KEEL-009: HTTP-level cross-tenant isolation', () => {
       created_at: new Date(),
     }
 
-    it('tenant B cannot list or fetch-by-id tenant A\'s insight', async () => {
+    it("tenant B cannot list or fetch-by-id tenant A's insight", async () => {
       const { app } = await buildInsightsApp(TENANT_B, [tenantAInsight])
 
       const list = await app.inject({ method: 'GET', url: '/insights' })
@@ -250,20 +287,28 @@ describe('KEEL-009: HTTP-level cross-tenant isolation', () => {
     // isolation coverage — both already filter correctly
     // (`{ id, tenant_id, state }` in findOneAndUpdate), this closes the gap
     // between "correct" and "proven correct by a real request."
-    it('tenant B cannot approve tenant A\'s insight via POST /insights/:id/approve', async () => {
+    it("tenant B cannot approve tenant A's insight via POST /insights/:id/approve", async () => {
       const { app, col } = await buildInsightsApp(TENANT_B, [{ ...tenantAInsight }])
 
-      const res = await app.inject({ method: 'POST', url: '/insights/insight-a-1/approve', payload: {} })
+      const res = await app.inject({
+        method: 'POST',
+        url: '/insights/insight-a-1/approve',
+        payload: {},
+      })
       expect(res.statusCode).toBe(404)
 
       const doc = col._docs.find((d) => d['id'] === 'insight-a-1')
       expect(doc?.['state']).toBe('identified')
     })
 
-    it('tenant B cannot dismiss tenant A\'s insight via POST /insights/:id/dismiss', async () => {
+    it("tenant B cannot dismiss tenant A's insight via POST /insights/:id/dismiss", async () => {
       const { app, col } = await buildInsightsApp(TENANT_B, [{ ...tenantAInsight }])
 
-      const res = await app.inject({ method: 'POST', url: '/insights/insight-a-1/dismiss', payload: {} })
+      const res = await app.inject({
+        method: 'POST',
+        url: '/insights/insight-a-1/dismiss',
+        payload: {},
+      })
       expect(res.statusCode).toBe(404)
 
       const doc = col._docs.find((d) => d['id'] === 'insight-a-1')
@@ -273,7 +318,11 @@ describe('KEEL-009: HTTP-level cross-tenant isolation', () => {
     it('sanity check: tenant A can approve their own insight', async () => {
       const { app, col } = await buildInsightsApp(TENANT_A, [{ ...tenantAInsight }])
 
-      const res = await app.inject({ method: 'POST', url: '/insights/insight-a-1/approve', payload: {} })
+      const res = await app.inject({
+        method: 'POST',
+        url: '/insights/insight-a-1/approve',
+        payload: {},
+      })
       expect(res.statusCode).toBe(200)
       expect(res.json().insight.state).toBe('completed')
 

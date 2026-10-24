@@ -33,7 +33,7 @@ import {
 } from '../life-events/detect-unreported-change.js'
 import { rewardReferralIfPending } from './referrals.js'
 import { recordInsightAction } from '../insights/insight-attribution.js'
-import { ageFromDob } from '../family/family-permissions.js'
+import { ageFromDob, isHouseholdEditor } from '../family/family-permissions.js'
 import type { FamilyGroupDoc } from './family-group.js'
 import { monthlyEquivalentMinor, type CashflowEntryDoc } from './family-cashflow.js'
 import { buildEstateSignal } from '../legacy/estate-signal.js'
@@ -871,6 +871,52 @@ export async function evaluateProfileAndGenerateInsights(
       })
       generatedInsights.push(...result.insights)
     }
+
+    // Stale renewal dates (PRD-213): soonestPolicyRenewal skips past-due
+    // dates entirely, so without this a policy whose recorded renewal has
+    // passed is invisible — the record may just be stale, or the cover may
+    // have ended; the register can't tell which, and either way the family
+    // should notice. Emitted even when empty, same stale-resolution reason
+    // as the orphan event above.
+    const staleRenewals = profile.policies.flatMap((p) => {
+      if (!p.renewal_date) return []
+      const renewalMs = new Date(p.renewal_date).getTime()
+      if (Number.isNaN(renewalMs)) return []
+      const days = Math.floor((Date.now() - renewalMs) / 86_400_000)
+      return days > 0 ? [{ policy: p, days_overdue: days }] : []
+    })
+    {
+      const eventId = crypto.randomUUID()
+      const data = {
+        stale_renewal_count: staleRenewals.length,
+        stale_renewal_descriptions: staleRenewals
+          .map(
+            (s) =>
+              `${s.policy.type} policy with ${s.policy.provider} held by ${holderLabel(s.policy)}, renewal date ${s.days_overdue} days in the past`,
+          )
+          .slice(0, 4)
+          .join('; '),
+        stale_renewal_monthly_premium_minor: staleRenewals.reduce(
+          (s, r) => s + r.policy.monthly_premium_minor,
+          0,
+        ),
+      }
+      const signalId = await persistSignal({
+        tenant_id: tenantId,
+        signal_type: 'family.policy_review',
+        source: 'manual-entry',
+        external_id: eventId,
+        data,
+      })
+      const result = await engine.evaluate({
+        event_type: 'family.policy_review',
+        tenant_id: tenantId,
+        event_id: eventId,
+        data,
+        derived_from_signals: [signalId],
+      })
+      generatedInsights.push(...result.insights)
+    }
   }
 
   // ── family_estate_readiness (PRD-121) ────────────────────────────────
@@ -954,7 +1000,9 @@ export async function registerFamilyFinancialProfileRoutes(
   onInsightsGenerated?: (insights: Insight[], tenantId: string) => Promise<void>,
 ): Promise<void> {
   const rawProfiles = getFamilyFinancialProfileCollection(db)
-  rawProfiles.createIndex({ tenant_id: 1 }, { unique: true }).catch(() => {})
+  // One profile per household is a correctness requirement (R27): boot
+  // fails rather than run without it.
+  await rawProfiles.createIndex({ tenant_id: 1 }, { unique: true })
 
   const profileFor = (tenantId: string) =>
     getTenantCollection<
@@ -992,6 +1040,15 @@ export async function registerFamilyFinancialProfileRoutes(
   // so they don't have to re-enter anything to see their gaps. Tier 0:
   // informational insights only, nothing is sent or executed anywhere.
   app.post('/family/financial-profile/evaluate', async (req, reply) => {
+    if (
+      !(await isHouseholdEditor(
+        db,
+        req.authContext.tenant_id,
+        req.authContext.user_id,
+        req.authContext.roles,
+      ))
+    )
+      return reply.status(403).send({ error: 'Only household editors can change shared records' })
     const { tenant_id } = req.authContext
     const doc = await profileFor(tenant_id).findOne({})
     if (!doc) return reply.status(404).send({ error: 'No financial profile on file yet' })
@@ -1150,6 +1207,15 @@ export async function registerFamilyFinancialProfileRoutes(
   app.post<{ Body: { action?: 'confirm' | 'later' } }>(
     '/family/financial-profile/review',
     async (req, reply) => {
+      if (
+        !(await isHouseholdEditor(
+          db,
+          req.authContext.tenant_id,
+          req.authContext.user_id,
+          req.authContext.roles,
+        ))
+      )
+        return reply.status(403).send({ error: 'Only household editors can change shared records' })
       const { tenant_id } = req.authContext
       const doc = await profileFor(tenant_id).findOne({})
       if (!doc) return reply.status(404).send({ error: 'No financial profile on file yet' })
@@ -1187,6 +1253,15 @@ export async function registerFamilyFinancialProfileRoutes(
   app.post<{ Body: FinancialProfile & { generate_insights?: boolean; version?: number } }>(
     '/family/financial-profile',
     async (req, reply) => {
+      if (
+        !(await isHouseholdEditor(
+          db,
+          req.authContext.tenant_id,
+          req.authContext.user_id,
+          req.authContext.roles,
+        ))
+      )
+        return reply.status(403).send({ error: 'Only household editors can change shared records' })
       const { generate_insights, version: clientVersion, ...body } = req.body
       const parsed = FinancialProfileSchema.safeParse(body)
       if (!parsed.success) {
@@ -1211,30 +1286,47 @@ export async function registerFamilyFinancialProfileRoutes(
       // matches nothing and the caller gets a 409 instead of silently
       // clobbering someone else's edits. A client on its first-ever save
       // (no version yet) omits it and always succeeds.
-      const filter = clientVersion !== undefined ? { version: clientVersion } : {}
-      const result = await profileFor(tenant_id).findOneAndUpdate(
-        filter,
-        {
-          $set: {
-            ...profile,
-            updated_at: new Date(),
-            // Marks that detectors have actually run against this profile.
-            // Without it the client can't tell "evaluated, no gaps" from
-            // "saved by autosave, never evaluated" — both have zero
-            // insights, and the latter must not read as a perfect score.
-            ...(generate_insights ? { insights_evaluated_at: new Date() } : {}),
-          },
-          $inc: { version: 1 },
-        },
-        { upsert: true, returnDocument: 'after' },
-      )
-      if (clientVersion !== undefined && !result) {
-        return reply
-          .status(409)
-          .send({ error: 'This profile was updated elsewhere — reload and try again.' })
+      // R27: first creation and versioned update are separate operations.
+      // An existing profile can only be changed by a caller holding its
+      // current version (GET returns 0 for rows that predate versioning);
+      // a stale or missing version is a 409, never a silent overwrite and
+      // never an upsert that collides with the unique tenant index.
+      const fields = {
+        ...profile,
+        updated_at: new Date(),
+        // Marks that detectors have actually run against this profile.
+        // Without it the client can't tell "evaluated, no gaps" from
+        // "saved by autosave, never evaluated" — both have zero
+        // insights, and the latter must not read as a perfect score.
+        ...(generate_insights ? { insights_evaluated_at: new Date() } : {}),
       }
-      const newVersion =
-        (result as unknown as { version?: number } | null)?.version ?? (clientVersion ?? 0) + 1
+      const conflict = (current: number) =>
+        reply.status(409).send({
+          error: 'This profile was updated elsewhere — reload and try again.',
+          version: current,
+        })
+      let newVersion: number
+      if (previousDoc) {
+        const current = previousDoc.version ?? 0
+        if (clientVersion !== current) return conflict(current)
+        const result = await profileFor(tenant_id).findOneAndUpdate(
+          previousDoc.version === undefined
+            ? { version: { $exists: false } }
+            : { version: current },
+          { $set: fields, $inc: { version: 1 } },
+          { returnDocument: 'after' },
+        )
+        if (!result) return conflict(current)
+        newVersion = (result as unknown as { version: number }).version
+      } else {
+        try {
+          await profileFor(tenant_id).insertOne({ ...fields, version: 1 } as never)
+        } catch (err) {
+          if ((err as { code?: number }).code === 11000) return conflict(1)
+          throw err
+        }
+        newVersion = 1
+      }
 
       // The multi-step form autosaves after every step (Continue), not just
       // the final "Save & Generate Insights" — evaluating detectors on every
@@ -1319,13 +1411,15 @@ export async function registerFamilyFinancialProfileRoutes(
         toChangeSnapshot(profile),
         db,
       )
-      // PRD-112: "first-ever final submit" is the referral reward's
-      // meaningful-action milestone — real use has started, not just an
-      // account existing. No-op for every submit after the first, and a
-      // silent no-op when there's no pending referral (the common case).
-      if (!previousDoc) {
-        await rewardReferralIfPending(db, tenant_id)
-      }
+      // PRD-112: a *final* submit (generate_insights, reached above) is the
+      // referral reward's meaningful-action milestone — real use has
+      // started, not just an account existing. This must NOT be gated on
+      // `!previousDoc`: the wizard autosaves after every step, so a profile
+      // document already exists by the time the final submit arrives and the
+      // reward would never fire for a real user. rewardReferralIfPending is
+      // idempotent (its own atomic `status: 'pending'` guard pays out once)
+      // and a silent no-op when there is no pending referral.
+      await rewardReferralIfPending(db, tenant_id)
       return reply.send({ ok: true, insights_generated: insightsGenerated, version: newVersion })
     },
   )

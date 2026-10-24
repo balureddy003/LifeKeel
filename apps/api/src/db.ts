@@ -21,7 +21,8 @@ let db: Db | null = null
 export async function getDb(): Promise<Db> {
   if (db) return db
 
-  const uri = process.env['MONGODB_URL'] ?? process.env['MONGODB_URI'] ?? 'mongodb://localhost:27017'
+  const uri =
+    process.env['MONGODB_URL'] ?? process.env['MONGODB_URI'] ?? 'mongodb://localhost:27017'
   client = new MongoClient(uri, {
     maxPoolSize: 20,
     minPoolSize: 2,
@@ -46,18 +47,38 @@ export async function getDb(): Promise<Db> {
 
   // Indexes for billing/usage queries (M7 — composite DB indexes)
   await db.collection('events').createIndex({ tenant_id: 1, created_at: -1 }).catch(safeIndex)
-  await db.collection('workflow_runs').createIndex({ tenant_id: 1, created_at: -1 }).catch(safeIndex)
+  await db
+    .collection('workflow_runs')
+    .createIndex({ tenant_id: 1, created_at: -1 })
+    .catch(safeIndex)
   await db.collection('detectors').createIndex({ tenant_id: 1 }).catch(safeIndex)
   await db.collection('tenants').createIndex({ id: 1 }).catch(safeIndex)
   // Event dedup
-  await db.collection('events').createIndex({ tenant_id: 1, event_id: 1 }, { unique: true }).catch(safeIndex)
+  await db
+    .collection('events')
+    .createIndex({ tenant_id: 1, event_id: 1 }, { unique: true })
+    .catch(safeIndex)
 
   // Login telemetry for the operator security view — 30-day TTL keeps it
   // bounded; per-user and per-IP indexes back the aggregations.
   const loginEvents = db.collection('login_events')
-  await loginEvents.createIndex({ created_at: 1 }, { expireAfterSeconds: 30 * 86400 }).catch(safeIndex)
+  await loginEvents
+    .createIndex({ created_at: 1 }, { expireAfterSeconds: 30 * 86400 })
+    .catch(safeIndex)
   await loginEvents.createIndex({ user_id: 1, created_at: -1 }).catch(safeIndex)
   await loginEvents.createIndex({ ip: 1, created_at: -1 }).catch(safeIndex)
+  // Backs the per-email throttle in /auth/login (R42).
+  await loginEvents.createIndex({ email: 1, created_at: -1 }).catch(safeIndex)
+
+  // Signed-out session tokens (R06), kept until the longest session could expire.
+  await db
+    .collection('revoked_sessions')
+    .createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 })
+    .catch(safeIndex)
+  await db
+    .collection('revoked_sessions')
+    .createIndex({ token_hash: 1 }, { unique: true })
+    .catch(safeIndex)
 
   // Initialize detector versions collection
   initDetectorVersionsCollection(db)
@@ -81,19 +102,18 @@ export async function getSignalsCollection(): Promise<Collection<Record<string, 
 /** Returns tenant ids for the scheduler before tenant-scoped work begins. */
 export async function findEnabledMomentumTenantIds(): Promise<string[]> {
   const database = await getDb()
-  const configs = await database.collection<Record<string, unknown>>('tenant_settings')
+  const configs = await database
+    .collection<Record<string, unknown>>('tenant_settings')
     .find({ key: 'defensive_trend_strategy', 'value.strategy': 'momentum', 'value.enabled': true })
     .project({ tenant_id: 1 })
     .toArray()
-  return configs
-    .map((config) => String(config['tenant_id'] ?? ''))
-    .filter(Boolean)
+  return configs.map((config) => String(config['tenant_id'] ?? '')).filter(Boolean)
 }
 
 export async function getReceiptsCollection(): Promise<Collection<ActionReceipt>> {
   const database = await getDb()
   const receipts = database.collection<ActionReceipt>('action_receipts')
-  
+
   // Ensure indexes
   await receipts.createIndex({ tenant_id: 1 })
   await receipts.createIndex({ insight_id: 1 })
@@ -104,7 +124,9 @@ export async function getReceiptsCollection(): Promise<Collection<ActionReceipt>
   // payload_hash is derived from {insight_id, action_label, action_type}, so
   // re-executing the same insight (e.g. via POST /insights/:id/retry-execution)
   // can never double-dispatch an action that already succeeded.
-  await receipts.createIndex({ tenant_id: 1, insight_id: 1, payload_hash: 1 }, { unique: true }).catch(() => {})
+  await receipts
+    .createIndex({ tenant_id: 1, insight_id: 1, payload_hash: 1 }, { unique: true })
+    .catch(() => {})
 
   return receipts
 }
@@ -221,7 +243,12 @@ export function getLoginEventsCollection(database: Db) {
 // no route ever returns it, so the frontend has no way to leak a guess
 // about what changed even by accident.
 export function getLifeChangeNudgeStateCollection(database: Db) {
-  return database.collection<{ tenant_id: string; active: boolean; reason?: string; triggered_at?: Date }>('family_life_change_nudge_state')
+  return database.collection<{
+    tenant_id: string
+    active: boolean
+    reason?: string
+    triggered_at?: Date
+  }>('family_life_change_nudge_state')
 }
 
 // PRD-112: one referral code per tenant (the referrer's own shareable

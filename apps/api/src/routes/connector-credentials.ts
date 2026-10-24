@@ -18,9 +18,10 @@
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import crypto from 'node:crypto'
-import { ConnectorActionExecutor , connectorRegistry } from '@lifekeel/workflows'
+import { ConnectorActionExecutor, connectorRegistry } from '@lifekeel/workflows'
 import { createLogger, getTenantCollection } from '@lifekeel/platform'
-import { encryptForTenant } from '../crypto/envelope.js'
+import { decryptEnveloped, encryptForTenant } from '../crypto/envelope.js'
+import { signState, verifyState } from '../auth/signing-key.js'
 
 const log = createLogger({ service: 'connector-credentials', version: '0.0.0' })
 import { ConnectorSyncEngine } from '@lifekeel/pipeline'
@@ -66,42 +67,50 @@ function isReturnTarget(value: unknown): value is ReturnTarget {
 }
 
 function signOAuthState(payload: Record<string, unknown>): string {
-  const body = Buffer.from(JSON.stringify(payload)).toString('base64url')
-  const secret = process.env['JWT_SECRET'] ?? 'change-me-in-production'
-  const sig = crypto.createHmac('sha256', secret).update(body).digest('base64url')
-  return `${body}.${sig}`
+  return signState('connector-oauth-state', payload)
 }
 
+/**
+ * The state proves LifeKeel issued it and names the user who started the
+ * flow. It does not prove the browser finishing the flow is that user —
+ * the completion step (POST /connectors/:id/oauth/complete) does (R37).
+ */
 function verifyOAuthState(state: string): {
   tenantId: string
+  userId: string
   connectorId: string
   returnTo: ReturnTarget
   codeVerifier?: string
 } {
-  const [body, sig] = state.split('.')
-  if (!body || !sig) throw new Error('Malformed OAuth state')
-  const secret = process.env['JWT_SECRET'] ?? 'change-me-in-production'
-  const expected = crypto.createHmac('sha256', secret).update(body).digest('base64url')
-  if (sig.length !== expected.length) throw new Error('Invalid OAuth state signature')
-  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
-    throw new Error('Invalid OAuth state signature')
-  }
-  const parsed = JSON.parse(Buffer.from(body, 'base64url').toString()) as {
+  const parsed = verifyState('connector-oauth-state', state) as {
     tenantId?: string
+    userId?: string
     connectorId?: string
     returnTo?: string
     codeVerifier?: string
-    exp?: number
   }
-  if (!parsed.tenantId || !parsed.connectorId)
-    throw new Error('OAuth state missing tenant or connector')
-  if (parsed.exp && Date.now() > parsed.exp) throw new Error('OAuth state expired')
+  if (!parsed.tenantId || !parsed.userId || !parsed.connectorId)
+    throw new Error('OAuth state missing tenant, user or connector')
   return {
     tenantId: parsed.tenantId,
+    userId: parsed.userId,
     connectorId: parsed.connectorId,
     returnTo: isReturnTarget(parsed.returnTo) ? parsed.returnTo : 'studio',
     ...(parsed.codeVerifier ? { codeVerifier: parsed.codeVerifier } : {}),
   }
+}
+
+/** Token grant parked between the provider callback and the signed-in completion step. */
+interface TokenGrant {
+  access_token: string
+  refresh_token?: string
+  expires_in?: number
+}
+
+const PENDING_GRANT_TTL_MS = 10 * 60 * 1000
+
+function hashGrantId(id: string): string {
+  return crypto.createHash('sha256').update(id).digest('hex')
 }
 
 function createPkcePair(): { verifier: string; challenge: string } {
@@ -236,7 +245,7 @@ export function registerConnectorCredentialRoutes(
 ): void {
   const executor = new ConnectorActionExecutor(db)
   // Sync engine is optional — only wired when full pipeline deps are available
-   
+
   const syncEngine =
     connectorLoader && eventGenerator && engine
       ? new ConnectorSyncEngine(db as any, eventGenerator, engine)
@@ -470,6 +479,382 @@ export function registerConnectorCredentialRoutes(
     return { ok: true, status: result.status, ...result.state_updates, body: result.body }
   })
 
+  const pendingGrants = db.collection('oauth_pending_grants')
+  void Promise.resolve()
+    .then(() =>
+      Promise.all([
+        pendingGrants.createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 }),
+        pendingGrants.createIndex({ grant_id_hash: 1 }, { unique: true }),
+      ]),
+    )
+    .catch((err: unknown) => log.error({ err }, 'oauth_pending_grants index creation failed'))
+
+  /** Everything that used to run inside the callback after token exchange.
+   *  Returns the query params the frontend shows the result with. */
+  async function finishConnect(
+    connectorId: string,
+    tenantId: string,
+    returnTo: ReturnTarget,
+    data: TokenGrant,
+  ): Promise<Record<string, string>> {
+    const clientId = getGoogleClientId(connectorId) ?? ''
+    const clientSecret = getGoogleClientSecret(connectorId)
+    await executor.saveCredentials(tenantId, {
+      tenant_id: tenantId,
+      connector_id: connectorId,
+      auth_type: 'oauth2',
+      access_token: await encryptForTenant(db, tenantId, data.access_token),
+      ...(data.refresh_token
+        ? { refresh_token: await encryptForTenant(db, tenantId, data.refresh_token) }
+        : {}),
+      ...(data.expires_in
+        ? { token_expires_at: new Date(Date.now() + data.expires_in * 1000) }
+        : {}),
+      token_type: 'Bearer',
+    })
+    // A fresh grant clears any earlier dead-refresh-token flag.
+    await getTenantCollection<Record<string, unknown>>(
+      db,
+      'connector_credentials',
+      tenantId,
+    ).updateOne({ connector_id: connectorId }, { $set: { needs_reauth: false } })
+
+    // X: resolve the account handle once so /marketing/connections can
+    // show "X (@handle)" instead of a bare channel name. Best-effort —
+    // a failed lookup never fails the connect flow.
+    if (connectorId === 'twitter_x') {
+      try {
+        const meRes = await fetch('https://api.x.com/2/users/me', {
+          headers: { Authorization: `Bearer ${data.access_token}` },
+        })
+        const me = (await meRes.json()) as { data?: { id?: string; username?: string } }
+        if (meRes.ok && me.data?.username) {
+          await getTenantCollection<Record<string, unknown>>(
+            db,
+            'connector_credentials',
+            tenantId,
+          ).updateOne(
+            { connector_id: 'twitter_x' },
+            {
+              $set: {
+                'extra.username': me.data.username,
+                ...(me.data.id ? { 'extra.user_id': me.data.id } : {}),
+              },
+            },
+          )
+        }
+      } catch {
+        // display nicety only
+      }
+    }
+
+    // ── Meta: Facebook Pages + Instagram Business ────────────────────────
+    // The OAuth grant returns a short-lived USER token, but page posts and
+    // IG media publish under a PAGE token. Exchange the user token for a
+    // long-lived one (60d), read /me/accounts, take the first page's
+    // non-expiring page token, and store THAT as the credential's
+    // access_token — it's what publishing and engagement reads use. A user
+    // with no managed page can't publish, so that's a hard error here
+    // rather than a dead connection.
+    if (
+      connectorId === 'facebook_pages' ||
+      connectorId === 'instagram_business' ||
+      connectorId === 'instagram'
+    ) {
+      try {
+        const exchange = await fetch(
+          `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token` +
+            `&client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}` +
+            `&fb_exchange_token=${encodeURIComponent(data.access_token)}`,
+        )
+        const longLived = (await exchange.json()) as { access_token?: string }
+        const userToken = longLived.access_token ?? data.access_token
+
+        const accountsRes = await fetch(
+          `https://graph.facebook.com/v19.0/me/accounts?fields=id,name,access_token&access_token=${encodeURIComponent(userToken)}`,
+        )
+        const accounts = (await accountsRes.json()) as {
+          data?: { id: string; name: string; access_token: string }[]
+        }
+        const page = accounts.data?.[0]
+        if (!page?.id || !page.access_token) {
+          return { connect: connectorId, error: 'no_facebook_page' }
+        }
+
+        const extra: Record<string, string> = { page_id: page.id, page_name: page.name }
+
+        // Instagram Business: the IG account hangs off the page — resolve
+        // ig_user_id now so publishing never has to rediscover it.
+        if (connectorId !== 'facebook_pages') {
+          const igRes = await fetch(
+            `https://graph.facebook.com/v19.0/${page.id}?fields=instagram_business_account&access_token=${encodeURIComponent(page.access_token)}`,
+          )
+          const ig = (await igRes.json()) as { instagram_business_account?: { id?: string } }
+          const igId = ig.instagram_business_account?.id
+          if (!igId) {
+            return {
+              connect: connectorId,
+              error: 'no_instagram_business_account',
+            }
+          }
+          extra['ig_user_id'] = igId
+          try {
+            const igUserRes = await fetch(
+              `https://graph.facebook.com/v19.0/${igId}?fields=username&access_token=${encodeURIComponent(page.access_token)}`,
+            )
+            const igUser = (await igUserRes.json()) as { username?: string }
+            if (igUser.username) extra['ig_username'] = `@${igUser.username}`
+          } catch {
+            // display nicety only
+          }
+        }
+
+        // Page tokens derived from a long-lived user token don't expire —
+        // drop the short-lived expiry the generic save just wrote.
+        await getTenantCollection<Record<string, unknown>>(
+          db,
+          'connector_credentials',
+          tenantId,
+        ).updateOne(
+          { connector_id: connectorId },
+          {
+            $set: {
+              access_token: await encryptForTenant(db, tenantId, page.access_token),
+              extra,
+            },
+            $unset: { token_expires_at: '' },
+          },
+        )
+      } catch (err) {
+        log.error({ err, connector_id: connectorId }, 'Meta page resolution failed')
+        return {
+          connect: connectorId,
+          error: 'meta_page_resolution_failed',
+        }
+      }
+    }
+
+    // ── Threads ──────────────────────────────────────────────────────────
+    // Same Meta umbrella, different token service: exchange the ~1hr user
+    // token for a 60-day token, then read /me once for the user id the
+    // publish endpoints need. th_refresh_token keeps it alive from there.
+    if (connectorId === 'threads') {
+      try {
+        const longLivedRes = await fetch(
+          `https://graph.threads.net/access_token?grant_type=th_exchange_token` +
+            `&client_secret=${encodeURIComponent(clientSecret)}&access_token=${encodeURIComponent(data.access_token)}`,
+        )
+        const longLived = (await longLivedRes.json()) as {
+          access_token?: string
+          expires_in?: number
+        }
+        const token = longLived.access_token ?? data.access_token
+
+        const meRes = await fetch(
+          `https://graph.threads.net/v1.0/me?fields=id,username&access_token=${encodeURIComponent(token)}`,
+        )
+        const me = (await meRes.json()) as { id?: string; username?: string }
+        if (!me.id) {
+          return { connect: 'threads', error: 'threads_me_failed' }
+        }
+        await getTenantCollection<Record<string, unknown>>(
+          db,
+          'connector_credentials',
+          tenantId,
+        ).updateOne(
+          { connector_id: 'threads' },
+          {
+            $set: {
+              access_token: await encryptForTenant(db, tenantId, token),
+              extra: { user_id: me.id, ...(me.username ? { username: `@${me.username}` } : {}) },
+              ...(longLived.expires_in
+                ? { token_expires_at: new Date(Date.now() + longLived.expires_in * 1000) }
+                : {}),
+            },
+          },
+        )
+      } catch (err) {
+        log.error({ err }, 'Threads token exchange failed')
+        return { connect: 'threads', error: 'threads_exchange_failed' }
+      }
+    }
+
+    // ── LinkedIn ─────────────────────────────────────────────────────────
+    // Publishing needs the author URN; /v2/userinfo gives `sub` under the
+    // openid scope. No refresh token — the ~60d token then needs_reauth.
+    if (connectorId === 'linkedin') {
+      try {
+        const meRes = await fetch('https://api.linkedin.com/v2/userinfo', {
+          headers: { Authorization: `Bearer ${data.access_token}` },
+        })
+        const me = (await meRes.json()) as { sub?: string; name?: string }
+        if (!me.sub) {
+          return {
+            connect: 'linkedin',
+            error: 'linkedin_userinfo_failed',
+          }
+        }
+        await getTenantCollection<Record<string, unknown>>(
+          db,
+          'connector_credentials',
+          tenantId,
+        ).updateOne(
+          { connector_id: 'linkedin' },
+          {
+            $set: {
+              extra: {
+                author_urn: `urn:li:person:${me.sub}`,
+                ...(me.name ? { name: me.name } : {}),
+              },
+            },
+          },
+        )
+      } catch (err) {
+        log.error({ err }, 'LinkedIn userinfo failed')
+        return { connect: 'linkedin', error: 'linkedin_userinfo_failed' }
+      }
+    }
+
+    // ── Family app: mirror into its own connector_id: 'email' shape ─────
+    // The family app's inbox scanner (jobs/email-scan.ts) reads IMAP
+    // credentials under connector_id 'email', not the platform's own
+    // connector_id 'gmail' record saved above — same OAuth grant, two
+    // different consumers. IMAP over Gmail supports XOAUTH2 (an access
+    // token in place of a password), so this reuses the exact same scan/
+    // classify pipeline the manual App-Password flow already goes through
+    // instead of adding a second, Gmail-API-specific path.
+    if (connectorId === 'gmail' && returnTo === 'family') {
+      const emailAddress = await fetchGmailAddress(data.access_token)
+      if (!emailAddress) {
+        return {
+          connect: connectorId,
+          error: 'Could not read the connected Gmail address',
+        }
+      }
+
+      const familyCreds = getTenantCollection<Record<string, unknown>>(
+        db,
+        'connector_credentials',
+        tenantId,
+      )
+      const existing = (await familyCreds.findOne({ connector_id: 'email' })) as {
+        extra?: { refresh_token?: string }
+      } | null
+      // Google only reissues a refresh_token on the first consent for a
+      // given scope — a reconnect often comes back without one, so keep
+      // the previously stored one rather than overwriting it with nothing.
+      const refreshToken = data.refresh_token
+        ? await encryptForTenant(db, tenantId, data.refresh_token)
+        : existing?.extra?.refresh_token
+
+      const credentialDoc = {
+        tenant_id: tenantId,
+        connector_id: 'email',
+        auth_type: 'oauth',
+        username: emailAddress,
+        extra: {
+          host: 'imap.gmail.com',
+          port: 993,
+          use_tls: true,
+          provider: 'gmail',
+          access_token: await encryptForTenant(db, tenantId, data.access_token),
+          ...(refreshToken ? { refresh_token: refreshToken } : {}),
+          ...(data.expires_in
+            ? { token_expires_at: new Date(Date.now() + data.expires_in * 1000) }
+            : {}),
+        },
+        updated_at: new Date(),
+        needs_reauth: false,
+      }
+      await familyCreds.updateOne(
+        { connector_id: 'email' },
+        { $set: credentialDoc },
+        { upsert: true },
+      )
+
+      log.info(
+        { tenant_id: tenantId, email: emailAddress },
+        'Gmail connected via OAuth for family email connector',
+      )
+
+      scanTenantInbox(db, tenantId, credentialDoc as Parameters<typeof scanTenantInbox>[2]).catch(
+        (err) => {
+          log.error({ err, tenant_id: tenantId }, 'Initial email scan failed (OAuth connect)')
+        },
+      )
+
+      return { connected: 'email', email: emailAddress }
+    }
+
+    // ── Auto-trigger historical backfill in background ──────────────────
+    // Run async so the OAuth redirect completes immediately.
+    // The backfill will replay up to 180 days of historical data.
+    if (syncEngine && connectorLoader) {
+      const connector = connectorLoader.get(connectorId)
+      if (connector) {
+        syncEngine
+          .backfill(connector, tenantId)
+          .then((result) => {
+            fastify.log.info(
+              { connector_id: connectorId, tenant_id: tenantId, ...result },
+              'Backfill complete',
+            )
+          })
+          .catch((err) => {
+            fastify.log.error({ err, connector_id: connectorId }, 'Backfill failed')
+          })
+      }
+    }
+
+    return { connected: connectorId }
+  }
+
+  // POST /connectors/:id/oauth/complete — the signed-in app claims the
+  // grant the callback parked (R37). Single use; the grant is deleted on
+  // first claim whether or not the caller matches.
+  fastify.post<{ Params: { id: string }; Body: { grant?: unknown } }>(
+    '/connectors/:id/oauth/complete',
+    async (req, reply) => {
+      const grantId = req.body?.grant
+      if (typeof grantId !== 'string' || grantId.length < 16 || grantId.length > 128) {
+        return reply.status(400).send({ error: 'grant required' })
+      }
+      const doc = await pendingGrants.findOneAndDelete({
+        grant_id_hash: hashGrantId(grantId),
+        connector_id: req.params.id,
+        expires_at: { $gt: new Date() },
+      })
+      if (!doc) {
+        return reply.status(404).send({ error: 'This connection link has expired. Start again.' })
+      }
+      const { tenant_id, user_id } = req.authContext
+      if (doc['tenant_id'] !== tenant_id || doc['user_id'] !== user_id) {
+        log.warn(
+          { connector_id: req.params.id, tenant_id, grant_tenant: doc['tenant_id'] },
+          'OAuth grant claimed by a different user — discarded',
+        )
+        return reply
+          .status(403)
+          .send({ error: 'This connection was started by a different account. Start again.' })
+      }
+      const returnTo = isReturnTarget(doc['return_to']) ? doc['return_to'] : 'studio'
+      const raw = await decryptEnveloped(db, doc['token'] as string)
+      if (!raw) return reply.status(500).send({ error: 'Stored grant unreadable' })
+      try {
+        const params = await finishConnect(
+          req.params.id,
+          tenant_id,
+          returnTo,
+          JSON.parse(raw) as TokenGrant,
+        )
+        return { params }
+      } catch (err) {
+        log.error({ err, connector_id: req.params.id }, 'OAuth completion failed')
+        return { params: { connect: req.params.id, error: 'connect_failed' } }
+      }
+    },
+  )
+
   // GET /connectors/:id/oauth/start — redirect to OAuth provider
   fastify.get<{
     Params: { id: string }
@@ -516,6 +901,7 @@ export function registerConnectorCredentialRoutes(
     const pkce = createPkcePair()
     const state = signOAuthState({
       tenantId,
+      userId: req.authContext.user_id,
       connectorId: req.params.id,
       returnTo,
       codeVerifier: pkce.verifier,
@@ -534,20 +920,14 @@ export function registerConnectorCredentialRoutes(
       // by testing the family app's Gmail connector end to end: a reconnect
       // came back with no refresh_token at all.
       //
-      // https://mail.google.com/ is required in addition to the two Gmail
-      // API scopes below — found the hard way too: the family connector's
-      // IMAP session (jobs/email-scan.ts, XOAUTH2) was rejected with
-      // "AUTHENTICATIONFAILED" and an oauthError naming this exact scope.
-      // gmail.readonly/gmail.send authorize calls to the Gmail *REST* API;
-      // IMAP/SMTP access is a separate, broader scope Google doesn't infer
-      // from the API ones. Both are requested together so the one token
-      // covers Studio's REST-API use of this connector and the family app's
-      // IMAP use of it.
-      gmail: `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=https://www.googleapis.com/auth/gmail.send+https://www.googleapis.com/auth/gmail.readonly+https://mail.google.com/&access_type=offline&prompt=consent&state=${state}`,
+      // gmail.readonly only (R38). The family inbox scan reads through the
+      // Gmail REST API (email/gmail-api.ts), so neither the full-mailbox
+      // https://mail.google.com/ scope IMAP needed nor gmail.send is requested.
+      gmail: `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=https://www.googleapis.com/auth/gmail.readonly&access_type=offline&prompt=consent&state=${state}`,
       shopify: `https://{shop}.myshopify.com/admin/oauth/authorize?client_id=${clientId}&scope=read_orders,write_orders&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`,
       // Cloud storage
       google_drive: `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=https://www.googleapis.com/auth/drive.readonly+https://www.googleapis.com/auth/drive.metadata.readonly&access_type=offline&prompt=consent&state=${state}`,
-      onedrive: `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=Files.Read+Files.Read.All+offline_access&state=${state}`,
+      onedrive: `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=Files.Read+offline_access&state=${state}`,
       dropbox: `https://www.dropbox.com/oauth2/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&token_access_type=offline&state=${state}`,
       twitter_x: `https://x.com/i/oauth2/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent('tweet.read tweet.write users.read offline.access')}&state=${state}&code_challenge=${pkce.challenge}&code_challenge_method=S256`,
       // Social media — scopes request what publishing actually needs:
@@ -599,6 +979,7 @@ export function registerConnectorCredentialRoutes(
     }
 
     let tenantId: string
+    let userId: string
     let returnTo: ReturnTarget
     let codeVerifier: string | undefined
     try {
@@ -612,6 +993,7 @@ export function registerConnectorCredentialRoutes(
         )
       }
       tenantId = stateData.tenantId
+      userId = stateData.userId
       returnTo = stateData.returnTo
       codeVerifier = stateData.codeVerifier
     } catch {
@@ -724,332 +1106,29 @@ export function registerConnectorCredentialRoutes(
         )
       }
 
-      await executor.saveCredentials(tenantId, {
+      // Park the grant instead of saving it (R37). Only the signed-in user
+      // who started the flow can claim it, so a victim tricked into
+      // completing someone else's authorization link never attaches their
+      // account to that person's household.
+      const grantId = crypto.randomBytes(24).toString('base64url')
+      const grant: TokenGrant = {
+        access_token: data.access_token,
+        ...(data.refresh_token ? { refresh_token: data.refresh_token } : {}),
+        ...(data.expires_in ? { expires_in: data.expires_in } : {}),
+      }
+      await pendingGrants.insertOne({
+        grant_id_hash: hashGrantId(grantId),
         tenant_id: tenantId,
+        user_id: userId,
         connector_id: req.params.id,
-        auth_type: 'oauth2',
-        access_token: await encryptForTenant(db, tenantId, data.access_token),
-        ...(data.refresh_token
-          ? { refresh_token: await encryptForTenant(db, tenantId, data.refresh_token) }
-          : {}),
-        ...(data.expires_in
-          ? { token_expires_at: new Date(Date.now() + data.expires_in * 1000) }
-          : {}),
-        token_type: 'Bearer',
+        return_to: returnTo,
+        token: await encryptForTenant(db, tenantId, JSON.stringify(grant)),
+        created_at: new Date(),
+        expires_at: new Date(Date.now() + PENDING_GRANT_TTL_MS),
       })
-      // A fresh grant clears any earlier dead-refresh-token flag.
-      await getTenantCollection<Record<string, unknown>>(
-        db,
-        'connector_credentials',
-        tenantId,
-      ).updateOne({ connector_id: req.params.id }, { $set: { needs_reauth: false } })
-
-      // X: resolve the account handle once so /marketing/connections can
-      // show "X (@handle)" instead of a bare channel name. Best-effort —
-      // a failed lookup never fails the connect flow.
-      if (req.params.id === 'twitter_x') {
-        try {
-          const meRes = await fetch('https://api.x.com/2/users/me', {
-            headers: { Authorization: `Bearer ${data.access_token}` },
-          })
-          const me = (await meRes.json()) as { data?: { id?: string; username?: string } }
-          if (meRes.ok && me.data?.username) {
-            await getTenantCollection<Record<string, unknown>>(
-              db,
-              'connector_credentials',
-              tenantId,
-            ).updateOne(
-              { connector_id: 'twitter_x' },
-              {
-                $set: {
-                  'extra.username': me.data.username,
-                  ...(me.data.id ? { 'extra.user_id': me.data.id } : {}),
-                },
-              },
-            )
-          }
-        } catch {
-          // display nicety only
-        }
-      }
-
-      // ── Meta: Facebook Pages + Instagram Business ────────────────────────
-      // The OAuth grant returns a short-lived USER token, but page posts and
-      // IG media publish under a PAGE token. Exchange the user token for a
-      // long-lived one (60d), read /me/accounts, take the first page's
-      // non-expiring page token, and store THAT as the credential's
-      // access_token — it's what publishing and engagement reads use. A user
-      // with no managed page can't publish, so that's a hard error here
-      // rather than a dead connection.
-      if (
-        req.params.id === 'facebook_pages' ||
-        req.params.id === 'instagram_business' ||
-        req.params.id === 'instagram'
-      ) {
-        try {
-          const exchange = await fetch(
-            `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token` +
-              `&client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}` +
-              `&fb_exchange_token=${encodeURIComponent(data.access_token)}`,
-          )
-          const longLived = (await exchange.json()) as { access_token?: string }
-          const userToken = longLived.access_token ?? data.access_token
-
-          const accountsRes = await fetch(
-            `https://graph.facebook.com/v19.0/me/accounts?fields=id,name,access_token&access_token=${encodeURIComponent(userToken)}`,
-          )
-          const accounts = (await accountsRes.json()) as {
-            data?: { id: string; name: string; access_token: string }[]
-          }
-          const page = accounts.data?.[0]
-          if (!page?.id || !page.access_token) {
-            return reply.redirect(
-              frontendRedirect(returnTo, { connect: req.params.id, error: 'no_facebook_page' }),
-            )
-          }
-
-          const extra: Record<string, string> = { page_id: page.id, page_name: page.name }
-
-          // Instagram Business: the IG account hangs off the page — resolve
-          // ig_user_id now so publishing never has to rediscover it.
-          if (req.params.id !== 'facebook_pages') {
-            const igRes = await fetch(
-              `https://graph.facebook.com/v19.0/${page.id}?fields=instagram_business_account&access_token=${encodeURIComponent(page.access_token)}`,
-            )
-            const ig = (await igRes.json()) as { instagram_business_account?: { id?: string } }
-            const igId = ig.instagram_business_account?.id
-            if (!igId) {
-              return reply.redirect(
-                frontendRedirect(returnTo, {
-                  connect: req.params.id,
-                  error: 'no_instagram_business_account',
-                }),
-              )
-            }
-            extra['ig_user_id'] = igId
-            try {
-              const igUserRes = await fetch(
-                `https://graph.facebook.com/v19.0/${igId}?fields=username&access_token=${encodeURIComponent(page.access_token)}`,
-              )
-              const igUser = (await igUserRes.json()) as { username?: string }
-              if (igUser.username) extra['ig_username'] = `@${igUser.username}`
-            } catch {
-              // display nicety only
-            }
-          }
-
-          // Page tokens derived from a long-lived user token don't expire —
-          // drop the short-lived expiry the generic save just wrote.
-          await getTenantCollection<Record<string, unknown>>(
-            db,
-            'connector_credentials',
-            tenantId,
-          ).updateOne(
-            { connector_id: req.params.id },
-            {
-              $set: {
-                access_token: await encryptForTenant(db, tenantId, page.access_token),
-                extra,
-              },
-              $unset: { token_expires_at: '' },
-            },
-          )
-        } catch (err) {
-          log.error({ err, connector_id: req.params.id }, 'Meta page resolution failed')
-          return reply.redirect(
-            frontendRedirect(returnTo, {
-              connect: req.params.id,
-              error: 'meta_page_resolution_failed',
-            }),
-          )
-        }
-      }
-
-      // ── Threads ──────────────────────────────────────────────────────────
-      // Same Meta umbrella, different token service: exchange the ~1hr user
-      // token for a 60-day token, then read /me once for the user id the
-      // publish endpoints need. th_refresh_token keeps it alive from there.
-      if (req.params.id === 'threads') {
-        try {
-          const longLivedRes = await fetch(
-            `https://graph.threads.net/access_token?grant_type=th_exchange_token` +
-              `&client_secret=${encodeURIComponent(clientSecret)}&access_token=${encodeURIComponent(data.access_token)}`,
-          )
-          const longLived = (await longLivedRes.json()) as {
-            access_token?: string
-            expires_in?: number
-          }
-          const token = longLived.access_token ?? data.access_token
-
-          const meRes = await fetch(
-            `https://graph.threads.net/v1.0/me?fields=id,username&access_token=${encodeURIComponent(token)}`,
-          )
-          const me = (await meRes.json()) as { id?: string; username?: string }
-          if (!me.id) {
-            return reply.redirect(
-              frontendRedirect(returnTo, { connect: 'threads', error: 'threads_me_failed' }),
-            )
-          }
-          await getTenantCollection<Record<string, unknown>>(
-            db,
-            'connector_credentials',
-            tenantId,
-          ).updateOne(
-            { connector_id: 'threads' },
-            {
-              $set: {
-                access_token: await encryptForTenant(db, tenantId, token),
-                extra: { user_id: me.id, ...(me.username ? { username: `@${me.username}` } : {}) },
-                ...(longLived.expires_in
-                  ? { token_expires_at: new Date(Date.now() + longLived.expires_in * 1000) }
-                  : {}),
-              },
-            },
-          )
-        } catch (err) {
-          log.error({ err }, 'Threads token exchange failed')
-          return reply.redirect(
-            frontendRedirect(returnTo, { connect: 'threads', error: 'threads_exchange_failed' }),
-          )
-        }
-      }
-
-      // ── LinkedIn ─────────────────────────────────────────────────────────
-      // Publishing needs the author URN; /v2/userinfo gives `sub` under the
-      // openid scope. No refresh token — the ~60d token then needs_reauth.
-      if (req.params.id === 'linkedin') {
-        try {
-          const meRes = await fetch('https://api.linkedin.com/v2/userinfo', {
-            headers: { Authorization: `Bearer ${data.access_token}` },
-          })
-          const me = (await meRes.json()) as { sub?: string; name?: string }
-          if (!me.sub) {
-            return reply.redirect(
-              frontendRedirect(returnTo, {
-                connect: 'linkedin',
-                error: 'linkedin_userinfo_failed',
-              }),
-            )
-          }
-          await getTenantCollection<Record<string, unknown>>(
-            db,
-            'connector_credentials',
-            tenantId,
-          ).updateOne(
-            { connector_id: 'linkedin' },
-            {
-              $set: {
-                extra: {
-                  author_urn: `urn:li:person:${me.sub}`,
-                  ...(me.name ? { name: me.name } : {}),
-                },
-              },
-            },
-          )
-        } catch (err) {
-          log.error({ err }, 'LinkedIn userinfo failed')
-          return reply.redirect(
-            frontendRedirect(returnTo, { connect: 'linkedin', error: 'linkedin_userinfo_failed' }),
-          )
-        }
-      }
-
-      // ── Family app: mirror into its own connector_id: 'email' shape ─────
-      // The family app's inbox scanner (jobs/email-scan.ts) reads IMAP
-      // credentials under connector_id 'email', not the platform's own
-      // connector_id 'gmail' record saved above — same OAuth grant, two
-      // different consumers. IMAP over Gmail supports XOAUTH2 (an access
-      // token in place of a password), so this reuses the exact same scan/
-      // classify pipeline the manual App-Password flow already goes through
-      // instead of adding a second, Gmail-API-specific path.
-      if (req.params.id === 'gmail' && returnTo === 'family') {
-        const emailAddress = await fetchGmailAddress(data.access_token)
-        if (!emailAddress) {
-          return reply.redirect(
-            frontendRedirect(returnTo, {
-              connect: req.params.id,
-              error: 'Could not read the connected Gmail address',
-            }),
-          )
-        }
-
-        const familyCreds = getTenantCollection<Record<string, unknown>>(
-          db,
-          'connector_credentials',
-          tenantId,
-        )
-        const existing = (await familyCreds.findOne({ connector_id: 'email' })) as {
-          extra?: { refresh_token?: string }
-        } | null
-        // Google only reissues a refresh_token on the first consent for a
-        // given scope — a reconnect often comes back without one, so keep
-        // the previously stored one rather than overwriting it with nothing.
-        const refreshToken = data.refresh_token
-          ? await encryptForTenant(db, tenantId, data.refresh_token)
-          : existing?.extra?.refresh_token
-
-        const credentialDoc = {
-          tenant_id: tenantId,
-          connector_id: 'email',
-          auth_type: 'oauth',
-          username: emailAddress,
-          extra: {
-            host: 'imap.gmail.com',
-            port: 993,
-            use_tls: true,
-            provider: 'gmail',
-            access_token: await encryptForTenant(db, tenantId, data.access_token),
-            ...(refreshToken ? { refresh_token: refreshToken } : {}),
-            ...(data.expires_in
-              ? { token_expires_at: new Date(Date.now() + data.expires_in * 1000) }
-              : {}),
-          },
-          updated_at: new Date(),
-          needs_reauth: false,
-        }
-        await familyCreds.updateOne(
-          { connector_id: 'email' },
-          { $set: credentialDoc },
-          { upsert: true },
-        )
-
-        log.info(
-          { tenant_id: tenantId, email: emailAddress },
-          'Gmail connected via OAuth for family email connector',
-        )
-
-        scanTenantInbox(db, tenantId, credentialDoc as Parameters<typeof scanTenantInbox>[2]).catch(
-          (err) => {
-            log.error({ err, tenant_id: tenantId }, 'Initial email scan failed (OAuth connect)')
-          },
-        )
-
-        return reply.redirect(
-          frontendRedirect(returnTo, { connected: 'email', email: emailAddress }),
-        )
-      }
-
-      // ── Auto-trigger historical backfill in background ──────────────────
-      // Run async so the OAuth redirect completes immediately.
-      // The backfill will replay up to 180 days of historical data.
-      if (syncEngine && connectorLoader) {
-        const connector = connectorLoader.get(req.params.id)
-        if (connector) {
-          syncEngine
-            .backfill(connector, tenantId)
-            .then((result) => {
-              fastify.log.info(
-                { connector_id: req.params.id, tenant_id: tenantId, ...result },
-                'Backfill complete',
-              )
-            })
-            .catch((err) => {
-              fastify.log.error({ err, connector_id: req.params.id }, 'Backfill failed')
-            })
-        }
-      }
-
-      return reply.redirect(frontendRedirect(returnTo, { connected: req.params.id }))
+      return reply.redirect(
+        frontendRedirect(returnTo, { connect: req.params.id, complete: grantId }),
+      )
     } catch (err) {
       return reply.redirect(
         frontendRedirect(returnTo, { connect: req.params.id, error: String(err) }),
@@ -1094,7 +1173,7 @@ export function registerConnectorCredentialRoutes(
       .toArray()
     return {
       connector_id: req.params.id,
-       
+
       resources: (states as any[]).map((s) => ({
         resource: s.resource as string,
         last_synced_at: s.last_synced_at as Date | null,

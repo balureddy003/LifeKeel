@@ -42,6 +42,20 @@ function costPerHourUsd(): number {
   return Number.isFinite(v) && v > 0 ? v : 0
 }
 
+// PRD-215: one DecisionFn per purpose per process. Previously every call
+// site built its own fn — and therefore its own semaphore — so
+// LOCAL_MODEL_MAX_CONCURRENT bounded each *caller*, not the model: an email
+// scan, a document upload and the judge sweep each queued independently and
+// could stampede the single CPU backend at once. Per-purpose singletons make
+// the concurrency cap real and give each purpose its own bounded queue —
+// the bulkhead: a deep judge backlog cannot take a classifier's slot.
+const decisionFnCache = new Map<string, DecisionFn>()
+
+/** Clears the per-purpose fn cache — tests only. */
+export function resetLocalDecisionFnCache(): void {
+  decisionFnCache.clear()
+}
+
 export function localDecisionFromEnv(
   purpose: 'judge' | 'classifier' | 'ocr',
 ): DecisionFn | undefined {
@@ -55,7 +69,14 @@ export function localDecisionFromEnv(
       : purpose === 'classifier'
         ? classifierModel
         : process.env['LOCAL_OCR_MODEL'] || classifierModel
-  return createLocalDecisionFn({
+  const maxConcurrent = Number(process.env['LOCAL_MODEL_MAX_CONCURRENT']) || 1
+  // Bound on calls WAITING for a slot — work past this is refused immediately
+  // (queue_full) so a caller's deadline can't be spent behind a backlog.
+  const maxQueue = Number(process.env['LOCAL_MODEL_MAX_QUEUE']) || 20
+  const key = `${purpose}|${baseUrl}|${model}|${maxConcurrent}|${maxQueue}`
+  const cached = decisionFnCache.get(key)
+  if (cached) return cached
+  const fn = createLocalDecisionFn({
     baseUrl,
     model,
     timeoutMs: 120_000,
@@ -63,7 +84,8 @@ export function localDecisionFromEnv(
     // emails/min, while per-call time rose 16s -> 28s -> 47s. Parallel calls to one
     // CPU model add latency and timeout risk, not throughput, so default to 1. Raise
     // it only to match the number of model instances behind the URL.
-    maxConcurrent: Number(process.env['LOCAL_MODEL_MAX_CONCURRENT']) || 1,
+    maxConcurrent,
+    maxQueue,
     getHeaders: authHeadersFromEnv(baseUrl),
     onCall: (e) =>
       recordLocalModelCall(
@@ -72,8 +94,11 @@ export function localDecisionFromEnv(
         e.latency_ms / 1000,
         e.queued_ms / 1000,
         (e.latency_ms / 3_600_000) * costPerHourUsd(),
+        e.rejected,
       ),
   })
+  decisionFnCache.set(key, fn)
+  return fn
 }
 
 /** Output that the guard rejected; callers' existing failure paths turn this into their safe fallback. */
@@ -177,8 +202,8 @@ export function ungroundedNumbers(output: string, source: string): string[] {
  * the assistant is told never to make.
  */
 export function withOutputGuard(llm: LlmFn): LlmFn {
-  return async (system, prompt, model) => {
-    const text = await llm(system, prompt, model)
+  return async (system, prompt, model, opts) => {
+    const text = await llm(system, prompt, model, opts)
     const reasons: string[] = scanText(text, { generated: true })
     const volunteered = volunteeredProviders(text, `${system}\n${prompt}`)
     if (volunteered.length > 0) reasons.push(`provider_steering(${volunteered.join(',')})`)

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { captureLead } from '@/lib/api'
+import { Turnstile, useTurnstile } from '@/components/security/Turnstile'
 import { Brand } from './Brand'
 import './landing.css'
 import './hero.css'
@@ -11,6 +12,10 @@ import './bands.css'
 function Newsletter() {
   const [email, setEmail] = useState('')
   const [state, setState] = useState<'idle' | 'busy' | 'done' | 'error' | 'empty'>('idle')
+  // The challenge script loads only once someone starts typing, so plain
+  // page views of every marketing page never fetch it.
+  const [engaged, setEngaged] = useState(false)
+  const captcha = useTurnstile()
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -19,9 +24,13 @@ function Newsletter() {
       setState('empty')
       return
     }
+    if (!captcha.ready) return
     setState('busy')
     try {
-      const ok = await captureLead({ email: email.trim(), source: 'landing_newsletter' })
+      const ok = await captureLead(
+        { email: email.trim(), source: 'landing_newsletter' },
+        captcha.consume(),
+      )
       setState(ok ? 'done' : 'error')
     } catch {
       setState('error')
@@ -47,18 +56,37 @@ function Newsletter() {
           inputMode="email"
           autoComplete="email"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(e) => {
+            setEmail(e.target.value)
+            setEngaged(true)
+          }}
+          onFocus={() => setEngaged(true)}
           placeholder="you@example.com"
+          maxLength={320}
+          aria-describedby="lk-news-consent"
         />
-        <button type="submit" disabled={state === 'busy'}>
+        <button type="submit" disabled={state === 'busy' || (engaged && !captcha.ready)}>
           {state === 'busy' ? '...' : 'Join'}
         </button>
       </div>
+      {engaged && (
+        <Turnstile
+          ref={captcha.ref}
+          action="lead"
+          appearance="interaction-only"
+          onToken={captcha.onToken}
+          onExpire={captcha.onExpire}
+        />
+      )}
       {(state === 'error' || state === 'empty') && (
         <p className="lk-fine" role="alert">
           {state === 'empty' ? 'Enter your email address.' : 'Could not subscribe. Try again.'}
         </p>
       )}
+      <p id="lk-news-consent" className="lk-fine">
+        By joining, you agree to receive emails from LifeKeel. Unsubscribe anytime. Read our{' '}
+        <Link href="/privacy">privacy policy</Link>.
+      </p>
     </form>
   )
 }
@@ -71,9 +99,14 @@ const PRODUCT = [
 const COMPANY = [
   { href: '/blog', label: 'Blog' },
   { href: '/support', label: 'Support' },
+  { href: '/trust', label: 'Trust' },
+]
+const LEGAL = [
   { href: '/terms', label: 'Terms' },
   { href: '/privacy', label: 'Privacy' },
-  { href: '/trust', label: 'Trust' },
+  { href: '/cookies', label: 'Cookies' },
+  { href: '/security', label: 'Security' },
+  { href: '/legal/gdpr', label: 'GDPR' },
 ]
 
 export function SiteFooter({ home = true }: { home?: boolean }) {
@@ -110,7 +143,15 @@ export function SiteFooter({ home = true }: { home?: boolean }) {
               </Link>
             ))}
           </nav>
-          <div>
+          <nav aria-label="Legal">
+            <p className="lk-foot-h">Legal</p>
+            {LEGAL.map((l) => (
+              <Link key={l.href} href={l.href}>
+                {l.label}
+              </Link>
+            ))}
+          </nav>
+          <div className="lk-foot-news">
             <p className="lk-foot-h">Stay in touch</p>
             <Newsletter />
           </div>
@@ -121,6 +162,7 @@ export function SiteFooter({ home = true }: { home?: boolean }) {
           always call your local emergency number (999, 112, 911, or the equivalent where you are)
           in a real emergency. Consult a qualified professional before making financial decisions.
         </p>
+        <p className="lk-fine lk-copyright">&copy; {new Date().getFullYear()} LifeKeel</p>
       </div>
     </footer>
   )

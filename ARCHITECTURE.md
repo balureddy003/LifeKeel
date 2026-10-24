@@ -210,6 +210,28 @@ flowchart TB
 | **Action layer** | Exact action preview; human-approved email/WhatsApp/CRM/log actions; receipts and audit; opt-in scheduled reminders; auto-execution restricted to trusted `log_only` scopes | No money movement, claims filing, product switching, legal filing, medical action, or autonomous document release |
 | **Action Network** | Email/Gmail/IMAP; read-only account-info connector interface, sandbox flow, and gated TrueLayer-compatible path; delivery providers; Stripe; social publishing for operator-reviewed marketing | Open Banking OAuth and scheduled production sync depend on AISP onboarding; insurer, hospital, employer, and airline partner APIs are not general integrations |
 
+### Strategic direction (decided 2026-10): the verified twin
+
+LifeKeel is positioned as **the family's verified financial twin — it knows, it
+notices, and it proves it**. Three pillars, in priority order:
+
+1. **Know** — the twin: structured, versioned, permission-scoped understanding
+   of the family's finances, documents, and life events.
+2. **Notice** — proactive detection: detectors and drift sentinels surface what
+   changed before being asked. Insight cards and drill-downs are the product
+   surface; free-form chat is an escape hatch, not the front door.
+3. **Prove** — every statement carries provenance: numbers are computed, never
+   generated; sensitive domains are answered only inside LifeKeel
+   infrastructure, visibly.
+
+The generation layer is a commodity input: the smallest model that passes each
+task's eval, behind the gateway, swappable at any time. The durable moat is the
+deterministic family model, the trust mechanics, and the provenance story —
+not inference quality. This direction supersedes any read of the roadmap that
+implies competing on general chat quality. Delivery: PRD-211 through PRD-216
+(phased in `docs/prd/README.md`); the model-serving decision it rests on is
+recorded in [decision-local-interactive-closed-2026-10.md](docs/reviews/decision-local-interactive-closed-2026-10.md).
+
 ### Family and member shape
 
 ```mermaid
@@ -608,7 +630,7 @@ architecture, not a property of today's task set.
 | Local judge/classifier/OCR | Implemented and optional | Guarded CPU Ollama service with IAM and measured capacity |
 | On-device generation | Implemented and bounded | Opt-in crisis-contact drafting via multi-provider probe (Capacitor native plugin, Chrome `LanguageModel`, WebLLM + schema-constrained output); client output checks + verified deterministic template fallback. Opted-in users never egress on failure; non-opted-in users keep the hosted path |
 | Reversible PII curtain | Implemented primitive | `redactForCloudEgress`/`restore` shipped and tested (nonce placeholders, URL-safe restore, UK PII recognizers); no production client-context egress path consumes it yet — mandatory wiring pending |
-| Exact response cache | Implemented, partially adopted | Tenant/task/system/prompt/model hash; scorer path |
+| Exact response cache | Implemented | Tenant/task/system/prompt/model hash; scorer path plus governed calls on tasks declaring `cache_ttl_seconds` (repeatable batch/classification tasks only — conversational and `lifekeel_infra_required`/`device_only` boundaries never cache; a hit records an `ai_task_calls` row with `outcome: 'cache_hit'` and zero usage) |
 | Prompt version registry | Implemented primitive, limited adoption | Candidate/A-B/production/retired lifecycle and spans |
 | Model output guards | Implemented | Advice/provider/ungrounded-number checks + symmetric input/output guards on cloud, local and vision paths via the task gateway |
 | Budget and cost ledger | Implemented | Per-tenant limits checked pre-call; every provider (incl. Azure/Ollama) records usage to CostLedger per task/tenant; atomic reservation still debt (§8.15) |
@@ -886,6 +908,45 @@ holds), and weight vendoring so the classifier never contacts HF.
 See `docs/reviews/device-first-ai-foundation-2026-10.md` for the rationale
 and `docs/reviews/device-first-grounded-blueprint-2026-10.md` for the
 implementation research grounding each tier.
+
+### 8.4b Generation split and the verified-answer tier (decided 2026-10)
+
+Measured production evidence (50s p50 for a local 7B interactive answer at
+~3 tok/s on CPU, versus a 30s task deadline) closed the question of serving
+interactive generation from the CPU-local model. The split is now fixed:
+
+- **General interactive generation** (`assistant.answer.v1`, drafts, support)
+  runs on a small hosted processor behind the gateway (or on-device where the
+  user has opted in), once that processor's terms review lands (PRD-211).
+  Competing on general chat quality is explicitly not the strategy.
+- **Quarantined generation** (`assistant.answer.sensitive.v1`,
+  `assistant.youth_answer.v1` — `lifekeel_infra_required`) stays local and
+  visibly badged. Latency is accepted and surfaced as proof of the boundary
+  ("this answer was computed entirely on LifeKeel's servers"); it never
+  crosses to a hosted processor.
+- **Batch/generation-free work** (email classification, extraction, judge,
+  OCR) moved to `approved_hosted_provider` on 2026-10-24 after the GCP
+  Ollama service was decommissioned for cost (~$12/day always-on): these
+  tasks now serve on the approved hosted processors, still through the
+  gateway with the same guards, and are still progressively de-generated:
+  encoder/extractor + templates first, generative model only for
+  unresolved cases (PRD-215). Only `lifekeel_infra_required` quarantine
+  tasks and `device_only` remain bound to local/on-device paths.
+
+The inverse is added to the cascade for the assistant path: a **verified
+answer** tier (`assistant.answer_verified.v1`, PRD-212) resolves factual
+queries to approved deterministic read operations, computes in code, and
+renders a provenance-bound template — zero model calls. Generation escapes
+are reserved for what the resolver cannot answer; the per-task
+**generation-escape rate** is managed as a cost and accuracy KPI, alertable
+like spend. Generation never introduces numbers: the ungrounded-number guard
+moves from rejecting to *requiring* sourced figures on this path.
+
+Serving discipline is architectural, not optimization: task deadlines must
+cancel the underlying inference (model-side cancellation, not just a client
+`Promise.race`, which leaves orphaned generations running), admission to a
+serving queue is bounded by whether work can finish before its deadline, and
+background tasks are bulkheaded away from interactive capacity.
 
 ### 8.5 Model and artifact registry
 
@@ -1363,7 +1424,11 @@ Self-host only a stable task when:
 
 If a GPU path is justified, vLLM/SGLang/TGI-class serving behind the existing
 ports and queue-depth/time-to-first-token autoscaling are appropriate. Do not
-operate a standing large model because its weights are open.
+operate a standing large model because its weights are open. Note the 2026-10
+decision (§8.4b): CPU-local serving of *interactive* generation failed its
+measured latency gate and is not on the table; self-hosting discussions apply
+to batch and quarantined tasks, and to GPU-class serving only at a real
+cost crossover.
 
 ### 8.13 AI governance and promotion gates
 
@@ -1470,9 +1535,29 @@ Remaining debt:
    (`ProcessorPolicyError`, never a fallback to another provider).
    `AI_PROCESSOR_ENFORCEMENT` is `off | warn | enforce`, default `warn`: it
    logs and counts (`lifekeel_ai_processor_violations_total`) and still serves
-   the call. **Every hosted processor is `unreviewed` today** (no signed terms
-   have been supplied), so `enforce` would refuse every hosted call; flip it
-   only after the processors a deployment uses are approved. A
+   the call. **Azure OpenAI and Google Cloud Vertex AI (Gemini) are
+   approved** (owner decisions, 2026-10-22, conservative `limited_abuse_log`
+   retention recorded on both — Azure until modified abuse monitoring is
+   granted, Vertex until the deployment's data-governance configuration is
+   confirmed); Groq is approved (2026-10-23 — no default inference retention,
+   self-serve ZDR via Console → Data Controls; recorded as `limited_abuse_log`
+   until that toggle is on, and chat/completions only — the /batches and
+   /fine_tunings surfaces retain by design); xAI is approved (2026-10-23)
+   **conditional on ZDR** — its Sept-2026 DPA requires Personal Data to go
+   through the ZDR-enabled API only, so Console → Team Settings → Zero Data
+   Retention must be on before use (xAI keeps a perpetual safety-research
+   licence on prompts/outputs — reviewed at approval, not model training).
+   Anthropic and openai remain
+   `unreviewed` and are refused under `enforce`. Vertex auth is OAuth2 only —
+   `VERTEX_PROJECT` +
+   `VERTEX_LOCATION`, credentials via the Cloud Run service account
+   (`roles/aiplatform.user`) or `VERTEX_SERVICE_ACCOUNT_JSON` off-GCP;
+   `LIFEKEEL_LLM_PROVIDER` overrides first-configured-key provider detection,
+   and the audited `platform_config.llm_provider_override` (operator
+   `/operator/configuration` switch) overrides all of it at runtime —
+   including model-name detection, so `tier:*` governed calls follow the
+   pick too. Still bounded by the per-task processor check, so a disallowed
+   pick refuses rather than reroutes. A
    `lifekeel_infra` task still falls back to hosted when the local model is
    off; the check flags that fallback, it does not stop it in `warn`.
    Subprocessor and terms review stays a human/legal process. A read-only
@@ -1504,6 +1589,9 @@ authoritative safety boundary for anything beyond language.
 - [Microsoft Azure OpenAI data, privacy, and security](https://learn.microsoft.com/en-us/azure/ai-foundry/responsible-ai/openai/data-privacy)
   and
   [abuse monitoring](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/concepts/abuse-monitoring)
+- [Vertex AI data governance and generative-AI privacy](https://cloud.google.com/vertex-ai/generative-ai/docs/data-governance)
+  and
+  [Google Cloud Data Processing Addendum](https://cloud.google.com/terms/data-processing-addendum)
 - [Groq data privacy FAQ](https://groq.com/privacy-faq/)
 - [ICO AI and data protection](https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/artificial-intelligence/)
 - [Anthropic: building effective agents](https://www.anthropic.com/engineering/building-effective-agents)
@@ -1668,9 +1756,49 @@ models**. The implementation already separates several important boundaries:
   narrower account context rather than the full financial profile.
 - Email/document content is treated as untrusted data, bounded to task fields,
   and routed to a configured hosted model or a local/self-hosted path.
-- Vault documents are encrypted before GridFS, excluded from ordinary document
-  routes and OCR, and can be additionally sealed in the browser so the service
-  cannot read the plaintext.
+- Vault documents are envelope-encrypted before they reach the byte store
+  (GridFS, or the private `lifekeel-vault` R2 bucket), excluded from ordinary
+  document routes and OCR, and can be additionally sealed in the browser so the
+  service cannot read the plaintext.
+- Document bytes can live in Cloudflare R2 (CLOUDFLARE_INTEGRATION.md §7):
+  browser uploads go to a private quarantine bucket, a separate scan worker
+  checks type, structure and malware in a credential-less parser child, and
+  only then promotes bytes to a private clean bucket served by 60-second
+  presigned URLs. Cloudflare is a **storage sub-processor**, not a model
+  processor: no Cloudflare content-inspection or AI feature is enabled on these
+  buckets and no R2 event pipeline may point at a model. Every read goes
+  through `documents/storage.ts` (dual-read GridFS + R2).
+
+### Edge and account protection (CLOUDFLARE_INTEGRATION.md)
+
+- **Turnstile** guards every human-initiated public mutation (signup, login,
+  password reset, verification resend, OTP resend, lead capture, family join)
+  via `config.turnstile` on the route; rate limits run first. It sends visitor
+  signals to Cloudflare on pre-login pages only.
+- **Email OTP** after signup and after password login for accounts without
+  TOTP. It is mailbox verification and a second step against password-only
+  attacks, **not** phishing-resistant MFA (the pending token is a bearer
+  credential). Passkeys are the future answer.
+- **Public surface inventory**: `security/public-routes.ts` lists every
+  session-less prefix with its protection group; a snapshot test pins it.
+- **Boot guards** refuse to start outside dev with demo tokens, API docs
+  without a recorded exception, `/metrics` without a scrape token, Turnstile
+  or OTP enabled without their secrets, or R2 enabled without its keys.
+
+```mermaid
+flowchart LR
+  B[Browser] -->|presigned PUT 5 min| Q[(R2 quarantine)]
+  B -->|init / complete| A[API]
+  A -->|HEAD, presign| Q
+  A -->|wake-up| R[(Redis)]
+  W[Scan worker] -->|claim lease| M[(MongoDB rows = outbox)]
+  W -->|GET| Q
+  W -->|INSTREAM| C[ClamAV]
+  W -->|parser child, no creds| P[structure + WebP]
+  W -->|PUT verified bytes| CL[(R2 clean)]
+  B -->|presigned GET 60 s| CL
+  A -->|ciphertext only| V[(R2 vault)]
+```
 - The exact-match LLM cache is tenant/task/input keyed with TTL; semantic
   response caching remains prohibited for sensitive household content.
 - Prompt/completion telemetry is off by default; model tracing should carry

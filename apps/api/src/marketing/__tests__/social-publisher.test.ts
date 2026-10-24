@@ -2,6 +2,7 @@
  * social-publisher — env detection and per-channel HTTP contracts. fetch is
  * stubbed; no real network in tests.
  */
+import { LINKEDIN_API_VERSION_DEFAULT } from '../linkedin-version.js'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   EnvSocialPublisher,
@@ -118,6 +119,85 @@ describe('EnvSocialPublisher.createPost', () => {
     expect(body['author']).toBe('urn:li:person:abc')
     expect(body['commentary']).toBe('hi linkedin')
     expect(body['lifecycleState']).toBe('PUBLISHED')
+  })
+
+  it('sends the current LinkedIn API version by default, and LINKEDIN_API_VERSION when set', async () => {
+    vi.stubEnv('LINKEDIN_ACCESS_TOKEN', 'litok')
+    vi.stubEnv('LINKEDIN_AUTHOR_URN', 'urn:li:person:abc')
+    const fetchMock = vi.fn(async () =>
+      jsonRes({}, { headers: { 'x-restli-id': 'urn:li:share:1' } }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const post = () =>
+      socialPublisherFromEnv()!.createPost({
+        integrationId: 'x',
+        content: 'v',
+        channel: 'linkedin',
+        type: 'now',
+        date: new Date(),
+      })
+    await post()
+    const version = (i: number) =>
+      (
+        (fetchMock.mock.calls[i] as unknown as [string, RequestInit])[1].headers as Record<
+          string,
+          string
+        >
+      )['Linkedin-Version']
+    expect(version(0)).toBe(LINKEDIN_API_VERSION_DEFAULT)
+    vi.stubEnv('LINKEDIN_API_VERSION', '202701')
+    await post()
+    expect(version(1)).toBe('202701')
+    vi.stubEnv('LINKEDIN_API_VERSION', 'not-a-version')
+    await post()
+    expect(version(2)).toBe(LINKEDIN_API_VERSION_DEFAULT) // a malformed override is ignored, not sent
+  })
+
+  it('turns LinkedIn rejecting the API version into an error that says what to change', async () => {
+    vi.stubEnv('LINKEDIN_ACCESS_TOKEN', 'litok')
+    vi.stubEnv('LINKEDIN_AUTHOR_URN', 'urn:li:person:abc')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonRes(
+          {
+            status: 426,
+            code: 'NONEXISTENT_VERSION',
+            message: 'Requested version 20250101 is not active',
+          },
+          { status: 426 },
+        ),
+      ),
+    )
+    await expect(
+      socialPublisherFromEnv()!.createPost({
+        integrationId: 'x',
+        content: 'v',
+        channel: 'linkedin',
+        type: 'now',
+        date: new Date(),
+      }),
+    ).rejects.toThrow(/linkedin_api_version_expired.*LINKEDIN_API_VERSION/s)
+  })
+
+  it('leaves other LinkedIn failures alone, so a bad token is not blamed on the version', async () => {
+    vi.stubEnv('LINKEDIN_ACCESS_TOKEN', 'litok')
+    vi.stubEnv('LINKEDIN_AUTHOR_URN', 'urn:li:person:abc')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonRes({ message: 'Invalid access token' }, { status: 401 })),
+    )
+    const err = await socialPublisherFromEnv()!
+      .createPost({
+        integrationId: 'x',
+        content: 'v',
+        channel: 'linkedin',
+        type: 'now',
+        date: new Date(),
+      })
+      .catch((e: Error) => e)
+    expect(String(err)).toMatch(/401/)
+    expect(String(err)).not.toMatch(/api_version_expired/)
   })
 
   it('bluesky opens a session then creates the feed record', async () => {

@@ -64,27 +64,41 @@ jobs:
       # which is the SHA of the branch the workflow was dispatched from.
       RELEASE_SHA: ${{ needs.verify-ci.outputs.sha }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.verify-ci.outputs.sha }}
 
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v3
+      - name: Authenticate to Google Cloud (workload identity)
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' }}
+        # R31: keyless workload identity federation when the repo Variables
+        # GCP_WORKLOAD_IDENTITY_PROVIDER and GCP_DEPLOY_SERVICE_ACCOUNT are set; the long-lived
+        # JSON key is only a fallback until they are, then delete the secret.
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - name: Authenticate to Google Cloud (service-account key fallback)
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER == '' }}
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - name: Warn when deploying with a long-lived key
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER == '' }}
+        run: echo "::warning::Deploy authenticated with a long-lived service-account key. Configure GCP_WORKLOAD_IDENTITY_PROVIDER and remove the key."
 
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v3
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.REGISTRY_HOST }} --quiet
 
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       - name: Build and push API image
-        uses: docker/build-push-action@v7
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           file: apps/api/Dockerfile
@@ -93,6 +107,24 @@ jobs:
             ${{ env.API_IMAGE }}:${{ env.RELEASE_SHA }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # R31: signed build provenance and an SBOM travel with the image.
+          provenance: mode=max
+          sbom: true
+
+      # R31: the release is identified by digest, not by a re-pushable tag,
+      # and a fixable critical/high OS or package vulnerability stops it.
+      - name: Record the image digest
+        run: echo "IMAGE_REF=${{ env.API_IMAGE }}@${{ steps.build.outputs.digest }}" >> "$GITHUB_ENV"
+      - name: Scan the image for vulnerabilities
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
+        with:
+          image-ref: ${{ env.IMAGE_REF }}
+          # The action's default (v0.65.0) no longer resolves to a real
+          # release — pin a known-good version explicitly.
+          version: 'v0.75.0'
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
 
       # Safe rollout, step 1 of 4. Record what is serving now so a bad release can be reverted, and pick the
       # tag for the new revision. On the very first deploy there is no service yet, so there is nothing to
@@ -135,17 +167,17 @@ jobs:
       # while users stay on the previous revision.
       - name: Deploy to Cloud Run
         id: deploy
-        uses: google-github-actions/deploy-cloudrun@v3
+        uses: google-github-actions/deploy-cloudrun@2028e2d7d30a78c6910e0632e48dd561b064884d # v3
         with:
           service: ${{ env.API_SERVICE }}
           region: ${{ env.GCP_REGION }}
-          image: ${{ env.API_IMAGE }}:${{ env.RELEASE_SHA }}
+          image: ${{ env.IMAGE_REF }}
           # Comma-valued vars can't go in env_vars (the action joins pairs
           # with commas, so "a,b" would split into two entries). They ride
           # --update-env-vars in flags instead, using ^@^ as the pair
           # delimiter so commas inside values survive. --update-env-vars
           # merges — it does not wipe the env_vars above.
-          flags: --port=3001 --allow-unauthenticated --cpu=1 --memory=512Mi --max-instances=4 --concurrency=80 --min-instances=0 --update-env-vars=^@^CORS_ORIGIN=${{ vars.CORS_ORIGIN || vars.LIFEKEEL_URL || secrets.LIFEKEEL_URL }}@LIFEKEEL_APP_HOSTS=${{ vars.LIFEKEEL_APP_HOSTS || 'app.lifekeel.co.uk,app.lifekeel.si' }} ${{ steps.pre.outputs.exists == 'true' && format('--no-traffic --tag={0}', steps.pre.outputs.tag) || '' }}
+          flags: --port=3001 --allow-unauthenticated --cpu=1 --memory=512Mi --max-instances=4 --concurrency=80 --min-instances=0 --update-env-vars=^@^CORS_ORIGIN=${{ vars.CORS_ORIGIN || vars.LIFEKEEL_URL || secrets.LIFEKEEL_URL }}@LIFEKEEL_APP_HOSTS=${{ vars.LIFEKEEL_APP_HOSTS || 'app.lifekeel.co.uk,app.lifekeel.si' }}@TURNSTILE_ALLOWED_HOSTNAMES=${{ vars.TURNSTILE_ALLOWED_HOSTNAMES }} ${{ steps.pre.outputs.exists == 'true' && format('--no-traffic --tag={0}', steps.pre.outputs.tag) || '' }}
           env_vars: |
             NODE_ENV=production
             LIFEKEEL_DEPLOYMENT_MODE=cloud
@@ -166,10 +198,25 @@ jobs:
             LOCAL_MODEL_MAX_CONCURRENT=${{ vars.LOCAL_MODEL_MAX_CONCURRENT }}
             EMAIL_SCAN_FANOUT=${{ vars.EMAIL_SCAN_FANOUT }}
             EMAIL_SCAN_CONCURRENCY=${{ vars.EMAIL_SCAN_CONCURRENCY }}
+            VERTEX_PROJECT=${{ vars.VERTEX_PROJECT }}
+            VERTEX_LOCATION=${{ vars.VERTEX_LOCATION }}
+            VERTEX_REASONING_EFFORT=${{ vars.VERTEX_REASONING_EFFORT }}
+            LIFEKEEL_LLM_PROVIDER=${{ vars.LIFEKEEL_LLM_PROVIDER }}
+            TURNSTILE_MODE=${{ vars.TURNSTILE_MODE }}
+            AUTH_OTP_MODE=${{ vars.AUTH_OTP_MODE }}
+            DOCUMENTS_STORAGE=${{ vars.DOCUMENTS_STORAGE }}
+            DOCUMENTS_R2_TENANTS=${{ vars.DOCUMENTS_R2_TENANTS }}
+            VAULT_STORAGE=${{ vars.VAULT_STORAGE }}
+            R2_ACCOUNT_ID=${{ vars.R2_ACCOUNT_ID }}
+            R2_JURISDICTION=${{ vars.R2_JURISDICTION }}
+            EMAIL_FROM=${{ vars.EMAIL_FROM }}
           # NOTE: no comments inside this block — deploy-cloudrun feeds every
           # line to gcloud verbatim. Web push: without the VAPID secrets,
           # /push/vapid-key 503s and no browser can subscribe. Values come from
           # one `npx web-push generate-vapid-keys` run.
+          # SENDGRID_API_KEY is deliberately NOT bound: Resend is the email transport (auth-email.ts
+          # no-ops without any provider key). TURNSTILE_SECRET_KEY is bound because TURNSTILE_MODE is
+          # enforce; the boot guard requires it (docs/runbooks/cloudflare-integration.md).
           secrets: |
             MONGODB_URL=lifekeel-mongodb-url:latest
             REDIS_URL=lifekeel-redis-url:latest
@@ -180,9 +227,16 @@ jobs:
             STRIPE_SECRET_KEY=lifekeel-stripe-secret-key:latest
             LIFEKEEL_STRIPE_WEBHOOK_SECRET=lifekeel-stripe-webhook-secret:latest
             OPENAI_API_KEY=lifekeel-openai-api-key:latest
+            GROQ_API_KEY=lifekeel-groq-api-key:latest
+            XAI_API_KEY=lifekeel-xai-api-key:latest
             VAPID_PUBLIC_KEY=lifekeel-vapid-public-key:latest
             VAPID_PRIVATE_KEY=lifekeel-vapid-private-key:latest
             VAPID_SUBJECT=lifekeel-vapid-subject:latest
+            METRICS_SCRAPE_TOKEN=lifekeel-metrics-scrape-token:latest
+            OTP_PEPPER=lifekeel-otp-pepper:latest
+            TURNSTILE_SECRET_KEY=lifekeel-turnstile-secret-key:latest
+            RESEND_API_KEY=lifekeel-resend-api-key:latest
+            RESEND_WEBHOOK_SECRET=lifekeel-resend-webhook-secret:latest
           secrets_update_strategy: overwrite
 
       # Step 3 of 4. Test the new revision at its tagged URL before any user reaches it. If this fails, production

@@ -1,0 +1,68 @@
+name: Stripe drift
+
+# Read-only check that the connected Stripe account still matches
+# definitions/stripe-config.yaml (product, price, webhook endpoint, Customer
+# Portal). It never applies anything: fixing drift is a deliberate action from
+# `./scripts/provision-infra.sh stripe` or the operator console (Billing setup).
+#
+# Needs the repository secret STRIPE_RECONCILE_KEY — a *restricted* Stripe key
+# with read access to products, prices, webhook endpoints and the customer
+# portal. Without it the job exits cleanly and says so.
+
+on:
+  schedule:
+    - cron: '30 7 * * 1' # Mondays 07:30 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stripe-drift
+  cancel-in-progress: false
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Key present?
+        id: key
+        env:
+          KEY: ${{ secrets.STRIPE_RECONCILE_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::STRIPE_RECONCILE_KEY is not set; skipping the Stripe drift check."
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.key.outputs.present == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - if: steps.key.outputs.present == 'true'
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - if: steps.key.outputs.present == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - if: steps.key.outputs.present == 'true'
+        run: pnpm install --frozen-lockfile
+      - if: steps.key.outputs.present == 'true'
+        run: pnpm turbo run build --filter=@lifekeel/api^...
+
+      - name: Dry-run reconcile
+        if: steps.key.outputs.present == 'true'
+        env:
+          STRIPE_RECONCILE_KEY: ${{ secrets.STRIPE_RECONCILE_KEY }}
+          STRIPE_API_ORIGIN: ${{ vars.STRIPE_API_ORIGIN || 'https://api.lifekeel.co.uk' }}
+          LIFEKEEL_URL: ${{ vars.LIFEKEEL_URL || 'https://app.lifekeel.co.uk' }}
+        run: |
+          set +e
+          pnpm --filter @lifekeel/api run stripe:reconcile --no-webhook-create
+          rc=$?
+          if [ "$rc" = "2" ]; then
+            echo "::error::Stripe has drifted from definitions/stripe-config.yaml. Review the diff above, then run ./scripts/provision-infra.sh stripe (STRIPE_APPLY=1) or use Operator > Billing setup."
+          fi
+          exit $rc

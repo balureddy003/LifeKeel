@@ -276,7 +276,7 @@ function VerifyEmailBanner() {
           exit={{ y: -60, opacity: 0 }}
           role="status"
           aria-live="polite"
-          className="fixed top-0 left-0 right-0 z-banner glass safe-area-top px-4 py-2 flex items-center justify-center gap-2"
+          className="relative z-banner glass safe-area-top px-4 py-2 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center"
         >
           <MailWarning size={16} className="text-warning flex-shrink-0" />
           <span className="text-sm text-ink-secondary font-medium">
@@ -441,6 +441,8 @@ const PUBLIC_CONTENT_PREFIXES = [
   '/guides',
   '/terms',
   '/privacy',
+  '/cookies',
+  '/legal',
   '/support',
   '/readiness',
   '/trust',
@@ -474,10 +476,13 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/family-setup') ||
     pathname.startsWith('/reset-password') ||
     pathname.startsWith('/verify-email') ||
+    pathname.startsWith('/verify-otp') ||
     pathname.startsWith('/account-deleted') ||
     pathname.startsWith('/auth/callback') ||
     pathname.startsWith('/terms') ||
     pathname.startsWith('/privacy') ||
+    pathname.startsWith('/cookies') ||
+    pathname.startsWith('/legal') ||
     pathname.startsWith('/trust') ||
     pathname.startsWith('/security') ||
     pathname.startsWith('/support') ||
@@ -719,10 +724,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/family-setup') ||
     pathname.startsWith('/reset-password') ||
     pathname.startsWith('/verify-email') ||
+    pathname.startsWith('/verify-otp') ||
     pathname.startsWith('/account-deleted') ||
     pathname.startsWith('/auth/callback') ||
     pathname.startsWith('/terms') ||
     pathname.startsWith('/privacy') ||
+    pathname.startsWith('/cookies') ||
+    pathname.startsWith('/legal') ||
     pathname.startsWith('/trust') ||
     pathname.startsWith('/security') ||
     pathname.startsWith('/support') ||
@@ -785,6 +793,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     '/privacy',
     '/trust',
     '/security',
+    '/cookies',
+    '/legal',
     '/support',
     '/blog',
     '/guides',
@@ -816,10 +826,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <MeshGradient />
       <OfflineBanner />
       <MaintenanceBanner />
-      <VerifyEmailBanner />
       <ModeEffects />
       {showNav && <NavRail />}
       <div className={[railGutter, 'min-h-screen'].filter(Boolean).join(' ')}>
+        {/* in flow, inside the rail gutter, so it pushes the page down instead of covering its header */}
+        <VerifyEmailBanner />
         <div
           id="main-content"
           tabIndex={-1}

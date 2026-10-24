@@ -1,7 +1,8 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import Fastify, { type FastifyInstance } from 'fastify'
 import { MongoClient, type Db } from 'mongodb'
 import { MongoMemoryServer } from 'mongodb-memory-server'
+import sgMail from '@sendgrid/mail'
 
 // Campaign sends hit the real lifecycle sendEmail — keep the provider mocked
 // and the key present so ledger rows can settle to 'sent'.
@@ -10,6 +11,8 @@ vi.mock('@sendgrid/mail', () => ({
 }))
 
 import { registerOperatorRoutes } from '../operator.js'
+import { hashAuthToken } from '../auth-users.js'
+import { invalidatePlatformConfigCache } from '../../operator/platform-config.js'
 
 let mongod: MongoMemoryServer
 let client: MongoClient
@@ -88,6 +91,9 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   process.env['SENDGRID_API_KEY'] = 'test-key'
+  // platform_config is cached for 10s — a flag set by one test must not leak
+  // into the next after the database is dropped.
+  invalidatePlatformConfigCache()
   await db.dropDatabase()
   await db.collection('users').insertMany([
     {
@@ -319,7 +325,11 @@ describe('/operator control plane', () => {
     })
     expect(response.statusCode).toBe(200)
     const user = await db.collection('users').findOne({ id: 'user-2' })
-    expect(typeof user?.['password_reset_token']).toBe('string')
+    expect(user?.['password_reset_token']).toBeUndefined()
+    const sent = JSON.stringify(vi.mocked(sgMail.send).mock.calls.at(-1)?.[0])
+    const token = /reset-password\/confirm#token=([0-9a-f]{64})/.exec(sent)?.[1]
+    expect(token).toBeDefined()
+    expect(user?.['password_reset_token_hash']).toBe(hashAuthToken(token!))
     expect((user?.['password_reset_expires'] as Date).getTime()).toBeGreaterThan(Date.now())
     await app.close()
   })
@@ -1269,6 +1279,44 @@ describe('leads detail, funnel, connectors, configuration, infrastructure', () =
     await app.close()
   })
 
+  it('switches the LLM provider override at runtime with audit', async () => {
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    const app = await buildApp()
+
+    const set = await app.inject({
+      method: 'PUT',
+      url: '/operator/configuration',
+      payload: { llm_provider_override: 'vertex', reason: 'Failover to Vertex' },
+    })
+    expect(set.statusCode).toBe(200)
+    expect(set.json().config.llm_provider_override).toBe('vertex')
+    const doc = await db.collection('platform_config').findOne({ key: 'global' })
+    expect(doc?.['llm_provider_override']).toBe('vertex')
+
+    const invalid = await app.inject({
+      method: 'PUT',
+      url: '/operator/configuration',
+      payload: { llm_provider_override: 'not-a-provider', reason: 'Bad value' },
+    })
+    expect(invalid.statusCode).toBe(400)
+
+    // 'auto' stores null — back to router detection.
+    const clear = await app.inject({
+      method: 'PUT',
+      url: '/operator/configuration',
+      payload: { llm_provider_override: 'auto', reason: 'Back to auto' },
+    })
+    expect(clear.statusCode).toBe(200)
+    expect(clear.json().config.llm_provider_override).toBeNull()
+
+    const history = await db.collection('platform_config_history').find({}).toArray()
+    expect(history).toHaveLength(2)
+    expect(history[1]?.['after'].llm_provider_override).toBeNull()
+    await app.close()
+  })
+
   it('denies configuration changes to roles without configuration.manage', async () => {
     await db
       .collection('platform_operators')
@@ -2072,6 +2120,663 @@ describe('security monitoring', () => {
     const list = await app.inject({ method: 'GET', url: '/operator/autopilot' })
     expect(list.statusCode).toBe(200)
     await app.close()
+  })
+
+  it('keeps a shadowing rule from going live until its reviewed precision clears the bar', async () => {
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    const app = await buildApp()
+    const put = (payload: Record<string, unknown>) =>
+      app.inject({ method: 'PUT', url: '/operator/autopilot/auto_unlock_expired', payload })
+
+    const shadow = await put({ enabled: true, mode: 'shadow', reason: 'Trial in shadow first' })
+    expect(shadow.statusCode).toBe(200)
+    expect(shadow.json().rule.mode).toBe('shadow')
+
+    const rows = Array.from({ length: 20 }, (_, i) => ({
+      id: `sh-${i}`,
+      rule: 'auto_unlock_expired',
+      dedup_key: `shadow:k${i}`,
+      target_type: 'user',
+      target_id: `u${i}`,
+      reason: 'r',
+      status: 'shadow',
+      created_at: new Date(),
+    }))
+    await db.collection('autopilot_actions').insertMany(rows)
+
+    // Nothing reviewed yet → refused, with the track record in the body.
+    const early = await put({ mode: 'live', reason: 'Skip the trial please' })
+    expect(early.statusCode).toBe(409)
+    expect(early.json().code).toBe('shadow_not_promotable')
+    expect(early.json().shadow).toMatchObject({ reviewed: 0, promotable: false })
+
+    // 17 of 20 right (85%) — enough reviews, not enough precision.
+    for (let i = 0; i < 20; i++) {
+      const r = await app.inject({
+        method: 'POST',
+        url: `/operator/autopilot/shadow/sh-${i}/review`,
+        payload: { verdict: i < 17 ? 'right' : 'wrong', reason: 'Checked against the user' },
+      })
+      expect(r.statusCode).toBe(200)
+    }
+    expect((await put({ mode: 'live', reason: 'Close but not there' })).statusCode).toBe(409)
+
+    // Fix one verdict → 18/20 = 90% → promotable.
+    await app.inject({
+      method: 'POST',
+      url: '/operator/autopilot/shadow/sh-17/review',
+      payload: { verdict: 'right', reason: 'Re-checked, it was right' },
+    })
+    const live = await put({ mode: 'live', reason: 'Earned it: 90% over 20 rows' })
+    expect(live.statusCode).toBe(200)
+    expect(live.json().rule.mode).toBe('live')
+
+    const modeAudits = await db
+      .collection('operator_audit_log')
+      .countDocuments({ action: 'operator.autopilot.mode' })
+    expect(modeAudits).toBe(2) // shadow + live; the refused promotions are not audited as changes
+    expect(
+      await db
+        .collection('operator_audit_log')
+        .countDocuments({ action: 'operator.autopilot.shadow_review' }),
+    ).toBe(21)
+    await app.close()
+  })
+
+  it('exposes shadow stats and the kill switch on GET /operator/autopilot', async () => {
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+    const app = await buildApp()
+    await app.inject({
+      method: 'PUT',
+      url: '/operator/autopilot/auto_unlock_expired',
+      payload: { enabled: true, mode: 'shadow', reason: 'Trial in shadow first' },
+    })
+    const before = await app.inject({ method: 'GET', url: '/operator/autopilot' })
+    expect(before.json().paused).toBe(false)
+    expect(before.json().shadow_promotion).toEqual({ min_reviewed: 20, min_precision: 0.9 })
+    const rule = (before.json().rules as { rule: string; shadow: unknown }[]).find(
+      (r) => r.rule === 'auto_unlock_expired',
+    )
+    expect(rule?.shadow).toMatchObject({ total: 0, reviewed: 0, promotable: false })
+
+    const pause = await app.inject({
+      method: 'PUT',
+      url: '/operator/configuration',
+      payload: { autopilot_paused: true, reason: 'Kill switch drill' },
+    })
+    expect(pause.statusCode).toBe(200)
+    expect((await app.inject({ method: 'GET', url: '/operator/autopilot' })).json().paused).toBe(
+      true,
+    )
+    await app.close()
+  })
+
+  it('reviewing a shadow row needs operations.manage and an existing shadow row', async () => {
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+    const app = await buildApp()
+    const denied = await app.inject({
+      method: 'POST',
+      url: '/operator/autopilot/shadow/anything/review',
+      payload: { verdict: 'right', reason: 'Support cannot judge rules' },
+    })
+    expect(denied.statusCode).toBe(403)
+    await app.close()
+
+    await db.collection('platform_operators').deleteMany({})
+    await db
+      .collection('platform_operators')
+      .insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
+    const ops = await buildApp()
+    const missing = await ops.inject({
+      method: 'POST',
+      url: '/operator/autopilot/shadow/nope/review',
+      payload: { verdict: 'right', reason: 'No such row exists' },
+    })
+    expect(missing.statusCode).toBe(404)
+    await ops.close()
+  })
+
+  describe('marketing revenue (read-only Stripe)', () => {
+    const asOperator = async (roles: string[]) => {
+      await db.collection('platform_operators').deleteMany({})
+      await db
+        .collection('platform_operators')
+        .insertOne({ user_id: 'operator-1', status: 'active', roles })
+      return buildApp()
+    }
+    afterEach(() => {
+      delete process.env['STRIPE_READONLY_KEY']
+    })
+
+    it('is readable by marketing roles only', async () => {
+      const marketing = await asOperator(['marketing_operator'])
+      const ok = await marketing.inject({ method: 'GET', url: '/operator/marketing/revenue' })
+      expect(ok.statusCode).toBe(200)
+      expect(ok.json()).toMatchObject({ synced: false, stripe_configured: false })
+      await marketing.close()
+
+      const support = await asOperator(['support'])
+      expect(
+        (await support.inject({ method: 'GET', url: '/operator/marketing/revenue' })).statusCode,
+      ).toBe(403)
+      await support.close()
+    })
+
+    it('refuses to sync without a restricted key, and says what to create', async () => {
+      const app = await asOperator(['operations'])
+      const res = await app.inject({
+        method: 'POST',
+        url: '/operator/marketing/revenue/sync',
+        payload: { reason: 'First revenue sync' },
+      })
+      expect(res.statusCode).toBe(409)
+      expect(res.json().code).toBe('stripe_readonly_not_configured')
+      await app.close()
+    })
+
+    it('refuses a full secret key placed in the read-only variable', async () => {
+      process.env['STRIPE_READONLY_KEY'] = 'sk_test_not_restricted'
+      const app = await asOperator(['operations'])
+      const res = await app.inject({
+        method: 'POST',
+        url: '/operator/marketing/revenue/sync',
+        payload: { reason: 'Trying a secret key' },
+      })
+      expect(res.statusCode).toBe(400)
+      expect(res.json().error).toMatch(/restricted key/i)
+      expect(await db.collection('revenue_events').countDocuments()).toBe(0)
+      await app.close()
+    })
+
+    it('requires operations.manage and a reason to sync', async () => {
+      process.env['STRIPE_READONLY_KEY'] = 'rk_test_abc'
+      const marketing = await asOperator(['marketing_operator'])
+      expect(
+        (
+          await marketing.inject({
+            method: 'POST',
+            url: '/operator/marketing/revenue/sync',
+            payload: { reason: 'Not mine to run' },
+          })
+        ).statusCode,
+      ).toBe(403)
+      await marketing.close()
+      const ops = await asOperator(['operations'])
+      expect(
+        (await ops.inject({ method: 'POST', url: '/operator/marketing/revenue/sync', payload: {} }))
+          .statusCode,
+      ).toBe(400)
+      await ops.close()
+    })
+
+    it('funnel MRR is the labelled estimate until Stripe has synced, then the real figure', async () => {
+      await db
+        .collection('tenants')
+        .insertOne({ tenant_id: 'payer', plan: 'starter', name: 'Payer', status: 'active' })
+      const app = await asOperator(['platform_admin'])
+      const before = (await app.inject({ method: 'GET', url: '/operator/funnel' })).json().revenue
+      expect(before).toMatchObject({
+        mrr_source: 'estimate',
+        mrr_pence: 799,
+        revenue_30d_pence: null,
+      })
+
+      await db.collection('revenue_sync').insertOne({ _id: 'last' as never, synced_at: new Date() })
+      await db.collection('revenue_subscriptions').insertOne({
+        subscription_id: 'sub_1',
+        tenant_id: 'payer',
+        status: 'active',
+        currency: 'gbp',
+        mrr_pence: 1234,
+      })
+      const after = (await app.inject({ method: 'GET', url: '/operator/funnel' })).json().revenue
+      expect(after).toMatchObject({ mrr_source: 'stripe', mrr_pence: 1234 })
+      await app.close()
+    })
+  })
+
+  describe('marketing economics and spend', () => {
+    const asOperator = async (roles: string[]) => {
+      await db.collection('platform_operators').deleteMany({})
+      await db
+        .collection('platform_operators')
+        .insertOne({ user_id: 'operator-1', status: 'active', roles })
+      return buildApp()
+    }
+    const spend = {
+      month: '2026-10',
+      channel: 'bluesky',
+      amount_pence: 5000,
+      note: 'Boosted post',
+      reason: 'October channel spend',
+    }
+
+    it('records spend with an audit row, validates it, and lists it', async () => {
+      const app = await asOperator(['marketing_operator'])
+      const bad = await app.inject({
+        method: 'POST',
+        url: '/operator/marketing/spend',
+        payload: { ...spend, month: '2026-13' },
+      })
+      expect(bad.statusCode).toBe(400)
+      expect(bad.json().error).toMatch(/month/)
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url: '/operator/marketing/spend',
+            payload: { ...spend, amount_pence: -5 },
+          })
+        ).statusCode,
+      ).toBe(400)
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url: '/operator/marketing/spend',
+            payload: { ...spend, reason: 'no' },
+          })
+        ).statusCode,
+      ).toBe(400)
+
+      const ok = await app.inject({
+        method: 'POST',
+        url: '/operator/marketing/spend',
+        payload: spend,
+      })
+      expect(ok.statusCode).toBe(201)
+      expect(ok.json().entry).toMatchObject({
+        month: '2026-10',
+        channel: 'bluesky',
+        amount_pence: 5000,
+      })
+      const list = await app.inject({ method: 'GET', url: '/operator/marketing/spend' })
+      expect(list.json().entries).toHaveLength(1)
+      const audit = await db
+        .collection('operator_audit_log')
+        .findOne({ action: 'operator.marketing.spend_add' })
+      expect(audit).toMatchObject({
+        reason: 'October channel spend',
+        metadata: { channel: 'bluesky', amount_pence: 5000 },
+      })
+      await app.close()
+    })
+
+    it('normalises the channel to the attribution key', async () => {
+      const app = await asOperator(['marketing_operator'])
+      const res = await app.inject({
+        method: 'POST',
+        url: '/operator/marketing/spend',
+        payload: { ...spend, channel: '  BlueSky ' },
+      })
+      expect(res.statusCode).toBe(201)
+      expect(res.json().entry.channel).toBe('bluesky')
+      await app.close()
+    })
+
+    it('deletes spend with a reason and audits it; a missing entry is a 404', async () => {
+      const app = await asOperator(['marketing_operator'])
+      const id = (
+        await app.inject({ method: 'POST', url: '/operator/marketing/spend', payload: spend })
+      ).json().entry.id
+      expect(
+        (
+          await app.inject({
+            method: 'DELETE',
+            url: `/operator/marketing/spend/${id}`,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(400)
+      expect(
+        (
+          await app.inject({
+            method: 'DELETE',
+            url: `/operator/marketing/spend/${id}`,
+            payload: { reason: 'Entered twice' },
+          })
+        ).statusCode,
+      ).toBe(200)
+      expect(
+        (
+          await app.inject({
+            method: 'DELETE',
+            url: `/operator/marketing/spend/${id}`,
+            payload: { reason: 'Entered twice' },
+          })
+        ).statusCode,
+      ).toBe(404)
+      expect(
+        await db
+          .collection('operator_audit_log')
+          .countDocuments({ action: 'operator.marketing.spend_delete' }),
+      ).toBe(1)
+      await app.close()
+    })
+
+    it('reads need marketing.read and writes need marketing.manage', async () => {
+      const finance = await asOperator(['finance_operator']) // no marketing permissions
+      expect(
+        (await finance.inject({ method: 'GET', url: '/operator/marketing/economics' })).statusCode,
+      ).toBe(403)
+      expect(
+        (await finance.inject({ method: 'GET', url: '/operator/marketing/spend' })).statusCode,
+      ).toBe(403)
+      await finance.close()
+
+      const ops = await asOperator(['operations']) // marketing.read only
+      expect(
+        (await ops.inject({ method: 'GET', url: '/operator/marketing/economics' })).statusCode,
+      ).toBe(200)
+      expect(
+        (await ops.inject({ method: 'GET', url: '/operator/marketing/spend' })).statusCode,
+      ).toBe(200)
+      expect(
+        (await ops.inject({ method: 'POST', url: '/operator/marketing/spend', payload: spend }))
+          .statusCode,
+      ).toBe(403)
+      await ops.close()
+
+      const family = await buildApp('user-2')
+      expect(
+        (await family.inject({ method: 'GET', url: '/operator/marketing/economics' })).statusCode,
+      ).toBe(403)
+      await family.close()
+    })
+
+    it('returns an honest empty economics view before there is any data', async () => {
+      const app = await asOperator(['marketing_operator'])
+      const res = await app.inject({ method: 'GET', url: '/operator/marketing/economics' })
+      expect(res.statusCode).toBe(200)
+      const body = res.json()
+      expect(body).toMatchObject({ window_days: 90, model: 'first', revenue: { synced: false } })
+      expect(body.totals.confidence).toBe('insufficient')
+      expect(body.notes.join(' ')).toMatch(/Payback is blank/)
+      await app.close()
+    })
+
+    it('reports synced revenue that could not be linked to a family', async () => {
+      await db.collection('revenue_events').insertMany([
+        { invoice_id: 'u1', tenant_id: null, currency: 'gbp', net_pence: 799, paid_at: new Date() },
+        {
+          invoice_id: 'l1',
+          tenant_id: 'family-1',
+          currency: 'gbp',
+          net_pence: 799,
+          paid_at: new Date(),
+        },
+      ])
+      const app = await asOperator(['marketing_operator'])
+      const body = (
+        await app.inject({ method: 'GET', url: '/operator/marketing/economics?days=30' })
+      ).json()
+      expect(body.unattributed).toEqual({ invoices: 1, revenue_pence: 799 })
+      expect(body.notes.join(' ')).toMatch(/could not be linked to a family/)
+      await app.close()
+    })
+
+    it('rejects a bad window or model', async () => {
+      const app = await asOperator(['marketing_operator'])
+      expect(
+        (await app.inject({ method: 'GET', url: '/operator/marketing/economics?days=3' }))
+          .statusCode,
+      ).toBe(400)
+      expect(
+        (await app.inject({ method: 'GET', url: '/operator/marketing/economics?model=middle' }))
+          .statusCode,
+      ).toBe(400)
+      await app.close()
+    })
+
+    it('combines rollups, spend and synced revenue into per-source economics', async () => {
+      const today = new Date().toISOString().slice(0, 10)
+      const month = today.slice(0, 7)
+      const t = 'bluesky|pillar_chart|p1'
+      await db.collection('metrics_daily').insertMany([
+        {
+          _id: 'v' as never,
+          metric: 'funnel',
+          day: today,
+          dim: 'visit|bluesky|pillar_chart',
+          count: 200,
+        },
+        { _id: 's' as never, metric: 'journey', day: today, dim: `first|signup|${t}`, count: 20 },
+        { _id: 'p' as never, metric: 'journey', day: today, dim: `first|paid|${t}`, count: 4 },
+        {
+          _id: 'r' as never,
+          metric: 'journey',
+          day: today,
+          dim: `first|revenue|${t}`,
+          count: 3196,
+        },
+      ])
+      await db.collection('revenue_sync').insertOne({ _id: 'last' as never, synced_at: new Date() })
+      await db
+        .collection('revenue_subscriptions')
+        .insertOne({ subscription_id: 'sub', status: 'active', currency: 'gbp', mrr_pence: 799 })
+      const app = await asOperator(['marketing_operator'])
+      await app.inject({
+        method: 'POST',
+        url: '/operator/marketing/spend',
+        payload: { month, channel: 'bluesky', amount_pence: 30000, reason: 'This month' },
+      })
+      const res = await app.inject({ method: 'GET', url: '/operator/marketing/economics?days=30' })
+      const row = (
+        res.json().by_source as {
+          key: string
+          paid: number
+          cac_pence: number | null
+          confidence: string
+        }[]
+      ).find((r) => r.key === 'bluesky')!
+      expect(row).toMatchObject({ paid: 4, confidence: 'directional' })
+      expect(row.cac_pence).toBeGreaterThan(0)
+      expect(res.json().arpu_pence).toBe(799)
+      expect(res.json().revenue).toMatchObject({ synced: true, mrr_pence: 799 })
+      await app.close()
+    })
+  })
+
+  describe('mission control', () => {
+    const proposal = (id: string, kind: string, perm: string) => ({
+      id,
+      rule: 'propose_suspend_brute_force',
+      dedup_key: `k-${id}`,
+      target_type: 'user',
+      target_id: 'user-2',
+      reason: 'Credential stuffing',
+      status: 'proposed',
+      proposal: {
+        kind,
+        required_permission: perm,
+        summary: `Do ${id}`,
+        payload: { user_id: 'user-2' },
+      },
+      created_at: new Date(),
+    })
+
+    it('lists decisions for the caller and reports the kill switch', async () => {
+      await db
+        .collection('platform_operators')
+        .insertOne({ user_id: 'operator-1', status: 'active', roles: ['support'] })
+      await db
+        .collection('autopilot_actions')
+        .insertOne(proposal('p1', 'user.suspend', 'users.manage'))
+      await db.collection('operator_alerts').insertOne({
+        dedup_key: 'dead_letters',
+        title: 'Dead jobs',
+        severity: 'danger',
+        status: 'open',
+        updated_at: new Date(),
+      })
+      const app = await buildApp()
+      const res = await app.inject({ method: 'GET', url: '/operator/mission-control' })
+      expect(res.statusCode).toBe(200)
+      expect(res.json().autopilot_paused).toBe(false)
+      const ids = (res.json().decisions as { id: string }[]).map((d) => d.id)
+      expect(ids).toContain('alert:dead_letters')
+      expect(ids).not.toContain('proposal:p1') // support lacks users.manage
+      await app.close()
+    })
+
+    it('denies mission control to non-operators', async () => {
+      const app = await buildApp('user-2')
+      expect(
+        (await app.inject({ method: 'GET', url: '/operator/mission-control' })).statusCode,
+      ).toBe(403)
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url: '/operator/mission-control/batch',
+            payload: { items: [{ id: 'alert:x', action: 'ack' }], reason: 'nope nope' },
+          })
+        ).statusCode,
+      ).toBe(403)
+      await app.close()
+    })
+
+    it('batch acks alerts and rejects proposals, one audit row per item plus a batch row', async () => {
+      await db
+        .collection('platform_operators')
+        .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+      await db
+        .collection('autopilot_actions')
+        .insertMany([
+          proposal('p1', 'user.suspend', 'users.manage'),
+          proposal('p2', 'user.suspend', 'users.manage'),
+        ])
+      const app = await buildApp()
+      const res = await app.inject({
+        method: 'POST',
+        url: '/operator/mission-control/batch',
+        payload: {
+          reason: 'Triage sweep',
+          items: [
+            { id: 'proposal:p1', action: 'reject' },
+            { id: 'proposal:p2', action: 'reject' },
+            { id: 'alert:dead_letters', action: 'ack' },
+          ],
+        },
+      })
+      expect(res.statusCode).toBe(200)
+      expect((res.json().results as { ok: boolean }[]).every((r) => r.ok)).toBe(true)
+      expect(await db.collection('autopilot_actions').countDocuments({ status: 'rejected' })).toBe(
+        2,
+      )
+      expect(
+        (await db.collection('operator_alerts').findOne({ dedup_key: 'dead_letters' }))?.['status'],
+      ).toBe('ack')
+      const audits = db.collection('operator_audit_log')
+      expect(await audits.countDocuments({ action: 'operator.autopilot.reject' })).toBe(2)
+      expect(await audits.countDocuments({ action: 'operator.alert.ack' })).toBe(1)
+      expect(await audits.countDocuments({ action: 'operator.mission_control.batch' })).toBe(1)
+      await app.close()
+    })
+
+    it('refuses a batch containing anything not batchable, applying none of it', async () => {
+      await db
+        .collection('platform_operators')
+        .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+      await db
+        .collection('autopilot_actions')
+        .insertOne(proposal('p1', 'user.suspend', 'users.manage'))
+      const app = await buildApp()
+      for (const bad of [
+        { id: 'post_draft:m1', action: 'approve' },
+        { id: 'campaign_draft:k1', action: 'approve' },
+        { id: 'dual_approval:d1', action: 'approve' },
+        { id: 'plan_week:2026-10-26', action: 'approve' },
+        { id: 'plan_missing:2026-10-26', action: 'approve' },
+        { id: 'channel_attention:t1:x', action: 'ack' },
+        { id: 'profile_drift:t1:x', action: 'approve' },
+        { id: 'proposal:p1', action: 'ack' },
+        { id: 'alert:x', action: 'approve' },
+      ]) {
+        const res = await app.inject({
+          method: 'POST',
+          url: '/operator/mission-control/batch',
+          payload: {
+            reason: 'Should be refused',
+            items: [{ id: 'proposal:p1', action: 'reject' }, bad],
+          },
+        })
+        expect(res.statusCode, JSON.stringify(bad)).toBe(400)
+      }
+      // The valid first item must not have been applied by any refused batch.
+      expect((await db.collection('autopilot_actions').findOne({ id: 'p1' }))?.['status']).toBe(
+        'proposed',
+      )
+      await app.close()
+    })
+
+    it("enforces each item's own permission without aborting the rest", async () => {
+      // operations carries operations.manage (reject ok) but not marketing.manage (approve the draft proposal).
+      await db
+        .collection('platform_operators')
+        .insertOne({ user_id: 'operator-1', status: 'active', roles: ['operations'] })
+      await db
+        .collection('autopilot_actions')
+        .insertMany([
+          proposal('p-draft', 'marketing.blog_draft', 'marketing.manage'),
+          proposal('p-other', 'user.suspend', 'users.manage'),
+        ])
+      const app = await buildApp()
+      const res = await app.inject({
+        method: 'POST',
+        url: '/operator/mission-control/batch',
+        payload: {
+          reason: 'Mixed permissions',
+          items: [
+            { id: 'proposal:p-draft', action: 'approve' },
+            { id: 'proposal:p-other', action: 'reject' },
+          ],
+        },
+      })
+      expect(res.statusCode).toBe(200)
+      const byId = Object.fromEntries(
+        (res.json().results as { id: string; ok: boolean; status: number }[]).map((r) => [r.id, r]),
+      )
+      expect(byId['proposal:p-draft']).toMatchObject({ ok: false, status: 403 })
+      expect(byId['proposal:p-other']).toMatchObject({ ok: true })
+      expect(
+        (await db.collection('autopilot_actions').findOne({ id: 'p-draft' }))?.['status'],
+      ).toBe('proposed')
+      await app.close()
+    })
+
+    it('requires a recent login (step-up) and caps the batch size', async () => {
+      await db
+        .collection('platform_operators')
+        .insertOne({ user_id: 'operator-1', status: 'active', roles: ['platform_admin'] })
+      const stale = await buildApp('operator-1', Math.floor(Date.now() / 1000) - 3600)
+      const res = await stale.inject({
+        method: 'POST',
+        url: '/operator/mission-control/batch',
+        payload: { reason: 'Old session', items: [{ id: 'alert:x', action: 'ack' }] },
+      })
+      expect(res.statusCode).toBe(403)
+      expect(res.json().code).toBe('step_up_required')
+      await stale.close()
+
+      const app = await buildApp()
+      const tooMany = await app.inject({
+        method: 'POST',
+        url: '/operator/mission-control/batch',
+        payload: {
+          reason: 'Too many',
+          items: Array.from({ length: 21 }, (_, i) => ({ id: `alert:a${i}`, action: 'ack' })),
+        },
+      })
+      expect(tooMany.statusCode).toBe(400)
+      await app.close()
+    })
   })
 
   it('approves a suspend proposal — executes the mutation, audits, and cannot be re-approved', async () => {

@@ -42,6 +42,8 @@ export {
 export { CostLedger, computeCost, formatMicroDollars } from './cost-ledger.js'
 export type { LlmUsageRecord, CostSummary, ModelPricing } from './cost-ledger.js'
 export { createLocalDecisionFn, LocalDecisionError } from './local-decision.js'
+export { vertexAccessTokenProvider } from './vertex-auth.js'
+export type { VertexAuthOptions } from './vertex-auth.js'
 export { ollamaNumCtx, DEFAULT_OLLAMA_NUM_CTX } from './ollama-options.js'
 export type {
   DecisionFn,
@@ -83,7 +85,7 @@ export { RETRY_CONFIGS, retryWithPolicy } from './retry.js'
 export type { RetryConfig } from './retry.js'
 export { RoleResolver } from './auth/RoleResolver.js'
 export type { LifeKeelRole, SsoRoleMapping } from './auth/RoleResolver.js'
-export { SafeHttpClient } from './safe-http-client.js'
+export { SafeHttpClient, resolvePublicAddress, isPrivateAddress } from './safe-http-client.js'
 export { TenantScopedCollection, getTenantCollection } from './tenant-scoped-collection.js'
 export { FreeTierPolicy, FREE_TIER_LIMITS } from './free-tier-policy.js'
 export type { FreeTierResource, QuotaDecision } from './free-tier-policy.js'
@@ -149,6 +151,7 @@ export {
   TaskPolicyError,
   ProcessorPolicyError,
   TaskDeadlineError,
+  TaskDisabledError,
 } from './task-gateway.js'
 export {
   parseProcessorRegistry,

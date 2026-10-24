@@ -13,6 +13,7 @@
  */
 import type { RenderedHeartbeat } from './render-heartbeat.js'
 import { buildDigestPushPayload } from '../delivery/push-payload.js'
+import { EMAIL_COLORS, EMAIL_FONTS, button } from '../email/layout.js'
 
 export type DigestVariant = 'all_clear' | 'note' | 'missed'
 
@@ -165,7 +166,7 @@ export function renderQuietCareDigest(
 
   const html = `
     <p>Hi,</p>
-    <h2 style="font-size:18px;margin:0 0 12px;">${escapeHtml(headline)}</h2>
+    <h2 style="font-family:${EMAIL_FONTS.display};font-size:24px;font-weight:400;line-height:1.2;margin:0 0 12px;">${escapeHtml(headline)}</h2>
     ${sections
       .map(
         (s) =>
@@ -176,13 +177,13 @@ export function renderQuietCareDigest(
       .join('')}
     ${
       d.worth_a_look && d.check.status === 'ran'
-        ? `<p><a href="${escapeHtml(lookHref)}">See the details</a></p>`
+        ? `<p><a href="${escapeHtml(lookHref)}" style="color:${EMAIL_COLORS.brassText};">See the details</a></p>`
         : ''
     }
     <p style="margin-top:16px;">${escapeHtml(next)}</p>
-    <p><a href="${escapeHtml(appHome)}" style="display:inline-block;padding:12px 20px;background:#7c6ef0;color:#fff;border-radius:10px;text-decoration:none;font-weight:600;">Open LifeKeel</a></p>
+    ${button({ url: appHome, label: 'Open LifeKeel' })}
     ${offer ? `<p>${escapeHtml(offer)}</p>` : ''}
-    <p style="color:#888;font-size:13px;">${escapeHtml(cadence)} <a href="${escapeHtml(settingsUrl)}" style="color:#888;">Why you got this · Manage notifications</a></p>
+    <p style="color:${EMAIL_COLORS.muted};font-size:13px;">${escapeHtml(cadence)} <a href="${escapeHtml(settingsUrl)}" style="color:${EMAIL_COLORS.muted};">Why you got this · Manage notifications</a></p>
   `
 
   return {

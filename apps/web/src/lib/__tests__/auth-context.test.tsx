@@ -17,6 +17,35 @@ afterEach(() => {
 })
 
 describe('AuthProvider.signUp', () => {
+  it('R21: keeps the bearer fallback when the browser blocks the session cookie', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.endsWith('/auth/me')) {
+        const headers = (init?.headers ?? {}) as Record<string, string>
+        // Only a request that carries the bearer succeeds: the cookie is blocked.
+        return headers['Authorization']
+          ? jsonResponse({
+              user_id: 'u1',
+              tenant_id: 't1',
+              email: 'jane@example.com',
+              name: 'Jane',
+            })
+          : Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({}) })
+      }
+      return jsonResponse({
+        token: 'tok_blocked',
+        user: { id: 'u1', email: 'jane@example.com', name: 'Jane Doe', tenant_id: 't1' },
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    await act(async () => {
+      await result.current.signUp('Jane Doe', 'jane@example.com', 'password123')
+    })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(localStorage.getItem('lifekeel_token')).toBe('tok_blocked')
+  })
+
   it('sends a unique workspace slug derived from the given name, and persists the token', async () => {
     const fetchMock = vi.fn().mockImplementation((url: string) =>
       jsonResponse({
@@ -33,7 +62,9 @@ describe('AuthProvider.signUp', () => {
       await result.current.signUp('Jane Doe', 'jane@example.com', 'password123')
     })
 
-    expect(localStorage.getItem('lifekeel_token')).toBe('tok_123')
+    // R21: /auth/me answered with the cookie alone, so no script-readable
+    // copy of the token is kept.
+    await waitFor(() => expect(localStorage.getItem('lifekeel_token')).toBeNull())
     expect(result.current.user?.email).toBe('jane@example.com')
 
     // The mount-time rehydrate also fetches (/auth/me, cookie-session probe),
@@ -304,6 +335,71 @@ describe('AuthProvider.signOut', () => {
     expect(purge).not.toHaveBeenCalled()
     expect(localStorage.getItem('lifekeel_token')).toBe('still-valid-token')
     expect(result.current.user?.email).toBe('a@b.com')
+    expect(result.current.isAuthenticated).toBe(true)
+  })
+})
+
+describe('AuthProvider email OTP (CLOUDFLARE_INTEGRATION.md §6)', () => {
+  const challenge = {
+    otp_required: true,
+    otp_token: 'pending-1',
+    email_hint: 'a***@b.com',
+    delivery: 'sent',
+    code_expires_at: new Date(Date.now() + 600_000).toISOString(),
+    chain_expires_at: new Date(Date.now() + 1_800_000).toISOString(),
+    resend_available_at: new Date(Date.now() + 60_000).toISOString(),
+  }
+
+  beforeEach(() => sessionStorage.clear())
+
+  it('signIn returns otpRequired, keeps the challenge in sessionStorage and stores no session', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.endsWith('/auth/me'))
+        return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({}) })
+      if (url.endsWith('/auth/login')) {
+        expect((init?.headers as Record<string, string>)['cf-turnstile-token']).toBe('cf-tok')
+        return jsonResponse(challenge)
+      }
+      return jsonResponse({})
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    let out: { otpRequired?: boolean } = {}
+    await act(async () => {
+      out = await result.current.signIn('a@b.com', 'password123', { turnstileToken: 'cf-tok' })
+    })
+    expect(out.otpRequired).toBe(true)
+    expect(JSON.parse(sessionStorage.getItem('lifekeel_otp_pending')!).otp_token).toBe('pending-1')
+    expect(localStorage.getItem('lifekeel_token')).toBeNull()
+  })
+
+  it('verifyEmailOtp posts the pending token with the code, then signs in and clears the challenge', async () => {
+    sessionStorage.setItem(
+      'lifekeel_otp_pending',
+      JSON.stringify({ ...challenge, purpose: 'login' }),
+    )
+    const bodies: Record<string, unknown>[] = []
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.endsWith('/auth/me'))
+        return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({}) })
+      if (url.endsWith('/auth/otp/verify')) {
+        bodies.push(JSON.parse(String(init?.body)))
+        return jsonResponse({
+          token: 'tok_otp',
+          user: { id: 'u1', email: 'a@b.com', name: 'A', tenant_id: 't1' },
+        })
+      }
+      return jsonResponse({ id: 'f1', name: 'Fam', members: [] })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    await act(async () => {
+      await result.current.verifyEmailOtp('123456')
+    })
+    expect(bodies[0]).toEqual({ otp_token: 'pending-1', code: '123456' })
+    expect(sessionStorage.getItem('lifekeel_otp_pending')).toBeNull()
     expect(result.current.isAuthenticated).toBe(true)
   })
 })

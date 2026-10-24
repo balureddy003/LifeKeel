@@ -54,16 +54,29 @@ export function totp(secret: string, stepOffset = 0): string {
   return hotp(secret, Math.floor(Date.now() / 1000 / 30) + stepOffset)
 }
 
+/**
+ * Returns the time step a code matches within the ±1-step window (device
+ * clock drift), or null. Callers store the step and reject any step at or
+ * below the last accepted one, so an observed code can't be replayed (R40).
+ */
+export function matchTotpStep(secret: string, code: unknown): number | null {
+  if (typeof code !== 'string') return null
+  const normalized = code.replace(/\s/g, '')
+  if (!/^\d{6}$/.test(normalized)) return null
+  const expected = Buffer.from(normalized)
+  const now = Math.floor(Date.now() / 1000 / 30)
+  let matched: number | null = null
+  for (let i = -1; i <= 1; i++) {
+    const candidate = Buffer.from(hotp(secret, now + i))
+    if (candidate.length === expected.length && timingSafeEqual(candidate, expected))
+      matched = now + i
+  }
+  return matched
+}
+
 /** Constant-time compare across the ±1-step window — tolerates device clock drift. */
 export function verifyTotp(secret: string, code: string): boolean {
-  const normalized = code.replace(/\s/g, '')
-  if (!/^\d{6}$/.test(normalized)) return false
-  const expected = Buffer.from(normalized)
-  for (let i = -1; i <= 1; i++) {
-    const candidate = Buffer.from(totp(secret, i))
-    if (candidate.length === expected.length && timingSafeEqual(candidate, expected)) return true
-  }
-  return false
+  return matchTotpStep(secret, code) !== null
 }
 
 export function otpauthUrl(secret: string, email: string): string {

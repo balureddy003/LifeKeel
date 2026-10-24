@@ -25,7 +25,7 @@
   "dependencies": {
     "@lifekeel/platform": "workspace:^",
     "mongodb": "^7.7.0",
-    "zod": "^3.23.0"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@lifekeel/eslint-config": "workspace:*",

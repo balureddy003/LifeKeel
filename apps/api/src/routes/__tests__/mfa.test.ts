@@ -184,6 +184,98 @@ describe('MFA login flow', () => {
   })
 })
 
+describe('R40: second-step limits', () => {
+  it('a code that already signed someone in cannot be used again', async () => {
+    const secret = generateTotpSecret()
+    await db
+      .collection('users')
+      .insertOne({
+        ...USER,
+        id: 'replay-user',
+        email: 'replay@example.com',
+        mfa_secret: secret,
+        mfa_recovery_hashes: [],
+      })
+    const code = totp(secret)
+    const login = async () =>
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/auth/login',
+          payload: { email: 'replay@example.com', password: PASSWORD },
+        })
+      ).json().mfa_token
+    const first = await app.inject({
+      method: 'POST',
+      url: '/auth/mfa/verify',
+      payload: { mfa_token: await login(), code },
+    })
+    expect(first.statusCode).toBe(200)
+    const replay = await app.inject({
+      method: 'POST',
+      url: '/auth/mfa/verify',
+      payload: { mfa_token: await login(), code },
+    })
+    expect(replay.statusCode).toBe(401)
+  })
+
+  it('five wrong codes lock the second step, even with the right code afterwards', async () => {
+    const secret = generateTotpSecret()
+    await db
+      .collection('users')
+      .insertOne({
+        ...USER,
+        id: 'brute-user',
+        email: 'brute@example.com',
+        mfa_secret: secret,
+        mfa_recovery_hashes: [],
+      })
+    const mfa_token = (
+      await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: { email: 'brute@example.com', password: PASSWORD },
+      })
+    ).json().mfa_token
+    const statuses: number[] = []
+    for (let i = 0; i < 5; i++) {
+      statuses.push(
+        (
+          await app.inject({
+            method: 'POST',
+            url: '/auth/mfa/verify',
+            payload: { mfa_token, code: String(100000 + i) },
+          })
+        ).statusCode,
+      )
+    }
+    expect(statuses.slice(0, 4)).toEqual([401, 401, 401, 401])
+    expect(statuses[4]).toBe(429)
+    const right = await app.inject({
+      method: 'POST',
+      url: '/auth/mfa/verify',
+      payload: { mfa_token, code: totp(secret) },
+    })
+    expect(right.statusCode).toBe(429)
+  })
+
+  it('a non-string code is rejected, not matched (R01 class)', async () => {
+    const mfa_token = (
+      await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: { email: 'brute@example.com', password: PASSWORD },
+      })
+    ).json().mfa_token
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/mfa/verify',
+      payload: { mfa_token, code: { $ne: null } },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+})
+
 describe('MFA management routes', () => {
   let sessionToken: string
 
@@ -202,16 +294,14 @@ describe('MFA management routes', () => {
   })
 
   it('enrolls via setup → enable, returning recovery codes', async () => {
-    await db
-      .collection('users')
-      .insertOne({
-        ...USER,
-        id: 'enrol-user',
-        email: 'enrol@example.com',
-        mfa_enabled: false,
-        mfa_secret: undefined,
-        mfa_recovery_hashes: undefined,
-      })
+    await db.collection('users').insertOne({
+      ...USER,
+      id: 'enrol-user',
+      email: 'enrol@example.com',
+      mfa_enabled: false,
+      mfa_secret: undefined,
+      mfa_recovery_hashes: undefined,
+    })
     const enrolToken = await auth.sign({
       sub: 'enrol-user',
       tenant_id: USER.tenant_id,
@@ -219,7 +309,21 @@ describe('MFA management routes', () => {
     })
     const bearer = { authorization: `Bearer ${enrolToken}` }
 
-    const setup = await app.inject({ method: 'POST', url: '/auth/mfa/setup', headers: bearer })
+    // R02: no password, no new secret.
+    const noPassword = await app.inject({
+      method: 'POST',
+      url: '/auth/mfa/setup',
+      headers: bearer,
+      payload: {},
+    })
+    expect(noPassword.statusCode).toBe(401)
+
+    const setup = await app.inject({
+      method: 'POST',
+      url: '/auth/mfa/setup',
+      headers: bearer,
+      payload: { password: PASSWORD },
+    })
     expect(setup.statusCode).toBe(200)
     const { secret, otpauth_url } = setup.json()
     expect(secret).toBeTruthy()
@@ -246,9 +350,56 @@ describe('MFA management routes', () => {
     const stored = await db.collection('users').findOne({ id: 'enrol-user' })
     expect(stored?.['mfa_enabled']).toBe(true)
     expect(stored?.['mfa_pending_secret']).toBeUndefined()
+    // R40: the secret is stored encrypted, never as the base32 value shown once.
+    expect(String(stored?.['mfa_secret'])).toMatch(/^dek:/)
+    expect(String(stored?.['mfa_secret'])).not.toContain(secret)
     expect(stored?.['mfa_recovery_hashes']?.[0]).toBe(
       hashRecoveryCode(enable.json().recovery_codes[0]),
     )
+  })
+
+  it('R02: replacing an enabled factor needs the password AND a code from the current one, and ends other sessions', async () => {
+    const secret = generateTotpSecret()
+    await db.collection('users').insertOne({
+      ...USER,
+      id: 'replace-user',
+      email: 'replace@example.com',
+      mfa_enabled: true,
+      mfa_secret: secret,
+      mfa_recovery_hashes: [],
+    })
+    const token = await auth.sign({
+      sub: 'replace-user',
+      tenant_id: USER.tenant_id,
+      roles: USER.roles,
+    })
+    const bearer = { authorization: `Bearer ${token}` }
+
+    const passwordOnly = await app.inject({
+      method: 'POST',
+      url: '/auth/mfa/setup',
+      headers: bearer,
+      payload: { password: PASSWORD },
+    })
+    expect(passwordOnly.statusCode).toBe(401)
+
+    const setup = await app.inject({
+      method: 'POST',
+      url: '/auth/mfa/setup',
+      headers: bearer,
+      payload: { password: PASSWORD, code: totp(secret) },
+    })
+    expect(setup.statusCode).toBe(200)
+    const enable = await app.inject({
+      method: 'POST',
+      url: '/auth/mfa/enable',
+      headers: bearer,
+      payload: { code: totp(setup.json().secret) },
+    })
+    expect(enable.statusCode).toBe(200)
+    expect(enable.json().token).toBeTruthy()
+    const stored = await db.collection('users').findOne({ id: 'replace-user' })
+    expect(stored?.['sessions_revoked_at']).toBeInstanceOf(Date)
   })
 
   it('requires the account password to disable', async () => {

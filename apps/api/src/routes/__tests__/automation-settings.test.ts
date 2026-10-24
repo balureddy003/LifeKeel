@@ -15,23 +15,38 @@ function makeDb(initial?: Record<string, unknown>) {
   let doc: Record<string, unknown> | null = initial ? { ...initial } : null
   const tenantSettingsCol = {
     findOne: vi.fn(async (filter: Record<string, unknown>) =>
-      doc && doc['tenant_id'] === filter['tenant_id'] ? doc : null),
-    updateOne: vi.fn(async (filter: Record<string, unknown>, update: Record<string, unknown>, opts?: Record<string, unknown>) => {
-      if (!doc && opts?.['upsert']) doc = { tenant_id: filter['tenant_id'] }
-      if (!doc || doc['tenant_id'] !== filter['tenant_id']) return { matchedCount: 0 }
-      const set = (update['$set'] as Record<string, unknown>) ?? {}
-      for (const [key, value] of Object.entries(set)) {
-        const parts = key.split('.')
-        let target = doc as Record<string, unknown>
-        for (const part of parts.slice(0, -1)) {
-          target = (target[part] ??= {}) as Record<string, unknown>
+      doc && doc['tenant_id'] === filter['tenant_id'] ? doc : null,
+    ),
+    updateOne: vi.fn(
+      async (
+        filter: Record<string, unknown>,
+        update: Record<string, unknown>,
+        opts?: Record<string, unknown>,
+      ) => {
+        if (!doc && opts?.['upsert']) doc = { tenant_id: filter['tenant_id'] }
+        if (!doc || doc['tenant_id'] !== filter['tenant_id']) return { matchedCount: 0 }
+        const set = (update['$set'] as Record<string, unknown>) ?? {}
+        for (const [key, value] of Object.entries(set)) {
+          const parts = key.split('.')
+          let target = doc as Record<string, unknown>
+          for (const part of parts.slice(0, -1)) {
+            target = (target[part] ??= {}) as Record<string, unknown>
+          }
+          target[parts[parts.length - 1]!] = value
         }
-        target[parts[parts.length - 1]!] = value
-      }
-      return { matchedCount: 1 }
-    }),
+        return { matchedCount: 1 }
+      },
+    ),
   }
-  return { collection: (name: string) => (name === 'tenant_settings' ? tenantSettingsCol : {}) } as any
+  // scope_contracts (PRD-214) is written through when renewal_reminders_enabled
+  // flips — a tolerant stub keeps the settings assertions focused.
+  const stubCol = {
+    findOne: vi.fn(async () => null),
+    updateOne: vi.fn(async () => ({ matchedCount: 0, upsertedCount: 1 })),
+  }
+  return {
+    collection: (name: string) => (name === 'tenant_settings' ? tenantSettingsCol : stubCol),
+  } as any
 }
 
 async function buildApp(db: unknown) {
@@ -61,7 +76,11 @@ describe('/settings/automation', () => {
   it('PATCH dry_run_mode persists and GET reads it back', async () => {
     const app = await buildApp(makeDb({ tenant_id: TENANT }))
 
-    const patch = await app.inject({ method: 'PATCH', url: '/settings/automation', payload: { dry_run_mode: true } })
+    const patch = await app.inject({
+      method: 'PATCH',
+      url: '/settings/automation',
+      payload: { dry_run_mode: true },
+    })
     expect(patch.statusCode).toBe(200)
     expect(patch.json().dry_run_mode).toBe(true)
 
@@ -71,15 +90,21 @@ describe('/settings/automation', () => {
 
   it('PATCH rejects a non-boolean dry_run_mode', async () => {
     const app = await buildApp(makeDb())
-    const res = await app.inject({ method: 'PATCH', url: '/settings/automation', payload: { dry_run_mode: 'yes' } })
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/settings/automation',
+      payload: { dry_run_mode: 'yes' },
+    })
     expect(res.statusCode).toBe(400)
   })
 
   it('GET returns stored trust levels read-only alongside dry_run_mode', async () => {
-    const app = await buildApp(makeDb({
-      tenant_id: TENANT,
-      automation: { dry_run_mode: false, trust_level_by_workflow: { wf_1: 3 } },
-    }))
+    const app = await buildApp(
+      makeDb({
+        tenant_id: TENANT,
+        automation: { dry_run_mode: false, trust_level_by_workflow: { wf_1: 3 } },
+      }),
+    )
     const res = await app.inject({ method: 'GET', url: '/settings/automation' })
     expect(res.json()).toEqual({
       dry_run_mode: false,
@@ -93,25 +118,45 @@ describe('/settings/automation', () => {
 
   it('PATCH auto_execute_enabled persists and GET reads it back', async () => {
     const app = await buildApp(makeDb({ tenant_id: TENANT }))
-    const res = await app.inject({ method: 'PATCH', url: '/settings/automation', payload: { auto_execute_enabled: true } })
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/settings/automation',
+      payload: { auto_execute_enabled: true },
+    })
     expect(res.statusCode).toBe(200)
     expect(res.json().auto_execute_enabled).toBe(true)
-    const bad = await app.inject({ method: 'PATCH', url: '/settings/automation', payload: { auto_execute_enabled: 'on' } })
+    const bad = await app.inject({
+      method: 'PATCH',
+      url: '/settings/automation',
+      payload: { auto_execute_enabled: 'on' },
+    })
     expect(bad.statusCode).toBe(400)
   })
 
   it('PATCH renewal_reminders_enabled persists and GET reads it back', async () => {
     const app = await buildApp(makeDb({ tenant_id: TENANT }))
-    const res = await app.inject({ method: 'PATCH', url: '/settings/automation', payload: { renewal_reminders_enabled: true } })
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/settings/automation',
+      payload: { renewal_reminders_enabled: true },
+    })
     expect(res.statusCode).toBe(200)
     expect(res.json().renewal_reminders_enabled).toBe(true)
   })
 
   it('PATCH accepts custom lead days and rejects invalid ones', async () => {
     const app = await buildApp(makeDb({ tenant_id: TENANT }))
-    const ok = await app.inject({ method: 'PATCH', url: '/settings/automation', payload: { renewal_reminder_lead_days: [14] } })
+    const ok = await app.inject({
+      method: 'PATCH',
+      url: '/settings/automation',
+      payload: { renewal_reminder_lead_days: [14] },
+    })
     expect(ok.json().renewal_reminder_lead_days).toEqual([14])
-    const bad = await app.inject({ method: 'PATCH', url: '/settings/automation', payload: { renewal_reminder_lead_days: [0] } })
+    const bad = await app.inject({
+      method: 'PATCH',
+      url: '/settings/automation',
+      payload: { renewal_reminder_lead_days: [0] },
+    })
     expect(bad.statusCode).toBe(400)
   })
 
@@ -122,11 +167,17 @@ describe('/settings/automation', () => {
   })
 
   it('PATCH only writes dry_run_mode — trust levels survive unchanged', async () => {
-    const app = await buildApp(makeDb({
-      tenant_id: TENANT,
-      automation: { dry_run_mode: false, trust_level_by_workflow: { wf_1: 3 } },
-    }))
-    const res = await app.inject({ method: 'PATCH', url: '/settings/automation', payload: { dry_run_mode: true } })
+    const app = await buildApp(
+      makeDb({
+        tenant_id: TENANT,
+        automation: { dry_run_mode: false, trust_level_by_workflow: { wf_1: 3 } },
+      }),
+    )
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/settings/automation',
+      payload: { dry_run_mode: true },
+    })
     expect(res.json().trust_level_by_workflow).toEqual({ wf_1: 3 })
   })
 })

@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { PageHeader, GlassCard, EmptyState } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { useToast } from '@/components/Toast'
-import { uploadDocument, fetchDocuments, type FamilyDocument } from '@/lib/api'
+import { uploadDocument, fetchDocuments, UPLOAD_ACCEPT, type FamilyDocument } from '@/lib/api'
 import { screenDocumentBeforeUpload } from '@/lib/on-device-doc-screen'
 import { useAppStore } from '@/lib/store'
 import { displayDocName } from '@/lib/doc-name'
@@ -25,17 +25,31 @@ import {
   Sparkles,
 } from 'lucide-react'
 
+/** Still moving through upload, scan or extraction: keep polling. */
+const IN_FLIGHT: ReadonlySet<FamilyDocument['status']> = new Set([
+  'uploaded',
+  'processing',
+  'awaiting_upload',
+  'scan_queued',
+  'scanning',
+  'scan_error',
+  'clean',
+])
+
 function statusIcon(status: FamilyDocument['status']) {
   switch (status) {
-    case 'uploaded':
-    case 'processing':
-      return <Loader2 size={14} className="text-warning animate-spin" />
     case 'extracted':
+    case 'applied':
       return <Check size={14} className="text-success" />
     case 'stored':
       return <ShieldCheck size={14} className="text-ink-tertiary" />
     case 'error':
+    case 'infected':
+    case 'rejected':
+    case 'failed':
       return <AlertCircle size={14} className="text-danger" />
+    default:
+      return <Loader2 size={14} className="text-warning animate-spin" />
   }
 }
 
@@ -51,8 +65,24 @@ function statusLabel(status: FamilyDocument['status'], extractedData?: Record<st
         : 'Saved, nothing read'
     case 'stored':
       return 'Saved'
+    case 'applied':
+      return 'Added to your profile'
     case 'error':
       return 'Failed'
+    case 'awaiting_upload':
+      return 'Uploading...'
+    case 'scan_queued':
+    case 'scanning':
+    case 'clean':
+      return 'Checking file...'
+    case 'scan_error':
+      return 'Check delayed, retrying...'
+    case 'infected':
+      return 'Blocked by security scan'
+    case 'rejected':
+      return "Couldn't accept this file"
+    case 'failed':
+      return 'Upload failed'
   }
 }
 
@@ -88,9 +118,7 @@ export default function UploadPage() {
 
   // Poll for OCR status updates on documents that are still processing
   useEffect(() => {
-    const hasProcessing = documents.some(
-      (d) => d.status === 'uploaded' || d.status === 'processing',
-    )
+    const hasProcessing = documents.some((d) => IN_FLIGHT.has(d.status))
     if (!hasProcessing) return
     const interval = setInterval(() => {
       loadDocuments()
@@ -230,10 +258,15 @@ export default function UploadPage() {
         </motion.button>
       </div>
 
+      <p className="text-xs text-ink-tertiary mt-2">
+        PDF, Word (.docx) or photos, up to 50 MB. Every file is checked for malware before anyone
+        can open it, and photos are saved as WebP with location data removed.
+      </p>
+
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*,application/pdf"
+        accept={UPLOAD_ACCEPT}
         multiple
         onChange={handleFileSelect}
         className="hidden"
@@ -362,9 +395,9 @@ export default function UploadPage() {
                           className="text-xs flex items-center gap-1"
                           style={{
                             color:
-                              doc.status === 'extracted'
+                              doc.status === 'extracted' || doc.status === 'applied'
                                 ? '#4ade80'
-                                : doc.status === 'error'
+                                : ['error', 'infected', 'rejected', 'failed'].includes(doc.status)
                                   ? '#f87171'
                                   : doc.status === 'stored'
                                     ? '#9ca3af'

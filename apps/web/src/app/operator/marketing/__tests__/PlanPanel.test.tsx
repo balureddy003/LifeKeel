@@ -56,11 +56,13 @@ const week: PlanWeekView = {
 let current: PlanWeekView = week
 const approve = vi.fn(async () => ({ approved: 1, refused: 0, results: [] }))
 const generate = vi.fn(async () => week)
+const updatePost = vi.fn(async () => ({}))
 vi.mock('@/lib/api', async () => ({
   fetchPlanWeek: async () => current,
   generatePlanWeek: (...a: unknown[]) => generate(...(a as [])),
   approvePlanPosts: (...a: unknown[]) => approve(...(a as [])),
   skipPlanItem: vi.fn(async () => ({ ok: true })),
+  updateMarketingPost: (...a: unknown[]) => updatePost(...(a as [])),
 }))
 
 afterEach(() => {
@@ -111,5 +113,87 @@ describe('PlanPanel', () => {
       (screen.getByRole('button', { name: 'Approve 0 for the week' }) as HTMLButtonElement)
         .disabled,
     ).toBe(true)
+  })
+
+  describe('across every platform', () => {
+    const igWeek = (): PlanWeekView => ({
+      ...week,
+      available_channels: ['bluesky', 'instagram'],
+      items: [
+        {
+          ...week.items[0]!,
+          posts: [
+            week.items[0]!.posts[0]!,
+            {
+              id: 'ig1',
+              channel: 'instagram',
+              content: 'A good Instagram draft',
+              content_hash: 'hig',
+              state: 'draft',
+              scheduled_at: '2026-10-26T09:00:00Z',
+              copy_check: ok,
+              needs_image: true,
+            },
+          ],
+        },
+      ],
+    })
+
+    it('does not let an Instagram draft without an image be approved, and says so', async () => {
+      current = igWeek()
+      render(<PlanPanel />)
+      await screen.findByText('A good Instagram draft')
+      const box = screen.getByLabelText(
+        'Approve the instagram draft for The chart',
+      ) as HTMLInputElement
+      expect(box.disabled).toBe(true)
+      expect(box.checked).toBe(false)
+      expect(screen.getByText(/Instagram needs an image before this can be approved/)).toBeTruthy()
+      // The Bluesky draft in the same week is still ticked and approvable.
+      expect(
+        (screen.getByLabelText('Approve the bluesky draft for The chart') as HTMLInputElement)
+          .checked,
+      ).toBe(true)
+      expect(screen.getByRole('button', { name: 'Approve 1 for the week' })).toBeTruthy()
+    })
+
+    it('attaches an image by URL (https only) and then reloads', async () => {
+      current = igWeek()
+      render(<PlanPanel />)
+      await screen.findByText('A good Instagram draft')
+      const attach = screen.getByRole('button', { name: 'Attach image' }) as HTMLButtonElement
+      expect(attach.disabled).toBe(true)
+      fireEvent.change(screen.getByLabelText('Image URL for post ig1'), {
+        target: { value: 'http://insecure.example/a.png' },
+      })
+      expect(attach.disabled).toBe(true) // https only
+      fireEvent.change(screen.getByLabelText('Image URL for post ig1'), {
+        target: { value: 'https://cdn.example.com/a.png' },
+      })
+      expect(attach.disabled).toBe(false)
+      fireEvent.click(attach)
+      await waitFor(() =>
+        expect(updatePost).toHaveBeenCalledWith('ig1', {
+          media_url: 'https://cdn.example.com/a.png',
+        }),
+      )
+    })
+
+    it('says which connected platforms were left out of the plan, and why', async () => {
+      current = {
+        ...week,
+        skipped_channels: [
+          {
+            channel: 'linkedin',
+            status: 'needs_reauth',
+            reason: 'linkedin token expired — reconnect',
+          },
+        ],
+      }
+      render(<PlanPanel />)
+      await screen.findByText(/Left out of this plan/)
+      expect(screen.getByText(/linkedin \(linkedin token expired — reconnect\)/)).toBeTruthy()
+      expect(screen.getByText(/Reconnect in the Connections tab/)).toBeTruthy()
+    })
   })
 })

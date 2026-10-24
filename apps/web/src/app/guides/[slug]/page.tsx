@@ -14,7 +14,11 @@ export function generateStaticParams() {
   return GUIDES.map((g) => ({ slug: g.slug }))
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>
+}): Promise<Metadata> {
   const guide = getGuide((await params).slug)
   if (!guide) return {}
   return {
@@ -34,6 +38,10 @@ export default async function GuidePage({ params }: { params: Promise<{ slug: st
   const guide = getGuide((await params).slug)
   if (!guide) notFound()
 
+  const i = GUIDES.findIndex((g) => g.slug === guide.slug)
+  const prev = GUIDES[i - 1]
+  const next = GUIDES[i + 1]
+
   const faqJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'FAQPage',
@@ -45,24 +53,33 @@ export default async function GuidePage({ params }: { params: Promise<{ slug: st
   }
 
   return (
-    <div className="min-h-screen px-5 py-10">
+    <div className="px-5 pt-1 pb-10">
       <GuideTracker slug={guide.slug} />
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }} />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+      />
       <main className="mx-auto max-w-2xl">
         <nav className="text-xs text-ink-tertiary">
-          <Link href="/guides/" className="hover:text-ink-secondary">Guides</Link>
+          <Link href="/guides/" className="hover:text-ink-secondary">
+            Guides
+          </Link>
           <span className="mx-1.5">/</span>
           <span className="text-ink-secondary">{guide.title}</span>
         </nav>
 
         <header className="mt-6">
-          <p className="text-xs font-semibold uppercase tracking-wide text-family-400">{guide.tagline}</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-family-400">
+            {guide.tagline}
+          </p>
           <h1 className="mt-2 text-3xl font-bold leading-tight text-ink-primary">{guide.title}</h1>
         </header>
 
         <div className="mt-5 space-y-3">
           {guide.intro.map((p, i) => (
-            <p key={i} className="text-[15px] leading-relaxed text-ink-secondary">{p}</p>
+            <p key={i} className="text-[15px] leading-relaxed text-ink-secondary">
+              {p}
+            </p>
           ))}
         </div>
 
@@ -71,14 +88,22 @@ export default async function GuidePage({ params }: { params: Promise<{ slug: st
             <h2 className="text-xl font-semibold text-ink-primary">{section.heading}</h2>
             <div className="mt-3 space-y-3">
               {section.paragraphs.map((p, i) => (
-                <p key={i} className="text-[15px] leading-relaxed text-ink-secondary">{p}</p>
+                <p key={i} className="text-[15px] leading-relaxed text-ink-secondary">
+                  {p}
+                </p>
               ))}
             </div>
             {section.bullets && (
               <ul className="mt-3 space-y-2">
                 {section.bullets.map((b, i) => (
-                  <li key={i} className="flex gap-2.5 text-[15px] leading-relaxed text-ink-secondary">
-                    <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-family-400" aria-hidden />
+                  <li
+                    key={i}
+                    className="flex gap-2.5 text-[15px] leading-relaxed text-ink-secondary"
+                  >
+                    <span
+                      className="mt-2 h-1 w-1 shrink-0 rounded-full bg-family-400"
+                      aria-hidden
+                    />
                     {b}
                   </li>
                 ))}
@@ -92,7 +117,9 @@ export default async function GuidePage({ params }: { params: Promise<{ slug: st
           <div className="mt-3 space-y-3">
             {guide.faq.map((f) => (
               <details key={f.q} className="glass rounded-2xl border border-tint/[0.08] p-4">
-                <summary className="cursor-pointer text-sm font-semibold text-ink-primary">{f.q}</summary>
+                <summary className="cursor-pointer text-sm font-semibold text-ink-primary">
+                  {f.q}
+                </summary>
                 <p className="mt-2 text-sm leading-relaxed text-ink-secondary">{f.a}</p>
               </details>
             ))}
@@ -108,6 +135,31 @@ export default async function GuidePage({ params }: { params: Promise<{ slug: st
             Start free
           </Link>
         </div>
+
+        <nav aria-label="More guides" className="mt-8 grid gap-3 sm:grid-cols-2">
+          {prev && (
+            <Link
+              href={`/guides/${prev.slug}/`}
+              className="glass block rounded-2xl p-4 transition-colors hover:border-family-500/40"
+            >
+              <span className="text-xs text-ink-tertiary">← Previous</span>
+              <span className="mt-1 block text-sm font-semibold text-ink-primary">
+                {prev.navLabel}
+              </span>
+            </Link>
+          )}
+          {next && (
+            <Link
+              href={`/guides/${next.slug}/`}
+              className="glass block rounded-2xl p-4 text-right transition-colors hover:border-family-500/40 sm:col-start-2"
+            >
+              <span className="text-xs text-ink-tertiary">Next →</span>
+              <span className="mt-1 block text-sm font-semibold text-ink-primary">
+                {next.navLabel}
+              </span>
+            </Link>
+          )}
+        </nav>
 
         <p className="mt-6 text-xs leading-relaxed text-ink-tertiary">
           This guide is general information, not financial advice. Product and provider choices are
