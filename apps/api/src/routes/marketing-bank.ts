@@ -24,6 +24,7 @@ import {
   ensureBankIndexes,
   listEntries,
   retireEntry,
+  templatizeLink,
   type BankEntryDoc,
 } from '../marketing/bank.js'
 import { contentHash } from '../marketing/content-plan.js'
@@ -55,6 +56,14 @@ const NewEntrySchema = z.object({
   card: CardSchema.optional(),
   media_url: z.string().url().max(2000).optional(),
   alt_text: z.string().max(500).optional(),
+  link_path: z
+    .string()
+    .regex(/^\/[A-Za-z0-9/_-]{0,200}$/)
+    .optional(),
+  campaign: z
+    .string()
+    .regex(/^[a-z0-9][a-z0-9_-]{0,59}$/)
+    .optional(),
 })
 
 export interface MarketingBankOptions {
@@ -76,6 +85,8 @@ export function bankView(e: BankEntryDoc) {
     card: e.card ?? null,
     media_url: e.media_url ?? null,
     alt_text: e.alt_text ?? null,
+    link_path: e.link_path ?? null,
+    campaign: e.campaign ?? null,
     copy_check: checkCopy(e.content, 'social'),
     missing_image_for: channelsMissingImage(e),
     approved_by: e.approved_by ?? null,
@@ -144,12 +155,16 @@ export function registerMarketingBankRoutes(
     const { tenant_id, user_id } = req.authContext
     const post = await posts.findOne({ id: parsed.data.post_id, tenant_id })
     if (!post || !post.content_item_id) return reply.status(404).send({ error: 'not_a_plan_draft' })
+    // The post's own tagged link becomes a token: each scheduled post gets a fresh tag of its own.
+    const tpl = templatizeLink(post.content, post.post_tag)
     const entry = await addCandidate(
       db,
       tenant_id,
       user_id,
       {
-        content: post.content,
+        content: tpl.content,
+        ...(tpl.link_path ? { link_path: tpl.link_path } : {}),
+        ...(post.campaign ? { campaign: post.campaign } : {}),
         channels: [post.channel],
         format: post.features?.format ?? null,
         hook: post.features?.hook ?? null,
