@@ -4995,7 +4995,7 @@ export function resolveAutopilotProposal(
 // ── Operator: social channel health ───────────────────────────────────────
 
 export type ChannelStatus =
-  'connected' | 'expiring_soon' | 'needs_reauth' | 'error' | 'not_configured'
+  'connected' | 'expiring_soon' | 'degraded' | 'needs_reauth' | 'error' | 'not_configured'
 
 export interface ChannelHealth {
   channel: 'bluesky' | 'linkedin' | 'x' | 'threads' | 'instagram' | 'facebook'

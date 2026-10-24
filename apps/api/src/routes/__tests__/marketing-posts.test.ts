@@ -219,6 +219,8 @@ function makeDb() {
     platform_config: configCol,
     social_connections: connectionsCol,
     connector_credentials: credsCol,
+    // The daily read-only checks: none recorded in these tests.
+    channel_checks: { find: () => ({ toArray: async () => [] }) },
     tenant_keys: tenantKeysCol,
     blog_posts: blogCol,
     users: listCol(users),

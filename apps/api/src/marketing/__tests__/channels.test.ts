@@ -7,6 +7,7 @@ import {
   allUsableChannels,
   appCredentialsPresent,
   channelHealth,
+  channelIssues,
   listChannels,
   missingImage,
   plannableChannels,
@@ -320,15 +321,13 @@ describe('automatic drafting uses every platform', () => {
 
   it('the daily blog draft goes to a healthy text channel, never Instagram', async () => {
     await optIn('t1')
-    await db
-      .collection('blog_posts')
-      .insertOne({
-        slug: 'cover-gap',
-        published: true,
-        title: 'The cover gap',
-        excerpt: 'Most families miss it.',
-        published_at: NOW,
-      })
+    await db.collection('blog_posts').insertOne({
+      slug: 'cover-gap',
+      published: true,
+      title: 'The cover gap',
+      excerpt: 'Most families miss it.',
+      published_at: NOW,
+    })
     await db
       .collection('connector_credentials')
       .insertMany([oauth('instagram_business'), oauth('linkedin')])
@@ -344,16 +343,124 @@ describe('automatic drafting uses every platform', () => {
 
   it('an Instagram-only tenant gets no daily blog draft (it has no image)', async () => {
     await optIn('t1')
-    await db
-      .collection('blog_posts')
-      .insertOne({
-        slug: 'cover-gap',
-        published: true,
-        title: 'T',
-        excerpt: 'E',
-        published_at: NOW,
-      })
+    await db.collection('blog_posts').insertOne({
+      slug: 'cover-gap',
+      published: true,
+      title: 'T',
+      excerpt: 'E',
+      published_at: NOW,
+    })
     await db.collection('connector_credentials').insertOne(oauth('instagram_business'))
     expect(await generateDailyMarketingDrafts(db, () => async () => 'x')).toBe(0)
+  })
+})
+
+describe('degraded: connected but not working', () => {
+  const failedVersionPost = (over: Record<string, unknown> = {}) => ({
+    tenant_id: 't1',
+    channel: 'linkedin',
+    state: 'publish_failed',
+    publish_error:
+      'linkedin_api_version_expired: LinkedIn rejected API version 202501. Set LINKEDIN_API_VERSION to a current version',
+    approved_at: days(-1),
+    ...over,
+  })
+  const check = (over: Record<string, unknown> = {}) => ({
+    tenant_id: 't1',
+    channel: 'x',
+    ok: false,
+    error: 'x profile read failed (HTTP 403)',
+    checked_at: days(-0.2),
+    ...over,
+  })
+
+  it('flags a channel whose latest post was rejected for its API version, and keeps it usable', async () => {
+    await db.collection('connector_credentials').insertOne(oauth('linkedin'))
+    await db.collection('marketing_posts').insertOne(failedVersionPost())
+    const [li] = await listChannels(db, 't1', NOW)
+    expect(li).toMatchObject({ channel: 'linkedin', status: 'degraded', usable: true })
+    expect(li!.last_error).toMatch(/api_version_expired.*LINKEDIN_API_VERSION/)
+    expect((await plannableChannels(db, 't1', NOW)).channels).toEqual(['linkedin'])
+  })
+
+  it('clears once a real post has gone out after the failure — dry runs do not count', async () => {
+    await db.collection('connector_credentials').insertOne(oauth('linkedin'))
+    await db
+      .collection('marketing_posts')
+      .insertMany([
+        failedVersionPost(),
+        {
+          tenant_id: 't1',
+          channel: 'linkedin',
+          state: 'published',
+          dry_run: true,
+          published_at: days(-0.5),
+        },
+      ])
+    expect((await listChannels(db, 't1', NOW))[0]!.status).toBe('degraded')
+    await db.collection('marketing_posts').insertOne({
+      tenant_id: 't1',
+      channel: 'linkedin',
+      state: 'published',
+      published_at: days(-0.1),
+    })
+    expect((await listChannels(db, 't1', NOW))[0]!.status).toBe('connected')
+  })
+
+  it('ignores old failures, other tenants and other channels', async () => {
+    await db.collection('connector_credentials').insertMany([oauth('linkedin'), oauth('twitter_x')])
+    await db.collection('marketing_posts').insertMany([
+      failedVersionPost({ approved_at: days(-20) }), // outside the 14-day window
+      failedVersionPost({ tenant_id: 'other' }),
+      failedVersionPost({ channel: 'x' }), // belongs to X, whose connection is also fine
+    ])
+    const by = Object.fromEntries(
+      (await listChannels(db, 't1', NOW)).map((c) => [c.channel, c.status]),
+    )
+    expect(by['linkedin']).toBe('connected')
+    expect(by['x']).toBe('degraded') // the failure was recorded against X, so X is flagged — LinkedIn is not
+  })
+
+  it('flags a channel whose daily read-only check failed, saying posting may still work', async () => {
+    await db.collection('connector_credentials').insertOne(oauth('twitter_x'))
+    await db.collection('channel_checks').insertOne(check())
+    const [x] = await listChannels(db, 't1', NOW)
+    expect(x).toMatchObject({ status: 'degraded', usable: true })
+    expect(x!.last_error).toMatch(
+      /Daily check failed: x profile read failed \(HTTP 403\).*posting may still work/,
+    )
+  })
+
+  it('a passing or stale check does not flag anything', async () => {
+    await db.collection('connector_credentials').insertOne(oauth('twitter_x'))
+    await db.collection('channel_checks').insertOne(check({ ok: true, error: null }))
+    expect((await listChannels(db, 't1', NOW))[0]!.status).toBe('connected')
+    await db.collection('channel_checks').deleteMany({})
+    await db.collection('channel_checks').insertOne(check({ checked_at: days(-5) }))
+    expect((await listChannels(db, 't1', NOW))[0]!.status).toBe('connected')
+  })
+
+  it('never softens a dead connection: needs_reauth stays needs_reauth', async () => {
+    await db
+      .collection('connector_credentials')
+      .insertOne(oauth('twitter_x', { needs_reauth: true }))
+    await db.collection('channel_checks').insertOne(check())
+    expect((await listChannels(db, 't1', NOW))[0]).toMatchObject({
+      status: 'needs_reauth',
+      usable: false,
+    })
+  })
+
+  it('shows up in channel health with the reason, and in the issues list', async () => {
+    await db.collection('connector_credentials').insertOne(oauth('linkedin'))
+    await db.collection('marketing_posts').insertOne(failedVersionPost())
+    const li = (await channelHealth(db, 't1', { env: {}, now: NOW })).find(
+      (h) => h.channel === 'linkedin',
+    )!
+    expect(li).toMatchObject({ status: 'degraded', usable: true })
+    expect(li.last_error).toMatch(/api_version_expired/)
+    expect((await channelIssues(db, NOW)).map((i) => `${i.channel}:${i.status}`)).toEqual([
+      'linkedin:degraded',
+    ])
   })
 })

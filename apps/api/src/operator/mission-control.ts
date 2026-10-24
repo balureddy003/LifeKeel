@@ -382,21 +382,33 @@ export async function buildDecisions(
     for (const issue of await channelIssues(db, now)) {
       const label = channelLabel(issue.channel)
       const soon = issue.status === 'expiring_soon' && issue.expires_at
+      const degraded = issue.status === 'degraded'
       const daysLeft = soon
         ? Math.max(0, Math.ceil((issue.expires_at!.getTime() - now.getTime()) / 86_400_000))
         : 0
+      const versionProblem = degraded && /api_version_expired/.test(issue.last_error ?? '')
       out.push({
         id: `channel_attention:${issue.tenant_id}:${issue.channel}`,
         kind: 'channel_attention',
-        severity: soon ? 'warning' : 'danger',
-        title: soon
-          ? `${label} connection expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`
-          : `${label} needs reconnecting`,
-        why: soon
-          ? `${label} tokens cannot refresh themselves; after expiry no posts can go out.`
-          : (issue.last_error ?? `${label} connection is not working`),
-        effect: `Reconnecting ${label} from Connect a channel restores publishing and drafting for it.`,
-        undo: 'Not applicable — reconnecting changes no posts.',
+        severity: degraded ? (versionProblem ? 'danger' : 'warning') : soon ? 'warning' : 'danger',
+        title: degraded
+          ? versionProblem
+            ? `${label} posts are being rejected (API version)`
+            : `${label} check failed`
+          : soon
+            ? `${label} connection expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`
+            : `${label} needs reconnecting`,
+        why: degraded
+          ? (issue.last_error ?? `${label} is connected but a recent check failed`)
+          : soon
+            ? `${label} tokens cannot refresh themselves; after expiry no posts can go out.`
+            : (issue.last_error ?? `${label} connection is not working`),
+        effect: versionProblem
+          ? 'Nothing will post to this platform until the API version setting is updated on the API.'
+          : degraded
+            ? 'Posting may still work. The daily check will clear this when the platform answers again.'
+            : `Reconnecting ${label} from Connect a channel restores publishing and drafting for it.`,
+        undo: 'Not applicable — nothing here changes any post.',
         href: '/operator/marketing',
         required_permission: 'marketing.manage',
         batchable: false,
