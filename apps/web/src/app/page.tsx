@@ -901,6 +901,7 @@ export default function HomePage() {
     score: readinessScore,
     hasLiveData,
     computedAt: scoreComputedAt,
+    components: scoreComponents,
     loading: scoreLoading,
   } = useFamilyReadinessScore()
   const { events: timelineEvents, hasData: hasTimelineData, hasChildren } = useFamilyTimeline()
@@ -1025,6 +1026,42 @@ export default function HomePage() {
                         Recalculated {formatRelativeDate(scoreComputedAt).toLowerCase()} from your
                         profile and vault
                       </p>
+                    )}
+                    {/* Intent 20: the number without its components reads as
+                        a judgement; with them it reads as a checklist. Only
+                        rendered when the server composite answered — the
+                        offline insight-penalty fallback has no subscores to
+                        show, and an absent component is "not enough data",
+                        never a zero. */}
+                    {scoreComponents.length > 0 && (
+                      <details className="mt-2 group/score">
+                        <summary className="text-xs font-semibold text-family-400 cursor-pointer list-none flex items-center gap-1">
+                          <ChevronRight
+                            size={12}
+                            className="transition-transform group-open/score:rotate-90"
+                          />
+                          Why this score?
+                        </summary>
+                        <ul className="mt-2 space-y-1.5">
+                          {scoreComponents.map((c) => (
+                            <li key={c.key} className="text-xs">
+                              <span className="font-semibold text-ink-primary">
+                                {c.label}
+                                {c.gated
+                                  ? ''
+                                  : c.score === null
+                                    ? ' — not enough data'
+                                    : ` — ${c.score}/100`}
+                              </span>
+                              <span className="text-ink-tertiary">
+                                {' '}
+                                ·{' '}
+                                {c.gated ? (c.caption ?? 'Not counted for this account') : c.detail}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
                     )}
                     {profileCompleteness > 0 && profileCompleteness < 100 && (
                       <Link

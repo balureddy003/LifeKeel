@@ -407,15 +407,24 @@ export async function fetchFamilyReadinessScore(): Promise<{
    *  read and says so via computed_at; surfaced on the score card so a
    *  stable score reads as "just checked, unchanged" rather than stale. */
   computedAt: string | null
+  /** The five subscores behind the composite — powers the "Why this score"
+   *  expander (intent 20). Empty on the offline fallback, which has no
+   *  components to explain. */
+  components: ReadinessComponent[]
 }> {
   const server = await fetchFamilyReadiness()
   if (server && server.has_live_data && server.score !== null) {
-    return { score: server.score, hasLiveData: true, computedAt: server.computed_at }
+    return {
+      score: server.score,
+      hasLiveData: true,
+      computedAt: server.computed_at,
+      components: server.components,
+    }
   }
   if (server && !server.has_live_data)
-    return { score: 0, hasLiveData: false, computedAt: server.computed_at }
+    return { score: 0, hasLiveData: false, computedAt: server.computed_at, components: [] }
   if (server && server.has_live_data && server.score === null)
-    return { score: 0, hasLiveData: true, computedAt: server.computed_at }
+    return { score: 0, hasLiveData: true, computedAt: server.computed_at, components: [] }
 
   const insights = await fetchFamilyInsights()
   if (insights.length === 0) {
@@ -425,8 +434,13 @@ export async function fetchFamilyReadinessScore(): Promise<{
     // also has zero insights — scoring that 100 told a family with a
     // £400k mortgage and no life cover they were "on track".
     return profile?.insights_evaluated_at
-      ? { score: 100, hasLiveData: true, computedAt: profile.insights_evaluated_at }
-      : { score: 0, hasLiveData: false, computedAt: null }
+      ? {
+          score: 100,
+          hasLiveData: true,
+          computedAt: profile.insights_evaluated_at,
+          components: [],
+        }
+      : { score: 0, hasLiveData: false, computedAt: null, components: [] }
   }
   const openPenalty = insights
     .filter((i) => !RESOLVED_INSIGHT_STATES.includes(i.state))
@@ -435,6 +449,7 @@ export async function fetchFamilyReadinessScore(): Promise<{
     score: Math.round(Math.max(0, Math.min(100, 100 - openPenalty * 10))),
     hasLiveData: true,
     computedAt: new Date().toISOString(),
+    components: [],
   }
 }
 
