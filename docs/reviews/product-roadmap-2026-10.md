@@ -34,7 +34,7 @@ The two Fails and their shared root cause (honesty under imperfect data).
 | Intent | Item | Notes |
 |---|---|---|
 | 20 | Score calibration + "Why this score" component expander | Components already computed and returned (`GET /family/readiness`); this is mostly a *surface* plus a calibration pass against the persona set. The single most-cited fix across all five inputs. |
-| 21 | Scenario partial-data honesty — kill silent "Sample scenario" fallbacks | Runway stays visible + "Using the data you have so far" banner naming missing inputs. The critic's "emotional core" gap. |
+| 21 | Scenario partial-data honesty | **implemented — PR #247**: missing-inputs named via `missing_inputs`; annual-expense fallback added; not-found path already sound. |
 | 22 | Derived-surface freshness after profile/policy edits | Score already recomputes per-read; insight/explanation text needs the same guarantee or a visible recalculated-at provenance. |
 
 **Re-test gate:** the QA persona set re-run — young couple / first-home
