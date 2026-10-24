@@ -569,6 +569,11 @@ try {
           await withCronLock(workflowDb, 'search-readback', async () => {
             const { runSearchReadback } = await import('./marketing/search-readback.js')
             await runSearchReadback(workflowDb)
+            // Weekly, on Mondays: turn real queries into a short list of topics for a person to consider.
+            if (new Date().getUTCDay() === 1) {
+              const { generateSuggestions } = await import('./marketing/topic-suggestions.js')
+              await generateSuggestions(workflowDb)
+            }
           })
         } catch (err) {
           log.error({ err }, 'Search read-back failed')

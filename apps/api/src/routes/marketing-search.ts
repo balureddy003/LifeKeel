@@ -16,6 +16,13 @@ import {
   type ReadbackDeps,
 } from '../marketing/search-readback.js'
 import { readbackPresence, readbackConfig } from '../marketing/google-read.js'
+import {
+  ensureSuggestionIndexes,
+  generateSuggestions,
+  listSuggestions,
+  setSuggestionStatus,
+} from '../marketing/topic-suggestions.js'
+import { getAuditLogger } from '../audit/audit-log.js'
 
 export interface MarketingSearchOptions {
   operatorTenants?: string[]
@@ -29,6 +36,7 @@ export function registerMarketingSearchRoutes(
   opts?: MarketingSearchOptions,
 ): void {
   ensureSearchIndexes(db)
+  ensureSuggestionIndexes(db)
   const now = () => opts?.now?.() ?? new Date()
   const testGate = async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
     if (!new Set(opts?.operatorTenants ?? []).has(req.authContext.tenant_id))
@@ -52,4 +60,39 @@ export function registerMarketingSearchRoutes(
   app.post('/operator/marketing/search/run', { preHandler: manageGate }, async () =>
     runSearchReadback(db, now(), opts?.deps ?? {}),
   )
+
+  app.get('/operator/marketing/search/suggestions', { preHandler: readGate }, async () => ({
+    suggestions: await listSuggestions(db),
+    note: 'Ideas only. Nothing here creates a draft or a post; pick one and write it through the normal steps.',
+  }))
+
+  app.post(
+    '/operator/marketing/search/suggestions/generate',
+    { preHandler: manageGate },
+    async () => generateSuggestions(db, now()),
+  )
+
+  for (const action of ['dismiss', 'used'] as const) {
+    app.post<{ Params: { id: string } }>(
+      `/operator/marketing/search/suggestions/:id/${action}`,
+      { preHandler: manageGate },
+      async (req, reply) => {
+        const ok = await setSuggestionStatus(
+          db,
+          req.params.id,
+          action === 'dismiss' ? 'dismissed' : 'used',
+          now(),
+        )
+        if (!ok) return reply.status(404).send({ error: 'Suggestion not found' })
+        getAuditLogger()?.fromRequest(
+          req,
+          action === 'dismiss' ? 'marketing.suggestion_dismiss' : 'marketing.suggestion_used',
+          'topic_suggestion',
+          req.params.id,
+          {},
+        )
+        return { ok: true }
+      },
+    )
+  }
 }
