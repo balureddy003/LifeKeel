@@ -90,3 +90,4 @@ suspected bug (reproduce first); 36 is an audit before fixes.
 | `44-guide-revival.md` | re-promote top-visited guides monthly with new tag | extends PRD-218 |
 | `45-hook-ab-variants.md` | one weekly slot emits a hook-variant pair | feeds PRD-221 priors |
 | `46-standing-approvals.md` | autonomous marketing engine with a human gate: content bank, policy, scheduler, breakers | amends intent 03 |
+| `47-search-console-and-ga4-readback.md` | read-only Search Console and GA4 read-back, a Search panel, topic suggestions from real queries | extends PRD-210 |
