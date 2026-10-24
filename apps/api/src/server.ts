@@ -175,6 +175,8 @@ import { runLifecycleSweep } from './marketing/lifecycle-emails.js'
 import { runAutopilotSweep, ensureAutopilotIndexes } from './operator/autopilot.js'
 import { ensureRevenueIndexes, readonlyStripeFromEnv, syncRevenue } from './marketing/revenue.js'
 import { ensureMarketingSpendIndexes } from './marketing/spend.js'
+import { checkConnectedProfiles } from './marketing/profile-sync.js'
+import { profileReader } from './marketing/profile-reader.js'
 import { socialPublisherFromEnv, DbSocialPublisher } from './marketing/social-publisher.js'
 import { registerOperatorRoutes } from './routes/operator.js'
 import { registerOperatorStripeRoutes } from './routes/operator-stripe.js'
@@ -574,6 +576,27 @@ try {
       { missedExecutionTolerance: 3_600_000 },
     )
     log.info({}, 'Revenue sync cron started')
+
+    // Weekly profile check — Mondays 07:10. Read-only: reads each connected
+    // platform's live profile and records drift against the approved text. It
+    // never writes to a platform; fixing a profile is a human act.
+    cron.schedule(
+      '10 7 * * 1',
+      async () => {
+        try {
+          await withCronLock(workflowDb, 'profile-check', async () => {
+            const r = await checkConnectedProfiles(workflowDb, {
+              connectorRead: profileReader(workflowDb),
+            })
+            log.info({ checked: r.checked, failed: r.failed.length }, 'Profile check run')
+          })
+        } catch (err) {
+          log.error({ err }, 'Profile check failed')
+        }
+      },
+      { missedExecutionTolerance: 3_600_000 },
+    )
+    log.info({}, 'Profile check cron started')
 
     // Daily metrics rollup — hourly at :40. Recomputes today + yesterday
     // (late-arriving events) into metrics_daily; first run backfills 90 days.
