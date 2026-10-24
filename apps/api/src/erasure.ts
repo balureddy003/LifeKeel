@@ -90,6 +90,7 @@ export const DELETABLE_COLLECTIONS = [
   'marketing_posts',
   'content_items',
   'content_bank', // standing approvals: per-tenant approved post texts
+  'marketing_standing_policy', // standing approvals: per-tenant limits a human set
   'channel_profiles',
   'social_connections',
   'support_cases',
