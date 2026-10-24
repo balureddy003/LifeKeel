@@ -159,6 +159,10 @@ describe('POST /assistant/ask', () => {
     expect(body.isLive).toBe(true)
     expect(body.content).toContain('4000.00') // monthly_salary_minor 400000 -> £4000.00
     expect(body.content).toContain('No income protection policy is listed.')
+    // Intent 30: the answer carries the read timestamp so a stale answer in
+    // the client's transcript is honestly dated after the profile changes.
+    expect(typeof body.data_as_of).toBe('string')
+    expect(new Date(body.data_as_of).getTime()).toBeLessThanOrEqual(Date.now())
   })
 
   it('PRD-104: resolves a household member_id to their real roster name and figures', async () => {

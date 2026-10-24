@@ -67,6 +67,9 @@ interface ChatMessage {
   showPerplexity?: boolean
   userQuery?: string
   status?: AssistantAnswerStatus
+  /** Server-side read timestamp — rendered on live answers so a stale
+   *  answer in the thread after a profile edit is honestly dated. */
+  dataAsOf?: string
 }
 
 function assistantMessage(
@@ -74,6 +77,7 @@ function assistantMessage(
   content: string,
   status: AssistantAnswerStatus,
   id?: string,
+  dataAsOf?: string,
 ): ChatMessage {
   return {
     id: id ?? `ai-${Date.now()}`,
@@ -87,6 +91,7 @@ function assistantMessage(
     showPerplexity: status === 'canned',
     userQuery: query,
     status,
+    ...(dataAsOf ? { dataAsOf } : {}),
   }
 }
 
@@ -192,8 +197,8 @@ export default function AssistantPage() {
     setThinking(true)
 
     try {
-      const { content, status } = await fetchAIResponse(text)
-      setMessages((prev) => [...prev, assistantMessage(text, content, status)])
+      const { content, status, dataAsOf } = await fetchAIResponse(text)
+      setMessages((prev) => [...prev, assistantMessage(text, content, status, undefined, dataAsOf)])
     } catch {
       // fetchAIResponse swallows its own errors into 'unavailable' — this
       // catch is defensive only.
@@ -210,9 +215,9 @@ export default function AssistantPage() {
     haptic('light')
     setThinking(true)
     try {
-      const { content, status } = await fetchAIResponse(query)
+      const { content, status, dataAsOf } = await fetchAIResponse(query)
       setMessages((prev) =>
-        prev.map((m) => (m.id === id ? assistantMessage(query, content, status, id) : m)),
+        prev.map((m) => (m.id === id ? assistantMessage(query, content, status, id, dataAsOf) : m)),
       )
     } finally {
       setThinking(false)
@@ -299,6 +304,15 @@ export default function AssistantPage() {
                   <ReactMarkdown remarkPlugins={[remarkGfm]} components={CHAT_MARKDOWN_COMPONENTS}>
                     {config.showMoney ? msg.content : msg.content.replace(CURRENCY_PATTERN, '•••')}
                   </ReactMarkdown>
+                  {msg.status === 'live' && msg.dataAsOf && (
+                    <p className="mt-2 text-[11px] text-ink-tertiary">
+                      From your data as of{' '}
+                      {new Date(msg.dataAsOf).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </p>
+                  )}
                 </div>
               ) : (
                 <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
