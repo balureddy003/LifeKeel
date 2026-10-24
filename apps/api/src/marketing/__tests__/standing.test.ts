@@ -264,8 +264,43 @@ describe('circuit breakers', () => {
     await failed('bluesky', '2026-10-19T08:00:00Z')
     await failed('x', '2026-10-19T09:00:00Z')
     await failed('x', '2026-10-18T09:00:00Z', 'published')
+    // Posts already queued: the paused network's are held, the other network's are left alone.
+    await posts().insertMany([
+      {
+        id: 'q-bsky',
+        tenant_id: T,
+        channel: 'bluesky',
+        content: 'a',
+        state: 'approved',
+        approved_via: 'standing',
+        bank_entry_id: 'b',
+        scheduled_at: new Date('2026-10-22T09:00:00Z'),
+      },
+      {
+        id: 'q-x',
+        tenant_id: T,
+        channel: 'x',
+        content: 'a',
+        state: 'approved',
+        approved_via: 'standing',
+        bank_entry_id: 'b',
+        scheduled_at: new Date('2026-10-22T09:00:00Z'),
+      },
+      {
+        id: 'q-human',
+        tenant_id: T,
+        channel: 'bluesky',
+        content: 'a',
+        state: 'approved',
+        approved_by: 'founder-1',
+        scheduled_at: new Date('2026-10-22T09:00:00Z'),
+      },
+    ])
     const res = await runBreakers(db, NOW)
     expect(res.channels_paused).toEqual([`${T}:bluesky`])
+    expect((await posts().findOne({ id: 'q-bsky' }))?.state).toBe('rejected')
+    expect((await posts().findOne({ id: 'q-x' }))?.state).toBe('approved')
+    expect((await posts().findOne({ id: 'q-human' }))?.state).toBe('approved') // a person's own approval is not ours to cancel
     const p = await policyCollection(db).findOne({ tenant_id: T })
     expect(p!.paused_channels.map((c) => c.channel)).toEqual(['bluesky'])
     // Paused network is not scheduled to.
