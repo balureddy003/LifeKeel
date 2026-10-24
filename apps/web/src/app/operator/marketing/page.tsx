@@ -55,6 +55,7 @@ import { PostStatsPanel } from './_components/PostStatsPanel'
 import { FunnelPanel } from './_components/FunnelPanel'
 import { EconomicsPanel } from './_components/EconomicsPanel'
 import { ConnectionsPanel } from './_components/ConnectionsPanel'
+import { AutonomyPanel } from './_components/AutonomyPanel'
 import { ReasonAction } from '../_components/ReasonAction'
 
 const STATE_STYLE: Record<MarketingPost['state'], string> = {
@@ -121,6 +122,7 @@ type Tab =
   | 'performance'
   | 'economics'
   | 'connections'
+  | 'autonomy'
   | 'campaigns'
   | 'profiles'
 
@@ -553,6 +555,7 @@ export default function MarketingPage() {
                 ['performance', 'Performance'],
                 ['economics', 'Economics'],
                 ['connections', 'Connections'],
+                ['autonomy', 'Autonomy'],
                 ['campaigns', 'Campaigns'],
                 ['profiles', 'Profiles'],
               ] as [Tab, string][]
@@ -1226,6 +1229,7 @@ export default function MarketingPage() {
           {/* Campaigns — one-shot targeted email to filtered cohorts */}
           {tab === 'economics' && <EconomicsPanel />}
           {tab === 'connections' && <ConnectionsPanel />}
+          {tab === 'autonomy' && <AutonomyPanel />}
           {tab === 'campaigns' && <CampaignsPanel />}
           {tab === 'profiles' && <ProfilesPanel />}
         </>
