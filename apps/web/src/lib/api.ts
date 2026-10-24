@@ -215,12 +215,16 @@ export interface EventReadiness {
   stability: number
   explanation: string
   hasLiveData: boolean
+  /** Present on non-live results when the event has a formula but the
+   *  profile lacks its inputs — the UI names these instead of a silent
+   *  "sample scenario" (intent 21). */
+  missing_inputs?: string[]
 }
 
 export async function fetchEventReadiness(
   eventId: string,
-): Promise<EventReadiness | { hasLiveData: false }> {
-  return apiFetch<EventReadiness | { hasLiveData: false }>(
+): Promise<EventReadiness | { hasLiveData: false; missing_inputs?: string[] }> {
+  return apiFetch<EventReadiness | { hasLiveData: false; missing_inputs?: string[] }>(
     `/family/events/${encodeURIComponent(eventId)}/readiness`,
     { hasLiveData: false },
   )
