@@ -19,7 +19,12 @@
  * upload URL or a worker could still undo.
  */
 import type { Db } from 'mongodb'
-import { closeReceipt, loadReceipt, saveReceipt, type DeletionReceipt } from '../deletion/receipt.js'
+import {
+  closeReceipt,
+  loadReceipt,
+  saveReceipt,
+  type DeletionReceipt,
+} from '../deletion/receipt.js'
 import { hasCredential, objectStore, type ObjectStore } from './r2.js'
 import { objectKey, PURGE_DELAY_MS } from './pipeline.js'
 import { releaseReservation } from './quota.js'
@@ -92,14 +97,19 @@ export async function beginFencedDelete(
   }
   await quarantine.delete('quarantine', key).catch(() => {})
   const candidates = (
-    await db.collection('extraction_candidates').deleteMany({ tenant_id: tenantId, document_id: documentId })
+    await db
+      .collection('extraction_candidates')
+      .deleteMany({ tenant_id: tenantId, document_id: documentId })
   ).deletedCount
   await releaseReservation(db, tenantId, documentId)
   const extracted = row['extracted_data'] as Record<string, unknown> | undefined
   return {
     removed: [
       { category: 'document file', count: files },
-      { category: 'what was read from the document', count: extracted && Object.keys(extracted).length > 0 ? 1 : 0 },
+      {
+        category: 'what was read from the document',
+        count: extracted && Object.keys(extracted).length > 0 ? 1 : 0,
+      },
       { category: 'extracted fields', count: candidates },
     ],
   }
@@ -129,10 +139,15 @@ export async function finishDuePurges(
     const residual = [
       {
         category: 'document record',
-        count: await db.collection('documents').countDocuments({ tenant_id: t.tenant_id, id: t.document_id }),
+        count: await db
+          .collection('documents')
+          .countDocuments({ tenant_id: t.tenant_id, id: t.document_id }),
       },
       { category: 'document file', count: (await store.head('clean', key)) ? 1 : 0 },
-      { category: 'uploaded copy awaiting scan', count: (await store.head('quarantine', key)) ? 1 : 0 },
+      {
+        category: 'uploaded copy awaiting scan',
+        count: (await store.head('quarantine', key)) ? 1 : 0,
+      },
     ]
     // Never claim erasure is complete while bytes or rows remain. Keep the
     // tombstone and retry the second purge on the next reconciliation pass.
@@ -149,7 +164,9 @@ export async function finishDuePurges(
         )
       }
     }
-    await db.collection(TOMBSTONES).deleteOne({ tenant_id: t.tenant_id, document_id: t.document_id })
+    await db
+      .collection(TOMBSTONES)
+      .deleteOne({ tenant_id: t.tenant_id, document_id: t.document_id })
   }
   return due.length
 }
@@ -167,7 +184,8 @@ export async function purgeTenantObjects(
   const plan: Array<[ObjectStore, 'quarantine' | 'clean']> = []
   if (stores.quarantine || hasCredential('presign'))
     plan.push([stores.quarantine ?? objectStore('presign'), 'quarantine'])
-  if (stores.clean || hasCredential('delete')) plan.push([stores.clean ?? objectStore('delete'), 'clean'])
+  if (stores.clean || hasCredential('delete'))
+    plan.push([stores.clean ?? objectStore('delete'), 'clean'])
   let n = 0
   for (const [store, role] of plan) {
     for (const k of await store.list(role, `${tenantId}/`)) {

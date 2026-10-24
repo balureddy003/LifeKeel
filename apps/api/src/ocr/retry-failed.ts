@@ -131,7 +131,13 @@ export async function dispatchPendingOcr(
       log.error({ err, documentId: doc['id'], tenantId }, 'OCR dispatch failed')
       await documents.updateOne(
         { _id: doc._id },
-        { $set: { status: 'error', processing_completed_at: new Date(), error_message: 'OCR dispatch failed' } },
+        {
+          $set: {
+            status: 'error',
+            processing_completed_at: new Date(),
+            error_message: 'OCR dispatch failed',
+          },
+        },
       )
     }
   }

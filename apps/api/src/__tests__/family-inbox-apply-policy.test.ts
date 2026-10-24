@@ -30,7 +30,7 @@ function daysFromNow(days: number): string {
 function matchesFilter(doc: Record<string, unknown>, filter: Record<string, unknown>): boolean {
   return Object.entries(filter).every(([key, cond]) => {
     if (cond && typeof cond === 'object' && '$in' in (cond as Record<string, unknown>)) {
-      return ((cond as { $in: unknown[] }).$in).includes(doc[key])
+      return (cond as { $in: unknown[] }).$in.includes(doc[key])
     }
     return doc[key] === cond
   })
@@ -67,14 +67,20 @@ const BASE_PROFILE = {
   updated_at: new Date(),
 }
 
-function makeDb(inboxSeed: Record<string, unknown>[] = [], profileSeed: Record<string, unknown> | null = null) {
+function makeDb(
+  inboxSeed: Record<string, unknown>[] = [],
+  profileSeed: Record<string, unknown> | null = null,
+) {
   const inboxItems: Record<string, unknown>[] = [...inboxSeed]
   const profiles: Record<string, unknown>[] = profileSeed ? [{ ...profileSeed }] : []
 
   const inboxCol = {
     findOne: async (filter: Record<string, unknown>) =>
       inboxItems.find((d) => Object.entries(filter).every(([k, v]) => d[k] === v)) ?? null,
-    updateOne: async (filter: Record<string, unknown>, update: { $set?: Record<string, unknown> }) => {
+    updateOne: async (
+      filter: Record<string, unknown>,
+      update: { $set?: Record<string, unknown> },
+    ) => {
       const doc = inboxItems.find((d) => Object.entries(filter).every(([k, v]) => d[k] === v))
       if (!doc) return { matchedCount: 0, modifiedCount: 0 }
       if (update.$set) Object.assign(doc, update.$set)
@@ -111,22 +117,31 @@ function makeDb(inboxSeed: Record<string, unknown>[] = [], profileSeed: Record<s
   const insightDocs: Record<string, unknown>[] = []
   const insightsCol = {
     find: (filter: Record<string, unknown>) => ({
-      sort: () => ({ limit: () => ({ toArray: async () => insightDocs.filter((d) => matchesFilter(d, filter)) }) }),
+      sort: () => ({
+        limit: () => ({ toArray: async () => insightDocs.filter((d) => matchesFilter(d, filter)) }),
+      }),
       toArray: async () => insightDocs.filter((d) => matchesFilter(d, filter)),
     }),
-    updateMany: vi.fn(async (filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
-      let modifiedCount = 0
-      for (const doc of insightDocs) {
-        if (matchesFilter(doc, filter)) {
-          Object.assign(doc, update.$set)
-          modifiedCount++
+    updateMany: vi.fn(
+      async (filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
+        let modifiedCount = 0
+        for (const doc of insightDocs) {
+          if (matchesFilter(doc, filter)) {
+            Object.assign(doc, update.$set)
+            modifiedCount++
+          }
         }
-      }
-      return { modifiedCount }
-    }),
+        return { modifiedCount }
+      },
+    ),
   }
 
-  const documentsCol = { find: () => ({ toArray: async () => [], sort: () => ({ limit: () => ({ toArray: async () => [] }) }) }) }
+  const documentsCol = {
+    find: () => ({
+      toArray: async () => [],
+      sort: () => ({ limit: () => ({ toArray: async () => [] }) }),
+    }),
+  }
 
   return {
     collection: (name: string) => {
@@ -162,7 +177,19 @@ async function applyPolicy(app: any, itemId: string, body: Record<string, unknow
   return { status: res.statusCode, body: res.json() }
 }
 
-const EMAIL_ITEM = { id: 'item-1', tenant_id: TENANT, source: 'noreply@aviva.com', subject: 'Home renewed', ai_summary: 's', action_label: 'Review', action_type: 'review', priority: 'high', date: '2026-01-01', read: false, dismissed: false }
+const EMAIL_ITEM = {
+  id: 'item-1',
+  tenant_id: TENANT,
+  source: 'noreply@aviva.com',
+  subject: 'Home renewed',
+  ai_summary: 's',
+  action_label: 'Review',
+  action_type: 'review',
+  priority: 'high',
+  date: '2026-01-01',
+  read: false,
+  dismissed: false,
+}
 
 describe('POST /inbox/:id/apply-policy', () => {
   it('pushes a well-formed policy and dismisses the item it came from — no engine, no regeneration', async () => {
@@ -170,13 +197,22 @@ describe('POST /inbox/:id/apply-policy', () => {
     const { app } = await buildApp(db)
 
     const { status, body } = await applyPolicy(app, 'item-1', {
-      type: 'home', provider: 'Aviva', coverageAmountMinor: 30_000_000, monthlyPremiumMinor: 3500, policyNumber: '733885401', renewalDate: '2026-08-31',
+      type: 'home',
+      provider: 'Aviva',
+      coverageAmountMinor: 30_000_000,
+      monthlyPremiumMinor: 3500,
+      policyNumber: '733885401',
+      renewalDate: '2026-08-31',
     })
 
     expect(status).toBe(200)
     expect(body.applied).toEqual({
-      type: 'home', provider: 'Aviva', coverage_amount_minor: 30_000_000, monthly_premium_minor: 3500,
-      renewal_date: '2026-08-31', policy_number: '733885401',
+      type: 'home',
+      provider: 'Aviva',
+      coverage_amount_minor: 30_000_000,
+      monthly_premium_minor: 3500,
+      renewal_date: '2026-08-31',
+      policy_number: '733885401',
     })
     expect(db._profiles[0].policies).toHaveLength(1)
     // The item that surfaced this suggestion stops nudging once acted on —
@@ -188,7 +224,10 @@ describe('POST /inbox/:id/apply-policy', () => {
   it('accepts the new "travel" policy type — there was previously nowhere in the schema for a travel policy to live', async () => {
     const db = makeDb([{ ...EMAIL_ITEM, id: 'item-2' }])
     const { app } = await buildApp(db)
-    const { status, body } = await applyPolicy(app, 'item-2', { type: 'travel', provider: 'HSBC/Aviva' })
+    const { status, body } = await applyPolicy(app, 'item-2', {
+      type: 'travel',
+      provider: 'HSBC/Aviva',
+    })
     expect(status).toBe(200)
     expect(body.applied.type).toBe('travel')
   })
@@ -197,7 +236,9 @@ describe('POST /inbox/:id/apply-policy', () => {
     const db = makeDb([{ ...EMAIL_ITEM }])
     const { app } = await buildApp(db)
     expect((await applyPolicy(app, 'nope', { type: 'home', provider: 'Aviva' })).status).toBe(404)
-    expect((await applyPolicy(app, 'item-1', { type: 'spaceship', provider: 'Aviva' })).status).toBe(400)
+    expect(
+      (await applyPolicy(app, 'item-1', { type: 'spaceship', provider: 'Aviva' })).status,
+    ).toBe(400)
     expect((await applyPolicy(app, 'item-1', { type: 'home', provider: '  ' })).status).toBe(400)
   })
 
@@ -206,12 +247,24 @@ describe('POST /inbox/:id/apply-policy', () => {
     await engine.load()
     const profile = {
       ...BASE_PROFILE,
-      policies: [{ type: 'car', provider: 'Admiral', coverage_amount_minor: 0, monthly_premium_minor: 8500, renewal_date: daysFromNow(20) }],
+      policies: [
+        {
+          type: 'car',
+          provider: 'Admiral',
+          coverage_amount_minor: 0,
+          monthly_premium_minor: 8500,
+          renewal_date: daysFromNow(20),
+        },
+      ],
     }
     const db = makeDb([{ ...EMAIL_ITEM }], profile)
     const { app, insights } = await buildApp(db, engine)
 
-    const { status, body } = await applyPolicy(app, 'item-1', { type: 'home', provider: 'Aviva', renewalDate: daysFromNow(45) })
+    const { status, body } = await applyPolicy(app, 'item-1', {
+      type: 'home',
+      provider: 'Aviva',
+      renewalDate: daysFromNow(45),
+    })
 
     expect(status).toBe(200)
     expect(body.insights_generated).toBeGreaterThan(0)

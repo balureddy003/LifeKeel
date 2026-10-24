@@ -60,7 +60,9 @@ export function evaluateStorageBoot(
     else
       for (const c of needs)
         if (!s.keys[c])
-          violations.push(`R2 credential '${c}' missing (R2_${c.toUpperCase()}_ACCESS_KEY_ID/_SECRET_ACCESS_KEY)`)
+          violations.push(
+            `R2 credential '${c}' missing (R2_${c.toUpperCase()}_ACCESS_KEY_ID/_SECRET_ACCESS_KEY)`,
+          )
     if (deploymentMode !== 'dev' && !env['REDIS_URL'])
       violations.push('DOCUMENTS_STORAGE=r2 needs REDIS_URL for scan wake-ups')
   }
@@ -209,7 +211,12 @@ export async function countTenantGridfs(db: Db, tenantId: string): Promise<numbe
 /** Ciphertext only (§7.10): the caller has already applied the tenant envelope. */
 export async function writeVaultCiphertext(
   db: Db,
-  input: { tenantId: string; documentId: string; filename: string; metadata: Record<string, unknown> },
+  input: {
+    tenantId: string
+    documentId: string
+    filename: string
+    metadata: Record<string, unknown>
+  },
   ciphertext: Buffer,
 ): Promise<{ file_id?: ObjectId; storage?: { bucket: 'vault'; key: string; size: number } }> {
   if (vaultStorageMode() === 'r2') {

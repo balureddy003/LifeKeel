@@ -95,6 +95,11 @@ import type { Db } from 'mongodb'
 import { decryptEnveloped } from '../crypto/envelope.js'
 import { ConnectorActionExecutor } from '@lifekeel/workflows'
 import { providerFetch } from '../provider-gateway.js'
+import {
+  isLinkedinVersionError,
+  linkedinApiVersion,
+  versionErrorMessage,
+} from './linkedin-version.js'
 
 interface ChannelHandler {
   info: ChannelInfo
@@ -154,35 +159,43 @@ function linkedinHandler(token: string, authorUrn: string): ChannelHandler {
       account: authorUrn,
     },
     async publish(content, ctx) {
-      const res = await providerFetch(
-        'https://api.linkedin.com/rest/posts',
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'Linkedin-Version': '202501',
-            'X-Restli-Protocol-Version': '2.0.0',
-          },
-          body: JSON.stringify({
-            author: authorUrn,
-            commentary: content,
-            visibility: 'PUBLIC',
-            distribution: {
-              feedDistribution: 'MAIN_FEED',
-              targetEntities: [],
-              thirdPartyDistributionChannels: [],
+      const version = linkedinApiVersion()
+      let res: Response
+      try {
+        res = await providerFetch(
+          'https://api.linkedin.com/rest/posts',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+              'Linkedin-Version': version,
+              'X-Restli-Protocol-Version': '2.0.0',
             },
-            lifecycleState: 'PUBLISHED',
-            isReshareDisabledByAuthor: false,
-          }),
-        },
-        {
-          label: 'linkedin /rest/posts',
-          breakerKey: 'linkedin:env',
-          ...(ctx.idempotencyKey ? { idempotencyKey: ctx.idempotencyKey } : {}),
-        },
-      )
+            body: JSON.stringify({
+              author: authorUrn,
+              commentary: content,
+              visibility: 'PUBLIC',
+              distribution: {
+                feedDistribution: 'MAIN_FEED',
+                targetEntities: [],
+                thirdPartyDistributionChannels: [],
+              },
+              lifecycleState: 'PUBLISHED',
+              isReshareDisabledByAuthor: false,
+            }),
+          },
+          {
+            label: 'linkedin /rest/posts',
+            breakerKey: 'linkedin:env',
+            ...(ctx.idempotencyKey ? { idempotencyKey: ctx.idempotencyKey } : {}),
+          },
+        )
+      } catch (err) {
+        // An expired version is a config problem, not a transient failure: say what to change.
+        if (isLinkedinVersionError(err)) throw new Error(versionErrorMessage(version))
+        throw err
+      }
       const id = res.headers.get('x-restli-id') ?? undefined
       return { external_id: id }
     },

@@ -13,7 +13,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
 import { defaultKeyRegistry } from './key-registry.js'
 
 const ALGORITHM = 'aes-256-gcm'
-const KEY_HEX_LENGTH = 64  // 32 bytes = 64 hex chars
+const KEY_HEX_LENGTH = 64 // 32 bytes = 64 hex chars
 
 function getCurrentVersion(): number {
   return defaultKeyRegistry.currentVersion()
@@ -31,7 +31,7 @@ function getKey(version = getCurrentVersion()): Buffer {
     }
     throw new Error(
       `[crypto] ENCRYPTION_KEY_V${version} must be a 64-char hex string (32 bytes). ` +
-      'Generate with: openssl rand -hex 32'
+        'Generate with: openssl rand -hex 32',
     )
   }
   return Buffer.from(raw, 'hex')
@@ -41,7 +41,7 @@ function getKey(version = getCurrentVersion()): Buffer {
 export function encryptField(plaintext: string): string {
   const version = getCurrentVersion()
   const key = getKey(version)
-  const iv = randomBytes(12)   // 96-bit IV for GCM
+  const iv = randomBytes(12) // 96-bit IV for GCM
   const cipher = createCipheriv(ALGORITHM, key, iv)
 
   const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()])
@@ -79,25 +79,31 @@ function looksEncrypted(value: string): boolean {
   if (parts.length !== 3) return false
   const [iv, tag, ct] = parts as [string, string, string]
   // Each part must be non-empty hex; iv=24, authTag=32, ciphertext≥2
-  return iv.length === 24 && tag.length === 32 && ct.length >= 2 &&
-    /^[0-9a-f]+$/i.test(iv) && /^[0-9a-f]+$/i.test(tag) && /^[0-9a-f]+$/i.test(ct)
+  return (
+    iv.length === 24 &&
+    tag.length === 32 &&
+    ct.length >= 2 &&
+    /^[0-9a-f]+$/i.test(iv) &&
+    /^[0-9a-f]+$/i.test(tag) &&
+    /^[0-9a-f]+$/i.test(ct)
+  )
 }
 
 /** Encrypt only if plaintext is non-empty and not already encrypted. */
 export function encryptIfNeeded(value: string | undefined): string | undefined {
   if (!value) return value
-  if (looksEncrypted(value)) return value  // already encrypted — skip double-encryption
+  if (looksEncrypted(value)) return value // already encrypted — skip double-encryption
   return encryptField(value)
 }
 
 /** Decrypt only if value looks like an encrypted field (iv:authTag:ciphertext). */
 export function decryptIfNeeded(value: string | undefined): string | undefined {
   if (!value) return value
-  if (!looksEncrypted(value)) return value  // plaintext passthrough for dev / unencrypted values
+  if (!looksEncrypted(value)) return value // plaintext passthrough for dev / unencrypted values
   try {
     return decryptField(value)
   } catch {
-    return value  // graceful fallback — return as-is if decryption fails
+    return value // graceful fallback — return as-is if decryption fails
   }
 }
 
@@ -111,7 +117,8 @@ export function decryptIfNeeded(value: string | undefined): string | undefined {
  */
 export function encryptBuffer(plaintext: Buffer): Buffer {
   const version = getCurrentVersion()
-  if (version < 0 || version > 255) throw new Error('[crypto] encryptBuffer supports key versions 0-255 only')
+  if (version < 0 || version > 255)
+    throw new Error('[crypto] encryptBuffer supports key versions 0-255 only')
   const key = getKey(version)
   const iv = randomBytes(12)
   const cipher = createCipheriv(ALGORITHM, key, iv)

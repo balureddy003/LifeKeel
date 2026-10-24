@@ -19,9 +19,9 @@ const EVENT = 'lk-consent-change'
 /** True when any tracker ID was configured at build time; otherwise there is nothing to consent to. */
 export const TRACKERS_CONFIGURED = Boolean(
   process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID ||
-    process.env.NEXT_PUBLIC_GADS_CONVERSION_ID ||
-    process.env.NEXT_PUBLIC_META_PIXEL_ID ||
-    process.env.NEXT_PUBLIC_LINKEDIN_PARTNER_ID,
+  process.env.NEXT_PUBLIC_GADS_CONVERSION_ID ||
+  process.env.NEXT_PUBLIC_META_PIXEL_ID ||
+  process.env.NEXT_PUBLIC_LINKEDIN_PARTNER_ID,
 )
 
 /**

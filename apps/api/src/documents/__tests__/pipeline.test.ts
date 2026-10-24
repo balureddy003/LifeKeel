@@ -40,7 +40,9 @@ const fakeClam = async (bytes: Buffer): Promise<ScanResult> =>
     : { result: 'clean', engine: 'clamav' }
 const deps = (): ScanDeps => ({ store: mem.store('scan'), scan: fakeClam })
 
-const PDF = Buffer.from('%PDF-1.4\n1 0 obj << /Type /Catalog >>\ntrailer << /Root 1 0 R >>\n%%EOF\n')
+const PDF = Buffer.from(
+  '%PDF-1.4\n1 0 obj << /Type /Catalog >>\ntrailer << /Root 1 0 R >>\n%%EOF\n',
+)
 
 beforeAll(async () => {
   mongod = await MongoMemoryServer.create()
@@ -74,7 +76,16 @@ afterAll(async () => {
 
 beforeEach(async () => {
   mem = new MemoryBuckets().install()
-  for (const c of ['documents', 'tenants', 'tenant_quota', 'tenant_quota_days', 'document_tombstones', 'deletion_receipts', 'extraction_candidates', 'platform_markers'])
+  for (const c of [
+    'documents',
+    'tenants',
+    'tenant_quota',
+    'tenant_quota_days',
+    'document_tombstones',
+    'deletion_receipts',
+    'extraction_candidates',
+    'platform_markers',
+  ])
     await db.collection(c).deleteMany({})
   await db.collection('tenants').insertMany([
     { tenant_id: 't-a', status: 'active', plan: 'growth' },
@@ -84,7 +95,12 @@ beforeEach(async () => {
 })
 
 const init = (tenant: string, body: Record<string, unknown>) =>
-  app.inject({ method: 'POST', url: '/documents/uploads', headers: { 'x-tenant': tenant }, payload: body })
+  app.inject({
+    method: 'POST',
+    url: '/documents/uploads',
+    headers: { 'x-tenant': tenant },
+    payload: body,
+  })
 const complete = (tenant: string, id: string) =>
   app.inject({ method: 'POST', url: `/documents/${id}/complete`, headers: { 'x-tenant': tenant } })
 
@@ -110,20 +126,32 @@ describe('happy path', () => {
     const id = await upload('t-a', 'policy.pdf', 'application/pdf', PDF)
     expect((await doc(id))?.['status']).toBe('scan_queued')
     // Nothing is readable before the scan.
-    const early = await app.inject({ url: `/documents/${id}/file?mode=url`, headers: { 'x-tenant': 't-a' } })
+    const early = await app.inject({
+      url: `/documents/${id}/file?mode=url`,
+      headers: { 'x-tenant': 't-a' },
+    })
     expect(early.statusCode).toBe(409)
 
     const { outcome } = await scanNext()
     expect(outcome).toBe('clean')
     const row = await doc(id)
     expect(row?.['status']).toBe('clean')
-    expect(row?.['storage']).toMatchObject({ bucket: 'clean', key: objectKey('t-a', id), size: PDF.length })
-    expect((row?.['scan'] as { sha256: string }).sha256).toBe(createHash('sha256').update(PDF).digest('hex'))
+    expect(row?.['storage']).toMatchObject({
+      bucket: 'clean',
+      key: objectKey('t-a', id),
+      size: PDF.length,
+    })
+    expect((row?.['scan'] as { sha256: string }).sha256).toBe(
+      createHash('sha256').update(PDF).digest('hex'),
+    )
     expect(row?.['ocr_pending']).toBe(true)
     expect(mem.objects.quarantine.size).toBe(0)
     expect(mem.objects.clean.get(objectKey('t-a', id))).toEqual(PDF)
 
-    const url = await app.inject({ url: `/documents/${id}/file?mode=url`, headers: { 'x-tenant': 't-a' } })
+    const url = await app.inject({
+      url: `/documents/${id}/file?mode=url`,
+      headers: { 'x-tenant': 't-a' },
+    })
     expect(url.statusCode).toBe(200)
     expect(url.headers['cache-control']).toBe('no-store')
     expect(url.json().url).toContain('memory://clean/')
@@ -135,7 +163,11 @@ describe('happy path', () => {
   })
 
   it('every accepted image is stored as WebP at its original dimensions', async () => {
-    const png = await sharp({ create: { width: 321, height: 123, channels: 3, background: '#eee' } }).png().toBuffer()
+    const png = await sharp({
+      create: { width: 321, height: 123, channels: 3, background: '#eee' },
+    })
+      .png()
+      .toBuffer()
     const id = await upload('t-a', 'scan.png', 'image/png', png)
     expect((await scanNext()).outcome).toBe('clean')
     const row = await doc(id)
@@ -146,23 +178,52 @@ describe('happy path', () => {
   }, 30_000)
 
   it('free-plan DOCX is stored; paid-plan clean rows go to OCR exactly once', async () => {
-    const free = await upload('t-b', 'letter.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', makeDocx('Hello'))
+    const free = await upload(
+      't-b',
+      'letter.docx',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      makeDocx('Hello'),
+    )
     expect((await scanNext()).outcome).toBe('clean')
     // Free plan: no model call, the document is kept as 'stored'.
-    expect(await dispatchPendingOcr(db, () => undefined, async () => undefined)).toBe(0)
+    expect(
+      await dispatchPendingOcr(
+        db,
+        () => undefined,
+        async () => undefined,
+      ),
+    ).toBe(0)
     expect((await doc(free))?.['status']).toBe('stored')
     // A second sweep finds nothing left to dispatch.
-    expect(await dispatchPendingOcr(db, () => undefined, async () => undefined)).toBe(0)
+    expect(
+      await dispatchPendingOcr(
+        db,
+        () => undefined,
+        async () => undefined,
+      ),
+    ).toBe(0)
   }, 30_000)
 })
 
 describe('validation at init', () => {
   it('refuses unsupported or mismatched types, empty and oversize files', async () => {
-    expect((await init('t-a', { filename: 'a.exe', mime: 'application/octet-stream', size: 10 })).statusCode).toBe(422)
-    expect((await init('t-a', { filename: 'a.pdf.exe', mime: 'application/pdf', size: 10 })).statusCode).toBe(422)
-    expect((await init('t-a', { filename: 'a.png', mime: 'application/pdf', size: 10 })).statusCode).toBe(422)
-    expect((await init('t-a', { filename: 'a.pdf', mime: 'application/pdf', size: 0 })).statusCode).toBe(413)
-    expect((await init('t-a', { filename: 'a.pdf', mime: 'application/pdf', size: 51 * 1024 * 1024 })).statusCode).toBe(413)
+    expect(
+      (await init('t-a', { filename: 'a.exe', mime: 'application/octet-stream', size: 10 }))
+        .statusCode,
+    ).toBe(422)
+    expect(
+      (await init('t-a', { filename: 'a.pdf.exe', mime: 'application/pdf', size: 10 })).statusCode,
+    ).toBe(422)
+    expect(
+      (await init('t-a', { filename: 'a.png', mime: 'application/pdf', size: 10 })).statusCode,
+    ).toBe(422)
+    expect(
+      (await init('t-a', { filename: 'a.pdf', mime: 'application/pdf', size: 0 })).statusCode,
+    ).toBe(413)
+    expect(
+      (await init('t-a', { filename: 'a.pdf', mime: 'application/pdf', size: 51 * 1024 * 1024 }))
+        .statusCode,
+    ).toBe(413)
   })
 
   it('tenants not on the R2 allow-list are told to use the legacy route', async () => {
@@ -179,7 +240,10 @@ describe('validation at init', () => {
     expect(c.statusCode).toBe(409)
     expect((await doc(document_id))?.['status']).toBe('failed')
     expect(mem.objects.quarantine.size).toBe(0)
-    expect((await db.collection('tenant_quota').findOne({ tenant_id: 't-a' }))).toMatchObject({ bytes_reserved: 0, inflight: 0 })
+    expect(await db.collection('tenant_quota').findOne({ tenant_id: 't-a' })).toMatchObject({
+      bytes_reserved: 0,
+      inflight: 0,
+    })
   })
 
   it('complete is idempotent', async () => {
@@ -192,22 +256,41 @@ describe('validation at init', () => {
 
 describe('scan outcomes', () => {
   it('EICAR is infected: never reaches clean, quarantine deleted, quota released', async () => {
-    const id = await upload('t-a', 'virus.pdf', 'application/pdf', Buffer.from(`%PDF-1.4\n${EICAR}\n`))
+    const id = await upload(
+      't-a',
+      'virus.pdf',
+      'application/pdf',
+      Buffer.from(`%PDF-1.4\n${EICAR}\n`),
+    )
     expect((await scanNext()).outcome).toBe('infected')
     expect((await doc(id))?.['status']).toBe('infected')
     expect(mem.objects.clean.size).toBe(0)
     expect(mem.objects.quarantine.size).toBe(0)
-    expect(await db.collection('tenant_quota').findOne({ tenant_id: 't-a' })).toMatchObject({ bytes_reserved: 0, bytes_committed: 0, inflight: 0 })
+    expect(await db.collection('tenant_quota').findOne({ tenant_id: 't-a' })).toMatchObject({
+      bytes_reserved: 0,
+      bytes_committed: 0,
+      inflight: 0,
+    })
   })
 
   it('a PDF with JavaScript is rejected', async () => {
-    const id = await upload('t-a', 'evil.pdf', 'application/pdf', Buffer.from('%PDF-1.4\n<< /OpenAction << /S /JavaScript /JS (x) >> >>'))
+    const id = await upload(
+      't-a',
+      'evil.pdf',
+      'application/pdf',
+      Buffer.from('%PDF-1.4\n<< /OpenAction << /S /JavaScript /JS (x) >> >>'),
+    )
     expect((await scanNext()).outcome).toBe('rejected')
     expect((await doc(id))?.['status']).toBe('rejected')
   }, 30_000)
 
   it('a macro DOCX is rejected', async () => {
-    await upload('t-a', 'm.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', makeDocx('x', [{ name: 'word/vbaProject.bin', data: 'm' }]))
+    await upload(
+      't-a',
+      'm.docx',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      makeDocx('x', [{ name: 'word/vbaProject.bin', data: 'm' }]),
+    )
     expect((await scanNext()).outcome).toBe('rejected')
   }, 30_000)
 
@@ -218,13 +301,18 @@ describe('scan outcomes', () => {
 
   it('scanner down → scan_error, unreadable, retried later, then failed after 5 attempts', async () => {
     const id = await upload('t-a', 'a.pdf', 'application/pdf', PDF)
-    const down: ScanDeps = { ...deps(), scan: async () => ({ result: 'error', engine: 'clamav', reason: 'ECONNREFUSED' }) }
+    const down: ScanDeps = {
+      ...deps(),
+      scan: async () => ({ result: 'error', engine: 'clamav', reason: 'ECONNREFUSED' }),
+    }
     expect((await scanNext(down)).outcome).toBe('scan_error')
     expect((await doc(id))?.['status']).toBe('scan_error')
     const file = await app.inject({ url: `/documents/${id}/file`, headers: { 'x-tenant': 't-a' } })
     expect(file.statusCode).toBe(409)
     for (let i = 2; i <= 5; i++) {
-      await db.collection('documents').updateOne({ id }, { $set: { 'scan_job.next_run_at': new Date(0) } })
+      await db
+        .collection('documents')
+        .updateOne({ id }, { $set: { 'scan_job.next_run_at': new Date(0) } })
       await reconcileOnce(db, mem.store('scan'))
       const { outcome } = await scanNext(down)
       expect(outcome).toBe(i === 5 ? 'failed' : 'scan_error')
@@ -234,7 +322,10 @@ describe('scan outcomes', () => {
 
   it('an object replaced after /complete is rejected (ETag changed)', async () => {
     const id = await upload('t-a', 'a.pdf', 'application/pdf', PDF)
-    mem.objects.quarantine.set(objectKey('t-a', id), Buffer.from(PDF.toString().replace('Catalog', 'Catalig')))
+    mem.objects.quarantine.set(
+      objectKey('t-a', id),
+      Buffer.from(PDF.toString().replace('Catalog', 'Catalig')),
+    )
     expect((await scanNext()).outcome).toBe('rejected')
   })
 })
@@ -282,23 +373,36 @@ describe('crash injection: every case ends in a correct terminal state', () => {
     expect(r.quarantine_cleaned).toBe(1)
     expect(r.reservations_committed).toBe(1)
     expect(mem.objects.quarantine.size).toBe(0)
-    expect(await doc(id)).toMatchObject({ status: 'clean', ocr_pending: true, quarantine_present: false })
+    expect(await doc(id)).toMatchObject({
+      status: 'clean',
+      ocr_pending: true,
+      quarantine_present: false,
+    })
     expect((await reconcileOnce(db, mem.store('scan'))).quarantine_cleaned).toBe(0)
   })
 
   it('(e) awaiting_upload never completed: failed, reservation released, object removed', async () => {
     const res = await init('t-a', { filename: 'a.pdf', mime: 'application/pdf', size: PDF.length })
     mem.putViaUrl(res.json().upload.url, PDF)
-    await db.collection('documents').updateOne({ id: res.json().document_id }, { $set: { 'reservation.expires_at': new Date(0) } })
+    await db
+      .collection('documents')
+      .updateOne(
+        { id: res.json().document_id },
+        { $set: { 'reservation.expires_at': new Date(0) } },
+      )
     expect((await reconcileOnce(db, mem.store('scan'))).expired_uploads).toBe(1)
     expect((await doc(res.json().document_id))?.['status']).toBe('failed')
     expect(mem.objects.quarantine.size).toBe(0)
-    expect(await db.collection('tenant_quota').findOne({ tenant_id: 't-a' })).toMatchObject({ bytes_reserved: 0, inflight: 0 })
+    expect(await db.collection('tenant_quota').findOne({ tenant_id: 't-a' })).toMatchObject({
+      bytes_reserved: 0,
+      inflight: 0,
+    })
   })
 })
 
 describe('fenced deletion', () => {
-  const del = (id: string) => app.inject({ method: 'DELETE', url: `/documents/${id}`, headers: { 'x-tenant': 't-a' } })
+  const del = (id: string) =>
+    app.inject({ method: 'DELETE', url: `/documents/${id}`, headers: { 'x-tenant': 't-a' } })
 
   it('a delete during the scan wins: the worker commit is refused and its clean key removed', async () => {
     const id = await upload('t-a', 'a.pdf', 'application/pdf', PDF)
@@ -331,7 +435,9 @@ describe('fenced deletion', () => {
   it('deleting rows are hidden from the list and detail routes', async () => {
     const id = await upload('t-a', 'a.pdf', 'application/pdf', PDF)
     await del(id)
-    expect((await app.inject({ url: `/documents/${id}`, headers: { 'x-tenant': 't-a' } })).statusCode).toBe(404)
+    expect(
+      (await app.inject({ url: `/documents/${id}`, headers: { 'x-tenant': 't-a' } })).statusCode,
+    ).toBe(404)
     const list = await app.inject({ url: '/documents', headers: { 'x-tenant': 't-a' } })
     expect(list.json().documents).toEqual([])
   })
@@ -339,7 +445,9 @@ describe('fenced deletion', () => {
   it('a tenant being erased refuses init and worker commits', async () => {
     const id = await upload('t-a', 'a.pdf', 'application/pdf', PDF)
     await db.collection('tenants').updateOne({ tenant_id: 't-a' }, { $set: { status: 'deleting' } })
-    expect((await init('t-a', { filename: 'b.pdf', mime: 'application/pdf', size: 10 })).statusCode).toBe(409)
+    expect(
+      (await init('t-a', { filename: 'b.pdf', mime: 'application/pdf', size: 10 })).statusCode,
+    ).toBe(409)
     expect((await scanNext()).outcome).toBe('lost')
     expect(mem.objects.clean.size).toBe(0)
     expect(id).toBeTruthy()
@@ -349,17 +457,25 @@ describe('fenced deletion', () => {
 describe('quota reservations', () => {
   it('parallel inits cannot exceed the in-flight cap', async () => {
     const results = await Promise.all(
-      Array.from({ length: 10 }, (_, i) => init('t-a', { filename: `f${i}.pdf`, mime: 'application/pdf', size: 100 })),
+      Array.from({ length: 10 }, (_, i) =>
+        init('t-a', { filename: `f${i}.pdf`, mime: 'application/pdf', size: 100 }),
+      ),
     )
     expect(results.filter((r) => r.statusCode === 201)).toHaveLength(MAX_INFLIGHT)
-    expect(results.filter((r) => r.statusCode === 429).every((r) => r.json().error === 'too_many_uploads')).toBe(true)
+    expect(
+      results
+        .filter((r) => r.statusCode === 429)
+        .every((r) => r.json().error === 'too_many_uploads'),
+    ).toBe(true)
   })
 
   it('parallel inits cannot exceed the storage limit', async () => {
     process.env['MAX_TENANT_STORAGE_BYTES'] = '1000'
     try {
       const results = await Promise.all(
-        Array.from({ length: 3 }, (_, i) => init('t-a', { filename: `f${i}.pdf`, mime: 'application/pdf', size: 400 })),
+        Array.from({ length: 3 }, (_, i) =>
+          init('t-a', { filename: `f${i}.pdf`, mime: 'application/pdf', size: 400 }),
+        ),
       )
       expect(results.filter((r) => r.statusCode === 201)).toHaveLength(2)
       expect(results.find((r) => r.statusCode === 413)?.json().error).toBe('storage_limit')
@@ -376,30 +492,49 @@ describe('quota reservations', () => {
       bytes_committed: PDF.length,
       inflight: 0,
     })
-    const del = () => app.inject({ method: 'DELETE', url: `/documents/${id}`, headers: { 'x-tenant': 't-a' } })
+    const del = () =>
+      app.inject({ method: 'DELETE', url: `/documents/${id}`, headers: { 'x-tenant': 't-a' } })
     await del()
     await del()
-    expect(await db.collection('tenant_quota').findOne({ tenant_id: 't-a' })).toMatchObject({ bytes_committed: 0 })
+    expect(await db.collection('tenant_quota').findOne({ tenant_id: 't-a' })).toMatchObject({
+      bytes_committed: 0,
+    })
   })
 
   it('the nightly reconcile detects and corrects drift', async () => {
     await upload('t-a', 'a.pdf', 'application/pdf', PDF)
     await scanNext()
-    await db.collection('tenant_quota').updateOne({ tenant_id: 't-a' }, { $set: { bytes_committed: 999_999 } })
+    await db
+      .collection('tenant_quota')
+      .updateOne({ tenant_id: 't-a' }, { $set: { bytes_committed: 999_999 } })
     const r = await reconcileQuotas(db)
     expect(r.drift_bytes).toBeGreaterThan(0)
-    expect((await db.collection('tenant_quota').findOne({ tenant_id: 't-a' }))?.['bytes_committed']).toBe(PDF.length)
+    expect(
+      (await db.collection('tenant_quota').findOne({ tenant_id: 't-a' }))?.['bytes_committed'],
+    ).toBe(PDF.length)
   })
 })
 
 describe('compatibility and isolation', () => {
   it('GridFS rows still serve bytes; mode=url says to use bytes', async () => {
     const fileId = await writeGridfs(db, 'old.pdf', { tenant_id: 't-a' }, PDF)
-    await db.collection('documents').insertOne({ id: 'old-1', tenant_id: 't-a', file_id: fileId, mime_type: 'application/pdf', status: 'stored', filename: 'old.pdf' })
+    await db
+      .collection('documents')
+      .insertOne({
+        id: 'old-1',
+        tenant_id: 't-a',
+        file_id: fileId,
+        mime_type: 'application/pdf',
+        status: 'stored',
+        filename: 'old.pdf',
+      })
     const bytes = await app.inject({ url: '/documents/old-1/file', headers: { 'x-tenant': 't-a' } })
     expect(bytes.statusCode).toBe(200)
     expect(bytes.rawPayload).toEqual(PDF)
-    const url = await app.inject({ url: '/documents/old-1/file?mode=url', headers: { 'x-tenant': 't-a' } })
+    const url = await app.inject({
+      url: '/documents/old-1/file?mode=url',
+      headers: { 'x-tenant': 't-a' },
+    })
     expect(url.statusCode).toBe(409)
     expect(url.json().error).toBe('not_in_object_store')
   })
@@ -407,7 +542,10 @@ describe('compatibility and isolation', () => {
   it('another tenant gets 404 for the same document id', async () => {
     const id = await upload('t-a', 'a.pdf', 'application/pdf', PDF)
     await scanNext()
-    const res = await app.inject({ url: `/documents/${id}/file?mode=url`, headers: { 'x-tenant': 't-b' } })
+    const res = await app.inject({
+      url: `/documents/${id}/file?mode=url`,
+      headers: { 'x-tenant': 't-b' },
+    })
     expect(res.statusCode).toBe(404)
     expect((await complete('t-b', id)).statusCode).toBe(404)
   })
@@ -415,7 +553,9 @@ describe('compatibility and isolation', () => {
   it('the legacy multipart route writes quarantine and joins the same pipeline', async () => {
     const boundary = '----lk'
     const payload = Buffer.concat([
-      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="legacy.pdf"\r\nContent-Type: application/pdf\r\n\r\n`),
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="legacy.pdf"\r\nContent-Type: application/pdf\r\n\r\n`,
+      ),
       PDF,
       Buffer.from(`\r\n--${boundary}--\r\n`),
     ])
@@ -433,9 +573,15 @@ describe('compatibility and isolation', () => {
   it('the first R2 write raises the schema floor; this build still boots', async () => {
     await upload('t-a', 'a.pdf', 'application/pdf', PDF)
     await scanNext()
-    expect((await db.collection('platform_markers').findOne({ _id: 'documents_schema_floor' as never }))?.['required_schema']).toBe(DOCUMENTS_SCHEMA_VERSION)
+    expect(
+      (
+        await db.collection('platform_markers').findOne({ _id: 'documents_schema_floor' as never })
+      )?.['required_schema'],
+    ).toBe(DOCUMENTS_SCHEMA_VERSION)
     await expect(assertDocumentsSchemaFloor(db)).resolves.toBeUndefined()
-    await db.collection('platform_markers').updateOne({ _id: 'documents_schema_floor' as never }, { $set: { required_schema: 99 } })
+    await db
+      .collection('platform_markers')
+      .updateOne({ _id: 'documents_schema_floor' as never }, { $set: { required_schema: 99 } })
     await expect(assertDocumentsSchemaFloor(db)).rejects.toThrow(/schema 99/)
   })
 
@@ -448,9 +594,15 @@ describe('compatibility and isolation', () => {
 
 describe('credential scopes', () => {
   it('a presign credential cannot touch clean or the vault', async () => {
-    await expect(mem.store('presign').put('clean', 'x', PDF, 'application/pdf')).rejects.toThrow(/no access/)
+    await expect(mem.store('presign').put('clean', 'x', PDF, 'application/pdf')).rejects.toThrow(
+      /no access/,
+    )
     await expect(mem.store('presign').get('vault', 'x')).rejects.toThrow(/no access/)
-    await expect(mem.store('serve').put('clean', 'x', PDF, 'application/pdf')).rejects.toThrow(/read-only/)
-    await expect(mem.store('delete').put('quarantine', 'x', PDF, 'application/pdf')).rejects.toThrow(/no access/)
+    await expect(mem.store('serve').put('clean', 'x', PDF, 'application/pdf')).rejects.toThrow(
+      /read-only/,
+    )
+    await expect(
+      mem.store('delete').put('quarantine', 'x', PDF, 'application/pdf'),
+    ).rejects.toThrow(/no access/)
   })
 })

@@ -27,7 +27,9 @@ describe('document storage seam', () => {
   }))
 
   it('only the seam imports GridFSBucket', () => {
-    const offenders = files.filter((f) => f.rel !== SEAM && /\bGridFSBucket\b/.test(f.src)).map((f) => f.rel)
+    const offenders = files
+      .filter((f) => f.rel !== SEAM && /\bGridFSBucket\b/.test(f.src))
+      .map((f) => f.rel)
     expect(offenders).toEqual([])
   })
 

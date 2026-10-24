@@ -333,10 +333,12 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
     // revoked, and any outstanding invite for the entry dies with it.
     if (removed) {
       const userIds = [...new Set([removed.id, removed.user_id].filter((v): v is string => !!v))]
-      await db.collection('users').updateMany(
-        { tenant_id, id: { $in: userIds }, roles: { $nin: ['owner'] } },
-        { $set: { status: 'removed', sessions_revoked_at: new Date(), updated_at: new Date() } },
-      )
+      await db
+        .collection('users')
+        .updateMany(
+          { tenant_id, id: { $in: userIds }, roles: { $nin: ['owner'] } },
+          { $set: { status: 'removed', sessions_revoked_at: new Date(), updated_at: new Date() } },
+        )
       await db.collection('family_member_invites').deleteMany({ tenant_id, member_id: removed.id })
       getAuditLogger()?.fromRequest(req, 'family.member_removed', 'family_member', removed.id, {
         had_login: Boolean(removed.user_id) || removed.status === 'active',

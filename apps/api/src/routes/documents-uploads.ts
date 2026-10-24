@@ -22,11 +22,7 @@ import { z } from 'zod'
 import { getAuditLogger } from '../audit/audit-log.js'
 import { isHouseholdEditor } from '../family/family-permissions.js'
 import { CATEGORIES } from '../extraction/schema.js'
-import {
-  checkDeclaredType,
-  MAX_UPLOAD_BYTES,
-  sanitizeFilename,
-} from '../documents/formats.js'
+import { checkDeclaredType, MAX_UPLOAD_BYTES, sanitizeFilename } from '../documents/formats.js'
 import { objectStore } from '../documents/r2.js'
 import { documentStorageMode } from '../documents/storage.js'
 import { reserveUpload, releaseReservation } from '../documents/quota.js'
@@ -83,14 +79,17 @@ export function registerDocumentUploadRoutes(app: FastifyInstance, db: Db): void
           message: 'Allowed: PDF, Word (.docx), and images (JPEG, PNG, WebP, GIF, HEIC).',
         })
       if (body.size === 0 || body.size > MAX_UPLOAD_BYTES)
-        return reply.status(413).send({ error: 'too_large', message: 'Files must be 1 byte to 50 MB.' })
+        return reply
+          .status(413)
+          .send({ error: 'too_large', message: 'Files must be 1 byte to 50 MB.' })
       const category =
         body.category && (CATEGORIES as readonly string[]).includes(body.category)
           ? body.category
           : 'other'
 
       const refusal = await reserveUpload(db, tenant_id, body.size)
-      if (refusal) return reply.status(refusal.status).send({ error: refusal.error, message: refusal.message })
+      if (refusal)
+        return reply.status(refusal.status).send({ error: refusal.error, message: refusal.message })
 
       let row: Awaited<ReturnType<typeof createAwaitingUpload>>
       try {
@@ -107,10 +106,9 @@ export function registerDocumentUploadRoutes(app: FastifyInstance, db: Db): void
         })
       } catch (err) {
         // No row means nothing would ever release this reservation.
-        await db.collection('tenant_quota').updateOne(
-          { tenant_id },
-          { $inc: { bytes_reserved: -body.size, inflight: -1 } },
-        )
+        await db
+          .collection('tenant_quota')
+          .updateOne({ tenant_id }, { $inc: { bytes_reserved: -body.size, inflight: -1 } })
         throw err
       }
 
@@ -147,8 +145,10 @@ export function registerDocumentUploadRoutes(app: FastifyInstance, db: Db): void
       const row = await docs.findOne({ tenant_id, id: req.params.id })
       if (!row || !row['quarantine']) return reply.status(404).send({ error: 'Document not found' })
       // Idempotent: a repeat after the transition reports where the row is.
-      if (row['status'] !== 'awaiting_upload') return reply.status(202).send({ status: row['status'] })
-      if (await tenantDeleting(db, tenant_id)) return reply.status(409).send({ error: 'tenant_deleting' })
+      if (row['status'] !== 'awaiting_upload')
+        return reply.status(202).send({ status: row['status'] })
+      if (await tenantDeleting(db, tenant_id))
+        return reply.status(409).send({ error: 'tenant_deleting' })
 
       const key = (row['quarantine'] as { key: string }).key
       const declared = row['declared'] as { size: number }
@@ -166,7 +166,10 @@ export function registerDocumentUploadRoutes(app: FastifyInstance, db: Db): void
         return reply.status(409).send({ error: head ? 'size_mismatch' : 'upload_missing' })
       }
       if (!(await markScanQueued(db, tenant_id, req.params.id, head.etag))) {
-        const now = await docs.findOne({ tenant_id, id: req.params.id }, { projection: { status: 1 } })
+        const now = await docs.findOne(
+          { tenant_id, id: req.params.id },
+          { projection: { status: 1 } },
+        )
         return reply.status(202).send({ status: now?.['status'] ?? 'unknown' })
       }
       void wakeScanWorker()

@@ -150,12 +150,10 @@ export function registerOperatorStripeRoutes(
 
       const mode = detectStripeMode(apiKey)
       if (apply && mode === 'live' && !confirm_live) {
-        return reply
-          .status(409)
-          .send({
-            error: 'This is a LIVE Stripe account. Re-send with confirm_live: true.',
-            code: 'confirm_live_required',
-          })
+        return reply.status(409).send({
+          error: 'This is a LIVE Stripe account. Re-send with confirm_live: true.',
+          code: 'confirm_live_required',
+        })
       }
       if (apply && mode === 'unknown') {
         return reply

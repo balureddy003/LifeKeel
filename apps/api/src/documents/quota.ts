@@ -124,7 +124,10 @@ export async function reserveUpload(
   try {
     await days(db).updateOne(
       { _id: `${tenantId}:${dayKey(now)}`, uploads: { $lt: MAX_UPLOADS_PER_DAY() } },
-      { $inc: { uploads: 1 }, $setOnInsert: { expires_at: new Date(now.getTime() + 48 * 3600_000) } },
+      {
+        $inc: { uploads: 1 },
+        $setOnInsert: { expires_at: new Date(now.getTime() + 48 * 3600_000) },
+      },
       { upsert: true },
     )
   } catch (err) {
@@ -133,7 +136,11 @@ export async function reserveUpload(
       { tenant_id: tenantId },
       { $inc: { bytes_reserved: -size, ...(inflight ? { inflight: -1 } : {}) } },
     )
-    return { status: 429, error: 'daily_limit', message: 'Daily upload limit reached. Try again tomorrow.' }
+    return {
+      status: 429,
+      error: 'daily_limit',
+      message: 'Daily upload limit reached. Try again tomorrow.',
+    }
   }
   return null
 }

@@ -43,7 +43,12 @@ import {
   writeGridfs,
 } from '../documents/storage.js'
 import { commitReservation, releaseReservation, reserveUpload } from '../documents/quota.js'
-import { createAwaitingUpload, markScanQueued, READABLE_STATUSES, wakeScanWorker } from '../documents/pipeline.js'
+import {
+  createAwaitingUpload,
+  markScanQueued,
+  READABLE_STATUSES,
+  wakeScanWorker,
+} from '../documents/pipeline.js'
 import { beginFencedDelete, isPipelineRow } from '../documents/deletion.js'
 import { objectStore, attachmentDisposition } from '../documents/r2.js'
 import { CATEGORIES } from '../extraction/schema.js'
@@ -365,7 +370,10 @@ export function registerDocumentRoutes(
         // if the cleanup delete itself fails, log and still surface the
         // original error rather than masking it.
         if (!(await deleteGridfs(db, fileId)))
-          log.error({ fileId, documentId }, 'Failed to clean up orphaned GridFS blob after metadata insert failure')
+          log.error(
+            { fileId, documentId },
+            'Failed to clean up orphaned GridFS blob after metadata insert failure',
+          )
         await db
           .collection('tenant_quota')
           .updateOne({ tenant_id }, { $inc: { bytes_reserved: -fileBuffer.length, inflight: -1 } })
@@ -446,7 +454,8 @@ export function registerDocumentRoutes(
     const type = checkDeclaredType(filename, data.mimetype)
     if (!type.ok || !ALLOWED_UPLOAD_MIME_TYPES.has(data.mimetype))
       return reply.status(422).send({
-        error: 'Unsupported file type. Allowed: PDF, Word (.docx), and images (JPEG, PNG, WebP, GIF, HEIC).',
+        error:
+          'Unsupported file type. Allowed: PDF, Word (.docx), and images (JPEG, PNG, WebP, GIF, HEIC).',
       })
     const bytes = await data.toBuffer()
     if (bytes.length === 0 || bytes.length > MAX_FILE_SIZE)
@@ -470,7 +479,10 @@ export function registerDocumentRoutes(
     } catch (err) {
       await db
         .collection('documents')
-        .updateOne({ tenant_id, id: row.id }, { $set: { status: 'failed', error_message: 'quarantine_write_failed' } })
+        .updateOne(
+          { tenant_id, id: row.id },
+          { $set: { status: 'failed', error_message: 'quarantine_write_failed' } },
+        )
       await releaseReservation(db, tenant_id, row.id)
       throw err
     }
@@ -591,9 +603,9 @@ export function registerDocumentRoutes(
       const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
       const doc = await documents.findOne({ id: req.params.id })
       if (!doc || doc['category'] === ESTATE_VAULT_CATEGORY || !locate(doc))
-        return reply.status(doc && !locate(doc) ? 409 : 404).send(
-          doc && !locate(doc) ? { error: 'not_ready' } : { error: 'Document not found' },
-        )
+        return reply
+          .status(doc && !locate(doc) ? 409 : 404)
+          .send(doc && !locate(doc) ? { error: 'not_ready' } : { error: 'Document not found' })
       if (!READABLE_STATUSES.has(String(doc['status'] ?? 'uploaded')))
         return reply.status(409).send({ error: 'not_ready', status: doc['status'] })
 
@@ -613,11 +625,18 @@ export function registerDocumentRoutes(
       if (!bytes) return reply.status(404).send({ error: 'Document not found' })
       reply.header(
         'Content-Type',
-        String((doc['storage'] as { mime?: string } | undefined)?.mime ?? doc['mime_type'] ?? 'application/octet-stream'),
+        String(
+          (doc['storage'] as { mime?: string } | undefined)?.mime ??
+            doc['mime_type'] ??
+            'application/octet-stream',
+        ),
       )
       reply.header(
         'Content-Disposition',
-        attachmentDisposition(String(doc['filename'] ?? 'document')).replace(/^attachment/, 'inline'),
+        attachmentDisposition(String(doc['filename'] ?? 'document')).replace(
+          /^attachment/,
+          'inline',
+        ),
       )
       return reply.send(bytes)
     },
@@ -761,7 +780,14 @@ export function registerDocumentRoutes(
   fastify.post<{ Params: { id: string }; Body: { paths?: string[] } }>(
     '/documents/:id/apply-to-profile',
     async (req, reply) => {
-      if (!(await isHouseholdEditor(db, req.authContext.tenant_id, req.authContext.user_id, req.authContext.roles)))
+      if (
+        !(await isHouseholdEditor(
+          db,
+          req.authContext.tenant_id,
+          req.authContext.user_id,
+          req.authContext.roles,
+        ))
+      )
         return reply.status(403).send({ error: 'Only household editors can change shared records' })
       const { tenant_id } = req.authContext
       const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
@@ -916,7 +942,14 @@ export function registerDocumentRoutes(
   fastify.post<{ Params: { id: string }; Body: ApplyPolicyBody }>(
     '/documents/:id/apply-policy',
     async (req, reply) => {
-      if (!(await isHouseholdEditor(db, req.authContext.tenant_id, req.authContext.user_id, req.authContext.roles)))
+      if (
+        !(await isHouseholdEditor(
+          db,
+          req.authContext.tenant_id,
+          req.authContext.user_id,
+          req.authContext.roles,
+        ))
+      )
         return reply.status(403).send({ error: 'Only household editors can change shared records' })
       const { tenant_id } = req.authContext
       const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)

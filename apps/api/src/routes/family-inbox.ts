@@ -380,7 +380,14 @@ export function registerFamilyInboxRoutes(
   fastify.post<{ Params: { id: string }; Body: ApplyPolicyBody }>(
     '/inbox/:id/apply-policy',
     async (req, reply) => {
-      if (!(await isHouseholdEditor(db, req.authContext.tenant_id, req.authContext.user_id, req.authContext.roles)))
+      if (
+        !(await isHouseholdEditor(
+          db,
+          req.authContext.tenant_id,
+          req.authContext.user_id,
+          req.authContext.roles,
+        ))
+      )
         return reply.status(403).send({ error: 'Only household editors can change shared records' })
       const { tenant_id } = req.authContext
       const item = await col.findOne({ id: req.params.id, tenant_id })

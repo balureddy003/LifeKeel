@@ -12,6 +12,10 @@
  */
 import type { Db } from 'mongodb'
 import { CONNECTOR_CHANNELS } from './social-publisher.js'
+import { VERSION_ERROR_PREFIX } from './linkedin-version.js'
+
+/** A check older than this says nothing about now. */
+const CHECK_FRESH_MS = 3 * 86_400_000
 
 export const SOCIAL_CHANNELS = [
   'bluesky',
@@ -24,7 +28,13 @@ export const SOCIAL_CHANNELS = [
 export type SocialChannel = (typeof SOCIAL_CHANNELS)[number]
 
 export type ChannelStatus =
-  'connected' | 'expiring_soon' | 'needs_reauth' | 'error' | 'not_configured'
+  | 'connected'
+  | 'expiring_soon'
+  /** Connected, but a recent post or the daily check failed for a reason we can name. */
+  | 'degraded'
+  | 'needs_reauth'
+  | 'error'
+  | 'not_configured'
 
 /** Channels whose OAuth token has no refresh token, so it simply expires. */
 const NO_REFRESH: ReadonlySet<string> = new Set(['linkedin'])
@@ -42,7 +52,8 @@ export interface ChannelInfo {
   updated_at: Date | null
 }
 
-const isUsable = (s: ChannelInfo['status']) => s === 'connected' || s === 'expiring_soon'
+const isUsable = (s: ChannelInfo['status']) =>
+  s === 'connected' || s === 'expiring_soon' || s === 'degraded'
 
 /** Every connection this tenant has, from both credential stores. */
 export async function listChannels(
@@ -108,7 +119,69 @@ export async function listChannels(
       updated_at: (cred['updated_at'] as Date | undefined) ?? null,
     })
   }
+  await overlayRecentProblems(db, tenantId, out, now)
   return out
+}
+
+/**
+ * Connected is not the same as working. Two things we can observe without a human:
+ *   - the latest approved post on a channel failed with an API-version rejection
+ *     (and nothing has been published there since);
+ *   - the daily read-only check of the channel's API failed recently.
+ * Either turns a healthy channel into `degraded` with the reason, so it shows up in
+ * Connections and Mission Control instead of failing silently at post time.
+ */
+async function overlayRecentProblems(
+  db: Db,
+  tenantId: string,
+  infos: ChannelInfo[],
+  now: Date,
+): Promise<void> {
+  const healthy = infos.filter((i) => i.status === 'connected' || i.status === 'expiring_soon')
+  if (healthy.length === 0) return
+  const since = new Date(now.getTime() - CHECK_FRESH_MS)
+  const [versionFailures, checks] = await Promise.all([
+    db
+      .collection('marketing_posts')
+      .find(
+        {
+          tenant_id: tenantId,
+          state: 'publish_failed',
+          publish_error: { $regex: `^${VERSION_ERROR_PREFIX}` },
+          approved_at: { $gte: new Date(now.getTime() - 14 * 86_400_000) },
+        },
+        { projection: { _id: 0, channel: 1, publish_error: 1, approved_at: 1 } },
+      )
+      .sort({ approved_at: -1 })
+      .limit(50)
+      .toArray(),
+    db
+      .collection('channel_checks')
+      .find({ tenant_id: tenantId, ok: false, checked_at: { $gte: since } })
+      .toArray(),
+  ])
+  for (const info of healthy) {
+    const failure = versionFailures.find((f) => f['channel'] === info.channel)
+    if (failure) {
+      const laterOk = await db.collection('marketing_posts').findOne({
+        tenant_id: tenantId,
+        channel: info.channel,
+        state: 'published',
+        dry_run: { $ne: true },
+        published_at: { $gt: failure['approved_at'] as Date },
+      })
+      if (!laterOk) {
+        info.status = 'degraded'
+        info.last_error = String(failure['publish_error'])
+        continue
+      }
+    }
+    const check = checks.find((c) => c['channel'] === info.channel)
+    if (check) {
+      info.status = 'degraded'
+      info.last_error = `Daily check failed: ${String(check['error'] ?? 'unknown error')} (posting may still work)`
+    }
+  }
 }
 
 /** The channels planning and drafting may use, plus the ones skipped and why. */

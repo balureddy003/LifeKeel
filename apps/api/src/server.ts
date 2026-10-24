@@ -577,11 +577,11 @@ try {
     )
     log.info({}, 'Revenue sync cron started')
 
-    // Weekly profile check — Mondays 07:10. Read-only: reads each connected
+    // Daily profile check — 07:10. Read-only: reads each connected
     // platform's live profile and records drift against the approved text. It
     // never writes to a platform; fixing a profile is a human act.
     cron.schedule(
-      '10 7 * * 1',
+      '10 7 * * *',
       async () => {
         try {
           await withCronLock(workflowDb, 'profile-check', async () => {
@@ -596,7 +596,7 @@ try {
       },
       { missedExecutionTolerance: 3_600_000 },
     )
-    log.info({}, 'Profile check cron started')
+    log.info({}, 'Daily profile check cron started')
 
     // Daily metrics rollup — hourly at :40. Recomputes today + yesterday
     // (late-arriving events) into metrics_daily; first run backfills 90 days.

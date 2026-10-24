@@ -91,16 +91,14 @@ async function writeFlag(
   def: ScopeDefinition,
   on: boolean,
 ): Promise<void> {
-  await db
-    .collection('tenant_settings')
-    .updateOne(
-      { tenant_id: tenantId },
-      {
-        $set: { [flagPath(def)]: on, updated_at: new Date() },
-        $setOnInsert: { tenant_id: tenantId },
-      },
-      { upsert: true },
-    )
+  await db.collection('tenant_settings').updateOne(
+    { tenant_id: tenantId },
+    {
+      $set: { [flagPath(def)]: on, updated_at: new Date() },
+      $setOnInsert: { tenant_id: tenantId },
+    },
+    { upsert: true },
+  )
 }
 
 function event(at: Date, name: string, actor: string, note?: string) {

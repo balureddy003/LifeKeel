@@ -67,8 +67,12 @@ describe('signup form', () => {
     signUp.mockResolvedValueOnce({ otp: { otp_required: true, otp_token: 't' } })
     const { container } = render(<SignUpPage />)
     fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'Alex' } })
-    fireEvent.change(screen.getByLabelText('Email address'), { target: { value: 'alex@example.com' } })
-    fireEvent.change(container.querySelector('#signup-password')!, { target: { value: 'longenough1' } })
+    fireEvent.change(screen.getByLabelText('Email address'), {
+      target: { value: 'alex@example.com' },
+    })
+    fireEvent.change(container.querySelector('#signup-password')!, {
+      target: { value: 'longenough1' },
+    })
     fireEvent.submit(container.querySelector('form')!)
     await waitFor(() => expect(push).toHaveBeenCalledWith('/verify-otp'))
   })
@@ -98,7 +102,9 @@ describe('login with email OTP', () => {
     signIn.mockResolvedValueOnce({ otpRequired: true })
     const { container } = render(<LoginPage />)
     fireEvent.change(screen.getByLabelText('Email address'), { target: { value: 'a@b.co' } })
-    fireEvent.change(container.querySelector('#login-password')!, { target: { value: 'secret123' } })
+    fireEvent.change(container.querySelector('#login-password')!, {
+      target: { value: 'secret123' },
+    })
     fireEvent.submit(container.querySelector('form')!)
     await waitFor(() => expect(push).toHaveBeenCalledWith('/verify-otp'))
   })

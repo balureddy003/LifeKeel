@@ -18,7 +18,12 @@ import { describe, expect, it } from 'vitest'
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 const ALLOWED: Record<string, string[]> = {
-  scan: ['documents/scan-job.ts', 'documents/reconciler.ts', 'documents/deletion.ts', 'scan-worker.ts'],
+  scan: [
+    'documents/scan-job.ts',
+    'documents/reconciler.ts',
+    'documents/deletion.ts',
+    'scan-worker.ts',
+  ],
   presign: ['routes/documents-uploads.ts', 'routes/documents.ts', 'documents/deletion.ts'],
   serve: ['documents/storage.ts'],
   delete: ['documents/deletion.ts'],

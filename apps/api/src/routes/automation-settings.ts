@@ -128,12 +128,10 @@ export function registerAutomationSettingsRoutes(app: FastifyInstance, db: Db): 
       set['automation.daily_marketing_drafts_enabled'] = daily_marketing_drafts_enabled
     }
     if (Object.keys(set).length === 0 && renewal_reminders_enabled === undefined) {
-      return reply
-        .status(400)
-        .send({
-          error:
-            'Provide at least one of: dry_run_mode, renewal_reminders_enabled, renewal_reminder_lead_days, auto_execute_enabled, daily_marketing_drafts_enabled',
-        })
+      return reply.status(400).send({
+        error:
+          'Provide at least one of: dry_run_mode, renewal_reminders_enabled, renewal_reminder_lead_days, auto_execute_enabled, daily_marketing_drafts_enabled',
+      })
     }
 
     if (Object.keys(set).length > 0) {

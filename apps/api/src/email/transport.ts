@@ -122,10 +122,9 @@ export function installResendTransport(env: NodeJS.ProcessEnv = process.env): bo
       // definite rejection ('failed') vs a retryable 'unknown', matching the
       // shape SendGrid errors carry.
       if (!res.ok)
-        throw Object.assign(
-          new Error(`Resend send failed: ${res.status} ${await res.text()}`),
-          { code: res.status },
-        )
+        throw Object.assign(new Error(`Resend send failed: ${res.status} ${await res.text()}`), {
+          code: res.status,
+        })
     }
     return [{ statusCode: 202, body: {}, headers: {} }, {}]
   }

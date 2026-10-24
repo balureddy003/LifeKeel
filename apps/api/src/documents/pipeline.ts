@@ -182,7 +182,11 @@ export interface ClaimedRow {
 }
 
 /** scan_queued (due) → scanning, with a lease. Oldest due first. */
-export async function claimNext(db: Db, workerId: string, now = new Date()): Promise<ClaimedRow | null> {
+export async function claimNext(
+  db: Db,
+  workerId: string,
+  now = new Date(),
+): Promise<ClaimedRow | null> {
   const row = await db.collection('documents').findOneAndUpdate(
     { status: DOC_STATUS.scan_queued, 'scan_job.next_run_at': { $lte: now } },
     {
@@ -244,7 +248,12 @@ export async function commitClean(
   const res = await db.collection('documents').updateOne(leaseFilter(row), {
     $set: {
       status: DOC_STATUS.clean,
-      storage: { bucket: 'clean', key: result.cleanKey, mime: result.storedMime, size: result.storedSize },
+      storage: {
+        bucket: 'clean',
+        key: result.cleanKey,
+        mime: result.storedMime,
+        size: result.storedSize,
+      },
       mime_type: result.storedMime,
       size: result.storedSize,
       scan: { ...result.scan, sha256: result.sha256, source_sha256: result.sourceSha256, at: now },
@@ -274,7 +283,11 @@ export async function commitTerminal(
   now = new Date(),
 ): Promise<boolean> {
   const res = await db.collection('documents').updateOne(leaseFilter(row), {
-    $set: { status, scan: { ...detail, at: now }, error_message: String(detail['reason'] ?? status) },
+    $set: {
+      status,
+      scan: { ...detail, at: now },
+      error_message: String(detail['reason'] ?? status),
+    },
     $unset: { lease_owner: '', lease_until: '' },
   })
   if (res.modifiedCount === 1) recordDocState(status)

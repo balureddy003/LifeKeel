@@ -7,7 +7,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 vi.mock('mailparser', () => ({
   simpleParser: vi.fn(async (source: Buffer) => {
     const parsed = JSON.parse(source.toString())
-    return { messageId: parsed.id, from: { text: 'a@b.c' }, subject: parsed.id, date: new Date(), text: '', attachments: [] }
+    return {
+      messageId: parsed.id,
+      from: { text: 'a@b.c' },
+      subject: parsed.id,
+      date: new Date(),
+      text: '',
+      attachments: [],
+    }
   }),
 }))
 
@@ -27,12 +34,16 @@ function stubGmail(messages: FakeMessage[]) {
       calls.push(url)
       const u = new URL(url)
       if (u.pathname.endsWith('/messages')) {
-        return new Response(JSON.stringify({ messages: [...messages].reverse().map((m) => ({ id: m.id })) }))
+        return new Response(
+          JSON.stringify({ messages: [...messages].reverse().map((m) => ({ id: m.id })) }),
+        )
       }
       const id = u.pathname.split('/').at(-1)!
       const m = messages.find((x) => x.id === id)!
       if (u.searchParams.get('format') === 'minimal') {
-        return new Response(JSON.stringify({ sizeEstimate: m.size, internalDate: String(m.internalDate) }))
+        return new Response(
+          JSON.stringify({ sizeEstimate: m.size, internalDate: String(m.internalDate) }),
+        )
       }
       const raw = Buffer.from(JSON.stringify({ id })).toString('base64url')
       return new Response(JSON.stringify({ raw, internalDate: String(m.internalDate) }))

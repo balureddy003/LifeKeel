@@ -47,7 +47,10 @@ describe('declared type: extension and MIME must agree', () => {
   })
 
   it('refuses an extension and MIME that name different formats', () => {
-    expect(checkDeclaredType('a.png', 'application/pdf')).toEqual({ ok: false, reason: 'type_mismatch' })
+    expect(checkDeclaredType('a.png', 'application/pdf')).toEqual({
+      ok: false,
+      reason: 'type_mismatch',
+    })
   })
 
   it('keeps the vault on its original list (no DOCX)', () => {
@@ -80,13 +83,19 @@ describe('PDF active content', () => {
   it('rejects JavaScript, Launch, EmbeddedFile and OpenAction actions', () => {
     expect(pdfActiveContent(Buffer.from('%PDF-1.4\n1 0 obj << /JS (app.alert(1)) >>'))).toBe('/JS')
     expect(pdfActiveContent(Buffer.from('%PDF-1.4\n<< /S /Launch /F (cmd.exe) >>'))).toBe('/Launch')
-    expect(pdfActiveContent(Buffer.from('%PDF-1.4\n<< /Type /EmbeddedFile >>'))).toBe('/EmbeddedFile')
+    expect(pdfActiveContent(Buffer.from('%PDF-1.4\n<< /Type /EmbeddedFile >>'))).toBe(
+      '/EmbeddedFile',
+    )
     expect(
       pdfActiveContent(Buffer.from('%PDF-1.4\n<< /OpenAction << /S /URI /URI (http://x) >> >>')),
     ).toBe('/OpenAction')
   })
   it('accepts an ordinary PDF and a page-destination OpenAction', () => {
-    expect(pdfActiveContent(Buffer.from('%PDF-1.4\n1 0 obj << /Type /Catalog /OpenAction [3 0 R /Fit] >>'))).toBeNull()
+    expect(
+      pdfActiveContent(
+        Buffer.from('%PDF-1.4\n1 0 obj << /Type /Catalog /OpenAction [3 0 R /Fit] >>'),
+      ),
+    ).toBeNull()
   })
 })
 
@@ -95,20 +104,28 @@ describe('DOCX structure', () => {
     expect(await inspectDocx(makeDocx('Policy number 123'))).toBeNull()
   })
   it('rejects macros, embedded objects, executables and encryption', async () => {
-    expect(await inspectDocx(makeDocx('x', [{ name: 'word/vbaProject.bin', data: 'macro' }]))).toBe('docx_macro')
-    expect(await inspectDocx(makeDocx('x', [{ name: 'word/embeddings/oleObject1.bin', data: 'ole' }]))).toBe(
-      'docx_embedded_object',
+    expect(await inspectDocx(makeDocx('x', [{ name: 'word/vbaProject.bin', data: 'macro' }]))).toBe(
+      'docx_macro',
     )
-    expect(await inspectDocx(makeDocx('x', [{ name: 'payload.exe', data: 'MZ' }]))).toBe('zip_executable')
-    expect(await inspectDocx(makeDocx('x', [{ name: 'word/secret.xml', data: 'x', encrypted: true }]))).toBe(
-      'zip_encrypted',
+    expect(
+      await inspectDocx(makeDocx('x', [{ name: 'word/embeddings/oleObject1.bin', data: 'ole' }])),
+    ).toBe('docx_embedded_object')
+    expect(await inspectDocx(makeDocx('x', [{ name: 'payload.exe', data: 'MZ' }]))).toBe(
+      'zip_executable',
     )
+    expect(
+      await inspectDocx(makeDocx('x', [{ name: 'word/secret.xml', data: 'x', encrypted: true }])),
+    ).toBe('zip_encrypted')
   })
   it('rejects a zip that is not a Word document', async () => {
-    expect(await inspectDocx(makeZip([{ name: 'readme.txt', data: 'hello' }]))).toBe('docx_structure')
+    expect(await inspectDocx(makeZip([{ name: 'readme.txt', data: 'hello' }]))).toBe(
+      'docx_structure',
+    )
   })
   it('rejects a zip bomb by compression ratio', async () => {
-    const bomb = makeDocx('x', [{ name: 'word/media/big.bin', data: Buffer.alloc(50 * 1024 * 1024) }])
+    const bomb = makeDocx('x', [
+      { name: 'word/media/big.bin', data: Buffer.alloc(50 * 1024 * 1024) },
+    ])
     expect(bomb.length).toBeLessThan(1024 * 1024)
     expect(await inspectDocx(bomb)).toBe('zip_ratio')
   })
@@ -116,7 +133,9 @@ describe('DOCX structure', () => {
 
 describe('image normalization (D6)', () => {
   it('re-encodes PNG to lossless WebP at the same dimensions', async () => {
-    const png = await sharp({ create: { width: 1234, height: 567, channels: 3, background: '#fff' } })
+    const png = await sharp({
+      create: { width: 1234, height: 567, channels: 3, background: '#fff' },
+    })
       .png()
       .toBuffer()
     const { header, out } = await normalizeImage(png, 'image/png')
@@ -128,7 +147,9 @@ describe('image normalization (D6)', () => {
   })
 
   it('drops EXIF (including GPS) from JPEG photos', async () => {
-    const jpeg = await sharp({ create: { width: 300, height: 200, channels: 3, background: '#a33' } })
+    const jpeg = await sharp({
+      create: { width: 300, height: 200, channels: 3, background: '#a33' },
+    })
       .jpeg()
       .withExif({ IFD0: { Make: 'TestCam' }, IFD3: { GPSLatitudeRef: 'N' } })
       .toBuffer()
@@ -141,7 +162,9 @@ describe('image normalization (D6)', () => {
 
   it('keeps only the first frame of an animated GIF', async () => {
     const frame = (c: string) =>
-      sharp({ create: { width: 40, height: 30, channels: 4, background: c } }).raw().toBuffer()
+      sharp({ create: { width: 40, height: 30, channels: 4, background: c } })
+        .raw()
+        .toBuffer()
     const frames = Buffer.concat([await frame('#f00'), await frame('#0f0'), await frame('#00f')])
     const gif = await sharp(frames, { raw: { width: 40, height: 90, channels: 4, pageHeight: 30 } })
       .gif({ loop: 0 })
@@ -153,7 +176,9 @@ describe('image normalization (D6)', () => {
   })
 
   it('rejects an image over the pixel cap without decoding it', async () => {
-    const huge = await sharp({ create: { width: 20_001, height: 10, channels: 3, background: '#000' } })
+    const huge = await sharp({
+      create: { width: 20_001, height: 10, channels: 3, background: '#000' },
+    })
       .png()
       .toBuffer()
     const { header } = await normalizeImage(huge, 'image/png')

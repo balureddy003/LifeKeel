@@ -6,7 +6,8 @@
  */
 
 const MAX_NAME_LENGTH = 80
-const LINK_RE = /(https?:\/\/|www\.|[a-z0-9-]+\.(com|net|org|co|uk|io|app|info|biz|xyz|ru|me|ly|link|online|site)\b)/i
+const LINK_RE =
+  /(https?:\/\/|www\.|[a-z0-9-]+\.(com|net|org|co|uk|io|app|info|biz|xyz|ru|me|ly|link|online|site)\b)/i
 const PHONE_RE = /(\+?\d[\s().-]?){7,}/
 // Control characters and bidi overrides, built from code points so the
 // source holds no invisible characters.
@@ -18,7 +19,8 @@ const CONTROL_RE = new RegExp(
 export function displayNameError(value: unknown, label = 'Name'): string | null {
   if (typeof value !== 'string' || !value.trim()) return `${label} required`
   const name = value.trim()
-  if (name.length > MAX_NAME_LENGTH) return `${label} must be ${MAX_NAME_LENGTH} characters or fewer`
+  if (name.length > MAX_NAME_LENGTH)
+    return `${label} must be ${MAX_NAME_LENGTH} characters or fewer`
   if (CONTROL_RE.test(name)) return `${label} contains characters that aren't allowed`
   if (name.includes('@') || LINK_RE.test(name) || PHONE_RE.test(name)) {
     return `${label} can't contain links, email addresses or phone numbers`

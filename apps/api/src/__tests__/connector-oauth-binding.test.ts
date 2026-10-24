@@ -45,7 +45,14 @@ beforeAll(async () => {
     'fetch',
     vi.fn(async (url: string) => {
       if (String(url).startsWith('https://oauth2.googleapis.com/token')) {
-        return new Response(JSON.stringify({ access_token: 'victim-access', refresh_token: 'victim-refresh', expires_in: 3600 }), { status: 200 })
+        return new Response(
+          JSON.stringify({
+            access_token: 'victim-access',
+            refresh_token: 'victim-refresh',
+            expires_in: 3600,
+          }),
+          { status: 200 },
+        )
       }
       if (String(url).includes('/gmail/v1/users/me/profile')) {
         return new Response(JSON.stringify({ emailAddress: 'victim@gmail.com' }), { status: 200 })
@@ -99,7 +106,7 @@ describe('R38: Gmail scope', () => {
 })
 
 describe('R37: the callback parks the grant; only its initiator can claim it', () => {
-  it('a victim who completes the attacker\'s link cannot attach their mailbox to the attacker\'s household', async () => {
+  it("a victim who completes the attacker's link cannot attach their mailbox to the attacker's household", async () => {
     const { state } = await startAs('attacker')
     const landing = await callback(state)
     const grant = landing.searchParams.get('complete')!
@@ -146,7 +153,11 @@ describe('R37: the callback parks the grant; only its initiator can claim it', (
   it('a completion request must be signed in', async () => {
     const { state } = await startAs('victim')
     const grant = (await callback(state)).searchParams.get('complete')!
-    const res = await app.inject({ method: 'POST', url: '/connectors/gmail/oauth/complete', payload: { grant } })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/connectors/gmail/oauth/complete',
+      payload: { grant },
+    })
     expect(res.statusCode).toBeGreaterThanOrEqual(400)
   })
 })

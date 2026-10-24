@@ -349,20 +349,18 @@ describe("receipts are scoped to the caller's own family (tenant isolation)", ()
     await db.collection<ActionReceipt>('action_receipts').insertOne(receipt({ id: 'mine-1' }))
     const app = await buildApp(ADULT)
     const before = (await app.inject({ method: 'GET', url: '/family/receipts' })).json().chain_head
-    await db
-      .collection<ActionReceipt>('action_receipts')
-      .insertMany([
-        receipt({
-          id: 'theirs-1',
-          tenant_id: OTHER,
-          executed_at: new Date('2026-10-21T10:00:00Z'),
-        }),
-        receipt({
-          id: 'theirs-0',
-          tenant_id: OTHER,
-          executed_at: new Date('2026-10-19T10:00:00Z'),
-        }),
-      ])
+    await db.collection<ActionReceipt>('action_receipts').insertMany([
+      receipt({
+        id: 'theirs-1',
+        tenant_id: OTHER,
+        executed_at: new Date('2026-10-21T10:00:00Z'),
+      }),
+      receipt({
+        id: 'theirs-0',
+        tenant_id: OTHER,
+        executed_at: new Date('2026-10-19T10:00:00Z'),
+      }),
+    ])
     const after = (await app.inject({ method: 'GET', url: '/family/receipts' })).json().chain_head
     expect(after).toBe(before)
     await app.close()

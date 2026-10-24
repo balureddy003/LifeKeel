@@ -12,7 +12,9 @@ describe('boot guards (§8.4)', () => {
 
   it('cloud mode requires a scrape token', () => {
     expect(evaluateBootGuards({}, 'cloud').violations.join()).toContain('METRICS_SCRAPE_TOKEN')
-    expect(evaluateBootGuards({ METRICS_SCRAPE_TOKEN: 'short' }, 'cloud').violations).toHaveLength(1)
+    expect(evaluateBootGuards({ METRICS_SCRAPE_TOKEN: 'short' }, 'cloud').violations).toHaveLength(
+      1,
+    )
     expect(evaluateBootGuards({ METRICS_SCRAPE_TOKEN: SCRAPE }, 'cloud').violations).toEqual([])
   })
 
@@ -24,7 +26,10 @@ describe('boot guards (§8.4)', () => {
   })
 
   it('API docs outside dev need a recorded exception, which is logged', () => {
-    const bare = evaluateBootGuards({ METRICS_SCRAPE_TOKEN: SCRAPE, ENABLE_API_DOCS: 'true' }, 'cloud')
+    const bare = evaluateBootGuards(
+      { METRICS_SCRAPE_TOKEN: SCRAPE, ENABLE_API_DOCS: 'true' },
+      'cloud',
+    )
     expect(bare.violations.join()).toContain('API_DOCS_EXCEPTION')
     const ok = evaluateBootGuards(
       { METRICS_SCRAPE_TOKEN: SCRAPE, ENABLE_API_DOCS: 'true', API_DOCS_EXCEPTION: 'SEC-12' },

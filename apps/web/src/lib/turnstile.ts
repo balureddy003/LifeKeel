@@ -35,7 +35,7 @@ export function turnstileHeaders(token: string | null | undefined): Record<strin
 export function turnstileErrorMessage(code: string | undefined): string | null {
   switch (code) {
     case 'captcha_required':
-      return "Please wait for the security check to finish, then try again."
+      return 'Please wait for the security check to finish, then try again.'
     case 'captcha_failed':
       return "The security check didn't pass. It has been reset — please try again."
     case 'captcha_unavailable':

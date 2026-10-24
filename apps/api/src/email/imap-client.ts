@@ -116,9 +116,10 @@ export async function testImapConnection(
     // Invalid credentials (Failure)") on `err.responseText` instead of the
     // message. Using `err.message` alone means every failure reads as the
     // same uninformative "Command failed", regardless of the real cause.
-    const responseText = err && typeof err === 'object' && 'responseText' in err
-      ? String((err as { responseText?: unknown }).responseText)
-      : undefined
+    const responseText =
+      err && typeof err === 'object' && 'responseText' in err
+        ? String((err as { responseText?: unknown }).responseText)
+        : undefined
     const message = responseText || (err instanceof Error ? err.message : 'Connection failed')
     return { success: false, message }
   } finally {
@@ -131,7 +132,12 @@ export async function testImapConnection(
  * (cid:) images — those aren't documents. A real attachment is not inline,
  * and an image under ~20 KB is an icon, not a scanned page.
  */
-function isRealAttachment(a: { contentType: string; size: number; related?: boolean; contentDisposition?: string }): boolean {
+function isRealAttachment(a: {
+  contentType: string
+  size: number
+  related?: boolean
+  contentDisposition?: string
+}): boolean {
   if (a.related || a.contentDisposition === 'inline') return false
   if (a.contentType.startsWith('image/') && a.size < 20_000) return false
   return true
@@ -147,14 +153,31 @@ export async function parseMessage(uid: number, source: Buffer): Promise<Fetched
     date: parsed.date ?? new Date(),
     textSnippet: (parsed.text ?? '').slice(0, 4000),
     attachments: (parsed.attachments ?? [])
-      .filter((a) => ATTACHMENT_MIME_ALLOWLIST.has(a.contentType) && a.size <= MAX_ATTACHMENT_BYTES && isRealAttachment(a))
-      .map((a) => ({ filename: a.filename ?? 'attachment', contentType: a.contentType, content: a.content })),
+      .filter(
+        (a) =>
+          ATTACHMENT_MIME_ALLOWLIST.has(a.contentType) &&
+          a.size <= MAX_ATTACHMENT_BYTES &&
+          isRealAttachment(a),
+      )
+      .map((a) => ({
+        filename: a.filename ?? 'attachment',
+        contentType: a.contentType,
+        content: a.content,
+      })),
   }
 }
 
 /** Words that mark an email as possibly about a policy or protection product. */
 export const POLICY_SEARCH_KEYWORDS = [
-  'insurance', 'policy', 'premium', 'renewal', 'cover', 'claim', 'pension', 'mortgage', 'assistance',
+  'insurance',
+  'policy',
+  'premium',
+  'renewal',
+  'cover',
+  'claim',
+  'pension',
+  'mortgage',
+  'assistance',
 ]
 
 /**
@@ -175,10 +198,11 @@ export async function searchPolicyEmails(
     const lock = await client.getMailboxLock('INBOX')
     try {
       const since = new Date(Date.now() - opts.sinceDays * 86_400_000)
-      const uids = (await client.search(
-        { since, or: POLICY_SEARCH_KEYWORDS.map((k) => ({ subject: k })) },
-        { uid: true },
-      )) || []
+      const uids =
+        (await client.search(
+          { since, or: POLICY_SEARCH_KEYWORDS.map((k) => ({ subject: k })) },
+          { uid: true },
+        )) || []
       const newest = uids.sort((a, b) => a - b).slice(-limit)
       if (newest.length === 0) return []
       const small: number[] = []

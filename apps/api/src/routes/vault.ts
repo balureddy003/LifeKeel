@@ -46,12 +46,11 @@ import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { encryptBufferForTenant, decryptBufferEnveloped } from '../crypto/envelope.js'
 import { isFamilyAdult } from '../family/family-permissions.js'
 import { MAX_FILE_SIZE, ESTATE_VAULT_CATEGORY } from './documents.js'
-import { VAULT_ALLOWED_MIME_TYPES as ALLOWED_MIME_TYPES, sanitizeFilename } from '../documents/formats.js'
 import {
-  deleteVaultObject,
-  readDocumentBytes,
-  writeVaultCiphertext,
-} from '../documents/storage.js'
+  VAULT_ALLOWED_MIME_TYPES as ALLOWED_MIME_TYPES,
+  sanitizeFilename,
+} from '../documents/formats.js'
+import { deleteVaultObject, readDocumentBytes, writeVaultCiphertext } from '../documents/storage.js'
 import { commitReservation, releaseReservation, reserveUpload } from '../documents/quota.js'
 import { signatureMatchesMime } from '../extraction/file-signature.js'
 import { evaluateEstate } from '../legacy/evaluate-estate.js'
@@ -216,7 +215,10 @@ export function registerVaultRoutes(
           })
         } catch (metaErr) {
           if (!(await deleteVaultObject(db, stored).catch(() => false)))
-            log.error({ documentId }, 'Failed to clean up orphaned vault object after metadata insert failure')
+            log.error(
+              { documentId },
+              'Failed to clean up orphaned vault object after metadata insert failure',
+            )
           await db
             .collection('tenant_quota')
             .updateOne({ tenant_id }, { $inc: { bytes_reserved: -encrypted.length, inflight: -1 } })

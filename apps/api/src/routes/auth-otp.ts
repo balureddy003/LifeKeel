@@ -162,7 +162,10 @@ async function readPending(request: FastifyRequest) {
   }
 }
 
-export async function registerAuthOtpRoutes(app: FastifyInstance, auth: AuthService): Promise<void> {
+export async function registerAuthOtpRoutes(
+  app: FastifyInstance,
+  auth: AuthService,
+): Promise<void> {
   app.post<{ Body: { otp_token?: unknown; code?: unknown } }>(
     '/auth/otp/verify',
     { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
@@ -179,12 +182,19 @@ export async function registerAuthOtpRoutes(app: FastifyInstance, auth: AuthServ
       const result = await verifyChain(db, ids, code)
       if (!result.ok) {
         recordOtpVerify(pending.purpose, result.reason)
-        audit(request, result.reason === 'locked' ? 'auth.otp_locked' : 'auth.otp_failed', {
-          id: pending.user_id,
-          tenant_id: pending.tenant_id,
-        }, { chain_id: pending.chain_id, purpose: pending.purpose, reason: result.reason })
+        audit(
+          request,
+          result.reason === 'locked' ? 'auth.otp_locked' : 'auth.otp_failed',
+          {
+            id: pending.user_id,
+            tenant_id: pending.tenant_id,
+          },
+          { chain_id: pending.chain_id, purpose: pending.purpose, reason: result.reason },
+        )
         if (result.reason === 'invalid')
-          return reply.status(400).send({ error: 'otp_invalid', attempts_left: result.attemptsLeft })
+          return reply
+            .status(400)
+            .send({ error: 'otp_invalid', attempts_left: result.attemptsLeft })
         if (result.reason === 'locked') return reply.status(429).send({ error: 'otp_locked' })
         return reply.status(400).send({ error: 'otp_expired' })
       }
@@ -247,10 +257,15 @@ export async function registerAuthOtpRoutes(app: FastifyInstance, auth: AuthServ
       const token = await auth.sign({ sub: chain.user_id, tenant_id: chain.tenant_id, roles }, ttl)
       setSessionCookie(reply, token, (chain.remember_me ? 30 : 7) * 24 * 60 * 60)
       recordOtpVerify(chain.purpose, 'ok')
-      audit(request, 'auth.otp_succeeded', { id: chain.user_id, tenant_id: chain.tenant_id }, {
-        chain_id: chain.chain_id,
-        purpose: chain.purpose,
-      })
+      audit(
+        request,
+        'auth.otp_succeeded',
+        { id: chain.user_id, tenant_id: chain.tenant_id },
+        {
+          chain_id: chain.chain_id,
+          purpose: chain.purpose,
+        },
+      )
       void db
         .collection('login_events')
         .insertOne({
@@ -265,7 +280,9 @@ export async function registerAuthOtpRoutes(app: FastifyInstance, auth: AuthServ
         })
         .catch(() => {})
 
-      const settings = await db.collection('tenant_settings').findOne({ tenant_id: chain.tenant_id })
+      const settings = await db
+        .collection('tenant_settings')
+        .findOne({ tenant_id: chain.tenant_id })
       return reply.send({
         token,
         user: {
@@ -313,17 +330,27 @@ export async function registerAuthOtpRoutes(app: FastifyInstance, auth: AuthServ
       recordOtpIssued(pending.purpose, 'resend')
       const sent = await deliver(
         db,
-        { id: pending.user_id, tenant_id: pending.tenant_id, email: user['email'], name: user['name'] },
+        {
+          id: pending.user_id,
+          tenant_id: pending.tenant_id,
+          email: user['email'],
+          name: user['name'],
+        },
         resent.issued.chain,
         resent.issued.code,
         pending.purpose,
       )
-      audit(request, 'auth.otp_issued', { id: pending.user_id, tenant_id: pending.tenant_id }, {
-        chain_id: pending.chain_id,
-        purpose: pending.purpose,
-        delivery: sent.delivery,
-        resend: true,
-      })
+      audit(
+        request,
+        'auth.otp_issued',
+        { id: pending.user_id, tenant_id: pending.tenant_id },
+        {
+          chain_id: pending.chain_id,
+          purpose: pending.purpose,
+          delivery: sent.delivery,
+          resend: true,
+        },
+      )
       // Same otp_token stays valid until chain_expires_at.
       return reply.send({
         delivery: sent.delivery,

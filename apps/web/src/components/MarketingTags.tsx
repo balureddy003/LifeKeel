@@ -50,7 +50,9 @@ export function MarketingTags() {
           <AdPixels />
         </>
       )}
-      {choice === null && (trackable || pathname === '/privacy' || pathname === '/cookies') && <ConsentBanner />}
+      {choice === null && (trackable || pathname === '/privacy' || pathname === '/cookies') && (
+        <ConsentBanner />
+      )}
     </>
   )
 }
@@ -65,9 +67,12 @@ function ConsentBanner() {
     >
       <div className="glass mx-auto max-w-2xl rounded-2xl p-4 text-sm text-ink-primary shadow-lg">
         <p className="mb-3 leading-relaxed">
-          We&apos;d like to use advertising and analytics cookies from Google, Meta and LinkedIn
-          to measure our marketing. They are off unless you accept, and they never run inside your
-          LifeKeel account. <a href="/cookies" className="underline">Cookies & storage</a>
+          We&apos;d like to use advertising and analytics cookies from Google, Meta and LinkedIn to
+          measure our marketing. They are off unless you accept, and they never run inside your
+          LifeKeel account.{' '}
+          <a href="/cookies" className="underline">
+            Cookies & storage
+          </a>
         </p>
         <div className="flex gap-2">
           <button
