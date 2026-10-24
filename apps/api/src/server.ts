@@ -536,6 +536,9 @@ try {
             // PRD-210: keep next week's pillar plan drafted for the weekly review.
             const { ensureWeeklyPlans } = await import('./marketing/content-plan.js')
             await ensureWeeklyPlans(workflowDb, taskLlmFor('marketing.social_draft.v1'))
+            // PRD-226: re-promote the top-visited guide not pushed in 30 days.
+            const { reviveGuides } = await import('./routes/marketing-posts.js')
+            await reviveGuides(workflowDb, taskLlmFor('marketing.social_draft.v1'))
           })
         } catch (err) {
           log.error({ err }, 'Marketing draft generation failed')

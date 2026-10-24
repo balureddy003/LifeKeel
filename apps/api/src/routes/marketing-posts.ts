@@ -468,6 +468,61 @@ export async function draftBlogPromoPost(
   return post
 }
 
+/** PRD-226: guide revival — the top-visited published guide not promoted in
+ *  the last 30 days gets a fresh promo draft (new tag, new format/hook via
+ *  draftPostText). Drafts only; the human approve gate is unchanged.
+ *  Per opted-in tenant, one revival per sweep is enough — the sweep runs
+ *  daily, so old guides re-enter rotation steadily. */
+export const GUIDE_REVIVAL_MIN_AGE_DAYS = 30
+
+export async function reviveGuides(db: Db, llmFor: (tenantId: string) => LlmFn): Promise<number> {
+  const postsCol = db.collection<MarketingPostDoc>('marketing_posts')
+  const optedIn = (await db.collection('tenant_settings').find({}).toArray()).filter(
+    (d) =>
+      (d['automation'] as Record<string, unknown> | undefined)?.[
+        'daily_marketing_drafts_enabled'
+      ] === true,
+  )
+  const cutoff = new Date(Date.now() - GUIDE_REVIVAL_MIN_AGE_DAYS * 86_400_000)
+  let revived = 0
+  for (const s of optedIn) {
+    const tenantId = s['tenant_id'] as string
+    const channel = (await plannableChannels(db, tenantId)).channels.find(
+      (c) => !IMAGE_REQUIRED_CHANNELS.has(c),
+    )
+    if (!channel) continue
+    // Promoted slugs whose newest promo is older than the cutoff.
+    const promos = await postsCol
+      .find({ tenant_id: tenantId, source_blog_slug: { $exists: true } })
+      .project({ source_blog_slug: 1, post_tag: 1, created_at: 1 })
+      .toArray()
+    const newestBySlug = new Map<string, Date>()
+    const tagsBySlug = new Map<string, string[]>()
+    for (const p of promos) {
+      const slug = p.source_blog_slug!
+      const at = p.created_at as Date
+      if (!newestBySlug.get(slug) || newestBySlug.get(slug)! < at) newestBySlug.set(slug, at)
+      if (p.post_tag) tagsBySlug.set(slug, [...(tagsBySlug.get(slug) ?? []), p.post_tag])
+    }
+    const due = [...newestBySlug.entries()].filter(([, at]) => at < cutoff).map(([slug]) => slug)
+    if (due.length === 0) continue
+    // Rank by visits: landing_view events carrying any of the slug's tags.
+    let best: { slug: string; visits: number } = { slug: due[0]!, visits: -1 }
+    for (const slug of due) {
+      const visits = await db
+        .collection('growth_events')
+        .countDocuments({
+          event: 'landing_view',
+          'meta.utm_content': { $in: tagsBySlug.get(slug) ?? [] },
+        })
+      if (visits > best.visits) best = { slug, visits }
+    }
+    if (await draftBlogPromoPost(db, llmFor, tenantId, best.slug, channel, 'guide-revival'))
+      revived += 1
+  }
+  return revived
+}
+
 export interface MarketingPerformanceRow {
   slug: string
   title?: string
