@@ -89,3 +89,4 @@ suspected bug (reproduce first); 36 is an audit before fixes.
 | `43-stat-of-week-cards.md` | sourced stats as branded cards via existing pipeline | PRD-219 |
 | `44-guide-revival.md` | re-promote top-visited guides monthly with new tag | extends PRD-218 |
 | `45-hook-ab-variants.md` | one weekly slot emits a hook-variant pair | feeds PRD-221 priors |
+| `46-standing-approvals.md` | autonomous marketing engine with a human gate: content bank, policy, scheduler, breakers | amends intent 03 |
