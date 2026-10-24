@@ -271,6 +271,44 @@ function ElderlyHome() {
 // grows family-unit products (Dropbox, Life360) doesn't do much good
 // buried in a menu. Surface it here instead, as soon as there's a family
 // of one to grow.
+function FinishSetupBanner() {
+  const { family } = useAuth()
+  const [dismissed, setDismissed] = useState(false)
+  const router = useRouter()
+
+  if (!family || family.members.length > 1 || dismissed) return null
+
+  return (
+    <GlassCard className="p-3.5 border-family-500/20 flex items-center gap-3">
+      <div className="w-9 h-9 rounded-xl bg-family-500/10 border border-family-500/20 flex items-center justify-center flex-shrink-0">
+        <Sparkles size={16} className="text-family-400" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-semibold text-ink-primary">Finish setting up your family</div>
+        <div className="text-xs text-ink-tertiary">
+          The more Keel knows about your family, the better it can spot gaps and help.
+        </div>
+      </div>
+      <button
+        onClick={() => {
+          haptic('light')
+          router.push('/financial-profile?source=onboarding')
+        }}
+        className="text-xs font-semibold text-family-400 px-3 py-2 rounded-lg bg-family-500/10 flex-shrink-0"
+      >
+        Set up
+      </button>
+      <button
+        onClick={() => setDismissed(true)}
+        aria-label="Dismiss"
+        className="w-7 h-7 rounded-lg flex items-center justify-center text-ink-tertiary active:opacity-60 flex-shrink-0"
+      >
+        <X size={16} />
+      </button>
+    </GlassCard>
+  )
+}
+
 function InviteFamilyBanner() {
   const { family } = useAuth()
   const [dismissed, setDismissed] = useState(false)
@@ -912,7 +950,7 @@ export default function HomePage() {
       />
 
       {/* After the first result, not before: while the first setup card is on screen, a second ask competes with it. */}
-      {hasLiveData && <InviteFamilyBanner />}
+      {hasLiveData ? <InviteFamilyBanner /> : <FinishSetupBanner />}
       <SinceLastVisit
         score={readinessScore}
         hasLiveData={hasLiveData}
