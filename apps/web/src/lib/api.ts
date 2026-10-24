@@ -5094,6 +5094,7 @@ export function fetchEconomics(days: number, model: 'first' | 'last'): Promise<E
 export interface PostStatRow {
   id: string
   post_tag: string | null
+  variant_of?: string | null
   channel: string
   format: string | null
   hook: string | null

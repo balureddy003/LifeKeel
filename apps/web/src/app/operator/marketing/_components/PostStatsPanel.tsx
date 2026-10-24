@@ -79,10 +79,36 @@ export function PostStatsPanel() {
             <tbody>
               {data.rows.map((r) => (
                 <tr key={r.id} className="border-t border-tint/[0.06]">
-                  <td className="py-1.5 pr-2 text-ink-secondary">{when(r.posted_at)}</td>
+                  <td className="py-1.5 pr-2 text-ink-secondary whitespace-nowrap">
+                    {when(r.posted_at)}
+                    {r.variant_of && (
+                      <span
+                        title="Hook variant — same brief, different hook"
+                        className="ml-1 rounded-full bg-family-500/15 px-1.5 text-[10px] text-family-400"
+                      >
+                        A/B
+                      </span>
+                    )}
+                  </td>
                   <td className="py-1.5 pr-2">{r.channel}</td>
-                  <td className="py-1.5 pr-2">{r.format ?? (r.tagged ? '—' : 'untagged')}</td>
-                  <td className="py-1.5 pr-2">{r.hook ?? '—'}</td>
+                  <td className="py-1.5 pr-2">
+                    {r.format ? (
+                      <span className="rounded-full border border-family-500/25 px-1.5 py-0.5 text-[10px] text-family-400">
+                        {r.format}
+                      </span>
+                    ) : (
+                      <span className="text-ink-tertiary">{r.tagged ? '—' : 'untagged'}</span>
+                    )}
+                  </td>
+                  <td className="py-1.5 pr-2">
+                    {r.hook ? (
+                      <span className="rounded-full border border-tint/15 px-1.5 py-0.5 text-[10px] text-ink-tertiary">
+                        {r.hook}
+                      </span>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
                   <td className="py-1.5 pr-2">{r.pillar ?? '—'}</td>
                   <td className="py-1.5 pr-2 text-right tabular-nums">{r.visits}</td>
                   <td className="py-1.5 pr-2 text-right tabular-nums">{r.signups}</td>
