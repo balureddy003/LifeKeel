@@ -359,6 +359,37 @@ describe('social decisions', () => {
     expect(ds.every((d) => !d.batchable)).toBe(true)
   })
 
+  it('a rejected LinkedIn API version is urgent and says what to change; a failed check is a warning', async () => {
+    await db.collection('connector_credentials').insertMany([oauth('linkedin'), oauth('twitter_x')])
+    await db.collection('marketing_posts').insertOne({
+      tenant_id: 't1',
+      channel: 'linkedin',
+      state: 'publish_failed',
+      publish_error:
+        'linkedin_api_version_expired: LinkedIn rejected API version 202501. Set LINKEDIN_API_VERSION to a current version',
+      approved_at: new Date(THU.getTime() - 3_600_000),
+    })
+    await db.collection('channel_checks').insertOne({
+      tenant_id: 't1',
+      channel: 'x',
+      ok: false,
+      error: 'x profile read failed (HTTP 403)',
+      checked_at: THU,
+    })
+    const ds = (await buildDecisions(db, admin, THU)).filter((d) => d.kind === 'channel_attention')
+    const li = ds.find((d) => d.id.endsWith(':linkedin'))!
+    expect(li).toMatchObject({
+      severity: 'danger',
+      title: 'LinkedIn posts are being rejected (API version)',
+    })
+    expect(li.effect).toMatch(
+      /Nothing will post to this platform until the API version setting is updated/,
+    )
+    const x = ds.find((d) => d.id.endsWith(':x'))!
+    expect(x).toMatchObject({ severity: 'warning', title: 'X check failed' })
+    expect(x.effect).toMatch(/Posting may still work/)
+  })
+
   it('does not nag about a channel that also has a healthy connection', async () => {
     await db.collection('social_connections').insertMany([
       { tenant_id: 't1', channel: 'bluesky', status: 'error', last_error: 'old', handle: 'a' },

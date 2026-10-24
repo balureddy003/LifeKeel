@@ -26,6 +26,25 @@ export interface ProfileCheckResult {
   failed: { tenant_id: string; channel: string; reason: string }[]
 }
 
+/** The latest outcome of the daily read-only check, per channel. Doubles as a canary: an API
+ *  that changed or a token that stopped working shows up here before the next post fails. */
+async function recordCheck(
+  db: Db,
+  tenantId: string,
+  channel: string,
+  ok: boolean,
+  error: string | undefined,
+  at: Date,
+): Promise<void> {
+  await db
+    .collection('channel_checks')
+    .updateOne(
+      { tenant_id: tenantId, channel },
+      { $set: { ok, checked_at: at, error: ok ? null : (error ?? null) } },
+      { upsert: true },
+    )
+}
+
 export async function checkConnectedProfiles(
   db: Db,
   deps: { connectorRead: ConnectorRead; readBluesky?: typeof readBlueskyProfile },
@@ -58,8 +77,11 @@ export async function checkConnectedProfiles(
         { upsert: true },
       )
       result.checked += 1
+      await recordCheck(db, tenant_id, channel, true, undefined, now)
     } catch (err) {
-      result.failed.push({ tenant_id, channel, reason: String(err).slice(0, 160) })
+      const reason = String(err).slice(0, 160)
+      result.failed.push({ tenant_id, channel, reason })
+      await recordCheck(db, tenant_id, channel, false, reason, now)
     }
   }
   return result

@@ -95,6 +95,35 @@ describe('checkConnectedProfiles', () => {
     expect(await db.collection('channel_profiles').findOne({ channel: 'linkedin' })).toBeNull()
   })
 
+  it("records each channel's latest check outcome, one row per channel, so a failing API shows up", async () => {
+    await db.collection('connector_credentials').insertMany([oauth('twitter_x'), oauth('threads')])
+    const connectorRead = vi.fn(async (_t: string, connector: string) =>
+      connector === 'twitter_x'
+        ? { ok: false, status: 403, body: {} }
+        : ok({
+            username: 'lifekeel',
+            name: 'LifeKeel',
+            threads_biography: 'x',
+            threads_profile_picture_url: 'https://x/t.jpg',
+          }),
+    )
+    await checkConnectedProfiles(db, { connectorRead }, NOW)
+    const rows = await db.collection('channel_checks').find({}).toArray()
+    expect(rows.map((r) => `${r['channel']}:${r['ok']}`).sort()).toEqual([
+      'threads:true',
+      'x:false',
+    ])
+    expect(rows.find((r) => r['channel'] === 'x')!['error']).toMatch(/HTTP 403/)
+
+    // The next run replaces the row instead of adding one — and a recovery clears the failure.
+    connectorRead.mockResolvedValue(
+      ok({ data: { name: 'LifeKeel', description: 'x', profile_image_url: 'https://x/a.jpg' } }),
+    )
+    await checkConnectedProfiles(db, { connectorRead }, new Date(NOW.getTime() + 86_400_000))
+    expect(await db.collection('channel_checks').countDocuments()).toBe(2)
+    expect((await db.collection('channel_checks').findOne({ channel: 'x' }))!['ok']).toBe(true)
+  })
+
   it('keeps the approved text the operator saved, and does not overwrite it', async () => {
     await db.collection('connector_credentials').insertOne(oauth('twitter_x'))
     const mine = { ...DEFAULT_PROFILES.x, bio: 'My own approved bio' }

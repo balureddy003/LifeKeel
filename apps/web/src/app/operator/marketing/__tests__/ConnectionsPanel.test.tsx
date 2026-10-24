@@ -115,6 +115,26 @@ describe('ConnectionsPanel', () => {
     expect(screen.getAllByText('none yet').length).toBeGreaterThan(0)
   })
 
+  it('shows a connected platform whose check failed as "check failed", without setup instructions', async () => {
+    fetchChannelHealth.mockResolvedValue({
+      channels: [
+        base({
+          channel: 'linkedin',
+          label: 'LinkedIn',
+          status: 'degraded',
+          usable: true,
+          last_error:
+            'linkedin_api_version_expired: LinkedIn rejected API version 202501. Set LINKEDIN_API_VERSION to a current version',
+        }),
+      ],
+    })
+    render(<ConnectionsPanel />)
+    await screen.findByText('check failed')
+    expect(screen.getByRole('alert').textContent).toMatch(/LINKEDIN_API_VERSION/)
+    expect(screen.getByText(/1 of 1 platforms ready/)).toBeTruthy() // still usable
+    expect(screen.queryByText(/How to connect/)).toBeNull() // it is connected: no setup steps
+  })
+
   it('shows the error that stopped a platform, as an alert', async () => {
     render(<ConnectionsPanel />)
     expect((await screen.findAllByRole('alert')).map((a) => a.textContent)).toEqual(
