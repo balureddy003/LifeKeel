@@ -337,6 +337,28 @@ describe('tier-2 proposals', () => {
     })
   })
 
+  it('also proposes for an OAuth-connected channel, skips a dead one and never picks Instagram', async () => {
+    await enableRule('propose_blog_promo')
+    await db.collection('blog_posts').insertOne({
+      slug: 'oauth-post',
+      title: 'Seen on LinkedIn',
+      published: true,
+      published_at: new Date(Date.now() - 5 * 24 * 3600_000),
+    })
+    await db.collection('connector_credentials').insertMany([
+      { tenant_id: 't-oauth', connector_id: 'instagram_business', needs_reauth: false },
+      { tenant_id: 't-oauth', connector_id: 'linkedin', needs_reauth: false },
+      { tenant_id: 't-dead', connector_id: 'twitter_x', needs_reauth: true },
+      { tenant_id: 't-ig-only', connector_id: 'instagram_business', needs_reauth: false },
+    ])
+    const rows = await runAutopilotSweep(db)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.proposal).toMatchObject({
+      kind: 'marketing.blog_draft',
+      payload: { tenant_id: 't-oauth', channel: 'linkedin', blog_slug: 'oauth-post' },
+    })
+  })
+
   it('does not re-propose a post already promoted on that tenant', async () => {
     await enableRule('propose_blog_promo')
     await db.collection('blog_posts').insertOne({

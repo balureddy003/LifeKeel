@@ -13,6 +13,7 @@
  * config cannot enable it. Operators enable rules one at a time as the
  * ledger proves each one's precision.
  */
+import { IMAGE_REQUIRED_CHANNELS, allUsableChannels } from '../marketing/channels.js'
 import { randomUUID } from 'node:crypto'
 import type { Db } from 'mongodb'
 import { queueManager } from '../queue/QueueManager.js'
@@ -390,10 +391,11 @@ export const AUTOPILOT_RULES: AutopilotRule[] = [
           .collection('marketing_posts')
           .find({}, { projection: { _id: 0, tenant_id: 1, source_blog_slug: 1 } })
           .toArray(),
-        db
-          .collection('social_connections')
-          .find({ status: 'active' }, { projection: { _id: 0, tenant_id: 1, channel: 1 } })
-          .toArray(),
+        // Healthy channels across both credential stores, text channels only —
+        // a promo draft has no image, so Instagram is left to the weekly plan.
+        allUsableChannels(db).then((all) =>
+          all.filter((c) => !IMAGE_REQUIRED_CHANNELS.has(c.channel)),
+        ),
       ])
       if (conns.length === 0) return []
       const promoted = new Set(posts.map((p) => `${p['tenant_id']}:${p['source_blog_slug']}`))
