@@ -31,6 +31,9 @@ and CONTRIBUTING.md's loop. Each file here is a stub for one Stage A item in
 
 Shared build context for 15 to 19: [marketing-engine-build-notes.md](marketing-engine-build-notes.md).
 
+Intents 20–39 are sequenced into an implementation order in
+[docs/reviews/product-roadmap-2026-10.md](../reviews/product-roadmap-2026-10.md).
+
 ## 20–33: 2026-10-24 QA + critic review triage
 
 Stubs from the combined automated-QA and critic/product review

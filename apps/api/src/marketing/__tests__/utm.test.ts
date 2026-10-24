@@ -39,6 +39,17 @@ describe('utm scheme', () => {
       campaign: 'none',
     })
   })
+  it('scripts/utm-link.mjs must not drift from the token rule', () => {
+    const script = fs.readFileSync(
+      path.resolve(__dirname, '..', '..', '..', '..', '..', 'scripts', 'utm-link.mjs'),
+      'utf8',
+    )
+    const src = fs.readFileSync(path.resolve(__dirname, '..', 'utm.ts'), 'utf8')
+    const tokenSrc = (src.match(/const TOKEN = (\/.+?\/)/) ?? [])[1]
+    expect(tokenSrc).toBeDefined()
+    expect(script).toContain(`const TOKEN = ${tokenSrc}`)
+  })
+
   it('newPostTag always matches the token rule (PRD-218)', () => {
     for (let i = 0; i < 1000; i++) {
       const tag = newPostTag()
