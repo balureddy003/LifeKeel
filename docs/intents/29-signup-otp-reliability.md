@@ -31,7 +31,7 @@ touches the send/verify contract.
 
 ---
 
-**Status: partial — PR #244** shipped the deterministic test path
+**Status: partially implemented — PR #244** shipped the deterministic test path
 (`LIFEKEEL_TEST_OTP_CODE`, dev/test only, boot violation outside dev) and
 confirmed the error surfaces (`delivery: failed|unknown` → resend,
 `recordOtpDelivery` metric, audit) already exist. Remaining open item:
