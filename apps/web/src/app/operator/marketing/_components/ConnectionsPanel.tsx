@@ -28,6 +28,7 @@ const CONNECTOR: Record<string, string> = {
 const STATUS: Record<ChannelStatus, { label: string; cls: string }> = {
   connected: { label: 'connected', cls: 'bg-success/15 text-success' },
   expiring_soon: { label: 'expires soon', cls: 'bg-warning/15 text-warning' },
+  degraded: { label: 'check failed', cls: 'bg-warning/15 text-warning' },
   needs_reauth: { label: 'reconnect needed', cls: 'bg-danger/15 text-danger' },
   error: { label: 'error', cls: 'bg-danger/15 text-danger' },
   not_configured: { label: 'not connected', cls: 'bg-tint/[0.08] text-ink-tertiary' },
@@ -48,7 +49,8 @@ function Card({
   const st = STATUS[c.status]
   const oauth = c.channel !== 'bluesky'
   const credsMissing = oauth && !c.app_credentials
-  const needsAction = c.status !== 'connected' && c.status !== 'expiring_soon'
+  const needsAction =
+    c.status !== 'connected' && c.status !== 'expiring_soon' && c.status !== 'degraded'
   const [copied, setCopied] = useState(false)
 
   return (

@@ -15,7 +15,11 @@
  * CUSTOM_DELETES below instead.
  */
 import type { Db } from 'mongodb'
-import { countTenantGridfs, deleteTenantGridfs, deleteTenantVaultObjects } from './documents/storage.js'
+import {
+  countTenantGridfs,
+  deleteTenantGridfs,
+  deleteTenantVaultObjects,
+} from './documents/storage.js'
 import { purgeTenantObjects } from './documents/deletion.js'
 import { hasCredential } from './documents/r2.js'
 
@@ -127,6 +131,8 @@ export const DELETABLE_COLLECTIONS = [
   // Per-tenant envelope keys (B4) — wiping these is the crypto-shred: every
   // dek:-format ciphertext for the tenant becomes permanently undecryptable.
   'tenant_keys',
+  // Daily read-only check of each connected social API (ok / error text only).
+  'channel_checks',
 ] as const
 
 // Tenant-tagged collections whose key is NOT a top-level `tenant_id`.
@@ -261,10 +267,19 @@ export async function eraseTenantDataReport(db: Db, tenantId: string): Promise<E
   // refuse a tenant whose status is 'deleting', and the erasure-replay job
   // re-runs this wipe, which is the second pass for anything an unexpired
   // presigned URL wrote in between.
-  removed.push({ category: categoryOf('documents.files'), count: await deleteTenantGridfs(db, tenantId) })
+  removed.push({
+    category: categoryOf('documents.files'),
+    count: await deleteTenantGridfs(db, tenantId),
+  })
   if (r2Configured()) {
-    removed.push({ category: categoryOf('documents.files'), count: await purgeTenantObjects(tenantId) })
-    removed.push({ category: categoryOf('documents.files'), count: await deleteTenantVaultObjects(tenantId) })
+    removed.push({
+      category: categoryOf('documents.files'),
+      count: await purgeTenantObjects(tenantId),
+    })
+    removed.push({
+      category: categoryOf('documents.files'),
+      count: await deleteTenantVaultObjects(tenantId),
+    })
   }
 
   for (const d of CUSTOM_DELETES) {
