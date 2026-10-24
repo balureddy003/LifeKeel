@@ -96,6 +96,14 @@ const EXEMPT_COLLECTIONS = new Set([
   'revenue_sync',
   // operator-entered channel spend: platform-level cost data, no tenant, no family content
   'marketing_spend',
+  // intent 47: Search Console and GA4 read-back. Daily aggregates only (a day, a sanitised query or a path,
+  // and counts); platform-level, no tenant, no user or client ids, no family content
+  'search_queries_daily',
+  'search_pages_daily',
+  'ga4_daily',
+  'search_readback_state',
+  // intent 47: topic ideas derived from the aggregates above; query text only, no person
+  'topic_suggestions',
   'outcome_charges',
   'stripe_webhook_events',
   // commercial plane (pre-signup/operator-scoped). Leads matching a deleted

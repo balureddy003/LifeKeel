@@ -112,6 +112,8 @@ export type AuditAction =
   | 'marketing.standing_resume'
   | 'marketing.standing_schedule'
   | 'marketing.standing_breaker'
+  | 'marketing.suggestion_dismiss'
+  | 'marketing.suggestion_used'
   | 'marketing.profile_edit'
   | 'marketing.profile_apply'
   | 'legacy.document.read'
