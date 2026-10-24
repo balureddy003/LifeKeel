@@ -17,6 +17,7 @@ import {
   SOCIAL_CHANNELS,
 } from '../marketing/channels.js'
 import { nextMondayKey } from '../marketing/content-plan.js'
+import { standingIssues } from '../marketing/standing.js'
 import {
   hasOperatorPermission,
   type OperatorPermission,
@@ -35,6 +36,7 @@ export type DecisionKind =
   | 'plan_missing'
   | 'channel_attention'
   | 'profile_drift'
+  | 'standing_attention'
 
 export type DecisionSeverity = 'danger' | 'warning' | 'info'
 
@@ -413,6 +415,56 @@ export async function buildDecisions(
         required_permission: 'marketing.manage',
         batchable: false,
         created_at: iso(issue.updated_at ?? now),
+      })
+    }
+
+    // Standing approvals: the engine runs on its own, so these are the moments it needs a person.
+    const STANDING_COPY: Record<
+      string,
+      { severity: DecisionSeverity; title: string; effect: string }
+    > = {
+      channel_paused: {
+        severity: 'danger',
+        title: 'A network was paused after repeated failures',
+        effect: 'Nothing is scheduled to it until you resume it in Marketing, Autonomy.',
+      },
+      expired: {
+        severity: 'warning',
+        title: 'The standing approval has expired',
+        effect: 'Posts already scheduled before it ended still go; nothing new is scheduled.',
+      },
+      expiring: {
+        severity: 'warning',
+        title: 'The standing approval is about to end',
+        effect: 'Renewing it in Marketing, Autonomy keeps posting going.',
+      },
+      bank_low: {
+        severity: 'warning',
+        title: 'The post bank is running low',
+        effect: 'Approve more drafted posts so no text has to repeat.',
+      },
+      candidates_waiting: {
+        severity: 'info',
+        title: 'Drafted posts are waiting for approval',
+        effect:
+          'Approving a post adds that exact text to the bank; nothing is published by approving.',
+      },
+    }
+    for (const issue of await standingIssues(db, now)) {
+      const copy = STANDING_COPY[issue.kind]
+      if (!copy) continue
+      out.push({
+        id: `standing_attention:${issue.tenant_id}:${issue.kind}${issue.channel ? `:${issue.channel}` : ''}`,
+        kind: 'standing_attention',
+        severity: copy.severity,
+        title: copy.title,
+        why: issue.detail,
+        effect: copy.effect,
+        undo: 'Not applicable — nothing here changes any post.',
+        href: '/operator/marketing',
+        required_permission: 'marketing.manage',
+        batchable: false,
+        created_at: iso(issue.at),
       })
     }
   }
