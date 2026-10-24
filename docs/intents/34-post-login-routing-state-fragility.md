@@ -32,6 +32,6 @@ steps come first.
 
 ---
 
-**Status: shipped** — fix in PR #243 (`fix/post-login-family-gate`). A failed
+**Status: implemented** — fix in PR #243 (`fix/post-login-family-gate`). A failed
 `/family` read now sets `familyLoadFailed` → AuthGate shows a retry card;
 create-family only renders on a confirmed `family: null`.
