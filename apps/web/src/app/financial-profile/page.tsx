@@ -707,6 +707,16 @@ export default function FinancialProfilePage() {
         setFunds(funds)
         setPolicies(p)
         setProfileCompleteness(computeCompleteness(f, funds))
+        // Intent 37: cross-device resume — the draft is server-stored, so a
+        // returning session (on any device) should land on the first
+        // incomplete step, not back at step 1 re-reading finished work. An
+        // explicit ?step= link still wins over the computed resume.
+        if (!new URLSearchParams(window.location.search).get('step')) {
+          const firstIncomplete = STEPS.findIndex(
+            (s) => validateWizardStep(s.key as WizardStepKey, f, funds, p).length > 0,
+          )
+          if (firstIncomplete > 0) setStepIndex(firstIncomplete)
+        }
         setLoading(false)
       })
       .catch(() => {
