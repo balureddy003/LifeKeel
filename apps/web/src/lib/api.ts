@@ -3106,6 +3106,10 @@ export interface FinancialProfilePolicy {
   // Who the policy *protects* — distinct from member_id (the holder). Lets
   // family_policy_review flag beneficiaries who've left the roster.
   beneficiary_member_id?: string
+  /** Intent 38: prior premiums, appended server-side when the recorded
+   *  amount changes — the price-creep trail. Current premium stays in
+   *  monthly_premium_minor. */
+  premium_history?: Array<{ amount_minor: number; effective_from: string }>
 }
 
 export interface FinancialProfile {

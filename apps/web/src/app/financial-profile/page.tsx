@@ -97,6 +97,9 @@ interface PolicyForm {
   // PRD-110: roster member this policy belongs to — '' means unset
   // (household-wide; the only option for car/home).
   memberId: string
+  // Intent 38: server-appended premium trail — read-only in the form, but
+  // must round-trip through toPayload or every save would erase it.
+  premiumHistory?: Array<{ amount_minor: number; effective_from: string }>
   // Who the policy *protects* (pays out to) — a roster member. Distinct
   // from memberId (the holder): e.g. the organizer's life policy naming a
   // partner as beneficiary. '' = not recorded.
@@ -242,6 +245,7 @@ function fromProfile(profile: FinancialProfile): {
       beneficiaryMemberId: p.beneficiary_member_id ?? '',
       contactPhone: p.contact_phone ?? '',
       contactEmail: p.contact_email ?? '',
+      ...(p.premium_history ? { premiumHistory: p.premium_history } : {}),
     })),
   }
 }
@@ -271,6 +275,7 @@ function toPayload(
       monthly_premium_minor: toMinor(p.monthlyPremium),
       ...(p.renewalDate ? { renewal_date: p.renewalDate } : {}),
       ...(p.policyNumber.trim() ? { policy_number: p.policyNumber.trim() } : {}),
+      ...(p.premiumHistory ? { premium_history: p.premiumHistory } : {}),
       ...(PERSON_SCOPED_POLICY_TYPES.has(p.type) && p.memberId ? { member_id: p.memberId } : {}),
       ...(PERSON_SCOPED_POLICY_TYPES.has(p.type) && p.beneficiaryMemberId
         ? { beneficiary_member_id: p.beneficiaryMemberId }
@@ -1457,6 +1462,20 @@ export default function FinancialProfilePage() {
                         prefix="£"
                         error={fieldErrors[`policy.${i}.monthlyPremium`]}
                       />
+                      {/* Intent 38: surface the recorded premium trail so a
+                          creeping renewal is visible, not just the latest
+                          number. History is server-appended on save. */}
+                      {p.premiumHistory && p.premiumHistory.length > 0 && (
+                        <p className="text-xs text-ink-tertiary -mt-1">
+                          Previously £
+                          {(
+                            p.premiumHistory[p.premiumHistory.length - 1]!.amount_minor / 100
+                          ).toFixed(2)}
+                          /mo
+                          {p.premiumHistory.length > 1 &&
+                            ` (${p.premiumHistory.length} changes on file)`}
+                        </p>
+                      )}
                     </div>
                     <label className="block">
                       <div className="text-xs text-ink-tertiary mb-1.5">
