@@ -312,11 +312,19 @@ export default function UploadPage() {
         )}
       </AnimatePresence>
 
-      {/* Upload progress */}
+      {/* Upload progress (intent 27): a visible bar, not just a spinner —
+          indeterminate because the upload call is a single fetch with no
+          byte-progress events; the animation is honest about that. */}
       {uploading && (
-        <div className="flex items-center gap-2 text-sm text-ink-tertiary">
-          <Loader2 size={16} className="animate-spin" />
-          Uploading...
+        <div className="space-y-1.5" role="status" aria-live="polite">
+          <div className="h-1.5 rounded-full bg-tint/10 overflow-hidden">
+            <motion.div
+              className="h-full w-1/3 rounded-full bg-family-400"
+              animate={{ x: ['0%', '200%'] }}
+              transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+            />
+          </div>
+          <p className="text-xs text-ink-tertiary">Uploading — keep this page open…</p>
         </div>
       )}
 

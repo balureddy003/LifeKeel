@@ -50,3 +50,27 @@ cases:
       orphaned_policy_count: 0
       stale_renewal_count: 0
     expected_insights: []
+
+  - id: premium-creep
+    description: A recorded premium went up >5% vs the previous entry — informational price-creep flag
+    event_type: family.policy_review
+    data:
+      overlap_count: 0
+      orphaned_policy_count: 0
+      stale_renewal_count: 0
+      premium_increase_count: 1
+      premium_increase_descriptions: 'car policy with Acme held by the household: premium went from £40.00 to £52.00/month (30% higher)'
+      premium_increase_annual_delta_minor: 14400
+    expected_insights:
+      - rule_id: premium_increased
+        min_or_score: 0.7
+
+  - id: premium-unchanged
+    description: No premium increases on file — the rule stays quiet
+    event_type: family.policy_review
+    data:
+      overlap_count: 0
+      orphaned_policy_count: 0
+      stale_renewal_count: 0
+      premium_increase_count: 0
+    expected_insights: []
