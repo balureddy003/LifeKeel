@@ -58,7 +58,7 @@ longer-term.
 | `30-ask-keel-answer-freshness.md` | Previous-answer bleed — **implemented — PR #245** (`data_as_of` stamp; upstream staleness → intent 22) | PRD-211, PRD-212 |
 | `31-billing-unlock-verification.md` | Sandbox checkout → webhook → Plus unlock never verified e2e | PRD-006 |
 | `32-retirement-gap-closure-estimate.md` | "What would close the gap" slider, estimate-labelled, advice-rule-safe | PRD-106 territory |
-| `33-crisis-mode-simplified-view.md` | Crisis mode: top-3 next actions + runway + key documents | PRD-108 |
+| `33-crisis-mode-simplified-view.md` | Crisis mode — **investigated, implementation pending** (EmergencyMode is the entry point; 3-action dashboard is a session of work) | PRD-108 |
 
 ## 34–37: multi-device easiness pass
 
