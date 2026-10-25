@@ -15,10 +15,8 @@ import {
   Loader2,
   Mail,
   PenLine,
-  Siren,
 } from 'lucide-react'
 import { LIFE_EVENTS } from '@/lib/life-data'
-import { CRISIS_EVENT_KEY } from '@/components/CrisisMode'
 import { GlassCard, GlassButton, PageHeader, PageTransition } from '@/components/Glass'
 import { DraftProvenanceNote } from '@/components/DraftProvenance'
 import { haptic } from '@/lib/haptics'
@@ -127,7 +125,7 @@ function checklistStorageKey(eventId: string): string {
   return `lifekeel:event-checklist:${tenant}:${eventId}`
 }
 
-export function loadDoneIds(eventId: string): Set<string> {
+function loadDoneIds(eventId: string): Set<string> {
   if (typeof window === 'undefined') return new Set()
   try {
     const raw = localStorage.getItem(checklistStorageKey(eventId))
@@ -368,22 +366,6 @@ export default function EventDetailClient() {
             <EventScenarioCard eventId={event.id} />
           </motion.div>
         )}
-
-        {/* Intent 33: opt-in to the reduced dashboard — Home then shows only
-            these steps, the fund figure and the vault until they exit. */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.18 }}
-        >
-          <Link
-            href="/"
-            onClick={() => localStorage.setItem(CRISIS_EVENT_KEY, event.id)}
-            className="flex items-center justify-center gap-2 w-full rounded-xl border border-family-500/30 bg-family-500/10 text-family-500 text-sm font-semibold min-h-[44px] mb-4"
-          >
-            <Siren size={15} /> Crisis mode — reduce Home to just these steps
-          </Link>
-        </motion.div>
 
         <motion.div
           initial={{ opacity: 0, y: 20 }}
