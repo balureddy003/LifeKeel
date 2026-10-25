@@ -80,7 +80,11 @@ export const FinancialProfileSchema = z.object({
     // already exists, and the 36% guideline conventionally measures
     // non-housing debt service).
     monthly_debt_payments_minor: z.number().int().nonnegative().default(0),
-    // PRD-104: the fields above are single-valued for the whole
+    // Intent 26: free-text context for income the numeric fields can't
+    // express — seasonal work, irregular contracts, benefits that vary.
+    // Read by Ask Keel as grounding context; never parsed into figures
+    // (same posture as the family context_note).
+    income_notes: z.string().max(500).optional(),
     // household — a genuinely common shape (one partner retired, one
     // still working; one salaried, one self-employed) had no way to be
     // entered as what it actually is, so the family had to pick one

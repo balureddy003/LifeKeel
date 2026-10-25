@@ -3120,6 +3120,8 @@ export interface FinancialProfile {
     income_protection_monthly_minor: number
     /** Total non-mortgage monthly debt service — feeds family_debt_health's DTI check. */
     monthly_debt_payments_minor: number
+    /** Intent 26: free-text income context (seasonal/irregular) — verbatim, never parsed. */
+    income_notes?: string
     // PRD-104: additive — a mixed-earner household (one partner retired,
     // one still working; one salaried, one self-employed) couldn't be
     // represented at all before this, so the arbitrary single status
