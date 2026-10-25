@@ -31,3 +31,12 @@ pre-fill" as a top-six gap.
 autosave redesign, cross-device draft sync.
 
 **Becomes** — PRD in docs/prd/, extending PRD-002's profile surface.
+
+---
+
+**Status: implemented — PR #254.** Per-field validation on blur — the same
+`validateWizardStep` rules `handleContinue` runs, applied to the field the
+moment it loses focus (the mobile pain point: errors previously appeared
+only after keyboard-close + scroll). Prefill, per-step autosave, inputMode
+and step-level error display were already in place. Open: `policy.${i}.*`
+template-key rows still validate only at step level.

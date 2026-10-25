@@ -53,7 +53,7 @@ longer-term.
 | `25-blended-family-member-labels.md` | Child relationship labels — **implemented, PR #252** (roster + add form; chart surface open) | PRD-001 |
 | `26-variable-income-capture.md` | Income notes — **implemented, PR #253** (`income_notes` field + Ask Keel grounding) | PRD-104, PRD-131 |
 | `27-document-upload-feedback-loop.md` | Upload feedback — **partial, PR #249** (progress bar; renewal-date field open) | PRD-003 (extraction stays PRD-143) |
-| `28-profile-wizard-validation-and-prefill.md` | Inline validation on blur; saved fields pre-fill on return | PRD-002 |
+| `28-profile-wizard-validation-and-prefill.md` | Wizard validation — **implemented, PR #254** (blur-level errors; prefill/autosave already shipped) | PRD-002 |
 | `29-signup-otp-reliability.md` | Intermittent OTP; example.com addresses fail — **partially implemented — PR #244** (test path shipped; live repro open) | — |
 | `30-ask-keel-answer-freshness.md` | Previous-answer bleed — **implemented — PR #245** (`data_as_of` stamp; upstream staleness → intent 22) | PRD-211, PRD-212 |
 | `31-billing-unlock-verification.md` | Sandbox checkout → webhook → Plus unlock never verified e2e | PRD-006 |
