@@ -49,7 +49,7 @@ longer-term.
 | `21-scenario-partial-data-honesty.md` | Silent fallbacks — **implemented, PR #247** (`missing_inputs` + partial-data banner) | PRD-115, PRD-132 |
 | `22-derived-surface-freshness.md` | Stale insight figures — **implemented, PR #248** (open-insight refresh on re-fire) | PRD-107 |
 | `23-invite-status-and-second-adult-engagement.md` | "Not joined yet" opacity; copy link / resend / seen state | PRD-110, PRD-123 |
-| `24-insight-severity-signaling.md` | Critical gaps look identical to mild ones; no urgency sort | — |
+| `24-insight-severity-signaling.md` | Severity signalling — **implemented, PR #251** (accent band + high-priority chip; sort open) | — |
 | `25-blended-family-member-labels.md` | Step-/shared-child distinction on the roster and chart | PRD-001 |
 | `26-variable-income-capture.md` | Second-earner prominence + income notes for irregular earners | PRD-104, PRD-131 |
 | `27-document-upload-feedback-loop.md` | Upload feedback — **partial, PR #249** (progress bar; renewal-date field open) | PRD-003 (extraction stays PRD-143) |
