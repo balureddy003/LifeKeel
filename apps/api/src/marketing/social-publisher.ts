@@ -646,6 +646,8 @@ interface ConnectorCredDoc {
   tenant_id: string
   connector_id: string
   access_token?: string
+  refresh_token?: string
+  token_expires_at?: Date | string
   needs_reauth?: boolean
   extra?: Record<string, string>
 }
