@@ -37,6 +37,7 @@ import { ReadinessSparkline } from '@/components/ReadinessSparkline'
 import { ReadinessFeed } from '@/components/ReadinessFeed'
 import { PerceivedProtectionCard } from '@/components/PerceivedProtectionCard'
 import { InvitePartnerPrompt } from '@/components/InvitePartnerPrompt'
+import CrisisMode, { CRISIS_EVENT_KEY } from '@/components/CrisisMode'
 import { useMode } from '@/lib/mode-context'
 import { useFamilyReadinessScore, useFamilyTimeline, useFamilyInsights } from '@/lib/useFamilyData'
 import { useAppStore } from '@/lib/store'
@@ -923,6 +924,18 @@ export default function HomePage() {
   const onTrack = openInsightCount === 0 && readinessScore >= 70
   const setCmdkOpen = useAppStore((s) => s.setCmdkOpen)
   const profileCompleteness = useAppStore((s) => s.profileCompleteness)
+  // Intent 33: crisis mode — an event page's "Crisis mode" button stores
+  // the event id here; Home then renders only the three next steps, the
+  // emergency-fund figure and the vault path until the family exits.
+  const [crisisEvent, setCrisisEvent] = useState<string | null>(null)
+  useEffect(() => {
+    const v = localStorage.getItem(CRISIS_EVENT_KEY)
+    if (v) setCrisisEvent(v)
+  }, [])
+  const exitCrisis = () => {
+    localStorage.removeItem(CRISIS_EVENT_KEY)
+    setCrisisEvent(null)
+  }
 
   if (config.mode === 'child') {
     return <ChildHome />
@@ -930,6 +943,16 @@ export default function HomePage() {
 
   if (config.mode === 'elderly') {
     return <ElderlyHome />
+  }
+
+  // Crisis mode takes precedence over every other dashboard arrangement —
+  // the family asked for exactly the next three things, nothing more.
+  if (crisisEvent) {
+    return (
+      <div className="px-5 pt-2">
+        <CrisisMode eventId={crisisEvent} onExit={exitCrisis} />
+      </div>
+    )
   }
 
   return (

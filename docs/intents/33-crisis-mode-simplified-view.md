@@ -33,10 +33,10 @@ a "rely on it in the worst moment" improvement, not a trust-blocker.
 
 ---
 
-**Status: investigated — implementation pending.** `EmergencyMode.tsx`
+**Status: implemented — PR #262.** `EmergencyMode.tsx`
 exists but is a crisis *entry* surface (event picker → life-event
 reporting), not the dashboard reduction this intent asks for. The actual
 work: a deliberate mode flag (probably `mode-context` like the existing
 persona modes), a stripped Home variant showing the top-3 playbook steps
 for the reported life event + runway + vault/doc pointers, and an exit
-control. Sized at a focused session, not a quick patch — no code shipped.
+control. The shipped slice: opt-in from the event page ("Crisis mode — reduce Home to just these steps") stores the event id; Home then renders only the top-3 pending checklist steps (EVENT_ACTIONS + persisted done-ids — no second ranking), the emergency-fund figure, and links to the full checklist + documents/contacts. "Full dashboard" pill exits; localStorage flag, not server state.
