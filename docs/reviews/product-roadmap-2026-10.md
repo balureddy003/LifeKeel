@@ -52,7 +52,7 @@ the expert panel's #1 conversion lever after trust.
 | 28 + 37 | Wizard inline validation, pre-fill, per-step autosave, "Continue setup", numeric input modes, cross-device resume | One piece of work — the interruptible, forgiving form. Mobile-first: validation above the keyboard. |
 | 23 | Invite: share-sheet link, resend, sent/opened/waiting status | "As easy as sharing a calendar invite." The family loop feeds retention *and* conversion. |
 | 24 | Severity signalling: urgent-first sort, colour/icon band, debt-pressure state | Must scan one-handed on a phone; pairs with 20's expander. |
-| 35 | Mobile nav collapse at 390px; deliberate tablet layout | Mobile is the primary device for the target user (a busy parent); 6/10 easiness is the floor, not the ceiling. |
+| 35 | Mobile nav collapse + tablet layout | **partial — PR #255** (5-item mobile bar done; tablet two-column open) |
 | 36 | Accessibility baseline audit → fixes | Keyboard-only setup verified; axe or equivalent kept green. Runs in parallel — cheap, mostly mechanical. |
 
 **Re-test gate:** mobile easiness ≥8/10; signup→profile→first-insight
