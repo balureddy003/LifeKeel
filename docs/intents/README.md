@@ -70,7 +70,7 @@ suspected bug (reproduce first); 36 is an audit before fixes.
 | `34-post-login-routing-state-fragility.md` | ~~"Create Family Group" shown to accounts that have a family~~ **implemented — PR #243** | — |
 | `35-mobile-navigation-and-tablet-layout.md` | Nav density at 390px; tablet width unused | — |
 | `36-accessibility-baseline-audit.md` | A11y baseline — **audit done + fixes in this PR** (labels; SR walkthrough open) | — |
-| `37-interruptible-setup-and-cross-device-continuity.md` | Autosave per step, "Continue setup", numeric input modes, resume on another device | lands with intent 28 |
+| `37-interruptible-setup-and-cross-device-continuity.md` | Interruptible setup — **implemented, PR #257** (resume at first incomplete step; autosave/inputMode pre-existing) | lands with intent 28 |
 | `38-renewal-price-creep-tracking.md` | Premium history + alert on recorded premium increase — informational only (rule 2 edge) | detectors/policy-review.yaml; PRD-143 for capture |
 | `39-subscription-packaging-and-conversion-moments.md` | Annual plan frame, post-upload paywall moment, explicit free/Plus line | PRD-006, PRD-206 |
 

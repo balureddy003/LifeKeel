@@ -36,3 +36,13 @@ story (a small honest label yes; an offline mode no).
 **Becomes** — PRD in docs/prd/, adjacent to intent 28's wizard UX work
 (28 is validation + pre-fill; 37 is autosave + resume + input modes — they
 should land together or adjacent).
+
+---
+
+**Status: implemented — PR #257.** Every done-criterion is now met:
+per-step server autosave + "couldn't be saved — answers kept" banner
+(pre-existing), "Profile X% complete" resume affordance on Home
+(pre-existing), `inputMode="decimal"` on money fields (pre-existing),
+and — new here — a returning session lands on the first incomplete step
+on any device, since the resume point derives from the server-stored
+draft. `?step=` deep links still win.
