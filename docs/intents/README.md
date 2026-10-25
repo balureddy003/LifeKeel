@@ -47,7 +47,7 @@ longer-term.
 |---|---|---|
 | `20-readiness-score-calibration-and-explainability.md` | Score explainability — **implemented, PR #246** (expander + persona-band pins) | PRD-114, PRD-118 |
 | `21-scenario-partial-data-honesty.md` | Silent fallbacks — **implemented, PR #247** (`missing_inputs` + partial-data banner) | PRD-115, PRD-132 |
-| `22-derived-surface-freshness.md` | Stale figures in insights/AI Explains after profile edits | PRD-107 |
+| `22-derived-surface-freshness.md` | Stale insight figures — **implemented, PR #248** (open-insight refresh on re-fire) | PRD-107 |
 | `23-invite-status-and-second-adult-engagement.md` | "Not joined yet" opacity; copy link / resend / seen state | PRD-110, PRD-123 |
 | `24-insight-severity-signaling.md` | Critical gaps look identical to mild ones; no urgency sort | — |
 | `25-blended-family-member-labels.md` | Step-/shared-child distinction on the roster and chart | PRD-001 |
