@@ -53,7 +53,7 @@ the expert panel's #1 conversion lever after trust.
 | 23 | Invite: share-sheet link, resend, sent/opened/waiting status | "As easy as sharing a calendar invite." The family loop feeds retention *and* conversion. |
 | 24 | Severity signalling | **implemented — PR #251** (band + chip; urgent-first sort not yet added) |
 | 35 | Mobile nav collapse at 390px; deliberate tablet layout | Mobile is the primary device for the target user (a busy parent); 6/10 easiness is the floor, not the ceiling. |
-| 36 | Accessibility baseline audit → fixes | Keyboard-only setup verified; axe or equivalent kept green. Runs in parallel — cheap, mostly mechanical. |
+| 36 | Accessibility baseline audit | **done** — static pass clean + label fixes; assistive-tech walkthrough still open. |
 
 **Re-test gate:** mobile easiness ≥8/10; signup→profile→first-insight
 completable one-handed with interruption; invite completable via share
