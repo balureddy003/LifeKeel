@@ -71,7 +71,7 @@ suspected bug (reproduce first); 36 is an audit before fixes.
 | `35-mobile-navigation-and-tablet-layout.md` | Nav density at 390px; tablet width unused | — |
 | `36-accessibility-baseline-audit.md` | Keyboard order, focus, contrast, labels unconfirmed | — |
 | `37-interruptible-setup-and-cross-device-continuity.md` | Autosave per step, "Continue setup", numeric input modes, resume on another device | lands with intent 28 |
-| `38-renewal-price-creep-tracking.md` | Premium history + alert on recorded premium increase — informational only (rule 2 edge) | detectors/policy-review.yaml; PRD-143 for capture |
+| `38-renewal-price-creep-tracking.md` | Price-creep tracking — **implemented, PR #258** (premium_history + premium_increased rule) | detectors/policy-review.yaml; PRD-143 for capture |
 | `39-subscription-packaging-and-conversion-moments.md` | Annual plan frame, post-upload paywall moment, explicit free/Plus line | PRD-006, PRD-206 |
 
 ## 40–42: marketing amplification (Buffer/Postiz-inspired, post-15/16)
