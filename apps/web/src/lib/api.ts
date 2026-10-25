@@ -2300,6 +2300,8 @@ export interface ApiFamilyMember {
   userId?: string
   /** ISO 'YYYY-MM-DD', optional. */
   dateOfBirth?: string
+  /** Intent 25: blended-family relationship on child members — display-only. */
+  relationshipLabel?: 'my_child' | 'partners_child' | 'shared_child' | 'other_child'
 }
 
 export interface ApiFamilyGroup {
@@ -2370,12 +2372,24 @@ export async function addFamilyGroupMember(
   email: string,
   role: ApiFamilyMember['role'],
   dateOfBirth?: string,
+  relationshipLabel?: ApiFamilyMember['relationshipLabel'],
 ): Promise<ApiFamilyGroup> {
   return familyGroupRequest('/family/members', 'POST', {
     name,
     email,
     role,
     ...(dateOfBirth ? { date_of_birth: dateOfBirth } : {}),
+    ...(relationshipLabel ? { relationship_label: relationshipLabel } : {}),
+  })
+}
+
+/** Intent 25: set (or clear, with null) a child member's relationship label. */
+export async function updateFamilyGroupMemberRelationshipLabel(
+  id: string,
+  label: ApiFamilyMember['relationshipLabel'] | null,
+): Promise<ApiFamilyGroup> {
+  return familyGroupRequest(`/family/members/${id}`, 'PATCH', {
+    relationship_label: label,
   })
 }
 

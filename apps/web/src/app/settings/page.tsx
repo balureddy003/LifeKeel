@@ -13,7 +13,13 @@ import { haptic } from '@/lib/haptics'
 import { RegionSwitch } from '@/components/RegionSwitch'
 import { useAppStore } from '@/lib/store'
 import type { AppMode } from '@/lib/modes'
-import { ROLE_LABELS, memberStatusLabel, type FamilyRole } from '@/lib/auth-types'
+import {
+  ROLE_LABELS,
+  RELATIONSHIP_LABELS,
+  memberStatusLabel,
+  type FamilyRole,
+  type RelationshipLabel,
+} from '@/lib/auth-types'
 import { useConfirm } from '@/components/ConfirmSheetProvider'
 import { NotificationsCard } from '@/components/NotificationsCard'
 import { FreshnessCard } from '@/components/FreshnessCard'
@@ -132,6 +138,7 @@ export default function SettingsPage() {
   const [memberName, setMemberName] = useState('')
   const [memberEmail, setMemberEmail] = useState('')
   const [memberRole, setMemberRole] = useState<FamilyRole>('adult')
+  const [memberRelLabel, setMemberRelLabel] = useState<RelationshipLabel | ''>('')
   // Optional — lets Financial Profile derive age/years-until-university
   // instead of asking again later. Never required here; skippable, added
   // at the point it's actually needed if left blank now.
@@ -526,6 +533,7 @@ export default function SettingsPage() {
     setMemberName('')
     setMemberEmail('')
     setMemberRole('adult')
+    setMemberRelLabel('')
     setMemberDob('')
     setAddMemberError(null)
   }
@@ -536,7 +544,13 @@ export default function SettingsPage() {
     setAddingMember(true)
     setAddMemberError(null)
     try {
-      await inviteMember(memberName.trim(), memberEmail.trim(), memberRole, memberDob || undefined)
+      await inviteMember(
+        memberName.trim(),
+        memberEmail.trim(),
+        memberRole,
+        memberDob || undefined,
+        memberRole === 'child' && memberRelLabel ? memberRelLabel : undefined,
+      )
       haptic('success')
       // Adding an adult only creates the pending roster entry — no invite
       // goes out by itself. Point at the Invite action right away instead
@@ -662,7 +676,10 @@ export default function SettingsPage() {
                 <div className="flex items-center justify-between w-full">
                   <div className="text-left">
                     <div className="text-base font-medium">{m.name}</div>
-                    <div className="text-xs text-ink-tertiary mt-0.5">{ROLE_LABELS[m.role]}</div>
+                    <div className="text-xs text-ink-tertiary mt-0.5">
+                      {ROLE_LABELS[m.role]}
+                      {m.relationshipLabel ? ` · ${RELATIONSHIP_LABELS[m.relationshipLabel]}` : ''}
+                    </div>
                   </div>
                   <div className="flex items-center gap-3">
                     <span
@@ -796,6 +813,26 @@ export default function SettingsPage() {
                 )
               })}
             </div>
+
+            {/* Intent 25: blended families need to say whose child this is —
+                a display-only label, not a role or an access change. */}
+            {memberRole === 'child' && (
+              <label className="block">
+                <div className="text-xs text-ink-tertiary mb-1.5">Relationship (optional)</div>
+                <select
+                  value={memberRelLabel}
+                  onChange={(e) => setMemberRelLabel(e.target.value as RelationshipLabel | '')}
+                  className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 transition-all bg-surface"
+                >
+                  <option value="">Not specified</option>
+                  {(Object.keys(RELATIONSHIP_LABELS) as RelationshipLabel[]).map((k) => (
+                    <option key={k} value={k}>
+                      {RELATIONSHIP_LABELS[k]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
 
             {addMemberError && (
               <div

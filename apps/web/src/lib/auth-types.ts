@@ -12,6 +12,16 @@ export interface User {
   emailVerified?: boolean | undefined
 }
 
+export type RelationshipLabel = 'my_child' | 'partners_child' | 'shared_child' | 'other_child'
+
+/** Intent 25: display labels for a child's relationship in a blended family. */
+export const RELATIONSHIP_LABELS: Record<RelationshipLabel, string> = {
+  my_child: 'My child',
+  partners_child: "Partner's child",
+  shared_child: 'Shared child',
+  other_child: 'Other dependant',
+}
+
 export interface FamilyMemberUser {
   id: string
   name: string
@@ -22,6 +32,8 @@ export interface FamilyMemberUser {
   joinedAt: string
   /** The `users.id` this entry binds to after invite acceptance (PRD-123) — id stays the roster identity. */
   userId?: string
+  /** Intent 25: blended-family relationship on child members — display-only. */
+  relationshipLabel?: RelationshipLabel
   /** ISO 'YYYY-MM-DD', optional — see apps/web/src/lib/age.ts for deriving age/years-until from it. */
   dateOfBirth?: string
 }
