@@ -52,7 +52,7 @@ the expert panel's #1 conversion lever after trust.
 | 28 + 37 | Wizard validation/autosave/resume | **implemented — PRs #254 + #257** (blur validation + first-incomplete-step resume; rest pre-existing) |
 | 23 | Invite share + status | **partial — PR #250** (share sheet + "Waiting for X" sent status; opened/viewed tracking needs API state) |
 | 24 | Severity signalling | **implemented — PR #251** (band + chip; urgent-first sort not yet added) |
-| 35 | Mobile nav collapse at 390px; deliberate tablet layout | Mobile is the primary device for the target user (a busy parent); 6/10 easiness is the floor, not the ceiling. |
+| 35 | Mobile nav collapse + tablet layout | **partial — PR #255** (5-item mobile bar done; tablet two-column open) |
 | 36 | Accessibility baseline audit | **done** — static pass clean + label fixes; assistive-tech walkthrough still open. |
 
 **Re-test gate:** mobile easiness ≥8/10; signup→profile→first-insight

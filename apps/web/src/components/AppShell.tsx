@@ -6,7 +6,6 @@ import { usePathname, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Home,
-  Inbox,
   Users,
   CalendarClock,
   Settings,
@@ -14,7 +13,6 @@ import {
   Siren,
   Bot,
   MailWarning,
-  Wallet,
   X,
   Fingerprint,
 } from 'lucide-react'
@@ -44,12 +42,17 @@ import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
 import { isNativeShell, biometricLockEnabled, verifyBiometric } from '@/lib/native'
 
+// Intent 35: five items at 390px, not six — the multi-device review's own
+// list (Home, Events, Ask Keel, Family, Settings). Inbox and Finances drop
+// out of the bar: both are surfaced from Home (unread insights, the
+// finances sections), and their routes still highlight Home below. Ask
+// Keel earns a first-class slot — it was previously reachable only via
+// deep links, which the same review flagged.
 const NAV_ITEMS = [
   { href: '/', label: 'Home', icon: Home },
-  { href: '/inbox', label: 'Inbox', icon: Inbox },
-  { href: '/family', label: 'Family', icon: Users },
-  { href: '/finances', label: 'Finances', icon: Wallet },
   { href: '/events', label: 'Events', icon: CalendarClock },
+  { href: '/assistant', label: 'Ask Keel', icon: Bot },
+  { href: '/family', label: 'Family', icon: Users },
   { href: '/settings', label: 'Settings', icon: Settings },
 ]
 
@@ -58,13 +61,18 @@ const NAV_ITEMS = [
 const ROUTE_TAB_OVERRIDES: Record<string, string> = {
   '/member': '/family',
   '/asset': '/family',
-  '/financial-profile': '/finances',
-  '/vault': '/finances',
-  '/cashflow': '/finances',
-  '/assets': '/finances',
-  '/documents': '/finances',
-  '/upload': '/finances',
-  '/connect': '/finances',
+  // Inbox and the Finances subpages were dropped from the bar in the 5-item
+  // cut — Home is the surface that links to them, so it's the tab that
+  // stays lit while the user is there.
+  '/inbox': '/',
+  '/finances': '/',
+  '/financial-profile': '/',
+  '/vault': '/',
+  '/cashflow': '/',
+  '/assets': '/',
+  '/documents': '/',
+  '/upload': '/',
+  '/connect': '/',
 }
 
 function LiquidTabBar() {
@@ -119,7 +127,10 @@ function LiquidTabBar() {
                     strokeWidth={active ? 2.5 : 2}
                     className={active ? 'text-family-accent' : 'text-ink-tertiary'}
                   />
-                  {item.href === '/inbox' && inboxUnreadCount > 0 && (
+                  {/* The unread badge moved with Inbox to Home when the bar
+                      shrank to five items — Home is where inbox content is
+                      surfaced from now. */}
+                  {item.href === '/' && inboxUnreadCount > 0 && (
                     <motion.span
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
