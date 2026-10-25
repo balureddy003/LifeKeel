@@ -45,7 +45,7 @@ longer-term.
 
 | File | Concern | Overlaps existing PRD |
 |---|---|---|
-| `20-readiness-score-calibration-and-explainability.md` | Score feels harsh; expose the 5 components + recalibrate against personas | PRD-114, PRD-118 |
+| `20-readiness-score-calibration-and-explainability.md` | Score explainability — **implemented, PR #246** (expander + persona-band pins) | PRD-114, PRD-118 |
 | `21-scenario-partial-data-honesty.md` | Silent fallbacks — **implemented, PR #247** (`missing_inputs` + partial-data banner) | PRD-115, PRD-132 |
 | `22-derived-surface-freshness.md` | Stale figures in insights/AI Explains after profile edits | PRD-107 |
 | `23-invite-status-and-second-adult-engagement.md` | "Not joined yet" opacity; copy link / resend / seen state | PRD-110, PRD-123 |

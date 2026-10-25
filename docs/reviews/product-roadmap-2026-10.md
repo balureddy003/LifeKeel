@@ -33,7 +33,7 @@ The two Fails and their shared root cause (honesty under imperfect data).
 
 | Intent | Item | Notes |
 |---|---|---|
-| 20 | Score calibration + "Why this score" component expander | Components already computed and returned (`GET /family/readiness`); this is mostly a *surface* plus a calibration pass against the persona set. The single most-cited fix across all five inputs. |
+| 20 | Score calibration + "Why this score" component expander | **implemented — PR #246**: expander shipped; personas pinned (72 healthy / 14 stressed — shape sound, no weight change). |
 | 21 | Scenario partial-data honesty | **implemented — PR #247**: missing-inputs named via `missing_inputs`; annual-expense fallback added; not-found path already sound. |
 | 22 | Derived-surface freshness after profile/policy edits | Score already recomputes per-read; insight/explanation text needs the same guarantee or a visible recalculated-at provenance. |
 
