@@ -29,3 +29,11 @@ PRD-132; an income-volatility regime is a later PRD), bank-feed income
 detection (PRD-133 is partnership-blocked), any detector consuming the note.
 
 **Becomes** — PRD in docs/prd/, extending PRD-104/131's member-income slice.
+
+---
+
+**Status: implemented — PR #253.** Optional `income_notes` (max 500)
+on the household profile — verbatim, never parsed — with a textarea in
+the Income & Household step and inclusion in Ask Keel's grounding, so a
+seasonal/irregular income reads as context in answers. Second-earner
+prominence was already covered by PRD-104's member earners.
