@@ -10,7 +10,7 @@ describe('homepage live content', () => {
     render(<HomeExperience />)
     for (const name of [
       'Your family’s chart, kept current.',
-      'Four bad days, and what Keel would check.',
+      "Four days in everyone's life, and what Keel would check.",
       'The same chart, as life changes.',
       'Ready before. Found during. Sorted after.',
       'Skip the retyping.',

@@ -13,8 +13,8 @@ const dims = (file: string) => {
 describe('manifest', () => {
   it('has a stable id and matches the app surface colour', () => {
     expect(manifest.id).toBe('/')
-    expect(manifest.theme_color).toBe('#0a1822')
-    expect(manifest.background_color).toBe('#0a1822')
+    expect(manifest.theme_color).toBe('#17231f')
+    expect(manifest.background_color).toBe('#17231f')
   })
   it('never combines any and maskable in one entry, and has both', () => {
     const purposes = manifest.icons.map((i: { purpose: string }) => i.purpose)

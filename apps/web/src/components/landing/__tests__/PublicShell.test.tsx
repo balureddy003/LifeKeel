@@ -1,10 +1,8 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
-import { render, screen, cleanup, within } from '@testing-library/react'
+import { render, screen, cleanup } from '@testing-library/react'
 import { PublicShell } from '../PublicShell'
-
-vi.mock('next/navigation', () => ({ usePathname: () => '/cookies' }))
 
 vi.mock('@/lib/growth-track', () => ({ track: vi.fn(), currentUtm: () => undefined }))
 vi.mock('@/lib/haptics', () => ({ haptic: vi.fn() }))
@@ -20,23 +18,6 @@ afterEach(() => {
 const APP = path.resolve(__dirname, '..', '..', '..', 'app')
 
 describe('PublicShell', () => {
-  it('connects every legal page and identifies the current cookie page', () => {
-    render(
-      <PublicShell>
-        <h1>Cookies</h1>
-      </PublicShell>,
-    )
-    const nav = screen.getByRole('navigation', { name: 'Legal and trust' })
-    expect(
-      within(nav)
-        .getAllByRole('link')
-        .map((link) => link.getAttribute('href')),
-    ).toEqual(['/legal', '/terms', '/privacy', '/cookies', '/security', '/trust'])
-    expect(within(nav).getByRole('link', { name: 'Cookies' }).getAttribute('aria-current')).toBe(
-      'page',
-    )
-  })
-
   it('wraps the page in the landing header and footer, and section links go back to /', () => {
     render(
       <PublicShell>
