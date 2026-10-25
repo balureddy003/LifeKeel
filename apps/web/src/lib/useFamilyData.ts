@@ -16,6 +16,7 @@ import {
   fetchEventReadiness as fetchEventReadinessApi,
   type FinancialProfile,
   type ReadinessComponentKey,
+  type ReadinessComponent,
   RESOLVED_INSIGHT_STATES,
   type FamilyInsight,
   type FamilyGoal,
@@ -81,6 +82,10 @@ export function useFamilyReadinessScore() {
   // When the displayed score was last computed — the score card renders
   // this so "nothing changed" reads as a fresh check, not a stale number.
   const [computedAt, setComputedAt] = useState<string | null>(null)
+  // Intent 20: the component subscores behind the number, for the
+  // "Why this score" expander — empty when the offline fallback produced
+  // the score (it has no components to show).
+  const [components, setComponents] = useState<ReadinessComponent[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -92,6 +97,7 @@ export function useFamilyReadinessScore() {
           score: apiScore,
           hasLiveData: liveData,
           computedAt: at,
+          components: apiComponents,
         } = await Promise.race([
           fetchFamilyReadinessScore(),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 10_000)),
@@ -100,6 +106,7 @@ export function useFamilyReadinessScore() {
           setScore(apiScore)
           setHasLiveData(liveData)
           setComputedAt(at)
+          setComponents(apiComponents)
         }
       } catch {
         // Live-verification finding: this had no catch — a rejected fetch
@@ -120,7 +127,7 @@ export function useFamilyReadinessScore() {
     }
   }, [])
 
-  return { score, hasLiveData, computedAt, loading }
+  return { score, hasLiveData, computedAt, components, loading }
 }
 
 // A target of <= £1 (100 minor units) is unset — see isUnsetTarget in the API.

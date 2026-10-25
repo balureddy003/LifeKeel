@@ -52,6 +52,10 @@ export function evaluateOtpBoot(
   const mode = authOtpMode(env, deploymentMode)
   const violations: string[] = []
   const exceptions: string[] = []
+  // Dev/test-only deterministic code (see generateOtpCode): setting it on a
+  // real deployment is a boot violation, same posture as MAILPIT_URL.
+  if (env['LIFEKEEL_TEST_OTP_CODE'] && deploymentMode !== 'dev')
+    violations.push('LIFEKEEL_TEST_OTP_CODE is a dev/test hook and must not be set outside dev')
   if (deploymentMode === 'dev') return { violations, exceptions }
   if (mode !== 'signup_login') exceptions.push(`AUTH_OTP_MODE=${mode}`)
   if (mode !== 'off') {
@@ -68,6 +72,12 @@ export function evaluateOtpBoot(
 // ── Code and hash ──────────────────────────────────────────────────────────
 
 export function generateOtpCode(): string {
+  // Deterministic code for QA/e2e harnesses that can't read a real mailbox
+  // (intent 29). Dev/test only: isDevOrTest() is false the moment NODE_ENV
+  // names a real deployment, and evaluateOtpBoot makes the var a boot
+  // violation outside dev — so this can't silently weaken a live env.
+  const fixed = process.env['LIFEKEEL_TEST_OTP_CODE']
+  if (fixed && isDevOrTest() && /^\d{6}$/.test(fixed)) return fixed
   return String(randomInt(0, 1_000_000)).padStart(6, '0')
 }
 

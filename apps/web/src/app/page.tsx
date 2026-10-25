@@ -37,6 +37,7 @@ import { ReadinessSparkline } from '@/components/ReadinessSparkline'
 import { ReadinessFeed } from '@/components/ReadinessFeed'
 import { PerceivedProtectionCard } from '@/components/PerceivedProtectionCard'
 import { InvitePartnerPrompt } from '@/components/InvitePartnerPrompt'
+import CrisisMode, { CRISIS_EVENT_KEY } from '@/components/CrisisMode'
 import { useMode } from '@/lib/mode-context'
 import { useFamilyReadinessScore, useFamilyTimeline, useFamilyInsights } from '@/lib/useFamilyData'
 import { useAppStore } from '@/lib/store'
@@ -901,6 +902,7 @@ export default function HomePage() {
     score: readinessScore,
     hasLiveData,
     computedAt: scoreComputedAt,
+    components: scoreComponents,
     loading: scoreLoading,
   } = useFamilyReadinessScore()
   const { events: timelineEvents, hasData: hasTimelineData, hasChildren } = useFamilyTimeline()
@@ -922,6 +924,18 @@ export default function HomePage() {
   const onTrack = openInsightCount === 0 && readinessScore >= 70
   const setCmdkOpen = useAppStore((s) => s.setCmdkOpen)
   const profileCompleteness = useAppStore((s) => s.profileCompleteness)
+  // Intent 33: crisis mode — an event page's "Crisis mode" button stores
+  // the event id here; Home then renders only the three next steps, the
+  // emergency-fund figure and the vault path until the family exits.
+  const [crisisEvent, setCrisisEvent] = useState<string | null>(null)
+  useEffect(() => {
+    const v = localStorage.getItem(CRISIS_EVENT_KEY)
+    if (v) setCrisisEvent(v)
+  }, [])
+  const exitCrisis = () => {
+    localStorage.removeItem(CRISIS_EVENT_KEY)
+    setCrisisEvent(null)
+  }
 
   if (config.mode === 'child') {
     return <ChildHome />
@@ -929,6 +943,16 @@ export default function HomePage() {
 
   if (config.mode === 'elderly') {
     return <ElderlyHome />
+  }
+
+  // Crisis mode takes precedence over every other dashboard arrangement —
+  // the family asked for exactly the next three things, nothing more.
+  if (crisisEvent) {
+    return (
+      <div className="px-5 pt-2">
+        <CrisisMode eventId={crisisEvent} onExit={exitCrisis} />
+      </div>
+    )
   }
 
   return (
@@ -1025,6 +1049,42 @@ export default function HomePage() {
                         Recalculated {formatRelativeDate(scoreComputedAt).toLowerCase()} from your
                         profile and vault
                       </p>
+                    )}
+                    {/* Intent 20: the number without its components reads as
+                        a judgement; with them it reads as a checklist. Only
+                        rendered when the server composite answered — the
+                        offline insight-penalty fallback has no subscores to
+                        show, and an absent component is "not enough data",
+                        never a zero. */}
+                    {scoreComponents.length > 0 && (
+                      <details className="mt-2 group/score">
+                        <summary className="text-xs font-semibold text-family-400 cursor-pointer list-none flex items-center gap-1">
+                          <ChevronRight
+                            size={12}
+                            className="transition-transform group-open/score:rotate-90"
+                          />
+                          Why this score?
+                        </summary>
+                        <ul className="mt-2 space-y-1.5">
+                          {scoreComponents.map((c) => (
+                            <li key={c.key} className="text-xs">
+                              <span className="font-semibold text-ink-primary">
+                                {c.label}
+                                {c.gated
+                                  ? ''
+                                  : c.score === null
+                                    ? ' — not enough data'
+                                    : ` — ${c.score}/100`}
+                              </span>
+                              <span className="text-ink-tertiary">
+                                {' '}
+                                ·{' '}
+                                {c.gated ? (c.caption ?? 'Not counted for this account') : c.detail}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
                     )}
                     {profileCompleteness > 0 && profileCompleteness < 100 && (
                       <Link

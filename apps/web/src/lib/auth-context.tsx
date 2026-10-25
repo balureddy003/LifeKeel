@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react'
-import type { User, FamilyGroup, FamilyRole } from './auth-types'
+import type { User, FamilyGroup, FamilyRole, RelationshipLabel } from './auth-types'
 import { ROLE_EMOJI } from './auth-types'
 import {
   fetchFamilyGroup,
@@ -88,6 +88,7 @@ interface AuthContextValue {
     email: string,
     role: FamilyRole,
     dateOfBirth?: string,
+    relationshipLabel?: RelationshipLabel,
   ) => Promise<void>
   removeMember: (id: string) => Promise<void>
   updateMemberRole: (id: string, role: FamilyRole) => Promise<void>
@@ -563,6 +564,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string,
     role: FamilyRole,
     dateOfBirth?: string,
+    relationshipLabel?: RelationshipLabel,
   ) => {
     // Optimistic: show the pending member immediately; the roster shouldn't
     // wait on the network for an action the user just confirmed.
@@ -581,13 +583,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             status: 'pending' as const,
             joinedAt: new Date().toISOString(),
             ...(dateOfBirth ? { dateOfBirth } : {}),
+            ...(relationshipLabel ? { relationshipLabel } : {}),
           },
         ],
       }
       persist(user, optimistic)
     }
     try {
-      const apiFamily = await addFamilyGroupMember(name, email, role, dateOfBirth)
+      const apiFamily = await addFamilyGroupMember(
+        name,
+        email,
+        role,
+        dateOfBirth,
+        relationshipLabel,
+      )
       persist(user, toFamilyGroup(apiFamily))
     } catch (err) {
       persist(user, previous)

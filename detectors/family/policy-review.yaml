@@ -67,3 +67,26 @@ rules:
       - Update the renewal date on file if the policy renewed
       - Remove the policy from the register if the cover ended
       - If you are unsure whether the cover is still active, ask your insurer or a licensed insurance professional
+
+  - id: premium_increased
+    name: Recorded Premium Went Up
+    # Intent 38: premium_history is appended whenever the recorded premium
+    # changes — a policy renewing dearer every year is otherwise invisible.
+    # Informational only: this describes the family's own recorded figures.
+    # It must never name an alternative provider or suggest switching —
+    # that's arranging, and stays out.
+    condition: 'data.premium_increase_count > 0'
+    confidence: 0.75
+    impact_low: 0
+    impact_high: 'data.premium_increase_annual_delta_minor'
+    reasoning_template: >
+      {{data.premium_increase_count}} recorded premiums on file went up by more than 5%:
+      {{data.premium_increase_descriptions}}. This is informational only — it describes what is
+      recorded in your register, not whether the new premium is competitive. Checking renewal
+      documents and comparing quotes from multiple insurers are both reasonable next steps;
+      a licensed insurance professional can advise on cover.
+    actions:
+      - Check the renewal documents for the reason given for the increase
+      - If the premium rose at renewal, comparing quotes from multiple insurers is a reasonable next step
+      - Update the recorded premium and renewal date if the register is out of date
+      - A licensed insurance professional can advise on your cover
