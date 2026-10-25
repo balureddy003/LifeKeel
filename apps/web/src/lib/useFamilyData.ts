@@ -428,6 +428,7 @@ export function useEventReadiness(
   const [stability, setStability] = useState<number | null>(null)
   const [explanation, setExplanation] = useState(fallbackExplanation)
   const [hasLiveData, setHasLiveData] = useState(false)
+  const [missingInputs, setMissingInputs] = useState<string[]>([])
   const [insightId, setInsightId] = useState<string | null>(null)
   const [ruleId, setRuleId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -471,10 +472,14 @@ export function useEventReadiness(
         setStability(result.stability)
         setExplanation(insightText ?? result.explanation)
         setHasLiveData(true)
+        setMissingInputs([])
       } else {
         setStability(null)
         setExplanation(insightText ?? fallbackExplanation)
         setHasLiveData(false)
+        // Intent 21: the API names what the formula needs — a thin profile
+        // gets a "using what you have so far" state, not a silent sample.
+        setMissingInputs(result.missing_inputs ?? [])
       }
       setInsightId(found?.id ?? null)
       setRuleId(found?.rule_id ?? null)
@@ -496,6 +501,7 @@ export function useEventReadiness(
     explanation,
     hasLiveData,
     live: hasLiveData || insightId !== null,
+    missingInputs,
     insightId,
     ruleId,
     loading,

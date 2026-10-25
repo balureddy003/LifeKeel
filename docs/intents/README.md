@@ -46,7 +46,7 @@ longer-term.
 | File | Concern | Overlaps existing PRD |
 |---|---|---|
 | `20-readiness-score-calibration-and-explainability.md` | Score explainability — **implemented, PR #246** (expander + persona-band pins) | PRD-114, PRD-118 |
-| `21-scenario-partial-data-honesty.md` | Silent "Sample scenario"/"event not found" fallbacks on thin data | PRD-115, PRD-132 |
+| `21-scenario-partial-data-honesty.md` | Silent fallbacks — **implemented, PR #247** (`missing_inputs` + partial-data banner) | PRD-115, PRD-132 |
 | `22-derived-surface-freshness.md` | Stale figures in insights/AI Explains after profile edits | PRD-107 |
 | `23-invite-status-and-second-adult-engagement.md` | "Not joined yet" opacity; copy link / resend / seen state | PRD-110, PRD-123 |
 | `24-insight-severity-signaling.md` | Critical gaps look identical to mild ones; no urgency sort | — |
@@ -70,7 +70,7 @@ suspected bug (reproduce first); 36 is an audit before fixes.
 | `34-post-login-routing-state-fragility.md` | ~~"Create Family Group" shown to accounts that have a family~~ **implemented — PR #243** | — |
 | `35-mobile-navigation-and-tablet-layout.md` | Nav density at 390px; tablet width unused | — |
 | `36-accessibility-baseline-audit.md` | Keyboard order, focus, contrast, labels unconfirmed | — |
-| `37-interruptible-setup-and-cross-device-continuity.md` | Autosave per step, "Continue setup", numeric input modes, resume on another device | lands with intent 28 |
+| `37-interruptible-setup-and-cross-device-continuity.md` | Interruptible setup — **implemented, PR #257** (resume at first incomplete step; autosave/inputMode pre-existing) | lands with intent 28 |
 | `38-renewal-price-creep-tracking.md` | Premium history + alert on recorded premium increase — informational only (rule 2 edge) | detectors/policy-review.yaml; PRD-143 for capture |
 | `39-subscription-packaging-and-conversion-moments.md` | Annual plan frame, post-upload paywall moment, explicit free/Plus line | PRD-006, PRD-206 |
 

@@ -30,9 +30,21 @@ export interface EventReadinessResult {
   stability: number
   explanation: string
   hasLiveData: boolean
+  /** When hasLiveData is false, the profile inputs this event's formula
+   *  needs — the UI names them ("add monthly expenses for a real runway")
+   *  instead of a silent sample collapse (intent 21). Absent on live
+   *  results and on event ids with no formula at all. */
+  missing_inputs?: string[]
 }
 
-const NO_DATA: EventReadinessResult = { stability: 0, explanation: '', hasLiveData: false }
+/** No-data results name what they're missing, so a thin profile gets a
+ *  "using what you have so far" state, not a silent sample. */
+const noData = (...missing: string[]): EventReadinessResult => ({
+  stability: 0,
+  explanation: '',
+  hasLiveData: false,
+  ...(missing.length ? { missing_inputs: missing } : {}),
+})
 
 // Never claim certainty (100%) or hopelessness (0%) from a single
 // estimate — same posture as this codebase's other estimates, which
@@ -48,8 +60,13 @@ function formatMonths(months: number): string {
 }
 
 function jobLossReadiness(profile: FinancialProfile): EventReadinessResult {
-  const { emergency_savings_minor, monthly_expenses_minor } = profile.emergency_fund
-  if (monthly_expenses_minor <= 0) return NO_DATA
+  const { emergency_savings_minor } = profile.emergency_fund
+  // Same fallback readiness/score.ts applies — a family that only entered
+  // annual living expenses still gets a real runway number (intent 21).
+  const monthly_expenses_minor =
+    profile.emergency_fund.monthly_expenses_minor ||
+    Math.round(profile.household.annual_living_expenses_minor / 12)
+  if (monthly_expenses_minor <= 0) return noData('monthly expenses (or annual living expenses)')
   const months = emergency_savings_minor / monthly_expenses_minor
   return {
     stability: clampScore((months / 6) * 100),
@@ -90,7 +107,7 @@ function policyPresenceReadiness(
   label: string,
 ): EventReadinessResult {
   const policy = profile.policies.find((p) => p.type === type)
-  if (!policy) return NO_DATA
+  if (!policy) return noData(`a ${label} insurance policy on file`)
   const coverage =
     policy.coverage_amount_minor > 0 ? ` (${formatMoney(policy.coverage_amount_minor)} cover)` : ''
   return {
@@ -104,7 +121,7 @@ function policyPresenceReadiness(
 // the same quantities family_education_shortfall weighs per fund.
 function universityReadiness(profile: FinancialProfile): EventReadinessResult {
   const funds = profile.education_funds.filter((f) => f.target_savings_minor > 0)
-  if (funds.length === 0) return NO_DATA
+  if (funds.length === 0) return noData('an education fund with a savings target')
   const saved = funds.reduce((s, f) => s + f.current_savings_minor, 0)
   const target = funds.reduce((s, f) => s + f.target_savings_minor, 0)
   const names = funds.map((f) => f.child_name).join(' and ')
@@ -119,7 +136,7 @@ function universityReadiness(profile: FinancialProfile): EventReadinessResult {
 // achievable retirement income vs the target income.
 function retirementReadiness(profile: FinancialProfile): EventReadinessResult {
   const r = profile.retirement
-  if (r.target_retirement_income_minor <= 0) return NO_DATA
+  if (r.target_retirement_income_minor <= 0) return noData('a target retirement income')
   const p = projectRetirement(r)
   const pct = (p.achievable_retirement_income_minor / r.target_retirement_income_minor) * 100
   return {
@@ -153,6 +170,8 @@ export function computeEventReadiness(
     case 'retirement':
       return retirementReadiness(profile)
     default:
-      return NO_DATA
+      // No formula exists for this event (new-child, marriage, unknown id)
+      // — no inputs to name; the client's honest "sample" label stands.
+      return { stability: 0, explanation: '', hasLiveData: false }
   }
 }
