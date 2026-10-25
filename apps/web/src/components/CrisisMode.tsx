@@ -13,7 +13,7 @@ import Link from 'next/link'
 import { CheckCircle2, Circle, FileText, ChevronRight, X } from 'lucide-react'
 import { GlassCard } from './Glass'
 import { LIFE_EVENTS } from '@/lib/life-data'
-import { EVENT_ACTIONS, loadDoneIds } from '@/app/events/[eventId]/EventDetailClient'
+import { EVENT_ACTIONS, loadDoneIds } from '@/lib/event-actions'
 import { fetchFamilyReadiness } from '@/lib/api'
 
 export const CRISIS_EVENT_KEY = 'lk_crisis_event'
