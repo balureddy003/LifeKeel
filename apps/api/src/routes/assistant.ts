@@ -124,6 +124,9 @@ interface FinancialProfileDoc extends Record<string, unknown> {
     mortgage_outstanding_minor?: number
     life_cover_minor?: number
     income_protection_monthly_minor?: number
+    // Intent 26: the family's own words on irregular/seasonal income —
+    // grounding text only, never a figure.
+    income_notes?: string
     // PRD-104: per-member earners, linked to the family roster — see
     // FamilyGroupDoc below and its use in buildContext().
     members?: Array<{
@@ -246,7 +249,10 @@ function buildContext(
       parts.push(
         `Household: employment status ${h.employment_status ?? 'unknown'}, monthly salary £${toMajor(h.monthly_salary_minor)}, ` +
           `annual living expenses £${toMajor(h.annual_living_expenses_minor)}, mortgage outstanding £${toMajor(h.mortgage_outstanding_minor)}, ` +
-          `life insurance cover £${toMajor(h.life_cover_minor)}, income protection £${toMajor(h.income_protection_monthly_minor)}/month.`,
+          `life insurance cover £${toMajor(h.life_cover_minor)}, income protection £${toMajor(h.income_protection_monthly_minor)}/month.` +
+          // Intent 26: the family's own words on irregular income — grounding
+          // context only, never parsed into a figure.
+          (h.income_notes ? ` Income notes: "${h.income_notes}".` : ''),
       )
       // PRD-104: resolve each member_id to their real roster name so the
       // assistant can answer "does my husband have income protection?"

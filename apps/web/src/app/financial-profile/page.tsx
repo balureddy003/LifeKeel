@@ -46,6 +46,10 @@ interface FormState {
   mortgageOutstanding: string
   lifeCover: string
   incomeProtectionMonthly: string
+  // Intent 26: free-text context for income the numbers can't express —
+  // seasonal work, irregular contracts, variable benefits. Stored verbatim
+  // and read by Ask Keel as context; never parsed into figures.
+  incomeNotes: string
   // PRD-104: optional second earner, linked to a real family-roster
   // member — a mixed-earner household (one partner retired, one still
   // working) had no way to be represented by the single
@@ -136,6 +140,7 @@ const EMPTY_FORM: FormState = {
   mortgageOutstanding: '0',
   lifeCover: '0',
   incomeProtectionMonthly: '0',
+  incomeNotes: '',
   hasSecondEarner: false,
   secondEarnerMemberId: '',
   secondEarnerEmploymentStatus: 'employed',
@@ -191,6 +196,7 @@ function fromProfile(profile: FinancialProfile): {
       mortgageOutstanding: toWhole(household.mortgage_outstanding_minor ?? 0),
       lifeCover: toWhole(household.life_cover_minor ?? 0),
       incomeProtectionMonthly: toWhole(household.income_protection_monthly_minor ?? 0),
+      incomeNotes: household.income_notes ?? '',
       // This UI only ever writes one members[] entry — see toPayload().
       hasSecondEarner: (household.members?.length ?? 0) > 0,
       secondEarnerMemberId: household.members?.[0]?.member_id ?? '',
@@ -293,6 +299,7 @@ function toPayload(
       life_cover_minor: toMinor(form.lifeCover),
       income_protection_monthly_minor: toMinor(form.incomeProtectionMonthly),
       monthly_debt_payments_minor: toMinor(form.monthlyDebtPayments),
+      ...(form.incomeNotes.trim() ? { income_notes: form.incomeNotes.trim() } : {}),
       members:
         form.hasSecondEarner && form.secondEarnerMemberId
           ? [
@@ -1267,6 +1274,22 @@ export default function FinancialProfilePage() {
                   prefix="£"
                   error={fieldErrors.mortgageOutstanding}
                 />
+                {/* Intent 26: a seasonal or irregular income can't be
+                    expressed as one monthly number — let the family say so
+                    in words, which Ask Keel then reads as context. */}
+                <label className="block">
+                  <div className="text-sm font-medium text-ink-secondary mb-1">
+                    Income notes (optional)
+                  </div>
+                  <textarea
+                    value={form.incomeNotes}
+                    onChange={(e) => set('incomeNotes', e.target.value)}
+                    maxLength={500}
+                    rows={2}
+                    placeholder="e.g. seasonal work, irregular contracts, income varies month to month"
+                    className="glass-input w-full rounded-xl px-4 py-3 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 transition-all resize-none"
+                  />
+                </label>
               </div>
             </GlassCard>
           )}

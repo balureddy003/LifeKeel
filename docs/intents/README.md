@@ -51,7 +51,7 @@ longer-term.
 | `23-invite-status-and-second-adult-engagement.md` | Invite status — **partial, PR #250** (share link + "sent" status; viewed tracking open) | PRD-110, PRD-123 |
 | `24-insight-severity-signaling.md` | Severity signalling — **implemented, PR #251** (accent band + high-priority chip; sort open) | — |
 | `25-blended-family-member-labels.md` | Child relationship labels — **implemented, PR #252** (roster + add form; chart surface open) | PRD-001 |
-| `26-variable-income-capture.md` | Second-earner prominence + income notes for irregular earners | PRD-104, PRD-131 |
+| `26-variable-income-capture.md` | Income notes — **implemented, PR #253** (`income_notes` field + Ask Keel grounding) | PRD-104, PRD-131 |
 | `27-document-upload-feedback-loop.md` | Upload feedback — **partial, PR #249** (progress bar; renewal-date field open) | PRD-003 (extraction stays PRD-143) |
 | `28-profile-wizard-validation-and-prefill.md` | Inline validation on blur; saved fields pre-fill on return | PRD-002 |
 | `29-signup-otp-reliability.md` | Intermittent OTP; example.com addresses fail — **partially implemented — PR #244** (test path shipped; live repro open) | — |
