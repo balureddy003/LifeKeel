@@ -331,6 +331,7 @@ function Field({
   label,
   value,
   onChange,
+  onBlur,
   placeholder,
   suffix,
   prefix,
@@ -340,6 +341,7 @@ function Field({
   label: string
   value: string
   onChange: (v: string) => void
+  onBlur?: () => void
   placeholder?: string
   suffix?: string
   prefix?: string
@@ -362,6 +364,7 @@ function Field({
           min={0}
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onBlur={onBlur}
           placeholder={placeholder ?? '0'}
           aria-invalid={Boolean(error) || undefined}
           className={`glass-input w-full rounded-xl py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 transition-all ${prefix ? 'pl-8 pr-4' : 'px-4'} ${
@@ -859,6 +862,21 @@ export default function FinancialProfilePage() {
 
   const isLastStep = stepIndex === STEPS.length - 1
 
+  // Intent 28: per-field validation on blur — the same rule set
+  // handleContinue runs at step level, so a bad value is named the
+  // moment the field loses focus instead of at step transition (which,
+  // on mobile, means after the keyboard closes and the user scrolled).
+  const validateOnBlur = (key: string) => {
+    const issues = validateWizardStep(step.key as WizardStepKey, form, funds, policies)
+    const mine = issues.find((i) => i.key === key)
+    setFieldErrors((prev) => {
+      const next = { ...prev }
+      if (mine) next[key] = mine.message
+      else delete next[key]
+      return next
+    })
+  }
+
   // Autosaves whatever's been entered so far whenever the user moves to the
   // next step — closing the tab mid-form used to lose everything, since the
   // old single-page form only ever saved on the final submit.
@@ -1235,6 +1253,7 @@ export default function FinancialProfilePage() {
                   onChange={(v) => set('monthlySalary', v)}
                   prefix="£"
                   error={fieldErrors.monthlySalary}
+                  onBlur={() => validateOnBlur('monthlySalary')}
                 />
                 <Field
                   label="Annual living expenses"
@@ -1243,6 +1262,7 @@ export default function FinancialProfilePage() {
                   onChange={(v) => set('annualLivingExpenses', v)}
                   prefix="£"
                   error={fieldErrors.annualLivingExpenses}
+                  onBlur={() => validateOnBlur('annualLivingExpenses')}
                 />
                 <Field
                   label="Mortgage outstanding"
@@ -1251,6 +1271,7 @@ export default function FinancialProfilePage() {
                   placeholder="0 if none"
                   prefix="£"
                   error={fieldErrors.mortgageOutstanding}
+                  onBlur={() => validateOnBlur('mortgageOutstanding')}
                 />
               </div>
             </GlassCard>
@@ -1297,6 +1318,7 @@ export default function FinancialProfilePage() {
                       onChange={(v) => set('secondEarnerMonthlySalary', v)}
                       prefix="£"
                       error={fieldErrors.secondEarnerMonthlySalary}
+                      onBlur={() => validateOnBlur('secondEarnerMonthlySalary')}
                     />
                     <Field
                       label="Their income protection (monthly payout)"
@@ -1305,6 +1327,7 @@ export default function FinancialProfilePage() {
                       placeholder="0 if none"
                       prefix="£"
                       error={fieldErrors.secondEarnerIncomeProtectionMonthly}
+                      onBlur={() => validateOnBlur('secondEarnerIncomeProtectionMonthly')}
                     />
                     <Field
                       label="Their pension balance (optional)"
@@ -1313,6 +1336,7 @@ export default function FinancialProfilePage() {
                       placeholder="Leave blank if unknown"
                       prefix="£"
                       error={fieldErrors.secondEarnerPensionBalance}
+                      onBlur={() => validateOnBlur('secondEarnerPensionBalance')}
                     />
                     <Field
                       label="Their monthly pension contribution (optional)"
@@ -1321,6 +1345,7 @@ export default function FinancialProfilePage() {
                       placeholder="Leave blank if unknown"
                       prefix="£"
                       error={fieldErrors.secondEarnerPensionMonthly}
+                      onBlur={() => validateOnBlur('secondEarnerPensionMonthly')}
                     />
                   </>
                 )}
@@ -1339,6 +1364,7 @@ export default function FinancialProfilePage() {
                   placeholder="0 if none"
                   prefix="£"
                   error={fieldErrors.lifeCover}
+                  onBlur={() => validateOnBlur('lifeCover')}
                 />
                 <Field
                   label="Income protection (monthly payout)"
@@ -1347,6 +1373,7 @@ export default function FinancialProfilePage() {
                   placeholder="0 if none"
                   prefix="£"
                   error={fieldErrors.incomeProtectionMonthly}
+                  onBlur={() => validateOnBlur('incomeProtectionMonthly')}
                 />
               </div>
             </GlassCard>
@@ -1522,6 +1549,7 @@ export default function FinancialProfilePage() {
                   onChange={(v) => set('emergencySavings', v)}
                   prefix="£"
                   error={fieldErrors.emergencySavings}
+                  onBlur={() => validateOnBlur('emergencySavings')}
                 />
                 <Field
                   label="Monthly expenses"
@@ -1529,6 +1557,7 @@ export default function FinancialProfilePage() {
                   onChange={(v) => set('monthlyExpenses', v)}
                   prefix="£"
                   error={fieldErrors.monthlyExpenses}
+                  onBlur={() => validateOnBlur('monthlyExpenses')}
                 />
                 <YesNo
                   label="Any high-interest debt?"
@@ -1543,6 +1572,7 @@ export default function FinancialProfilePage() {
                     placeholder="e.g. credit cards, payday loans"
                     prefix="£"
                     error={fieldErrors.highInterestDebtBalance}
+                    onBlur={() => validateOnBlur('highInterestDebtBalance')}
                   />
                 )}
                 <Field
@@ -1552,6 +1582,7 @@ export default function FinancialProfilePage() {
                   placeholder="0 if none — cards, loans, car finance"
                   prefix="£"
                   error={fieldErrors.monthlyDebtPayments}
+                  onBlur={() => validateOnBlur('monthlyDebtPayments')}
                 />
               </div>
             </GlassCard>
@@ -1581,6 +1612,7 @@ export default function FinancialProfilePage() {
                       value={form.currentAge}
                       onChange={(v) => set('currentAge', v)}
                       error={fieldErrors.currentAge}
+                      onBlur={() => validateOnBlur('currentAge')}
                     />
                   )}
                   <Field
@@ -1588,6 +1620,7 @@ export default function FinancialProfilePage() {
                     value={form.targetRetirementAge}
                     onChange={(v) => set('targetRetirementAge', v)}
                     error={fieldErrors.targetRetirementAge}
+                    onBlur={() => validateOnBlur('targetRetirementAge')}
                   />
                 </div>
                 <Field
@@ -1597,6 +1630,7 @@ export default function FinancialProfilePage() {
                   placeholder="0 if none"
                   prefix="£"
                   error={fieldErrors.pensionBalance}
+                  onBlur={() => validateOnBlur('pensionBalance')}
                 />
                 <Field
                   label="Monthly pension contribution"
@@ -1605,6 +1639,7 @@ export default function FinancialProfilePage() {
                   placeholder="0 if none"
                   prefix="£"
                   error={fieldErrors.monthlyContribution}
+                  onBlur={() => validateOnBlur('monthlyContribution')}
                 />
                 <Field
                   label="Target annual retirement income"
@@ -1612,6 +1647,7 @@ export default function FinancialProfilePage() {
                   onChange={(v) => set('targetRetirementIncome', v)}
                   prefix="£"
                   error={fieldErrors.targetRetirementIncome}
+                  onBlur={() => validateOnBlur('targetRetirementIncome')}
                 />
                 {/* Already defaults sensibly to 5% — the one genuinely
                     jargon-y field in this wizard, so it only shows in
@@ -1625,6 +1661,7 @@ export default function FinancialProfilePage() {
                     onChange={(v) => set('expectedAnnualGrowthPct', v)}
                     suffix="%"
                     error={fieldErrors.expectedAnnualGrowthPct}
+                    onBlur={() => validateOnBlur('expectedAnnualGrowthPct')}
                   />
                 </IfAdvanced>
               </div>
