@@ -747,6 +747,7 @@ export default function SettingsPage() {
           <GlassCard className="p-4 space-y-3">
             <input
               type="text"
+              aria-label="Member name"
               placeholder="Name"
               value={memberName}
               onChange={(e) => setMemberName(e.target.value)}
@@ -755,6 +756,7 @@ export default function SettingsPage() {
             />
             <input
               type="email"
+              aria-label="Member email (optional)"
               placeholder="Email (optional)"
               value={memberEmail}
               onChange={(e) => setMemberEmail(e.target.value)}
