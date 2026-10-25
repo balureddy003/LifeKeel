@@ -28,3 +28,14 @@ with PRD-203), SMS OTP.
 
 **Becomes** — fast-path fix PR if root cause is small; PRD only if the fix
 touches the send/verify contract.
+
+---
+
+**Status: partially implemented — PR #244** shipped the deterministic test path
+(`LIFEKEEL_TEST_OTP_CODE`, dev/test only, boot violation outside dev) and
+confirmed the error surfaces (`delivery: failed|unknown` → resend,
+`recordOtpDelivery` metric, audit) already exist. Remaining open item:
+reproduce the reported intermittency against a live environment — likely
+provider-bounce behaviour on undeliverable domains and/or Turnstile
+flakiness in automated browsers — and decide whether a delivery webhook
+(bounce → honest "couldn't deliver" state) is worth it.

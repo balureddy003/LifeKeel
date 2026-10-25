@@ -34,3 +34,11 @@ per-field permissions for the joined adult (deferred in PRD-110), the
 emergency-sheet share surface (PRD-220).
 
 **Becomes** — PRD in docs/prd/, amending PRD-110/PRD-123's join surface.
+
+---
+
+**Status: partially implemented — PR #250.** "Share link" (native sheet /
+clipboard) and a "Waiting for X to join — sent {ago}" line are live on the
+member invite card; email send + resend were already present. Still open:
+invite-*viewed* tracking (needs server-side state the API doesn't expose),
+the partner's first-open path, and any "Sam viewed it" surface.
