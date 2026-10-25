@@ -50,7 +50,7 @@ the expert panel's #1 conversion lever after trust.
 |---|---|---|
 | 27 | Upload feedback loop | **partial — PR #249** (progress bar; toast/status/upsell existed; renewal-date field open) |
 | 28 + 37 | Wizard validation/autosave/resume | **implemented — PRs #254 + #257** (blur validation + first-incomplete-step resume; rest pre-existing) |
-| 23 | Invite: share-sheet link, resend, sent/opened/waiting status | "As easy as sharing a calendar invite." The family loop feeds retention *and* conversion. |
+| 23 | Invite share + status | **partial — PR #250** (share sheet + "Waiting for X" sent status; opened/viewed tracking needs API state) |
 | 24 | Severity signalling | **implemented — PR #251** (band + chip; urgent-first sort not yet added) |
 | 35 | Mobile nav collapse at 390px; deliberate tablet layout | Mobile is the primary device for the target user (a busy parent); 6/10 easiness is the floor, not the ceiling. |
 | 36 | Accessibility baseline audit | **done** — static pass clean + label fixes; assistive-tech walkthrough still open. |
