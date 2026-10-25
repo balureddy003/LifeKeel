@@ -42,3 +42,13 @@ drafts are the ceiling).
 
 **Becomes** — PRD in docs/prd/, a detector addition to the
 `policy-review.yaml` family.
+
+---
+
+**Status: implemented — PR #258.** Followed the add-detector recipe end to
+end: `policies[].premium_history` (appended by the write path on change,
+matched by type+provider+policy_number), `premium_increase_*` fields on
+the `family.policy_review` signal, a `premium_increased` rule (>5%,
+informational copy passing `advice-rule.test.ts`), golden eval cases
+(fires on rise, quiet when flat), and the wizard round-trips the history +
+shows "Previously £X/mo". Automatic capture stays with PRD-143.

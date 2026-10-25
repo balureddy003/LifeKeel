@@ -30,3 +30,13 @@ territory); new explanation content; score computation (already live).
 
 **Becomes** — PRD in docs/prd/, likely alongside or amending PRD-107's
 insight-lifecycle work.
+
+---
+
+**Status: implemented — PR #248.** Root cause: `persistAndDeliverInsights`
+skipped a re-fire against an already-open insight, so `reasoning` figures
+froze at first-fire values. Open cards now refresh figure-bearing fields
+on each evaluation (`refreshed_at` stamped) while lifecycle state is
+preserved. Remaining open item: the *score and scenario math* already
+recompute per read; AI-narrated explanation text freshness follows the
+same refreshed figure once this lands.

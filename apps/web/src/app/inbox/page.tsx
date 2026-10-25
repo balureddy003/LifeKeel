@@ -581,12 +581,18 @@ export default function InboxPage() {
                       onDismiss={() => handleDismiss(item)}
                       disabled={isExpanded || dismissingId === item.id}
                     >
+                      {/* Intent 24: the priority colour used to live only on
+                          the icon/dot — identical-looking cards made mild and
+                          critical gaps scan the same. A left accent band in
+                          the same colour makes severity readable at a glance
+                          (amber = medium, red = high, green = low). */}
                       <GlassCard className="overflow-hidden">
                         <button
                           onClick={() => handleTap(item.id)}
                           aria-expanded={isExpanded}
                           aria-controls={`inbox-item-${item.id}-panel`}
-                          className="w-full p-4 flex items-start gap-3 text-left"
+                          className="w-full p-4 flex items-start gap-3 text-left border-l-4"
+                          style={{ borderLeftColor: color }}
                         >
                           <div
                             className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0"
@@ -632,6 +638,14 @@ export default function InboxPage() {
                               {item.actedOn && (
                                 <span className="ml-2 text-[10px] font-semibold text-success/90 bg-success/10 rounded-full px-1.5 py-0.5 align-middle">
                                   Acted on
+                                </span>
+                              )}
+                              {item.priority === 'high' && !item.actedOn && (
+                                <span
+                                  className="ml-2 text-[10px] font-semibold rounded-full px-1.5 py-0.5 align-middle"
+                                  style={{ color, background: `${color}15` }}
+                                >
+                                  High priority
                                 </span>
                               )}
                             </div>
