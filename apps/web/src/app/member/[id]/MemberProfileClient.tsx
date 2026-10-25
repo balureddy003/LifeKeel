@@ -11,6 +11,7 @@ import {
   Siren,
   Loader2,
   Mail,
+  Share2,
   GraduationCap,
   ShieldCheck,
   AlertCircle,
@@ -22,6 +23,7 @@ import { useAuth } from '@/lib/auth-context'
 import { useMode } from '@/lib/mode-context'
 import { ROLE_LABELS } from '@/lib/auth-types'
 import { PageHeader, PageTransition, Money } from '@/components/Glass'
+import { formatRelativeDate } from '@/lib/format'
 import {
   fetchMemberTwin,
   fetchMemberAgent,
@@ -63,6 +65,9 @@ export default function MemberProfileClient() {
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviting, setInviting] = useState(false)
   const [inviteSent, setInviteSent] = useState<{ emailed: boolean; inviteUrl: string } | null>(null)
+  // When the last invite went out — the "Waiting for X to join" status line
+  // names it rather than leaving "not joined" looking undelivered (intent 23).
+  const [inviteSentAt, setInviteSentAt] = useState<Date | null>(null)
   const member = family?.members.find((m) => m.id === memberId)
 
   // PRD-124: a minor's page can render in "kid view" — the API then returns
@@ -106,6 +111,7 @@ export default function MemberProfileClient() {
       const res = await inviteFamilyMember(member.id, member.email ? undefined : email)
       haptic('success')
       setInviteSent({ emailed: res.emailed, inviteUrl: res.inviteUrl })
+      setInviteSentAt(new Date())
       if (!res.emailed) await navigator.clipboard.writeText(res.inviteUrl).catch(() => {})
       toast({
         message: res.emailed
@@ -121,6 +127,38 @@ export default function MemberProfileClient() {
       })
     } finally {
       setInviting(false)
+    }
+  }
+
+  // Intent 23: one-tap sharing — the native share sheet on mobile, clipboard
+  // everywhere else. The invite endpoint returns the link whether or not an
+  // email went out, so no address is needed for this path.
+  const shareInvite = async () => {
+    if (!member) return
+    haptic('light')
+    try {
+      let url = inviteSent?.inviteUrl
+      if (!url) {
+        const res = await inviteFamilyMember(member.id)
+        url = res.inviteUrl
+        setInviteSent({ emailed: false, inviteUrl: url })
+        setInviteSentAt(new Date())
+      }
+      if (typeof navigator.share === 'function') {
+        await navigator.share({
+          title: 'Join our family on LifeKeel',
+          text: `Join our family space on LifeKeel:`,
+          url,
+        })
+      } else {
+        await navigator.clipboard.writeText(url)
+        toast({ message: 'Invite link copied — send it to them' })
+      }
+    } catch (err) {
+      // navigator.share rejects with AbortError when the user cancels the
+      // sheet — that's a normal exit, not a failure worth a toast.
+      if (err instanceof Error && err.name === 'AbortError') return
+      toast({ message: "Couldn't share the invite — try again.", variant: 'error' })
     }
   }
 
@@ -295,6 +333,12 @@ export default function MemberProfileClient() {
               They haven&apos;t joined yet. Email them a personal invite — accepting it activates
               this profile so their twin keeps everything already on file.
             </p>
+            {inviteSentAt && (
+              <p className="text-xs text-warning mb-3">
+                Waiting for {member.name.split(' ')[0]} to join — invite sent{' '}
+                {formatRelativeDate(inviteSentAt.toISOString()).toLowerCase()}.
+              </p>
+            )}
             {!member.email && !inviteSent && (
               <input
                 type="email"
@@ -305,26 +349,34 @@ export default function MemberProfileClient() {
                 className="glass-input w-full rounded-xl px-3 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 mb-2"
               />
             )}
-            {inviteSent && !inviteSent.emailed ? (
-              <div className="rounded-xl bg-tint/[0.04] border border-tint/[0.08] px-3 py-2 text-xs text-ink-secondary break-all">
+            {inviteSent && !inviteSent.emailed && (
+              <div className="rounded-xl bg-tint/[0.04] border border-tint/[0.08] px-3 py-2 text-xs text-ink-secondary break-all mb-2">
                 {inviteSent.inviteUrl}
               </div>
-            ) : (
+            )}
+            <div className="flex gap-2">
               <button
                 onClick={sendInvite}
                 disabled={inviting || (!member.email && !inviteEmail.trim())}
-                className="btn-secondary w-full flex items-center justify-center gap-2 disabled:opacity-40"
+                className="btn-secondary flex-1 flex items-center justify-center gap-2 disabled:opacity-40"
               >
                 {inviting ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />}
                 <span>
-                  {inviteSent
-                    ? 'Send invite again'
+                  {inviteSent?.emailed
+                    ? 'Send again'
                     : member.email
                       ? `Email invite to ${member.email}`
                       : 'Send invite'}
                 </span>
               </button>
-            )}
+              <button
+                onClick={shareInvite}
+                className="btn-secondary flex-1 flex items-center justify-center gap-2"
+              >
+                <Share2 size={16} />
+                <span>Share link</span>
+              </button>
+            </div>
           </div>
         )}
 
