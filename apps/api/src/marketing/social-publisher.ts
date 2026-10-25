@@ -767,14 +767,18 @@ export class DbSocialPublisher implements SocialPublisher {
           ? await decryptEnveloped(this.db, cred.refresh_token)
           : undefined
         if (cid && csec && refreshToken) {
-          const r = await fetch('https://api.x.com/2/oauth2/token', {
-            method: 'POST',
-            headers: {
-              Authorization: `Basic ${Buffer.from(`${cid}:${csec}`).toString('base64')}`,
-              'Content-Type': 'application/x-www-form-urlencoded',
+          const r = await providerFetch(
+            'https://api.x.com/2/oauth2/token',
+            {
+              method: 'POST',
+              headers: {
+                Authorization: `Basic ${Buffer.from(`${cid}:${csec}`).toString('base64')}`,
+                'Content-Type': 'application/x-www-form-urlencoded',
+              },
+              body: `grant_type=refresh_token&refresh_token=${encodeURIComponent(refreshToken)}`,
             },
-            body: `grant_type=refresh_token&refresh_token=${encodeURIComponent(refreshToken)}`,
-          })
+            { label: 'x oauth2/token', breakerKey: 'x:env' },
+          )
           if (r.ok) {
             const d = (await r.json()) as {
               access_token?: string
