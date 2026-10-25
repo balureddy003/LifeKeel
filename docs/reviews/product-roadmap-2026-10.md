@@ -21,7 +21,7 @@ Fast-path fixes, not PRDs. Each may resolve to a small PR once root-caused.
 | Intent | Item | Why first |
 |---|---|---|
 | 34 | ~~"Create Family Group" shown to accounts that have a family~~ **implemented — PR #243** | Was a transient-failure collapse on mount, not a race; now a retry state. |
-| 29 | OTP intermittency; `example.com` addresses fail | The front door. Every downstream metric is multiplied by signup success. |
+| 29 | OTP intermittency; `example.com` addresses fail | **partially implemented — PR #244** — deterministic test path; live-env reproduction open. |
 | 30 | Ask Keel previous-answer bleed; occasional lag | **implemented — PR #245** — no server bleed path found; answers now carry `data_as_of`. |
 | 31 | Sandbox checkout → webhook → Plus unlock never verified e2e | Cheap to verify now; must be green before any Wave 4 monetization push. |
 

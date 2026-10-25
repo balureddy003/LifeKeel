@@ -54,7 +54,7 @@ longer-term.
 | `26-variable-income-capture.md` | Second-earner prominence + income notes for irregular earners | PRD-104, PRD-131 |
 | `27-document-upload-feedback-loop.md` | Upload progress, stored confirmation, honest Plus gate | PRD-003 (extraction stays PRD-143) |
 | `28-profile-wizard-validation-and-prefill.md` | Inline validation on blur; saved fields pre-fill on return | PRD-002 |
-| `29-signup-otp-reliability.md` | Intermittent OTP; example.com addresses fail (reproduce first) | — |
+| `29-signup-otp-reliability.md` | Intermittent OTP; example.com addresses fail — **partially implemented — PR #244** (test path shipped; live repro open) | — |
 | `30-ask-keel-answer-freshness.md` | Previous-answer bleed — **implemented — PR #245** (`data_as_of` stamp; upstream staleness → intent 22) | PRD-211, PRD-212 |
 | `31-billing-unlock-verification.md` | Sandbox checkout → webhook → Plus unlock never verified e2e | PRD-006 |
 | `32-retirement-gap-closure-estimate.md` | "What would close the gap" slider, estimate-labelled, advice-rule-safe | PRD-106 territory |
