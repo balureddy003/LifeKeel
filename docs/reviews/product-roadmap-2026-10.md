@@ -66,7 +66,7 @@ the quiet-engagement layer the PRD backlog already plans.
 
 | Item | Source | Notes |
 |---|---|---|
-| Blended-family relationship labels | intent 25 | Lowest-scoring persona in the critic review; small schema + roster/chart surface. |
+| Blended-family relationship labels | intent 25 — **implemented, PR #252** (`relationship_label` on child members) | Lowest-scoring persona in the critic review; chart surface still open. |
 | Variable-income capture (second-earner prominence + income notes) | intent 26 | Business-owner persona's top gap. |
 | Premium history + price-creep alert | intent 38 — **implemented, PR #258** | `premium_history` + `premium_increased` rule + evals + wizard round-trip. |
 | Readiness feed + Quiet Care digest | PRD-136, 138 (proposed) | The engagement engine: opened even when nothing is wrong. Sequenced after 23 so digests can reach the second adult. |
