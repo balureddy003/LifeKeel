@@ -114,7 +114,12 @@ describe('fetchFamilyReadinessScore', () => {
       insights: [],
     })
     const result = await fetchFamilyReadinessScore()
-    expect(result).toEqual({ score: 72, hasLiveData: true, computedAt: '2026-09-20T00:00:00Z' })
+    expect(result).toEqual({
+      score: 72,
+      hasLiveData: true,
+      computedAt: '2026-09-20T00:00:00Z',
+      components: [],
+    })
   })
 
   it('treats server has_live_data=false as unknown — never a flattering 100', async () => {
@@ -126,7 +131,12 @@ describe('fetchFamilyReadinessScore', () => {
       insights: [],
     })
     const result = await fetchFamilyReadinessScore()
-    expect(result).toEqual({ score: 0, hasLiveData: false, computedAt: '2026-09-20T00:00:00Z' })
+    expect(result).toEqual({
+      score: 0,
+      hasLiveData: false,
+      computedAt: '2026-09-20T00:00:00Z',
+      components: [],
+    })
   })
 
   it('scores 0 with hasLiveData when the server ran but could not compute', async () => {
@@ -138,7 +148,12 @@ describe('fetchFamilyReadinessScore', () => {
       insights: [],
     })
     const result = await fetchFamilyReadinessScore()
-    expect(result).toEqual({ score: 0, hasLiveData: true, computedAt: '2026-09-20T00:00:00Z' })
+    expect(result).toEqual({
+      score: 0,
+      hasLiveData: true,
+      computedAt: '2026-09-20T00:00:00Z',
+      components: [],
+    })
   })
 
   // Fallback path: /family/readiness unreachable → legacy insight-penalty
@@ -152,7 +167,12 @@ describe('fetchFamilyReadinessScore', () => {
     const result = await fetchFamilyReadinessScore()
     // insights_evaluated_at stands in as the honest "when was this data
     // checked" timestamp when /family/readiness is unreachable.
-    expect(result).toEqual({ score: 100, hasLiveData: true, computedAt: '2026-09-20T00:00:00Z' })
+    expect(result).toEqual({
+      score: 100,
+      hasLiveData: true,
+      computedAt: '2026-09-20T00:00:00Z',
+      components: [],
+    })
   })
 
   it('does not score a saved-but-never-evaluated profile as 100 in the fallback — zero insights there means unknown, not on track', async () => {
@@ -162,7 +182,7 @@ describe('fetchFamilyReadinessScore', () => {
       { body: { profile: { household: {} } } },
     )
     const result = await fetchFamilyReadinessScore()
-    expect(result).toEqual({ score: 0, hasLiveData: false, computedAt: null })
+    expect(result).toEqual({ score: 0, hasLiveData: false, computedAt: null, components: [] })
   })
 
   it('scores 0 without live data when the fallback finds no insights and no profile', async () => {
@@ -172,7 +192,7 @@ describe('fetchFamilyReadinessScore', () => {
       { body: { profile: null } },
     )
     const result = await fetchFamilyReadinessScore()
-    expect(result).toEqual({ score: 0, hasLiveData: false, computedAt: null })
+    expect(result).toEqual({ score: 0, hasLiveData: false, computedAt: null, components: [] })
   })
 
   it('subtracts a confidence-weighted penalty per open (unresolved) insight in the fallback', async () => {
@@ -200,7 +220,12 @@ describe('fetchFamilyReadinessScore', () => {
     )
     const result = await fetchFamilyReadinessScore()
     // 100 - (0.5 * 10) = 95
-    expect(result).toEqual({ score: 95, hasLiveData: true, computedAt: expect.any(String) })
+    expect(result).toEqual({
+      score: 95,
+      hasLiveData: true,
+      computedAt: expect.any(String),
+      components: [],
+    })
   })
 
   it('does not penalize resolved insights in the fallback', async () => {
@@ -228,7 +253,12 @@ describe('fetchFamilyReadinessScore', () => {
     )
     expect(RESOLVED_INSIGHT_STATES).toContain('dismissed')
     const result = await fetchFamilyReadinessScore()
-    expect(result).toEqual({ score: 100, hasLiveData: true, computedAt: expect.any(String) })
+    expect(result).toEqual({
+      score: 100,
+      hasLiveData: true,
+      computedAt: expect.any(String),
+      components: [],
+    })
   })
 })
 
