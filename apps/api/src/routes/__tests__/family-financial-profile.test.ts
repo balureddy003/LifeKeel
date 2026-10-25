@@ -341,6 +341,61 @@ describe('PRD-102: policies[] and the new protection-domain rules', () => {
     expect(get.json().profile.policies).toEqual(policies)
   })
 
+  it('intent 38: a changed premium appends the old amount to premium_history; an unchanged save does not', async () => {
+    const { app } = await buildApp(engine)
+    const policy = {
+      type: 'car',
+      provider: 'Acme Insurance',
+      coverage_amount_minor: 5_000_000,
+      monthly_premium_minor: 4000,
+    }
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, policies: [policy] },
+    })
+
+    // Same premium → no history appended.
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, policies: [policy] },
+    })
+    let get = await app.inject({ method: 'GET', url: '/family/financial-profile' })
+    expect(get.json().profile.policies[0].premium_history).toBeUndefined()
+
+    // Raised premium → the old £40.00 lands in history.
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        policies: [{ ...policy, monthly_premium_minor: 5200 }],
+      },
+    })
+    get = await app.inject({ method: 'GET', url: '/family/financial-profile' })
+    const history = get.json().profile.policies[0].premium_history
+    expect(history).toHaveLength(1)
+    expect(history[0].amount_minor).toBe(4000)
+    expect(typeof history[0].effective_from).toBe('string')
+
+    // A second change appends again — history accumulates, never overwrites.
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        policies: [{ ...policy, monthly_premium_minor: 6000 }],
+      },
+    })
+    get = await app.inject({ method: 'GET', url: '/family/financial-profile' })
+    expect(
+      get
+        .json()
+        .profile.policies[0].premium_history.map((h: { amount_minor: number }) => h.amount_minor),
+    ).toEqual([4000, 5200])
+  })
+
   it('fires policy_renewal_window for a policy renewing within 60 days, not for one renewing in 200', async () => {
     const { app, insights } = await buildApp(engine)
     const res = await app.inject({
