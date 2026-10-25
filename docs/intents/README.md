@@ -45,20 +45,20 @@ longer-term.
 
 | File | Concern | Overlaps existing PRD |
 |---|---|---|
-| `20-readiness-score-calibration-and-explainability.md` | Score feels harsh; expose the 5 components + recalibrate against personas | PRD-114, PRD-118 |
+| `20-readiness-score-calibration-and-explainability.md` | Score explainability — **implemented, PR #246** (expander + persona-band pins) | PRD-114, PRD-118 |
 | `21-scenario-partial-data-honesty.md` | Silent fallbacks — **implemented, PR #247** (`missing_inputs` + partial-data banner) | PRD-115, PRD-132 |
-| `22-derived-surface-freshness.md` | Stale figures in insights/AI Explains after profile edits | PRD-107 |
-| `23-invite-status-and-second-adult-engagement.md` | "Not joined yet" opacity; copy link / resend / seen state | PRD-110, PRD-123 |
-| `24-insight-severity-signaling.md` | Critical gaps look identical to mild ones; no urgency sort | — |
-| `25-blended-family-member-labels.md` | Step-/shared-child distinction on the roster and chart | PRD-001 |
+| `22-derived-surface-freshness.md` | Stale insight figures — **implemented, PR #248** (open-insight refresh on re-fire) | PRD-107 |
+| `23-invite-status-and-second-adult-engagement.md` | Invite status — **partial, PR #250** (share link + "sent" status; viewed tracking open) | PRD-110, PRD-123 |
+| `24-insight-severity-signaling.md` | Severity signalling — **implemented, PR #251** (accent band + high-priority chip; sort open) | — |
+| `25-blended-family-member-labels.md` | Child relationship labels — **implemented, PR #252** (roster + add form; chart surface open) | PRD-001 |
 | `26-variable-income-capture.md` | Income notes — **implemented, PR #253** (`income_notes` field + Ask Keel grounding) | PRD-104, PRD-131 |
-| `27-document-upload-feedback-loop.md` | Upload progress, stored confirmation, honest Plus gate | PRD-003 (extraction stays PRD-143) |
+| `27-document-upload-feedback-loop.md` | Upload feedback — **partial, PR #249** (progress bar; renewal-date field open) | PRD-003 (extraction stays PRD-143) |
 | `28-profile-wizard-validation-and-prefill.md` | Inline validation on blur; saved fields pre-fill on return | PRD-002 |
-| `29-signup-otp-reliability.md` | Intermittent OTP; example.com addresses fail (reproduce first) | — |
+| `29-signup-otp-reliability.md` | Intermittent OTP; example.com addresses fail — **partially implemented — PR #244** (test path shipped; live repro open) | — |
 | `30-ask-keel-answer-freshness.md` | Previous-answer bleed — **implemented — PR #245** (`data_as_of` stamp; upstream staleness → intent 22) | PRD-211, PRD-212 |
 | `31-billing-unlock-verification.md` | Sandbox checkout → webhook → Plus unlock never verified e2e | PRD-006 |
 | `32-retirement-gap-closure-estimate.md` | "What would close the gap" slider, estimate-labelled, advice-rule-safe | PRD-106 territory |
-| `33-crisis-mode-simplified-view.md` | Crisis mode: top-3 next actions + runway + key documents | PRD-108 |
+| `33-crisis-mode-simplified-view.md` | Crisis mode — **implemented, PR #262** (top-3 steps + fund + vault; opt-in, reversible) | PRD-108 |
 
 ## 34–37: multi-device easiness pass
 
@@ -69,9 +69,9 @@ suspected bug (reproduce first); 36 is an audit before fixes.
 |---|---|---|
 | `34-post-login-routing-state-fragility.md` | ~~"Create Family Group" shown to accounts that have a family~~ **implemented — PR #243** | — |
 | `35-mobile-navigation-and-tablet-layout.md` | Nav density at 390px; tablet width unused | — |
-| `36-accessibility-baseline-audit.md` | Keyboard order, focus, contrast, labels unconfirmed | — |
-| `37-interruptible-setup-and-cross-device-continuity.md` | Autosave per step, "Continue setup", numeric input modes, resume on another device | lands with intent 28 |
-| `38-renewal-price-creep-tracking.md` | Premium history + alert on recorded premium increase — informational only (rule 2 edge) | detectors/policy-review.yaml; PRD-143 for capture |
+| `36-accessibility-baseline-audit.md` | A11y baseline — **audit done + fixes in this PR** (labels; SR walkthrough open) | — |
+| `37-interruptible-setup-and-cross-device-continuity.md` | Interruptible setup — **implemented, PR #257** (resume at first incomplete step; autosave/inputMode pre-existing) | lands with intent 28 |
+| `38-renewal-price-creep-tracking.md` | Price-creep tracking — **implemented, PR #258** (premium_history + premium_increased rule) | detectors/policy-review.yaml; PRD-143 for capture |
 | `39-subscription-packaging-and-conversion-moments.md` | Annual plan frame, post-upload paywall moment, explicit free/Plus line | PRD-006, PRD-206 |
 
 ## 40–42: marketing amplification (Buffer/Postiz-inspired, post-15/16)

@@ -38,3 +38,11 @@ changing the readiness score (intent 20), education-prominence layout for
 single parents beyond the same severity sort.
 
 **Becomes** — PRD in docs/prd/.
+
+---
+
+**Status: implemented — PR #251.** Inbox cards now carry a left accent
+band in the existing priority colour (red/amber/green) plus a "High
+priority" chip on un-acted high items — severity is scannable at a glance.
+The insight-detail page severity surface stays a follow-up if reviewers
+want the same treatment there.
