@@ -24,7 +24,11 @@ const dir = args[0] ?? (nextMode ? 'apps/web/.next' : 'apps/web/out')
 // from `next build`, 260 KB from the export, which also counts the externalised inline
 // scripts). Lower them when the app shell shrinks; raise them only on purpose, in a PR
 // that says why.
-const budgetKb = Number(args[1] ?? (nextMode ? 270 : 280))
+// 285 KB, bumped from 270 on 2026-10-25: the landing legitimately grew the
+// score "Why this score?" expander (intent 20) and the crisis-mode entry
+// (intent 33). Bump deliberately, with a note — the budget exists to catch
+// accidental bloat, not to freeze the page.
+const budgetKb = Number(args[1] ?? (nextMode ? 285 : 280))
 
 function scriptUrls(html) {
   const urls = new Set()
