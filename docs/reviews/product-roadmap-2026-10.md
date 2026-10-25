@@ -20,9 +20,9 @@ Fast-path fixes, not PRDs. Each may resolve to a small PR once root-caused.
 
 | Intent | Item | Why first |
 |---|---|---|
-| 34 | "Create Family Group" shown to accounts that have a family — suspected race in the family gate | A signed-in member seeing "create a family" reads as *data loss*. Highest-severity bug in all inputs. |
+| 34 | ~~"Create Family Group" shown to accounts that have a family~~ **implemented — PR #243** | Was a transient-failure collapse on mount, not a race; now a retry state. |
 | 29 | OTP intermittency; `example.com` addresses fail | **partially implemented — PR #244** — deterministic test path; live-env reproduction open. |
-| 30 | Ask Keel previous-answer bleed; occasional lag | The surface users check the score against. Likely a stale snapshot — may fold into PRD-212's resolver. |
+| 30 | Ask Keel previous-answer bleed; occasional lag | **implemented — PR #245** — no server bleed path found; answers now carry `data_as_of`. |
 | 31 | Sandbox checkout → webhook → Plus unlock never verified e2e | Cheap to verify now; must be green before any Wave 4 monetization push. |
 
 **Exit:** each item reproduced, root-caused, fixed or filed as a defect.
@@ -34,7 +34,7 @@ The two Fails and their shared root cause (honesty under imperfect data).
 | Intent | Item | Notes |
 |---|---|---|
 | 20 | Score calibration + "Why this score" component expander | Components already computed and returned (`GET /family/readiness`); this is mostly a *surface* plus a calibration pass against the persona set. The single most-cited fix across all five inputs. |
-| 21 | Scenario partial-data honesty — kill silent "Sample scenario" fallbacks | Runway stays visible + "Using the data you have so far" banner naming missing inputs. The critic's "emotional core" gap. |
+| 21 | Scenario partial-data honesty | **implemented — PR #247**: missing-inputs named via `missing_inputs`; annual-expense fallback added; not-found path already sound. |
 | 22 | Derived-surface freshness after profile/policy edits | Score already recomputes per-read; insight/explanation text needs the same guarantee or a visible recalculated-at provenance. |
 
 **Re-test gate:** the QA persona set re-run — young couple / first-home
@@ -49,7 +49,7 @@ the expert panel's #1 conversion lever after trust.
 | Intent | Item | Notes |
 |---|---|---|
 | 27 | Upload feedback loop: progress, "Document stored", honest Plus mention | The free "aha": effort in → visible value out, before any paywall. |
-| 28 + 37 | Wizard inline validation, pre-fill, per-step autosave, "Continue setup", numeric input modes, cross-device resume | One piece of work — the interruptible, forgiving form. Mobile-first: validation above the keyboard. |
+| 28 + 37 | Wizard validation/autosave/resume | **implemented — PRs #254 + #257** (blur validation + first-incomplete-step resume; rest pre-existing) |
 | 23 | Invite: share-sheet link, resend, sent/opened/waiting status | "As easy as sharing a calendar invite." The family loop feeds retention *and* conversion. |
 | 24 | Severity signalling: urgent-first sort, colour/icon band, debt-pressure state | Must scan one-handed on a phone; pairs with 20's expander. |
 | 35 | Mobile nav collapse at 390px; deliberate tablet layout | Mobile is the primary device for the target user (a busy parent); 6/10 easiness is the floor, not the ceiling. |

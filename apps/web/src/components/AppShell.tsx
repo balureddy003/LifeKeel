@@ -450,11 +450,13 @@ const PUBLIC_CONTENT_PREFIXES = [
 ]
 
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, family, user, createFamily } = useAuth()
+  const { isAuthenticated, isLoading, family, familyLoadFailed, user, createFamily, refresh } =
+    useAuth()
   const pathname = usePathname()
   const router = useRouter()
   const [skipping, setSkipping] = useState(false)
   const [skipFailed, setSkipFailed] = useState(false)
+  const [retryingFamily, setRetryingFamily] = useState(false)
   const isPublicContent = PUBLIC_CONTENT_PREFIXES.some((p) => pathname.startsWith(p))
 
   // "/" also renders the marketing page while the auth check runs, so it is in the static HTML.
@@ -560,6 +562,40 @@ function AuthGate({ children }: { children: React.ReactNode }) {
           Back to home
         </Link>
       </AuthShell>
+    )
+  }
+
+  // "Could not check" is not "does not exist": when the /family read failed,
+  // an account that has a family must get a retry, never the create screen —
+  // offering to create a second roster reads as account loss (intent 34).
+  if (
+    isAuthenticated &&
+    !family &&
+    familyLoadFailed &&
+    !isAuthRoute &&
+    !pathname.startsWith('/family-setup')
+  ) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen px-6 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-warning/10 border border-warning/20 flex items-center justify-center mb-6">
+          <Users size={32} className="text-warning" />
+        </div>
+        <h1 className="text-2xl font-bold mb-2">We couldn&apos;t load your family</h1>
+        <p className="text-ink-tertiary mb-8 max-w-xs">
+          You&apos;re signed in — the family data just didn&apos;t come through. Check your
+          connection and try again.
+        </p>
+        <button
+          disabled={retryingFamily}
+          onClick={() => {
+            setRetryingFamily(true)
+            refresh().finally(() => setRetryingFamily(false))
+          }}
+          className="w-full max-w-xs bg-gradient-to-b from-family-500 to-family-600 text-white font-semibold rounded-2xl py-4 text-base shadow-lg shadow-family-500/25 disabled:opacity-60"
+        >
+          {retryingFamily ? 'Checking…' : 'Try again'}
+        </button>
+      </div>
     )
   }
 

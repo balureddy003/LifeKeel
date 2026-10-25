@@ -215,12 +215,16 @@ export interface EventReadiness {
   stability: number
   explanation: string
   hasLiveData: boolean
+  /** Present on non-live results when the event has a formula but the
+   *  profile lacks its inputs — the UI names these instead of a silent
+   *  "sample scenario" (intent 21). */
+  missing_inputs?: string[]
 }
 
 export async function fetchEventReadiness(
   eventId: string,
-): Promise<EventReadiness | { hasLiveData: false }> {
-  return apiFetch<EventReadiness | { hasLiveData: false }>(
+): Promise<EventReadiness | { hasLiveData: false; missing_inputs?: string[] }> {
+  return apiFetch<EventReadiness | { hasLiveData: false; missing_inputs?: string[] }>(
     `/family/events/${encodeURIComponent(eventId)}/readiness`,
     { hasLiveData: false },
   )
@@ -1232,7 +1236,7 @@ export async function fetchAIResponse(
   query: string,
   memberId?: string,
   opts?: { memberName?: string },
-): Promise<{ content: string; status: AssistantAnswerStatus }> {
+): Promise<{ content: string; status: AssistantAnswerStatus; dataAsOf?: string }> {
   // Deterministic emergency short-circuit — before any network call, so
   // a "chest pain"-type message gets safety guidance instantly, offline
   // or while the assistant is down, and the text never leaves the
@@ -1301,11 +1305,16 @@ export async function fetchAIResponse(
         isLive?: boolean
         quarantined?: boolean
         emergency?: boolean
+        data_as_of?: string
       }
       if (typeof data.content === 'string') {
         return {
           content: curtain.restore(data.content),
           status: data.emergency === true ? 'emergency' : data.isLive ? 'live' : 'canned',
+          // The server stamps when the underlying profile/insights were
+          // read — the chat shows it so an older answer after a profile
+          // edit is honestly dated, not silently stale (intent 30).
+          ...(typeof data.data_as_of === 'string' ? { dataAsOf: data.data_as_of } : {}),
         }
       }
       reportError(new Error('assistant/ask returned no content'), { path: '/assistant/ask' })

@@ -198,7 +198,7 @@ export default function EventDetailClient() {
     ? (EVENT_AI_EXPLANATION[event.id] ??
       'This is a sample scenario, not based on your data yet. Connect your accounts and documents to see a personalized readiness assessment for this situation.')
     : 'This event could not be found.'
-  const { stability, explanation, live, insightId, ruleId } = useEventReadiness(
+  const { stability, explanation, live, missingInputs, insightId, ruleId } = useEventReadiness(
     eventId ?? '',
     fallbackStability,
     fallbackExplanation,
@@ -336,6 +336,13 @@ export default function EventDetailClient() {
               <div className="flex items-center gap-1.5 text-xs text-success mt-2">
                 <CheckCircle2 size={12} />
                 <span>Based on your family's data</span>
+              </div>
+            ) : missingInputs.length > 0 ? (
+              <div className="flex items-start gap-1.5 text-xs text-warning mt-2">
+                <AlertTriangle size={12} className="mt-0.5 flex-shrink-0" />
+                <span>
+                  Using the data you have so far — add {missingInputs.join(', ')} for a real number.
+                </span>
               </div>
             ) : (
               <div className="flex items-center gap-1.5 text-xs text-warning mt-2">

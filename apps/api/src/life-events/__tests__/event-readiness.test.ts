@@ -224,3 +224,62 @@ describe('computeEventReadiness', () => {
     }
   })
 })
+
+describe('missing_inputs + annual fallback (intent 21)', () => {
+  it('job-loss names monthly expenses when absent', () => {
+    const r = computeEventReadiness('job-loss', makeProfile())
+    expect(r.hasLiveData).toBe(false)
+    expect(r.missing_inputs).toContain('monthly expenses (or annual living expenses)')
+  })
+
+  it('job-loss computes real runway from annual living expenses when monthly is absent', () => {
+    const r = computeEventReadiness(
+      'job-loss',
+      makeProfile({
+        household: {
+          employment_status: 'employed',
+          monthly_salary_minor: 400000,
+          annual_living_expenses_minor: 3_600_000, // -> £3k/mo
+          mortgage_outstanding_minor: 0,
+          life_cover_minor: 0,
+          income_protection_monthly_minor: 0,
+          monthly_debt_payments_minor: 0,
+          members: [],
+        },
+        emergency_fund: {
+          emergency_savings_minor: 900_000, // £9k -> 3 months
+          monthly_expenses_minor: 0,
+          has_high_interest_debt: false,
+          high_interest_debt_balance_minor: 0,
+        },
+      }),
+    )
+    expect(r.hasLiveData).toBe(true)
+    expect(r.stability).toBe(50) // 3/6 months
+    expect(r.explanation).toContain('3 months')
+  })
+
+  it('policy events name the missing policy type', () => {
+    const r = computeEventReadiness('car', makeProfile())
+    expect(r.hasLiveData).toBe(false)
+    expect(r.missing_inputs).toEqual(['a car insurance policy on file'])
+  })
+
+  it('university names the missing education fund target', () => {
+    const r = computeEventReadiness('university', makeProfile())
+    expect(r.hasLiveData).toBe(false)
+    expect(r.missing_inputs).toEqual(['an education fund with a savings target'])
+  })
+
+  it('retirement names the missing target income', () => {
+    const r = computeEventReadiness('retirement', makeProfile())
+    expect(r.hasLiveData).toBe(false)
+    expect(r.missing_inputs).toEqual(['a target retirement income'])
+  })
+
+  it('an event id with no formula stays a plain no-data result', () => {
+    const r = computeEventReadiness('new-child', makeProfile())
+    expect(r.hasLiveData).toBe(false)
+    expect(r.missing_inputs).toBeUndefined()
+  })
+})
