@@ -72,7 +72,7 @@ suspected bug (reproduce first); 36 is an audit before fixes.
 | `36-accessibility-baseline-audit.md` | A11y baseline — **audit done + fixes in this PR** (labels; SR walkthrough open) | — |
 | `37-interruptible-setup-and-cross-device-continuity.md` | Interruptible setup — **implemented, PR #257** (resume at first incomplete step; autosave/inputMode pre-existing) | lands with intent 28 |
 | `38-renewal-price-creep-tracking.md` | Price-creep tracking — **implemented, PR #258** (premium_history + premium_increased rule) | detectors/policy-review.yaml; PRD-143 for capture |
-| `39-subscription-packaging-and-conversion-moments.md` | Annual plan frame, post-upload paywall moment, explicit free/Plus line | PRD-006, PRD-206 |
+| `39-subscription-packaging-and-conversion-moments.md` | Annual plan frame, post-upload paywall moment, explicit free/Plus line | PRD-006, PRD-206 | IMPLEMENTED |
 
 ## 40–42: marketing amplification (Buffer/Postiz-inspired, post-15/16)
 

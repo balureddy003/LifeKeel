@@ -46,3 +46,39 @@ features.
 
 **Becomes** — PRD in docs/prd/ amending PRD-006/PRD-206; founder decisions
 needed on annual price and the free/Plus line.
+
+---
+
+**Status: implemented — founder decisions taken 2026-10-25.**
+
+Decisions (approved by the founder):
+- **Free/Plus line** — free gets a *taste* of extraction: 1–2 documents
+  auto-extracted, plus manual entry, stored docs, honest runway, and the
+  shareable file emergency pack. Plus: unlimited extraction, digests,
+  always-current hosted pack, monitoring. (The extraction-taste
+  engineering is the PRD-143 pipeline gate — tracked as its own follow-up.)
+- **Annual price** — £59.99/yr, presented as "£5.00/mo billed yearly,
+  save 37%" against the £7.99/mo monthly anchor.
+- **Emergency pack** — file export ships free (the product's emotional
+  promise + natural family-share mechanic); the always-current hosted
+  link is a Plus feature pending PRD-220's trust-tier decision.
+
+Shipped this PR:
+- `keel_plus_gbp_annual` (5999 GBP/year) added to
+  `definitions/stripe-config.yaml`; provisioned in the sandbox as
+  `price_1UUZPJLkkF6tCgs09pP6Bgh9`.
+- `lookupKeyFor`/`resolveStripePriceId` take `interval`; env overrides
+  `STRIPE_PRICE_STARTER_{GBP_,}ANNUAL`; the legacy test fallback stays
+  monthly-only so a missing annual price fails loudly.
+- `POST /billing/checkout` accepts `interval: 'month'|'year'`
+  (default month) and stamps `billing_interval` on session + subscription
+  metadata.
+- Upgrade page shows a monthly/annual radio picker — annual pre-selected
+  with the "£5.00/mo billed yearly" framing.
+- Paywall moments already existed: post-upload honest Plus mention
+  (intent 27) names exactly what extraction does; upload's stored-for-
+  free line keeps free feeling useful rather than starved.
+
+Not in this PR: the free-extraction quota mechanics (PRD-143 gate) and
+the hosted always-current pack (PRD-220 fork) — both are their own
+decisions as scoped above.

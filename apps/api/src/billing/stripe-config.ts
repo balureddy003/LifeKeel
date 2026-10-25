@@ -105,7 +105,15 @@ export function loadStripeConfig(file?: string): StripeConfig {
 }
 
 /** The lookup key that sells a plan in a currency, or null if none is declared. */
-export function lookupKeyFor(config: StripeConfig, plan: string, currency: string): string | null {
+export function lookupKeyFor(
+  config: StripeConfig,
+  plan: string,
+  currency: string,
+  interval: 'month' | 'year' = 'month',
+): string | null {
   const wanted = currency.toLowerCase()
-  return config.prices.find((p) => p.plan === plan && p.currency === wanted)?.lookup_key ?? null
+  return (
+    config.prices.find((p) => p.plan === plan && p.currency === wanted && p.interval === interval)
+      ?.lookup_key ?? null
+  )
 }

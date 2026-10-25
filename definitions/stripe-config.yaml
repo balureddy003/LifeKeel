@@ -33,6 +33,11 @@ prices:
     currency: gbp
     unit_amount: 799 # £7.99
     interval: month
+  - lookup_key: keel_plus_gbp_annual
+    plan: starter
+    currency: gbp
+    unit_amount: 5999 # £59.99 — "£5.00/mo billed yearly", ~37% under monthly
+    interval: year
 
 webhook:
   # Appended to the API origin, e.g. https://api.lifekeel.co.uk/billing/webhook

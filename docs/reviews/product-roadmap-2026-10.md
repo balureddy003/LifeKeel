@@ -81,9 +81,9 @@ Gated on Wave 0's billing verification being green.
 
 | Item | Source | Notes |
 |---|---|---|
-| Founder decisions (gate) | intent 39 | (a) free/Plus line — manual-everything+stored-doc free vs Plus-removes-typing; (b) annual price point shown as monthly-equivalent; (c) emergency pack: file-only (PRD-220) vs hosted executor-shared — a trust-tier decision, not drift. |
-| Packaging + paywall moments | intent 39 → PRD-006/206 | Post-upload "Plus reads the rest and keeps {partner} in the loop"; annual plan frame. |
-| Billing cutover | PRD-006 | Dormant Stripe path to production, after 31 verifies the loop. |
+| Founder decisions (gate) | intent 39 | **Decided 2026-10-25** — free keeps a 1–2-doc extraction taste + file pack; Plus = extraction, digests, hosted pack, monitoring. Annual £59.99/yr vs £7.99/mo. Hosted pack still pending PRD-220. |
+| Packaging + paywall moments | intent 39 → PRD-006/206 | **Implemented** — annual plan frame (`keel_plus_gbp_annual` £59.99/yr, "£5/mo billed yearly"), `interval` on `/billing/checkout`, upgrade-page monthly/annual picker; post-upload Plus mention already live. |
+| Billing cutover | PRD-006 | Sandbox loop verified (intent 31); production cutover needs live keys + webhook endpoint. |
 | Reviewed extraction pipeline | PRD-143 (proposed) | The Plus headline feature; confirm-before-commit gate. |
 
 ## Wave 5 — differentiation

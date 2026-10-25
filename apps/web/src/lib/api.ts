@@ -3750,7 +3750,9 @@ export async function fetchBillingSubscription(): Promise<BillingSubscription | 
   return apiFetch<BillingSubscription | null>('/billing/subscription', null)
 }
 
-export async function startLifeKeelPlusCheckout(): Promise<string> {
+export async function startLifeKeelPlusCheckout(
+  interval: 'month' | 'year' = 'month',
+): Promise<string> {
   const base = getApiBase()
   const token = getAuthToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -3759,7 +3761,7 @@ export async function startLifeKeelPlusCheckout(): Promise<string> {
   const res = await credFetch(`${base}/billing/checkout`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ plan: 'starter', app: 'family' }),
+    body: JSON.stringify({ plan: 'starter', app: 'family', interval }),
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'Could not start checkout')
