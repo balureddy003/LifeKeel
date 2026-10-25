@@ -29,3 +29,12 @@ usefulness) partly for this reason.
 (PRD-137 territory), per-member financial-split logic driven by the label.
 
 **Becomes** — PRD in docs/prd/, amending PRD-001's people domain.
+
+---
+
+**Status: implemented — PR #252.** `relationship_label` ('my_child' /
+'partners_child' / 'shared_child' / 'other_child') on child roster
+members — display-only, separate from `role`; validated child-only at
+POST/PATCH, cleared on `null` and on role changes away from child. The
+add-member form offers it; the roster shows it. Still open if wanted:
+labels surfacing in the family chart and member-twin views.

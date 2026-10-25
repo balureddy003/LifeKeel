@@ -50,7 +50,7 @@ longer-term.
 | `22-derived-surface-freshness.md` | Stale figures in insights/AI Explains after profile edits | PRD-107 |
 | `23-invite-status-and-second-adult-engagement.md` | "Not joined yet" opacity; copy link / resend / seen state | PRD-110, PRD-123 |
 | `24-insight-severity-signaling.md` | Critical gaps look identical to mild ones; no urgency sort | — |
-| `25-blended-family-member-labels.md` | Step-/shared-child distinction on the roster and chart | PRD-001 |
+| `25-blended-family-member-labels.md` | Child relationship labels — **implemented, PR #252** (roster + add form; chart surface open) | PRD-001 |
 | `26-variable-income-capture.md` | Second-earner prominence + income notes for irregular earners | PRD-104, PRD-131 |
 | `27-document-upload-feedback-loop.md` | Upload progress, stored confirmation, honest Plus gate | PRD-003 (extraction stays PRD-143) |
 | `28-profile-wizard-validation-and-prefill.md` | Inline validation on blur; saved fields pre-fill on return | PRD-002 |
