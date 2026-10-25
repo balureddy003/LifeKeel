@@ -6141,3 +6141,30 @@ export async function refineMarketingPost(
     )
   return res.json()
 }
+
+export interface RetirementEstimate {
+  hasData: boolean
+  current?: {
+    monthly_contribution_minor: number
+    current_age: number
+    target_retirement_age: number
+  }
+  projection?: {
+    achievable_retirement_income_minor: number
+    projected_retirement_age: number
+    additional_monthly_contribution_needed_minor: number
+    target_retirement_income_minor: number
+  }
+}
+
+/** Intent 32: hypothetical re-projection — writes nothing server-side. */
+export async function fetchRetirementEstimate(params: {
+  monthlyContributionMinor?: number
+  retirementAge?: number
+}): Promise<RetirementEstimate> {
+  const q = new URLSearchParams()
+  if (params.monthlyContributionMinor !== undefined)
+    q.set('monthly_contribution_minor', String(params.monthlyContributionMinor))
+  if (params.retirementAge !== undefined) q.set('retirement_age', String(params.retirementAge))
+  return apiFetch<RetirementEstimate>(`/family/retirement/estimate?${q}`, { hasData: false })
+}

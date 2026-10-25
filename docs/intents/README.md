@@ -57,7 +57,7 @@ longer-term.
 | `29-signup-otp-reliability.md` | Intermittent OTP; example.com addresses fail — **partially implemented — PR #244** (test path shipped; live repro open) | — |
 | `30-ask-keel-answer-freshness.md` | Previous-answer bleed — **implemented — PR #245** (`data_as_of` stamp; upstream staleness → intent 22) | PRD-211, PRD-212 |
 | `31-billing-unlock-verification.md` | Sandbox checkout → webhook → Plus unlock never verified e2e | PRD-006 |
-| `32-retirement-gap-closure-estimate.md` | "What would close the gap" slider, estimate-labelled, advice-rule-safe | PRD-106 territory |
+| `32-retirement-gap-closure-estimate.md` | Gap-closure estimate — **implemented, PR #259** (estimate endpoint + slider) | PRD-114 |
 | `33-crisis-mode-simplified-view.md` | Crisis mode — **implemented, PR #262** (top-3 steps + fund + vault; opt-in, reversible) | PRD-108 |
 
 ## 34–37: multi-device easiness pass
