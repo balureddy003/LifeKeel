@@ -1686,3 +1686,54 @@ describe('PRD-136: profile_changed feed event', () => {
     await app.close()
   })
 })
+
+describe('GET /family/retirement/estimate (intent 32)', () => {
+  let engine: Engine
+  beforeEach(async () => {
+    engine = new Engine({ detectorsDir: DETECTORS_DIR, strictValidation: false })
+    await engine.load()
+  })
+
+  it('re-projects on hypothetical inputs and writes nothing', async () => {
+    const { app } = await buildApp(engine)
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        retirement: {
+          current_age: 40,
+          target_retirement_age: 65,
+          pension_balance_minor: 10_000_000,
+          monthly_contribution_minor: 30_000,
+          target_retirement_income_minor: 2_400_000,
+          expected_annual_growth_pct: 5,
+        },
+      },
+    })
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/family/retirement/estimate?monthly_contribution_minor=100000',
+    })
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.hasData).toBe(true)
+    expect(body.current.monthly_contribution_minor).toBe(30_000)
+    expect(body.projection.target_retirement_income_minor).toBe(2_400_000)
+    // A bigger contribution must not project a lower achievable income.
+    const res2 = await app.inject({
+      method: 'GET',
+      url: '/family/retirement/estimate?monthly_contribution_minor=5000',
+    })
+    expect(res2.json().projection.achievable_retirement_income_minor).toBeLessThanOrEqual(
+      body.projection.achievable_retirement_income_minor,
+    )
+  })
+
+  it('returns hasData:false without a profile', async () => {
+    const { app } = await buildApp(engine)
+    const res = await app.inject({ method: 'GET', url: '/family/retirement/estimate' })
+    expect(res.json().hasData).toBe(false)
+  })
+})

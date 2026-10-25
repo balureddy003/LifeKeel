@@ -30,6 +30,7 @@ import {
 } from '@/lib/api'
 import { learnMoreHref } from '@/lib/detector-content'
 import EventScenarioCard, { eventHasScenario } from './ScenarioCard'
+import RetirementEstimate from './RetirementEstimate'
 
 export interface Action {
   id: string
@@ -364,6 +365,19 @@ export default function EventDetailClient() {
             transition={{ delay: 0.15 }}
           >
             <EventScenarioCard eventId={event.id} />
+          </motion.div>
+        )}
+
+        {/* Intent 32: the retirement surface's interactive estimate —
+            contribution slider re-projects via the server math; writes
+            nothing and is labelled an estimate, not a recommendation. */}
+        {event.id === 'retirement' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            <RetirementEstimate />
           </motion.div>
         )}
 

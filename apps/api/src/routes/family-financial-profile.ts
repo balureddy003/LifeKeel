@@ -1035,6 +1035,45 @@ export async function registerFamilyFinancialProfileRoutes(
     return { profile, updatedAt: updated_at, version: version ?? 0 }
   })
 
+  // Intent 32: "what would close the gap" — re-projects retirement against
+  // hypothetical inputs, writing nothing. Pure arithmetic on the family's
+  // own figures via the same projectRetirement() the detector uses; the
+  // client labels it an estimate, never advice.
+  app.get<{
+    Querystring: { monthly_contribution_minor?: string; retirement_age?: string }
+  }>('/family/retirement/estimate', async (req, reply) => {
+    const { tenant_id } = req.authContext
+    const doc = await profileFor(tenant_id).findOne({})
+    if (!doc?.retirement) return { hasData: false }
+    const r = doc.retirement
+    const contribution = Number(req.query.monthly_contribution_minor)
+    const age = Number(req.query.retirement_age)
+    const projection = projectRetirement({
+      ...r,
+      ...(Number.isFinite(contribution) && contribution >= 0
+        ? { monthly_contribution_minor: Math.round(contribution) }
+        : {}),
+      ...(Number.isInteger(age) && age > r.current_age ? { target_retirement_age: age } : {}),
+    })
+    return {
+      hasData: true,
+      // The recorded inputs back so the client can label the estimate
+      // against what was actually entered.
+      current: {
+        monthly_contribution_minor: r.monthly_contribution_minor,
+        current_age: r.current_age,
+        target_retirement_age: r.target_retirement_age,
+      },
+      projection: {
+        achievable_retirement_income_minor: projection.achievable_retirement_income_minor,
+        projected_retirement_age: projection.projected_retirement_age,
+        additional_monthly_contribution_needed_minor:
+          projection.additional_monthly_contribution_needed_minor,
+        target_retirement_income_minor: r.target_retirement_income_minor,
+      },
+    }
+  })
+
   // Runs the detectors against the profile already on file — for a family
   // whose wizard autosaved every step but never reached the final submit,
   // so they don't have to re-enter anything to see their gaps. Tier 0:
