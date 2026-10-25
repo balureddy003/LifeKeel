@@ -35,6 +35,8 @@ export const KNOWN_EVENTS = new Set([
   'promo_redeemed',
   'signup_completed',
   'family_setup_completed',
+  // Setup banner dismissed — a skip is a signal worth counting (no meta sent).
+  'family_setup_skipped',
   'upgrade_page_view',
   'upgrade_checkout_start',
   'readiness_quiz_started',
