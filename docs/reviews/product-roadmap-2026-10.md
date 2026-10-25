@@ -91,7 +91,7 @@ Gated on Wave 0's billing verification being green.
 | Item | Source | Notes |
 |---|---|---|
 | Crisis mode — three next actions | intent 33 | Needs PRD-108 playbooks + intent 24's severity. The "rely on it on the worst day" payoff of the whole strategy. |
-| Retirement gap-closure estimate | intent 32 | Advice-rule-sensitive; arithmetic on own inputs only. |
+| Retirement "close the gap" estimate | intent 32 — **implemented, PR #259** | estimate endpoint + contribution slider on /events/retirement. |
 | Legacy map | PRD-137 (proposed) | Estate depth beyond vault booleans; includes the checklist/solicitor-pointer idea (generic pointers only). |
 | Partner/adviser channel | PRD-207 (proposed) | Counsel first; zero-commission constraint recorded. |
 
