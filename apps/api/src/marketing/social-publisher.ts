@@ -94,6 +94,7 @@ export interface SocialPublisher {
 import { createHash } from 'node:crypto'
 import type { Db } from 'mongodb'
 import { decryptEnveloped } from '../crypto/envelope.js'
+import { encryptIfNeeded } from '@lifekeel/platform'
 import { ConnectorActionExecutor } from '@lifekeel/workflows'
 import { providerFetch } from '../provider-gateway.js'
 import {
@@ -750,13 +751,70 @@ export class DbSocialPublisher implements SocialPublisher {
     // the Bearer token, which X rejects as "application-only"), so the token
     // is decrypted here like LinkedIn/Threads below.
     if (args.channel === 'x') {
-      const xToken = cred.access_token
+      let xToken = cred.access_token
         ? await decryptEnveloped(this.db, cred.access_token)
         : undefined
+      // Expired OAuth token? Refresh it before publishing — without this a
+      // lapsed access token throws a bare network error on every post and
+      // the rotated refresh token is never persisted back to the credential.
+      const expiresAt = cred.token_expires_at ? new Date(cred.token_expires_at).getTime() : null
+      if (xToken && expiresAt !== null && expiresAt <= Date.now()) {
+        const cid = process.env['X_CLIENT_ID']
+        const csec = process.env['X_CLIENT_SECRET']
+        const refreshToken = cred.refresh_token
+          ? await decryptEnveloped(this.db, cred.refresh_token)
+          : undefined
+        if (cid && csec && refreshToken) {
+          const r = await fetch('https://api.x.com/2/oauth2/token', {
+            method: 'POST',
+            headers: {
+              Authorization: `Basic ${Buffer.from(`${cid}:${csec}`).toString('base64')}`,
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `grant_type=refresh_token&refresh_token=${encodeURIComponent(refreshToken)}`,
+          })
+          if (r.ok) {
+            const d = (await r.json()) as {
+              access_token?: string
+              refresh_token?: string
+              expires_in?: number
+            }
+            if (d.access_token) {
+              xToken = d.access_token
+              const $set: Record<string, unknown> = {
+                access_token: encryptIfNeeded(d.access_token),
+                updated_at: new Date(),
+              }
+              if (d.refresh_token) $set['refresh_token'] = encryptIfNeeded(d.refresh_token)
+              if (d.expires_in)
+                $set['token_expires_at'] = new Date(Date.now() + d.expires_in * 1000)
+              await this.connectorCreds.updateOne(
+                { tenant_id: args.tenantId, connector_id: 'twitter_x' },
+                { $set },
+              )
+            }
+          }
+        }
+      }
       if (!xToken) throw new Error('x: stored credential has no access token')
-      const result = await xHandler(xToken, 'connection', account).publish(args.content, {
-        ...(args.idempotencyKey ? { idempotencyKey: args.idempotencyKey } : {}),
-      })
+      let result
+      try {
+        result = await xHandler(xToken, 'connection', account).publish(args.content, {
+          ...(args.idempotencyKey ? { idempotencyKey: args.idempotencyKey } : {}),
+        })
+      } catch (err) {
+        // A 403 on a user-context write means the grant lacks the scope —
+        // the fix is a reconnect, not a retry.
+        // Only the permission-shaped 403 ("not permitted to perform this
+        // action" = token lacks write scope) maps to a reconnect — real
+        // failures like duplicate content must surface as-is.
+        if (err instanceof Error && /not permitted to perform this action/i.test(err.message)) {
+          throw new Error(
+            'x publish rejected — the stored token keeps its original scopes; disconnect and reconnect X',
+          )
+        }
+        throw err
+      }
       return { ...result, account }
     }
     if (args.channel === 'facebook') {

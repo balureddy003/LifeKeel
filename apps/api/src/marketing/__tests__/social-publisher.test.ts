@@ -8,6 +8,7 @@ import {
   EnvSocialPublisher,
   DbSocialPublisher,
   socialPublisherFromEnv,
+  tidRkey,
   type SocialConnectionDoc,
 } from '../social-publisher.js'
 import { encryptIfNeeded, decryptIfNeeded } from '@lifekeel/platform'
@@ -944,6 +945,6 @@ describe('B12 — publisher binding + gateway policy', () => {
     const recordBody = JSON.parse(String(recordInit.body)) as { rkey?: string }
     // The rkey IS the dedupe: a retried createRecord with the same key is
     // refused by the repo instead of double-posting.
-    expect(recordBody.rkey).toBe('post-9-abc')
+    expect(recordBody.rkey).toBe(tidRkey('post-9-abc'))
   })
 })
