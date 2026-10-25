@@ -201,6 +201,19 @@ export const FinancialProfileSchema = z.object({
         // not something the app itself dials or sends to.
         contact_phone: z.string().max(40).optional(),
         contact_email: z.string().max(254).optional(),
+        // Intent 38: prior premiums, appended (never overwritten) when the
+        // recorded premium changes — a policy renewing 20% dearer every
+        // year is otherwise invisible. Entries are
+        // { amount_minor, effective_from }; the *current* premium stays in
+        // monthly_premium_minor, history holds what it used to be.
+        premium_history: z
+          .array(
+            z.object({
+              amount_minor: z.number().int().nonnegative(),
+              effective_from: z.string(),
+            }),
+          )
+          .optional(),
       }),
     )
     .default([]),
@@ -885,6 +898,15 @@ export async function evaluateProfileAndGenerateInsights(
       const days = Math.floor((Date.now() - renewalMs) / 86_400_000)
       return days > 0 ? [{ policy: p, days_overdue: days }] : []
     })
+    // Intent 38: recorded-premium creep — premium_history (appended at the
+    // write path when the recorded amount changes) vs the current premium.
+    // A recorded increase over 5% is informational, not a recommendation.
+    const premiumIncreases = profile.policies.flatMap((p) => {
+      const prev = p.premium_history?.[p.premium_history.length - 1]
+      if (!prev || prev.amount_minor <= 0) return []
+      const pct = ((p.monthly_premium_minor - prev.amount_minor) / prev.amount_minor) * 100
+      return pct > 5 ? [{ policy: p, prev_minor: prev.amount_minor, pct: Math.round(pct) }] : []
+    })
     {
       const eventId = crypto.randomUUID()
       const data = {
@@ -898,6 +920,18 @@ export async function evaluateProfileAndGenerateInsights(
           .join('; '),
         stale_renewal_monthly_premium_minor: staleRenewals.reduce(
           (s, r) => s + r.policy.monthly_premium_minor,
+          0,
+        ),
+        premium_increase_count: premiumIncreases.length,
+        premium_increase_descriptions: premiumIncreases
+          .map(
+            (g) =>
+              `${g.policy.type} policy with ${g.policy.provider} held by ${holderLabel(g.policy)}: premium went from £${(g.prev_minor / 100).toFixed(2)} to £${(g.policy.monthly_premium_minor / 100).toFixed(2)}/month (${g.pct}% higher)`,
+          )
+          .slice(0, 4)
+          .join('; '),
+        premium_increase_annual_delta_minor: premiumIncreases.reduce(
+          (s, g) => s + (g.policy.monthly_premium_minor - g.prev_minor) * 12,
           0,
         ),
       }
@@ -1330,8 +1364,32 @@ export async function registerFamilyFinancialProfileRoutes(
       // current version (GET returns 0 for rows that predate versioning);
       // a stale or missing version is a 409, never a silent overwrite and
       // never an upsert that collides with the unique tenant index.
+      // Intent 38: before overwriting, append each policy's *old* premium to
+      // its premium_history when the recorded amount changed — the
+      // price-creep detector reads this trail. Matched by
+      // (type, provider, policy_number) so a reordered array doesn't append
+      // the wrong history.
+      const policiesWithHistory = profile.policies.map((p) => {
+        const prior = previousDoc?.policies?.find(
+          (q) =>
+            q.type === p.type &&
+            q.provider === p.provider &&
+            (q.policy_number ?? '') === (p.policy_number ?? ''),
+        )
+        if (!prior || prior.monthly_premium_minor === p.monthly_premium_minor) return p
+        const history = [
+          ...(prior.premium_history ?? []),
+          {
+            amount_minor: prior.monthly_premium_minor,
+            effective_from: previousDoc!.updated_at?.toISOString?.() ?? new Date().toISOString(),
+          },
+        ]
+        return { ...p, premium_history: history }
+      })
+
       const fields = {
         ...profile,
+        policies: policiesWithHistory,
         updated_at: new Date(),
         // Marks that detectors have actually run against this profile.
         // Without it the client can't tell "evaluated, no gaps" from

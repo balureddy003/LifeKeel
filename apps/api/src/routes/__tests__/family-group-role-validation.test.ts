@@ -74,3 +74,48 @@ describe('PATCH /family/members/:id rejects an invalid role', () => {
     expect(res.statusCode).toBe(400)
   })
 })
+
+describe('POST /family/members relationship_label validation (intent 25)', () => {
+  it('rejects an out-of-enum relationship_label with 400 before any DB call', async () => {
+    const app = buildApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/members',
+      payload: {
+        name: 'Alex Rivera',
+        email: 'alex@example.com',
+        role: 'child',
+        relationship_label: 'cousin',
+      },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('rejects relationship_label on a non-child member', async () => {
+    const app = buildApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/members',
+      payload: {
+        name: 'Sam Rivera',
+        email: 'sam@example.com',
+        role: 'adult',
+        relationship_label: 'my_child',
+      },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(res.json().error).toContain('child')
+  })
+})
+
+describe('PATCH /family/members/:id relationship_label validation', () => {
+  it('rejects an out-of-enum relationship_label with 400', async () => {
+    const app = buildApp()
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/family/members/member-1',
+      payload: { relationship_label: 'cousin' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+})

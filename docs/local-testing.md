@@ -159,6 +159,19 @@ node scripts/serve-static-csp.mjs apps/web/out apps/web/firebase.json   # http:/
 Open the page and watch the console for `Refused to ...` messages. CI runs the size check
 against the ordinary build (`node scripts/check-landing-size.mjs --next apps/web/.next`).
 
+## 7c. Email OTP without a mailbox
+
+QA/e2e harnesses cannot read real email, and addresses like `example.com` can
+never receive it. Two local paths:
+
+- **Mailpit** (`MAILPIT_URL`) captures every outbound mail to a local inbox —
+  see `compose.local.yml` and `apps/api/src/dev/mailpit.ts`.
+- **`LIFEKEEL_TEST_OTP_CODE=<6 digits>`** makes every issued OTP that fixed
+  code, so a flow can be completed end-to-end without touching the mailbox at
+  all. Honoured only when `NODE_ENV` is unset/`development`/`test`; setting it
+  outside dev is a boot violation (`evaluateOtpBoot`), so it cannot weaken a
+  real deployment.
+
 ## 8. What these checks do not cover
 
 - Real traffic, real data, and load. No load test has been run on a real instance type.

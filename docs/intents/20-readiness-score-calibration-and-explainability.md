@@ -37,3 +37,14 @@ surfacing beyond what PRD-118 shipped; the separate freshness problem
 (intent 22).
 
 **Becomes** — PRD in docs/prd/ (likely an amendment to PRD-114's scope).
+
+---
+
+**Status: implemented — PR #246.** The "Why this score?" expander on the
+Home score card surfaces the five component subscores (already returned by
+`GET /family/readiness`). Calibration finding: computed personas landed at
+72 (young couple, mortgage + cover) and 14 (high-debt self-employed) — the
+composite's shape is sound, so no weight changes were made; persona-band
+tests now pin it so future threshold changes are deliberate. The observed
+low real-world scores (22–50) most likely reflect thinner real profiles —
+which the expander now explains — rather than miscalibration.
