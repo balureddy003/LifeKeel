@@ -48,7 +48,7 @@ the expert panel's #1 conversion lever after trust.
 
 | Intent | Item | Notes |
 |---|---|---|
-| 27 | Upload feedback loop: progress, "Document stored", honest Plus mention | The free "aha": effort in → visible value out, before any paywall. |
+| 27 | Upload feedback loop | **partial — PR #249** (progress bar; toast/status/upsell existed; renewal-date field open) |
 | 28 + 37 | Wizard inline validation, pre-fill, per-step autosave, "Continue setup", numeric input modes, cross-device resume | One piece of work — the interruptible, forgiving form. Mobile-first: validation above the keyboard. |
 | 23 | Invite: share-sheet link, resend, sent/opened/waiting status | "As easy as sharing a calendar invite." The family loop feeds retention *and* conversion. |
 | 24 | Severity signalling: urgent-first sort, colour/icon band, debt-pressure state | Must scan one-handed on a phone; pairs with 20's expander. |

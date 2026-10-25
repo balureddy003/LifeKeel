@@ -52,7 +52,7 @@ longer-term.
 | `24-insight-severity-signaling.md` | Critical gaps look identical to mild ones; no urgency sort | — |
 | `25-blended-family-member-labels.md` | Step-/shared-child distinction on the roster and chart | PRD-001 |
 | `26-variable-income-capture.md` | Second-earner prominence + income notes for irregular earners | PRD-104, PRD-131 |
-| `27-document-upload-feedback-loop.md` | Upload progress, stored confirmation, honest Plus gate | PRD-003 (extraction stays PRD-143) |
+| `27-document-upload-feedback-loop.md` | Upload feedback — **partial, PR #249** (progress bar; renewal-date field open) | PRD-003 (extraction stays PRD-143) |
 | `28-profile-wizard-validation-and-prefill.md` | Inline validation on blur; saved fields pre-fill on return | PRD-002 |
 | `29-signup-otp-reliability.md` | Intermittent OTP; example.com addresses fail (reproduce first) | — |
 | `30-ask-keel-answer-freshness.md` | Previous-answer bleed — **implemented — PR #245** (`data_as_of` stamp; upstream staleness → intent 22) | PRD-211, PRD-212 |
