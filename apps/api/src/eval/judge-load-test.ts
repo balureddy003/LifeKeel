@@ -2,6 +2,7 @@ import { pathToFileURL } from 'node:url'
 import { ollamaNumCtx } from '@lifekeel/platform'
 import { evalAuthHeaders } from './local-model-eval.js'
 import { LABELLED_EMAILS } from '../email/__fixtures__/labelled-emails.js'
+import { EMAIL_CLASSIFY_SYSTEM_PROMPT } from '../email/classify.js'
 
 /**
  * Load and context test for the self-hosted model service:
@@ -21,7 +22,8 @@ import { LABELLED_EMAILS } from '../email/__fixtures__/labelled-emails.js'
  * Every request consumes instance time (and wakes a scaled-to-zero service),
  * so against anything other than localhost it refuses to run unless
  * LOAD_TEST_CONFIRM=yes. Knobs: LOAD_TEST_REQUESTS (per level, default 6),
- * LOAD_TEST_LEVELS (default "1,2,4"), LOAD_TEST_TIMEOUT_MS (default 300000).
+ * LOAD_TEST_LEVELS (default "1,2,4"), LOAD_TEST_TIMEOUT_MS (default 300000),
+ * LOAD_TEST_SKIP_CONTEXT=yes (capacity only; the long prompt can take minutes).
  * Auth is the same as local-model-eval (LOCAL_JUDGE_BEARER or
  * LOCAL_JUDGE_AUTH=cloudrun-iam). Results are only as representative as the
  * hardware you point it at: a laptop says nothing about Cloud Run CPU.
@@ -43,6 +45,8 @@ export interface LevelSummary {
   p95Ms: number
   maxMs: number
   throughputPerMin: number
+  /** Failed calls grouped by cause, e.g. { 'HTTP 429': 1 }. */
+  errorsByKind: Record<string, number>
 }
 
 /** Nearest-rank percentile of an unsorted list; 0 for an empty list. */
@@ -57,6 +61,11 @@ export function percentile(values: number[], p: number): number {
 export function summarise(concurrency: number, samples: Sample[], wallMs: number): LevelSummary {
   const okMs = samples.filter((s) => s.ok).map((s) => s.ms)
   const errors = samples.length - okMs.length
+  const errorsByKind: Record<string, number> = {}
+  for (const x of samples.filter((y) => !y.ok)) {
+    const kind = (x.error ?? 'error').slice(0, 40)
+    errorsByKind[kind] = (errorsByKind[kind] ?? 0) + 1
+  }
   return {
     concurrency,
     requests: samples.length,
@@ -66,6 +75,7 @@ export function summarise(concurrency: number, samples: Sample[], wallMs: number
     p95Ms: percentile(okMs, 95),
     maxMs: okMs.length ? Math.max(...okMs) : 0,
     throughputPerMin: wallMs > 0 ? (okMs.length / wallMs) * 60_000 : 0,
+    errorsByKind,
   }
 }
 
@@ -98,13 +108,24 @@ export function mayRun(
   }
 }
 
-/** A production-shaped classification prompt: an email from the labelled set. */
-export function classifyPrompt(i: number): { system: string; prompt: string } {
+/**
+ * A production-shaped classification prompt: the real classifier system prompt
+ * and an email from the labelled set.
+ *
+ * Ollama reuses the cached key/value state of any identical prompt prefix.
+ * In production every call shares the same long system prompt and differs only
+ * in the email, so that prefix is cached while the email is not. `salt` goes at
+ * the START OF THE USER MESSAGE (after the shared system prompt) so each call
+ * pays for its own email but still shares the system-prompt prefix, exactly as
+ * new mail does. Salting the system prompt instead would defeat the shared
+ * prefix and make the server look slower than it is; omitting the salt would
+ * let later concurrency levels reuse earlier emails and look faster.
+ */
+export function classifyPrompt(i: number, salt = ''): { system: string; prompt: string } {
   const e = LABELLED_EMAILS[i % LABELLED_EMAILS.length]!
   return {
-    system:
-      'You triage email for a family protection app. Say whether the email is about an insurance, pension, mortgage or estate policy the household holds. Answer with one short sentence.',
-    prompt: `<email_from>${e.from}</email_from>\n<email_subject>${e.subject}</email_subject>\n\n<email_body>\n${e.textSnippet}\n</email_body>`,
+    system: EMAIL_CLASSIFY_SYSTEM_PROMPT,
+    prompt: `${salt ? `Ref ${salt}\n` : ''}<email_from>${e.from}</email_from>\n<email_subject>${e.subject}</email_subject>\n\n<email_body>\n${e.textSnippet}\n</email_body>`,
   }
 }
 
@@ -180,6 +201,7 @@ async function chat(
 }
 
 async function runLevel(t: Target, concurrency: number, requests: number): Promise<LevelSummary> {
+  const runId = Math.random().toString(36).slice(2, 8)
   const samples: Sample[] = []
   let next = 0
   const started = Date.now()
@@ -188,7 +210,7 @@ async function runLevel(t: Target, concurrency: number, requests: number): Promi
       for (;;) {
         const i = next++
         if (i >= requests) return
-        const { system, prompt } = classifyPrompt(i)
+        const { system, prompt } = classifyPrompt(i, `${runId}-${concurrency}-${i}`)
         samples.push((await chat(t, system, prompt, 120)).sample)
       }
     }),
@@ -196,10 +218,25 @@ async function runLevel(t: Target, concurrency: number, requests: number): Promi
   return summarise(concurrency, samples, Date.now() - started)
 }
 
+export interface ContextResult {
+  /** pass: answered correctly. wrong_answer: a response without the code (truncation).
+   *  request_failed: no response (timeout, HTTP error): says nothing about truncation. */
+  outcome: 'pass' | 'wrong_answer' | 'request_failed'
+  answer: string
+  ms: number
+  error?: string
+}
+
+export function judgeContext(sample: Sample, text: string, code: string): ContextResult {
+  if (!sample.ok)
+    return { outcome: 'request_failed', answer: '', ms: sample.ms, error: sample.error }
+  return { outcome: text.includes(code) ? 'pass' : 'wrong_answer', answer: text, ms: sample.ms }
+}
+
 export function formatReport(
   model: string,
   levels: LevelSummary[],
-  context: { ok: boolean; answer: string; ms: number } | null,
+  context: ContextResult | null,
 ): string {
   const lines = [`Load test: ${model}`, '']
   lines.push('concurrency  requests  errors  p50      p95      max      per-min')
@@ -227,13 +264,28 @@ export function formatReport(
         : 'Throughput rose with concurrency: the service is serving calls in parallel, so check instance count and memory.',
     )
   }
-  if (context)
-    lines.push(
-      '',
-      context.ok
-        ? `Context check: PASS (long prompt answered correctly in ${(context.ms / 1000).toFixed(1)}s)`
-        : `Context check: FAIL (answered ${JSON.stringify(context.answer.slice(0, 60))}); the prompt was likely truncated, so num_ctx is not taking effect on this server`,
-    )
+  for (const l of levels) {
+    const kinds = Object.entries(l.errorsByKind)
+    if (kinds.length)
+      lines.push(
+        `concurrency ${l.concurrency} errors: ${kinds.map(([k, n]) => `${n}x ${k}`).join(', ')}`,
+      )
+  }
+  if (context) {
+    lines.push('')
+    if (context.outcome === 'pass')
+      lines.push(
+        `Context check: PASS (long prompt answered correctly in ${(context.ms / 1000).toFixed(1)}s)`,
+      )
+    else if (context.outcome === 'wrong_answer')
+      lines.push(
+        `Context check: FAIL (answered ${JSON.stringify(context.answer.slice(0, 60))}); the prompt was likely truncated, so num_ctx is not taking effect on this server`,
+      )
+    else
+      lines.push(
+        `Context check: INCONCLUSIVE (request failed after ${(context.ms / 1000).toFixed(1)}s: ${context.error ?? 'error'}). A failed request says nothing about truncation; a ~4,700-token prompt may simply take longer than the service timeout on this hardware.`,
+      )
+  }
   return lines.join('\n')
 }
 
@@ -259,7 +311,7 @@ async function main(): Promise<void> {
   const requests = Math.max(1, Number(process.env['LOAD_TEST_REQUESTS']) || 6)
 
   // Warm the model first so the first level does not include a cold load.
-  await chat(target, classifyPrompt(0).system, classifyPrompt(0).prompt, 5)
+  await chat(target, classifyPrompt(0, 'warm').system, classifyPrompt(0, 'warm').prompt, 5)
 
   const levels: LevelSummary[] = []
   for (const c of parseLevels(process.env['LOAD_TEST_LEVELS'])) {
@@ -267,16 +319,17 @@ async function main(): Promise<void> {
     levels.push(await runLevel(target, c, requests))
   }
 
-  const probe = contextProbe()
-  const r = await chat(target, probe.system, probe.prompt, 30)
-  const context = {
-    ok: r.sample.ok && r.text.includes(probe.code),
-    answer: r.text,
-    ms: r.sample.ms,
+  // LOAD_TEST_SKIP_CONTEXT=yes measures capacity alone: the long prompt can take minutes.
+  let context: ContextResult | null = null
+  if (process.env['LOAD_TEST_SKIP_CONTEXT'] !== 'yes') {
+    const probe = contextProbe()
+    const r = await chat(target, probe.system, probe.prompt, 30)
+    context = judgeContext(r.sample, r.text, probe.code)
   }
 
   console.log(formatReport(model, levels, context))
-  process.exit(context.ok && levels.every((l) => l.errors === 0) ? 0 : 1)
+  const contextOk = context === null || context.outcome === 'pass'
+  process.exit(contextOk && levels.every((l) => l.errors === 0) ? 0 : 1)
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) void main()
