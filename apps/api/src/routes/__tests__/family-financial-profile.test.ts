@@ -341,6 +341,61 @@ describe('PRD-102: policies[] and the new protection-domain rules', () => {
     expect(get.json().profile.policies).toEqual(policies)
   })
 
+  it('intent 38: a changed premium appends the old amount to premium_history; an unchanged save does not', async () => {
+    const { app } = await buildApp(engine)
+    const policy = {
+      type: 'car',
+      provider: 'Acme Insurance',
+      coverage_amount_minor: 5_000_000,
+      monthly_premium_minor: 4000,
+    }
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, policies: [policy] },
+    })
+
+    // Same premium → no history appended.
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: { ...BASE_PROFILE, policies: [policy] },
+    })
+    let get = await app.inject({ method: 'GET', url: '/family/financial-profile' })
+    expect(get.json().profile.policies[0].premium_history).toBeUndefined()
+
+    // Raised premium → the old £40.00 lands in history.
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        policies: [{ ...policy, monthly_premium_minor: 5200 }],
+      },
+    })
+    get = await app.inject({ method: 'GET', url: '/family/financial-profile' })
+    const history = get.json().profile.policies[0].premium_history
+    expect(history).toHaveLength(1)
+    expect(history[0].amount_minor).toBe(4000)
+    expect(typeof history[0].effective_from).toBe('string')
+
+    // A second change appends again — history accumulates, never overwrites.
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        policies: [{ ...policy, monthly_premium_minor: 6000 }],
+      },
+    })
+    get = await app.inject({ method: 'GET', url: '/family/financial-profile' })
+    expect(
+      get
+        .json()
+        .profile.policies[0].premium_history.map((h: { amount_minor: number }) => h.amount_minor),
+    ).toEqual([4000, 5200])
+  })
+
   it('fires policy_renewal_window for a policy renewing within 60 days, not for one renewing in 200', async () => {
     const { app, insights } = await buildApp(engine)
     const res = await app.inject({
@@ -1684,5 +1739,56 @@ describe('PRD-136: profile_changed feed event', () => {
     await flush()
     expect(eventDocs.filter((e) => e['type'] === 'profile_changed')).toHaveLength(0)
     await app.close()
+  })
+})
+
+describe('GET /family/retirement/estimate (intent 32)', () => {
+  let engine: Engine
+  beforeEach(async () => {
+    engine = new Engine({ detectorsDir: DETECTORS_DIR, strictValidation: false })
+    await engine.load()
+  })
+
+  it('re-projects on hypothetical inputs and writes nothing', async () => {
+    const { app } = await buildApp(engine)
+    await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        retirement: {
+          current_age: 40,
+          target_retirement_age: 65,
+          pension_balance_minor: 10_000_000,
+          monthly_contribution_minor: 30_000,
+          target_retirement_income_minor: 2_400_000,
+          expected_annual_growth_pct: 5,
+        },
+      },
+    })
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/family/retirement/estimate?monthly_contribution_minor=100000',
+    })
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.hasData).toBe(true)
+    expect(body.current.monthly_contribution_minor).toBe(30_000)
+    expect(body.projection.target_retirement_income_minor).toBe(2_400_000)
+    // A bigger contribution must not project a lower achievable income.
+    const res2 = await app.inject({
+      method: 'GET',
+      url: '/family/retirement/estimate?monthly_contribution_minor=5000',
+    })
+    expect(res2.json().projection.achievable_retirement_income_minor).toBeLessThanOrEqual(
+      body.projection.achievable_retirement_income_minor,
+    )
+  })
+
+  it('returns hasData:false without a profile', async () => {
+    const { app } = await buildApp(engine)
+    const res = await app.inject({ method: 'GET', url: '/family/retirement/estimate' })
+    expect(res.json().hasData).toBe(false)
   })
 })

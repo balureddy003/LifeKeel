@@ -97,6 +97,36 @@ describe('recordInsightAction', () => {
     expect(store.insight_attribution).toHaveLength(0)
   })
 
+  it('detectorIds scopes credit to the detectors the action can address', async () => {
+    const store = {
+      insights: [
+        insight('protection', 5, 'family_protection_gap'),
+        insight('education', 5, 'family_education_shortfall'),
+        insight('debt', 5, 'family_debt_health'),
+      ],
+      insight_attribution: [] as Record<string, unknown>[],
+    }
+    // A bereavement playbook step credits protection + estate only —
+    // never the unrelated education or debt flags (intent 48).
+    const n = await recordInsightAction(makeDb(store) as never, 't1', 'step_completed', {
+      detectorIds: ['family_protection_gap', 'family_estate_readiness'],
+    })
+    expect(n).toBe(1)
+    expect(store.insight_attribution.map((r) => r['insight_id'])).toEqual(['protection'])
+  })
+
+  it('insightIds still wins over detectorIds when both are given', async () => {
+    const store = {
+      insights: [insight('a', 5), insight('b', 5, 'family_debt_health')],
+      insight_attribution: [] as Record<string, unknown>[],
+    }
+    await recordInsightAction(makeDb(store) as never, 't1', 'insight_approved', {
+      insightIds: ['b'],
+      detectorIds: ['family_protection_gap'],
+    })
+    expect(store.insight_attribution.map((r) => r['insight_id'])).toEqual(['b'])
+  })
+
   it('dedupes repeat actions: a second save refreshes, not duplicates', async () => {
     const store = {
       insights: [insight('a', 5)],
@@ -145,5 +175,53 @@ describe('listInsightAttributions', () => {
     }
     const rows = await listInsightAttributions(makeDb(store) as never, 't1')
     expect(rows.map((r) => r.insight_id)).toEqual(['a'])
+  })
+})
+
+describe('findStaleArtefacts (intent 67 — derivation closure)', () => {
+  it('returns only insights whose closure names a stale version', async () => {
+    const { findStaleArtefacts } = await import('../../insights-persist.js')
+    const store = {
+      insights: [
+        {
+          id: 'i1',
+          tenant_id: 't1',
+          detector_id: 'family-protection',
+          rule_id: 'r1',
+          state: 'identified',
+          closure: { profile_version: 3, detector_version: 'd1' },
+        },
+        {
+          id: 'i2',
+          tenant_id: 't1',
+          detector_id: 'family-protection',
+          rule_id: 'r2',
+          state: 'identified',
+          closure: { profile_version: 4, detector_version: 'd1' },
+        },
+        // Pre-closure insight — no closure field, not invalidated by this pass
+        {
+          id: 'i3',
+          tenant_id: 't1',
+          detector_id: 'family-protection',
+          rule_id: 'r3',
+          state: 'identified',
+        },
+        {
+          id: 'i4',
+          tenant_id: 't1',
+          detector_id: 'family-protection',
+          rule_id: 'r4',
+          state: 'resolved',
+          closure: { profile_version: 3 },
+        },
+      ],
+    }
+    const { stale, total } = await findStaleArtefacts(makeDb(store) as never, 't1', {
+      profile_version: 4,
+      detector_version: 'd1',
+    })
+    expect(stale.map((i: { id: string }) => i.id)).toEqual(['i1'])
+    expect(total).toBe(3)
   })
 })

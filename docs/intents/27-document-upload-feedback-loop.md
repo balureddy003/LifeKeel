@@ -32,3 +32,12 @@ not an engineering intent; PRD-143 covers the Plus pipeline), the automated
 upload test-harness limitation noted in the QA report.
 
 **Becomes** — PRD in docs/prd/, amending PRD-003's intake surface.
+
+---
+
+**Status: partially implemented — PR #249.** Indeterminate progress bar +
+"keep this page open" during upload; success toast, stored-doc status rows
+and the honest free-tier upsell were already present. Still open: the
+hand-entered renewal/review date on a stored doc (needs a profile-field
+decision) and the free-tier extraction question (founder decision per
+intent 39).

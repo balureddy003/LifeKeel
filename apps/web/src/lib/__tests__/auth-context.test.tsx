@@ -80,6 +80,121 @@ describe('AuthProvider.signUp', () => {
   })
 })
 
+describe('AuthProvider family-load honesty (intent 34)', () => {
+  it('a failed /family fetch on mount is not "no family" — familyLoadFailed is set', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.endsWith('/auth/me')) {
+        return jsonResponse({ user_id: 'u1', email: 'a@b.com', name: 'A' })
+      }
+      if (url.endsWith('/family')) {
+        return Promise.reject(new Error('Failed to fetch'))
+      }
+      return jsonResponse({}, false)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    localStorage.setItem('lifekeel_token', 'existing-token')
+
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(result.current.isAuthenticated).toBe(true)
+    expect(result.current.family).toBeNull()
+    expect(result.current.familyLoadFailed).toBe(true)
+  })
+
+  it('still shows the cached family when /family fails and a roster is on this device', async () => {
+    const cachedFamily = { id: 'f1', name: 'The Bs', inviteCode: 'ABC123', members: [] }
+    localStorage.setItem(
+      'family-auth',
+      JSON.stringify({ user: { id: 'u1', email: 'a@b.com', name: 'A' }, family: cachedFamily }),
+    )
+    localStorage.setItem('lifekeel_token', 'existing-token')
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.endsWith('/auth/me')) {
+        return jsonResponse({ user_id: 'u1', email: 'a@b.com', name: 'A' })
+      }
+      if (url.endsWith('/family')) return Promise.reject(new Error('Failed to fetch'))
+      return jsonResponse({}, false)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(result.current.family?.name).toBe('The Bs')
+    expect(result.current.familyLoadFailed).toBe(true)
+  })
+
+  it('keeps the fresh /auth/me user when only the family fetch fails', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.endsWith('/auth/me')) {
+        return jsonResponse({ user_id: 'u1', email: 'fresh@b.com', name: 'Fresh' })
+      }
+      if (url.endsWith('/family')) return Promise.reject(new Error('Failed to fetch'))
+      return jsonResponse({}, false)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    localStorage.setItem('lifekeel_token', 'existing-token')
+    localStorage.setItem(
+      'family-auth',
+      JSON.stringify({ user: { id: 'u1', email: 'stale@b.com', name: 'Stale' }, family: null }),
+    )
+
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(result.current.user?.email).toBe('fresh@b.com')
+    expect(result.current.familyLoadFailed).toBe(true)
+  })
+
+  it('refresh() clears the flag when the family fetch succeeds', async () => {
+    let familyCalls = 0
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.endsWith('/auth/me')) {
+        return jsonResponse({ user_id: 'u1', email: 'a@b.com', name: 'A' })
+      }
+      if (url.endsWith('/family')) {
+        familyCalls++
+        if (familyCalls === 1) return Promise.reject(new Error('Failed to fetch'))
+        return jsonResponse({
+          family: { id: 'f1', name: 'The Bs', inviteCode: 'ABC123', members: [] },
+        })
+      }
+      return jsonResponse({}, false)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    localStorage.setItem('lifekeel_token', 'existing-token')
+
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.familyLoadFailed).toBe(true)
+
+    await act(async () => {
+      await result.current.refresh()
+    })
+    expect(result.current.family?.name).toBe('The Bs')
+    expect(result.current.familyLoadFailed).toBe(false)
+  })
+
+  it('a confirmed empty roster (family: null) is not a load failure', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.endsWith('/auth/me')) {
+        return jsonResponse({ user_id: 'u1', email: 'a@b.com', name: 'A' })
+      }
+      if (url.endsWith('/family')) return jsonResponse({ family: null })
+      return jsonResponse({}, false)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    localStorage.setItem('lifekeel_token', 'existing-token')
+
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(result.current.family).toBeNull()
+    expect(result.current.familyLoadFailed).toBe(false)
+  })
+})
+
 describe('AuthProvider.signIn', () => {
   it('restores the real family roster on login instead of only trusting local cache', async () => {
     const fetchMock = vi.fn().mockImplementation((url: string) => {

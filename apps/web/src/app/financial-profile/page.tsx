@@ -46,6 +46,10 @@ interface FormState {
   mortgageOutstanding: string
   lifeCover: string
   incomeProtectionMonthly: string
+  // Intent 26: free-text context for income the numbers can't express —
+  // seasonal work, irregular contracts, variable benefits. Stored verbatim
+  // and read by Ask Keel as context; never parsed into figures.
+  incomeNotes: string
   // PRD-104: optional second earner, linked to a real family-roster
   // member — a mixed-earner household (one partner retired, one still
   // working) had no way to be represented by the single
@@ -97,6 +101,9 @@ interface PolicyForm {
   // PRD-110: roster member this policy belongs to — '' means unset
   // (household-wide; the only option for car/home).
   memberId: string
+  // Intent 38: server-appended premium trail — read-only in the form, but
+  // must round-trip through toPayload or every save would erase it.
+  premiumHistory?: Array<{ amount_minor: number; effective_from: string }>
   // Who the policy *protects* (pays out to) — a roster member. Distinct
   // from memberId (the holder): e.g. the organizer's life policy naming a
   // partner as beneficiary. '' = not recorded.
@@ -133,6 +140,7 @@ const EMPTY_FORM: FormState = {
   mortgageOutstanding: '0',
   lifeCover: '0',
   incomeProtectionMonthly: '0',
+  incomeNotes: '',
   hasSecondEarner: false,
   secondEarnerMemberId: '',
   secondEarnerEmploymentStatus: 'employed',
@@ -188,6 +196,7 @@ function fromProfile(profile: FinancialProfile): {
       mortgageOutstanding: toWhole(household.mortgage_outstanding_minor ?? 0),
       lifeCover: toWhole(household.life_cover_minor ?? 0),
       incomeProtectionMonthly: toWhole(household.income_protection_monthly_minor ?? 0),
+      incomeNotes: household.income_notes ?? '',
       // This UI only ever writes one members[] entry — see toPayload().
       hasSecondEarner: (household.members?.length ?? 0) > 0,
       secondEarnerMemberId: household.members?.[0]?.member_id ?? '',
@@ -242,6 +251,7 @@ function fromProfile(profile: FinancialProfile): {
       beneficiaryMemberId: p.beneficiary_member_id ?? '',
       contactPhone: p.contact_phone ?? '',
       contactEmail: p.contact_email ?? '',
+      ...(p.premium_history ? { premiumHistory: p.premium_history } : {}),
     })),
   }
 }
@@ -271,6 +281,7 @@ function toPayload(
       monthly_premium_minor: toMinor(p.monthlyPremium),
       ...(p.renewalDate ? { renewal_date: p.renewalDate } : {}),
       ...(p.policyNumber.trim() ? { policy_number: p.policyNumber.trim() } : {}),
+      ...(p.premiumHistory ? { premium_history: p.premiumHistory } : {}),
       ...(PERSON_SCOPED_POLICY_TYPES.has(p.type) && p.memberId ? { member_id: p.memberId } : {}),
       ...(PERSON_SCOPED_POLICY_TYPES.has(p.type) && p.beneficiaryMemberId
         ? { beneficiary_member_id: p.beneficiaryMemberId }
@@ -288,6 +299,7 @@ function toPayload(
       life_cover_minor: toMinor(form.lifeCover),
       income_protection_monthly_minor: toMinor(form.incomeProtectionMonthly),
       monthly_debt_payments_minor: toMinor(form.monthlyDebtPayments),
+      ...(form.incomeNotes.trim() ? { income_notes: form.incomeNotes.trim() } : {}),
       members:
         form.hasSecondEarner && form.secondEarnerMemberId
           ? [
@@ -331,6 +343,7 @@ function Field({
   label,
   value,
   onChange,
+  onBlur,
   placeholder,
   suffix,
   prefix,
@@ -340,6 +353,7 @@ function Field({
   label: string
   value: string
   onChange: (v: string) => void
+  onBlur?: () => void
   placeholder?: string
   suffix?: string
   prefix?: string
@@ -362,6 +376,7 @@ function Field({
           min={0}
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onBlur={onBlur}
           placeholder={placeholder ?? '0'}
           aria-invalid={Boolean(error) || undefined}
           className={`glass-input w-full rounded-xl py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 transition-all ${prefix ? 'pl-8 pr-4' : 'px-4'} ${
@@ -526,25 +541,41 @@ const STEPS: Step[] = [
 // Lightweight completeness estimate — counts how many of the key input
 // fields have meaningful (non-default, non-zero) values.  Used to show
 // a progress ring on Home and Settings without re-fetching the profile.
-function computeCompleteness(form: FormState, funds: EducationFundForm[]): number {
+function computeCompleteness(
+  form: FormState,
+  funds: EducationFundForm[],
+  policies: PolicyForm[] = [],
+): number {
+  const filled = (v: string) => v !== '' && v !== '0'
+  // Count every section the wizard actually asks for, not a fixed
+  // subset — a profile saved through all the income/debt/cover steps
+  // used to read ~18% because debts, mortgage, policies and the second
+  // earner never entered the numerator (intent 54).
   const fields: boolean[] = [
-    form.monthlySalary !== '' && form.monthlySalary !== '0',
-    form.annualLivingExpenses !== '' && form.annualLivingExpenses !== '0',
-    form.lifeCover !== '' && form.lifeCover !== '0',
-    form.incomeProtectionMonthly !== '' && form.incomeProtectionMonthly !== '0',
-    form.emergencySavings !== '' && form.emergencySavings !== '0',
-    form.monthlyExpenses !== '' && form.monthlyExpenses !== '0',
-    form.currentAge !== '' && form.currentAge !== '0',
-    form.targetRetirementAge !== '' && form.targetRetirementAge !== '0',
-    form.pensionBalance !== '' && form.pensionBalance !== '0',
-    form.monthlyContribution !== '' && form.monthlyContribution !== '0',
+    filled(form.monthlySalary),
+    filled(form.annualLivingExpenses),
+    filled(form.mortgageOutstanding),
+    filled(form.lifeCover),
+    filled(form.incomeProtectionMonthly),
+    filled(form.emergencySavings),
+    filled(form.monthlyExpenses),
+    filled(form.monthlyDebtPayments),
+    filled(form.currentAge),
+    filled(form.targetRetirementAge),
+    filled(form.pensionBalance),
+    filled(form.monthlyContribution),
   ]
-  // Education funds: count at least one child with savings entered
-  if (funds.length > 0) {
-    fields.push(funds.some((f) => f.currentSavings !== '' && f.currentSavings !== '0'))
+  if (form.hasSecondEarner) {
+    fields.push(filled(form.secondEarnerMonthlySalary))
   }
-  const filled = fields.filter(Boolean).length
-  return Math.round((filled / fields.length) * 100)
+  if (funds.length > 0) {
+    fields.push(funds.some((f) => filled(f.currentSavings)))
+  }
+  if (policies.length > 0) {
+    fields.push(policies.some((p) => filled(p.provider) || filled(p.coverageAmount)))
+  }
+  const done = fields.filter(Boolean).length
+  return Math.round((done / fields.length) * 100)
 }
 
 export default function FinancialProfilePage() {
@@ -701,7 +732,17 @@ export default function FinancialProfilePage() {
         setForm(f)
         setFunds(funds)
         setPolicies(p)
-        setProfileCompleteness(computeCompleteness(f, funds))
+        setProfileCompleteness(computeCompleteness(f, funds, p))
+        // Intent 37: cross-device resume — the draft is server-stored, so a
+        // returning session (on any device) should land on the first
+        // incomplete step, not back at step 1 re-reading finished work. An
+        // explicit ?step= link still wins over the computed resume.
+        if (!new URLSearchParams(window.location.search).get('step')) {
+          const firstIncomplete = STEPS.findIndex(
+            (s) => validateWizardStep(s.key as WizardStepKey, f, funds, p).length > 0,
+          )
+          if (firstIncomplete > 0) setStepIndex(firstIncomplete)
+        }
         setLoading(false)
       })
       .catch(() => {
@@ -859,6 +900,21 @@ export default function FinancialProfilePage() {
 
   const isLastStep = stepIndex === STEPS.length - 1
 
+  // Intent 28: per-field validation on blur — the same rule set
+  // handleContinue runs at step level, so a bad value is named the
+  // moment the field loses focus instead of at step transition (which,
+  // on mobile, means after the keyboard closes and the user scrolled).
+  const validateOnBlur = (key: string) => {
+    const issues = validateWizardStep(step.key as WizardStepKey, form, funds, policies)
+    const mine = issues.find((i) => i.key === key)
+    setFieldErrors((prev) => {
+      const next = { ...prev }
+      if (mine) next[key] = mine.message
+      else delete next[key]
+      return next
+    })
+  }
+
   // Autosaves whatever's been entered so far whenever the user moves to the
   // next step — closing the tab mid-form used to lose everything, since the
   // old single-page form only ever saved on the final submit.
@@ -955,7 +1011,7 @@ export default function FinancialProfilePage() {
       })
       setResult(insightsGenerated)
       setFinancialProfileSubmitted()
-      setProfileCompleteness(computeCompleteness(form, funds))
+      setProfileCompleteness(computeCompleteness(form, funds, policies))
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (err) {
       haptic('warning')
@@ -1235,6 +1291,7 @@ export default function FinancialProfilePage() {
                   onChange={(v) => set('monthlySalary', v)}
                   prefix="£"
                   error={fieldErrors.monthlySalary}
+                  onBlur={() => validateOnBlur('monthlySalary')}
                 />
                 <Field
                   label="Annual living expenses"
@@ -1243,6 +1300,7 @@ export default function FinancialProfilePage() {
                   onChange={(v) => set('annualLivingExpenses', v)}
                   prefix="£"
                   error={fieldErrors.annualLivingExpenses}
+                  onBlur={() => validateOnBlur('annualLivingExpenses')}
                 />
                 <Field
                   label="Mortgage outstanding"
@@ -1251,7 +1309,24 @@ export default function FinancialProfilePage() {
                   placeholder="0 if none"
                   prefix="£"
                   error={fieldErrors.mortgageOutstanding}
+                  onBlur={() => validateOnBlur('mortgageOutstanding')}
                 />
+                {/* Intent 26: a seasonal or irregular income can't be
+                    expressed as one monthly number — let the family say so
+                    in words, which Ask Keel then reads as context. */}
+                <label className="block">
+                  <div className="text-sm font-medium text-ink-secondary mb-1">
+                    Income notes (optional)
+                  </div>
+                  <textarea
+                    value={form.incomeNotes}
+                    onChange={(e) => set('incomeNotes', e.target.value)}
+                    maxLength={500}
+                    rows={2}
+                    placeholder="e.g. seasonal work, irregular contracts, income varies month to month"
+                    className="glass-input w-full rounded-xl px-4 py-3 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 transition-all resize-none"
+                  />
+                </label>
               </div>
             </GlassCard>
           )}
@@ -1297,6 +1372,7 @@ export default function FinancialProfilePage() {
                       onChange={(v) => set('secondEarnerMonthlySalary', v)}
                       prefix="£"
                       error={fieldErrors.secondEarnerMonthlySalary}
+                      onBlur={() => validateOnBlur('secondEarnerMonthlySalary')}
                     />
                     <Field
                       label="Their income protection (monthly payout)"
@@ -1305,6 +1381,7 @@ export default function FinancialProfilePage() {
                       placeholder="0 if none"
                       prefix="£"
                       error={fieldErrors.secondEarnerIncomeProtectionMonthly}
+                      onBlur={() => validateOnBlur('secondEarnerIncomeProtectionMonthly')}
                     />
                     <Field
                       label="Their pension balance (optional)"
@@ -1313,6 +1390,7 @@ export default function FinancialProfilePage() {
                       placeholder="Leave blank if unknown"
                       prefix="£"
                       error={fieldErrors.secondEarnerPensionBalance}
+                      onBlur={() => validateOnBlur('secondEarnerPensionBalance')}
                     />
                     <Field
                       label="Their monthly pension contribution (optional)"
@@ -1321,6 +1399,7 @@ export default function FinancialProfilePage() {
                       placeholder="Leave blank if unknown"
                       prefix="£"
                       error={fieldErrors.secondEarnerPensionMonthly}
+                      onBlur={() => validateOnBlur('secondEarnerPensionMonthly')}
                     />
                   </>
                 )}
@@ -1339,6 +1418,7 @@ export default function FinancialProfilePage() {
                   placeholder="0 if none"
                   prefix="£"
                   error={fieldErrors.lifeCover}
+                  onBlur={() => validateOnBlur('lifeCover')}
                 />
                 <Field
                   label="Income protection (monthly payout)"
@@ -1347,6 +1427,7 @@ export default function FinancialProfilePage() {
                   placeholder="0 if none"
                   prefix="£"
                   error={fieldErrors.incomeProtectionMonthly}
+                  onBlur={() => validateOnBlur('incomeProtectionMonthly')}
                 />
               </div>
             </GlassCard>
@@ -1457,6 +1538,20 @@ export default function FinancialProfilePage() {
                         prefix="£"
                         error={fieldErrors[`policy.${i}.monthlyPremium`]}
                       />
+                      {/* Intent 38: surface the recorded premium trail so a
+                          creeping renewal is visible, not just the latest
+                          number. History is server-appended on save. */}
+                      {p.premiumHistory && p.premiumHistory.length > 0 && (
+                        <p className="text-xs text-ink-tertiary -mt-1">
+                          Previously £
+                          {(
+                            p.premiumHistory[p.premiumHistory.length - 1]!.amount_minor / 100
+                          ).toFixed(2)}
+                          /mo
+                          {p.premiumHistory.length > 1 &&
+                            ` (${p.premiumHistory.length} changes on file)`}
+                        </p>
+                      )}
                     </div>
                     <label className="block">
                       <div className="text-xs text-ink-tertiary mb-1.5">
@@ -1522,6 +1617,7 @@ export default function FinancialProfilePage() {
                   onChange={(v) => set('emergencySavings', v)}
                   prefix="£"
                   error={fieldErrors.emergencySavings}
+                  onBlur={() => validateOnBlur('emergencySavings')}
                 />
                 <Field
                   label="Monthly expenses"
@@ -1529,6 +1625,7 @@ export default function FinancialProfilePage() {
                   onChange={(v) => set('monthlyExpenses', v)}
                   prefix="£"
                   error={fieldErrors.monthlyExpenses}
+                  onBlur={() => validateOnBlur('monthlyExpenses')}
                 />
                 <YesNo
                   label="Any high-interest debt?"
@@ -1543,6 +1640,7 @@ export default function FinancialProfilePage() {
                     placeholder="e.g. credit cards, payday loans"
                     prefix="£"
                     error={fieldErrors.highInterestDebtBalance}
+                    onBlur={() => validateOnBlur('highInterestDebtBalance')}
                   />
                 )}
                 <Field
@@ -1552,6 +1650,7 @@ export default function FinancialProfilePage() {
                   placeholder="0 if none — cards, loans, car finance"
                   prefix="£"
                   error={fieldErrors.monthlyDebtPayments}
+                  onBlur={() => validateOnBlur('monthlyDebtPayments')}
                 />
               </div>
             </GlassCard>
@@ -1581,6 +1680,7 @@ export default function FinancialProfilePage() {
                       value={form.currentAge}
                       onChange={(v) => set('currentAge', v)}
                       error={fieldErrors.currentAge}
+                      onBlur={() => validateOnBlur('currentAge')}
                     />
                   )}
                   <Field
@@ -1588,6 +1688,7 @@ export default function FinancialProfilePage() {
                     value={form.targetRetirementAge}
                     onChange={(v) => set('targetRetirementAge', v)}
                     error={fieldErrors.targetRetirementAge}
+                    onBlur={() => validateOnBlur('targetRetirementAge')}
                   />
                 </div>
                 <Field
@@ -1597,6 +1698,7 @@ export default function FinancialProfilePage() {
                   placeholder="0 if none"
                   prefix="£"
                   error={fieldErrors.pensionBalance}
+                  onBlur={() => validateOnBlur('pensionBalance')}
                 />
                 <Field
                   label="Monthly pension contribution"
@@ -1605,6 +1707,7 @@ export default function FinancialProfilePage() {
                   placeholder="0 if none"
                   prefix="£"
                   error={fieldErrors.monthlyContribution}
+                  onBlur={() => validateOnBlur('monthlyContribution')}
                 />
                 <Field
                   label="Target annual retirement income"
@@ -1612,6 +1715,7 @@ export default function FinancialProfilePage() {
                   onChange={(v) => set('targetRetirementIncome', v)}
                   prefix="£"
                   error={fieldErrors.targetRetirementIncome}
+                  onBlur={() => validateOnBlur('targetRetirementIncome')}
                 />
                 {/* Already defaults sensibly to 5% — the one genuinely
                     jargon-y field in this wizard, so it only shows in
@@ -1625,6 +1729,7 @@ export default function FinancialProfilePage() {
                     onChange={(v) => set('expectedAnnualGrowthPct', v)}
                     suffix="%"
                     error={fieldErrors.expectedAnnualGrowthPct}
+                    onBlur={() => validateOnBlur('expectedAnnualGrowthPct')}
                   />
                 </IfAdvanced>
               </div>
@@ -1764,20 +1869,7 @@ export default function FinancialProfilePage() {
         </motion.div>
       </AnimatePresence>
 
-      {/* Sticky rather than inline-after-the-form — on a long step (Insurance
-          Policies, with several policy cards), the primary action used to
-          sit wherever the form happened to end, so reaching it meant
-          scrolling all the way down first. A fixed thumb-reachable footer
-          is the standard mobile-form pattern for exactly this reason.
-          bottom-0 docked this flush with the true viewport edge, directly
-          underneath the persistent mobile tab bar (nav: z-30, this had no
-          z-index at all) — confirmed live: every tap on "Continue" landed
-          on the tab bar's Family icon instead, silently discarding the
-          step's answers (Continue never even fires). bottom-24 (matching
-          Toast's identical "float above the mobile nav" offset) clears the
-          nav's own h-16 + safe-area instead of hiding behind it; no mobile
-          nav exists at md+, where this reverts to true bottom-0. */}
-      <div className="sticky bottom-24 md:bottom-0 z-raised -mx-5 px-5 pt-3 pb-3 mt-2 flex gap-2 bg-navbg/90 backdrop-blur-xl border-t border-tint/[0.05] safe-area-bottom">
+      <div className="sticky bottom-[var(--app-dock-space)] min-[1400px]:bottom-0 z-raised -mx-5 px-5 pt-3 pb-3 mt-2 flex gap-2 bg-navbg/90 backdrop-blur-xl border-t border-tint/[0.05] safe-area-bottom">
         {stepIndex > 0 && (
           <button
             type="button"

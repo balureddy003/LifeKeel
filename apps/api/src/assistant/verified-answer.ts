@@ -150,6 +150,13 @@ const OP_PATTERNS: Array<{ op: VerifiedOperationId; patterns: RegExp[] }> = [
       /(list|show|tell me about) .*(polic|insur|cover)/i,
       /do (we|i) have.*(insurance|cover|policy)/i,
       /what('s| is) covered/i,
+      // Bereavement maps to the policies op: when a partner dies the
+      // relevant honest answer is the life cover on file (intent 57 —
+      // a compound "lost my job and my partner passed away" must surface
+      // both intents, not silently drop the second).
+      /(die|died|death|passed away|pass(es|ed)? away)/i,
+      /(partner|spouse|husband|wife).*(die|died|dead|gone|no longer)/i,
+      /\b(bereav|survivor)/i,
     ],
   },
 ]
@@ -427,7 +434,7 @@ function renderIncomeStops(data: VerifiedAnswerData): RenderedAnswer {
       `computed from your profile, not estimated:\n\n` +
       numbers +
       (runway !== null
-        ? `\n\nSo the emergency fund would cover about **${runway} months** of the current gap.`
+        ? `\n\nSo the emergency fund would cover **${runway < 1 ? 'less than a month' : runway > 60 ? 'more than five years' : `about ${Math.round(runway)} ${Math.round(runway) === 1 ? 'month' : 'months'}`}** of the current gap.`
         : "\n\nUnder this scenario income would still cover expenses — the fund isn't drawn down.") +
       freshnessLine(data.profile),
     operation: 'income_stops',

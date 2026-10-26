@@ -58,19 +58,19 @@ const INBOX_ICONS: Record<string, LucideIcon> = {
 }
 
 const priorityColor = (priority: 'high' | 'medium' | 'low') => {
-  const colors = { high: '#f87171', medium: '#fbbf24', low: '#4ade80' }
+  const colors = { high: '#ffafa3', medium: '#ffda87', low: '#92e1d7' }
   return colors[priority]
 }
 
 const actionTypeColor = (type: InboxItem['actionType']) => {
   const colors: Record<string, string> = {
-    review: '#fbbf24',
-    renew: '#f87171',
-    compare: '#60a5fa',
-    update: '#38bdf8',
-    info: '#8a8070',
+    review: '#ffda87',
+    renew: '#ffafa3',
+    compare: '#d3b8f5',
+    update: '#92e1d7',
+    info: '#8763aa',
   }
-  return colors[type] ?? '#8a8070'
+  return colors[type] ?? '#8763aa'
 }
 
 const VALID_POLICY_TYPES = new Set<PolicyType>([
@@ -380,7 +380,7 @@ export default function InboxPage() {
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
                   className="text-xs font-bold text-white px-2 py-0.5 rounded-full"
-                  style={{ background: '#f87171' }}
+                  style={{ background: '#ffafa3' }}
                 >
                   {unreadCount}
                 </motion.span>
@@ -581,12 +581,18 @@ export default function InboxPage() {
                       onDismiss={() => handleDismiss(item)}
                       disabled={isExpanded || dismissingId === item.id}
                     >
+                      {/* Intent 24: the priority colour used to live only on
+                          the icon/dot — identical-looking cards made mild and
+                          critical gaps scan the same. A left accent band in
+                          the same colour makes severity readable at a glance
+                          (amber = medium, red = high, green = low). */}
                       <GlassCard className="overflow-hidden">
                         <button
                           onClick={() => handleTap(item.id)}
                           aria-expanded={isExpanded}
                           aria-controls={`inbox-item-${item.id}-panel`}
-                          className="w-full p-4 flex items-start gap-3 text-left"
+                          className="w-full p-4 flex items-start gap-3 text-left border-l-4"
+                          style={{ borderLeftColor: color }}
                         >
                           <div
                             className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0"
@@ -625,13 +631,21 @@ export default function InboxPage() {
                             >
                               {item.subject}
                               {item.repeatCount !== undefined && item.repeatCount > 1 && (
-                                <span className="ml-2 text-[10px] font-semibold text-amber-400/90 bg-amber-400/10 rounded-full px-1.5 py-0.5 align-middle">
+                                <span className="ml-2 text-[10px] font-semibold text-warning/90 bg-warning/10 rounded-full px-1.5 py-0.5 align-middle">
                                   Flagged {item.repeatCount} times
                                 </span>
                               )}
                               {item.actedOn && (
                                 <span className="ml-2 text-[10px] font-semibold text-success/90 bg-success/10 rounded-full px-1.5 py-0.5 align-middle">
                                   Acted on
+                                </span>
+                              )}
+                              {item.priority === 'high' && !item.actedOn && (
+                                <span
+                                  className="ml-2 text-[10px] font-semibold rounded-full px-1.5 py-0.5 align-middle"
+                                  style={{ color, background: `${color}15` }}
+                                >
+                                  High priority
                                 </span>
                               )}
                             </div>

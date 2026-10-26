@@ -44,9 +44,9 @@ interface NodeData {
 
 const KIND_COLOR: Record<NodeKind, string> = {
   root: FAMILY_ACCENT,
-  person: '#60a5fa',
-  category: '#8a8070',
-  asset: '#4ade80',
+  person: '#d3b8f5',
+  category: '#8763aa',
+  asset: '#92e1d7',
 }
 
 interface RawNode {
@@ -212,9 +212,9 @@ const nodeTypes = { graphNode: GraphNode }
 
 const FILTER_OPTIONS: { key: GraphCategory | 'all'; label: string; color: string }[] = [
   { key: 'all', label: 'All', color: FAMILY_ACCENT },
-  { key: 'protection', label: 'Protection', color: '#f87171' },
-  { key: 'wealth', label: 'Wealth', color: '#fbbf24' },
-  { key: 'goals', label: 'Goals', color: '#4ade80' },
+  { key: 'protection', label: 'Protection', color: '#ffafa3' },
+  { key: 'wealth', label: 'Wealth', color: '#ffda87' },
+  { key: 'goals', label: 'Goals', color: '#92e1d7' },
 ]
 
 interface KnowledgeGraphProps {

@@ -80,7 +80,11 @@ export const FinancialProfileSchema = z.object({
     // already exists, and the 36% guideline conventionally measures
     // non-housing debt service).
     monthly_debt_payments_minor: z.number().int().nonnegative().default(0),
-    // PRD-104: the fields above are single-valued for the whole
+    // Intent 26: free-text context for income the numeric fields can't
+    // express — seasonal work, irregular contracts, benefits that vary.
+    // Read by Ask Keel as grounding context; never parsed into figures
+    // (same posture as the family context_note).
+    income_notes: z.string().max(500).optional(),
     // household — a genuinely common shape (one partner retired, one
     // still working; one salaried, one self-employed) had no way to be
     // entered as what it actually is, so the family had to pick one
@@ -201,6 +205,19 @@ export const FinancialProfileSchema = z.object({
         // not something the app itself dials or sends to.
         contact_phone: z.string().max(40).optional(),
         contact_email: z.string().max(254).optional(),
+        // Intent 38: prior premiums, appended (never overwritten) when the
+        // recorded premium changes — a policy renewing 20% dearer every
+        // year is otherwise invisible. Entries are
+        // { amount_minor, effective_from }; the *current* premium stays in
+        // monthly_premium_minor, history holds what it used to be.
+        premium_history: z
+          .array(
+            z.object({
+              amount_minor: z.number().int().nonnegative(),
+              effective_from: z.string(),
+            }),
+          )
+          .optional(),
       }),
     )
     .default([]),
@@ -885,6 +902,15 @@ export async function evaluateProfileAndGenerateInsights(
       const days = Math.floor((Date.now() - renewalMs) / 86_400_000)
       return days > 0 ? [{ policy: p, days_overdue: days }] : []
     })
+    // Intent 38: recorded-premium creep — premium_history (appended at the
+    // write path when the recorded amount changes) vs the current premium.
+    // A recorded increase over 5% is informational, not a recommendation.
+    const premiumIncreases = profile.policies.flatMap((p) => {
+      const prev = p.premium_history?.[p.premium_history.length - 1]
+      if (!prev || prev.amount_minor <= 0) return []
+      const pct = ((p.monthly_premium_minor - prev.amount_minor) / prev.amount_minor) * 100
+      return pct > 5 ? [{ policy: p, prev_minor: prev.amount_minor, pct: Math.round(pct) }] : []
+    })
     {
       const eventId = crypto.randomUUID()
       const data = {
@@ -898,6 +924,18 @@ export async function evaluateProfileAndGenerateInsights(
           .join('; '),
         stale_renewal_monthly_premium_minor: staleRenewals.reduce(
           (s, r) => s + r.policy.monthly_premium_minor,
+          0,
+        ),
+        premium_increase_count: premiumIncreases.length,
+        premium_increase_descriptions: premiumIncreases
+          .map(
+            (g) =>
+              `${g.policy.type} policy with ${g.policy.provider} held by ${holderLabel(g.policy)}: premium went from £${(g.prev_minor / 100).toFixed(2)} to £${(g.policy.monthly_premium_minor / 100).toFixed(2)}/month (${g.pct}% higher)`,
+          )
+          .slice(0, 4)
+          .join('; '),
+        premium_increase_annual_delta_minor: premiumIncreases.reduce(
+          (s, g) => s + (g.policy.monthly_premium_minor - g.prev_minor) * 12,
           0,
         ),
       }
@@ -1033,6 +1071,45 @@ export async function registerFamilyFinancialProfileRoutes(
       ...profile
     } = doc
     return { profile, updatedAt: updated_at, version: version ?? 0 }
+  })
+
+  // Intent 32: "what would close the gap" — re-projects retirement against
+  // hypothetical inputs, writing nothing. Pure arithmetic on the family's
+  // own figures via the same projectRetirement() the detector uses; the
+  // client labels it an estimate, never advice.
+  app.get<{
+    Querystring: { monthly_contribution_minor?: string; retirement_age?: string }
+  }>('/family/retirement/estimate', async (req, reply) => {
+    const { tenant_id } = req.authContext
+    const doc = await profileFor(tenant_id).findOne({})
+    if (!doc?.retirement) return { hasData: false }
+    const r = doc.retirement
+    const contribution = Number(req.query.monthly_contribution_minor)
+    const age = Number(req.query.retirement_age)
+    const projection = projectRetirement({
+      ...r,
+      ...(Number.isFinite(contribution) && contribution >= 0
+        ? { monthly_contribution_minor: Math.round(contribution) }
+        : {}),
+      ...(Number.isInteger(age) && age > r.current_age ? { target_retirement_age: age } : {}),
+    })
+    return {
+      hasData: true,
+      // The recorded inputs back so the client can label the estimate
+      // against what was actually entered.
+      current: {
+        monthly_contribution_minor: r.monthly_contribution_minor,
+        current_age: r.current_age,
+        target_retirement_age: r.target_retirement_age,
+      },
+      projection: {
+        achievable_retirement_income_minor: projection.achievable_retirement_income_minor,
+        projected_retirement_age: projection.projected_retirement_age,
+        additional_monthly_contribution_needed_minor:
+          projection.additional_monthly_contribution_needed_minor,
+        target_retirement_income_minor: r.target_retirement_income_minor,
+      },
+    }
   })
 
   // Runs the detectors against the profile already on file — for a family
@@ -1291,8 +1368,32 @@ export async function registerFamilyFinancialProfileRoutes(
       // current version (GET returns 0 for rows that predate versioning);
       // a stale or missing version is a 409, never a silent overwrite and
       // never an upsert that collides with the unique tenant index.
+      // Intent 38: before overwriting, append each policy's *old* premium to
+      // its premium_history when the recorded amount changed — the
+      // price-creep detector reads this trail. Matched by
+      // (type, provider, policy_number) so a reordered array doesn't append
+      // the wrong history.
+      const policiesWithHistory = profile.policies.map((p) => {
+        const prior = previousDoc?.policies?.find(
+          (q) =>
+            q.type === p.type &&
+            q.provider === p.provider &&
+            (q.policy_number ?? '') === (p.policy_number ?? ''),
+        )
+        if (!prior || prior.monthly_premium_minor === p.monthly_premium_minor) return p
+        const history = [
+          ...(prior.premium_history ?? []),
+          {
+            amount_minor: prior.monthly_premium_minor,
+            effective_from: previousDoc!.updated_at?.toISOString?.() ?? new Date().toISOString(),
+          },
+        ]
+        return { ...p, premium_history: history }
+      })
+
       const fields = {
         ...profile,
+        policies: policiesWithHistory,
         updated_at: new Date(),
         // Marks that detectors have actually run against this profile.
         // Without it the client can't tell "evaluated, no gaps" from

@@ -247,7 +247,7 @@ export async function resumeChannel(
 
 async function rejectFuturePosts(
   db: Db,
-  filter: { tenant_id: string; bank_entry_id?: string },
+  filter: { tenant_id: string; bank_entry_id?: string; channel?: string },
   reason: string,
   by: string,
   now: Date,
@@ -541,6 +541,16 @@ export async function runBreakers(
           { $push: { paused_channels: { channel, reason, at: now } } },
         )
         result.channels_paused.push(`${tenantId}:${channel}`)
+        // A paused network must not keep sending what was already queued for it: those posts would
+        // most likely fail the same way. They are rejected, and the bank entries become schedulable
+        // again once an operator resumes the network.
+        result.posts_rejected += await rejectFuturePosts(
+          db,
+          { tenant_id: tenantId, channel },
+          'channel_paused',
+          'system:standing',
+          now,
+        )
         audit(tenantId, 'system:standing', 'marketing.standing_breaker', channel, { reason })
       }
     }

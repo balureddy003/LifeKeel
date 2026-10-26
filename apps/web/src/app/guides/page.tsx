@@ -7,7 +7,7 @@ import { GUIDES, guideSignupUrl } from './guides-data'
 
 export default function GuidesIndex() {
   return (
-    <div className="px-5 pt-1 pb-10">
+    <div className="lk-guide-index px-5 pt-1 pb-10">
       <main className="mx-auto max-w-2xl">
         <p className="text-xs font-semibold uppercase tracking-wide text-family-400">
           LifeKeel · Guides
@@ -23,7 +23,7 @@ export default function GuidesIndex() {
         <h2 className="mt-10 text-xs font-semibold uppercase tracking-wide text-ink-tertiary">
           The checks
         </h2>
-        <div className="mt-4 space-y-4">
+        <div className="lk-guide-grid mt-4">
           {GUIDES.filter((g) => g.kind === 'detector').map((g) => (
             <Link key={g.slug} href={`/guides/${g.slug}/`} className="block">
               <article className="glass rounded-2xl border border-tint/[0.08] p-5 transition-colors hover:border-family-500/40">
@@ -38,7 +38,7 @@ export default function GuidesIndex() {
         <h2 className="mt-10 text-xs font-semibold uppercase tracking-wide text-ink-tertiary">
           Moments that change the numbers
         </h2>
-        <div className="mt-4 space-y-4">
+        <div className="lk-guide-grid mt-4">
           {GUIDES.filter((g) => g.kind === 'life-stage').map((g) => (
             <Link key={g.slug} href={`/guides/${g.slug}/`} className="block">
               <article className="glass rounded-2xl border border-tint/[0.08] p-5 transition-colors hover:border-family-500/40">

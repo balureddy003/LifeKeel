@@ -56,6 +56,17 @@ describe('vertex provider routing', () => {
     expect(detectActiveProvider()).toBe('vertex')
   })
 
+  it('approved providers beat unreviewed configured keys (intent 61)', () => {
+    // Prod QA 2026-10-25: OPENAI_API_KEY set (unreviewed → refused),
+    // GROQ_API_KEY set (approved) — openai won the scan and every
+    // interactive call refused. Approved processors scan first now.
+    process.env['OPENAI_API_KEY'] = 'k'
+    process.env['GROQ_API_KEY'] = 'k'
+    expect(detectActiveProvider()).toBe('groq')
+    delete process.env['GROQ_API_KEY']
+    expect(detectActiveProvider()).toBe('openai')
+  })
+
   it('LIFEKEEL_LLM_PROVIDER overrides env-key detection', () => {
     process.env['OPENAI_API_KEY'] = 'k'
     process.env['LIFEKEEL_LLM_PROVIDER'] = 'vertex'

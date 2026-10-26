@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
+import { useRouter } from 'next/navigation'
 import { useRouteParam } from '@/lib/useRouteParam'
 import Link from 'next/link'
 import {
@@ -15,8 +16,10 @@ import {
   Loader2,
   Mail,
   PenLine,
+  Siren,
 } from 'lucide-react'
 import { LIFE_EVENTS } from '@/lib/life-data'
+import { CRISIS_EVENT_KEY } from '@/components/CrisisMode'
 import { GlassCard, GlassButton, PageHeader, PageTransition } from '@/components/Glass'
 import { DraftProvenanceNote } from '@/components/DraftProvenance'
 import { haptic } from '@/lib/haptics'
@@ -25,70 +28,21 @@ import { useAuth } from '@/lib/auth-context'
 import {
   prepareInsightDraft,
   fetchFinancialProfile,
+  fetchLifeEvents,
   type FinancialProfilePolicy,
-  type PolicyType,
 } from '@/lib/api'
 import { learnMoreHref } from '@/lib/detector-content'
 import EventScenarioCard, { eventHasScenario } from './ScenarioCard'
-
-export interface Action {
-  id: string
-  label: string
-  done: boolean
-  // KEEL-014: when set, and a policy of one of these types exists on the
-  // household's financial profile, personalize() replaces the generic
-  // label with one naming the real provider — otherwise the generic label
-  // (above) renders unchanged.
-  policyTypes?: PolicyType[]
-  personalize?: (provider: string) => string
-}
-
-export const EVENT_ACTIONS: Record<string, Action[]> = {
-  bereavement: [
-    {
-      id: '1',
-      label: 'Call your life insurance provider to start a claim',
-      done: false,
-      policyTypes: ['life'],
-      personalize: (provider) => `Call ${provider} about your life insurance claim`,
-    },
-    { id: '2', label: 'Contact employer for survivor benefits', done: false },
-    { id: '3', label: 'Notify pension provider for survivor pension', done: false },
-    { id: '4', label: 'Check whether your mortgage has protection cover', done: false },
-    { id: '5', label: 'Schedule a meeting with a financial advisor', done: false },
-  ],
-  medical: [
-    {
-      id: '1',
-      label: 'Review your health insurance coverage details',
-      done: false,
-      policyTypes: ['health', 'critical_illness'],
-      personalize: (provider) => `Review your ${provider} coverage details`,
-    },
-    { id: '2', label: 'Check if pre-authorization is needed for treatment', done: false },
-    { id: '3', label: 'Confirm your annual out-of-pocket maximum', done: false },
-    { id: '4', label: 'Check your HSA balance for eligible expenses', done: false },
-  ],
-  'job-loss': [
-    { id: '1', label: 'Review how many months your emergency savings cover', done: false },
-    { id: '2', label: 'Check if you have income protection insurance', done: false },
-    { id: '3', label: 'Review budget and cut non-essential spending', done: false },
-    { id: '4', label: 'Update resume and start job search', done: false },
-    { id: '5', label: 'Check eligibility for unemployment benefits', done: false },
-  ],
-  retirement: [
-    { id: '1', label: 'Review your pension progress toward your target', done: false },
-    { id: '2', label: 'See whether increasing monthly contributions helps', done: false },
-    { id: '3', label: 'Confirm your employer match is fully utilized', done: false },
-    { id: '4', label: 'Check your state pension forecast', done: false },
-    { id: '5', label: 'Schedule a retirement planning review', done: false },
-  ],
-  default: [
-    { id: '1', label: 'Review your insurance coverage', done: false },
-    { id: '2', label: 'Check emergency savings', done: false },
-    { id: '3', label: 'Contact your financial advisor', done: false },
-  ],
-}
+import RetirementEstimate from './RetirementEstimate'
+import {
+  EVENT_ACTIONS,
+  loadDoneIds,
+  saveDoneIds,
+  personalizeAction,
+  type Action,
+} from '@/lib/event-actions'
+export type { Action } from '@/lib/event-actions'
+export { EVENT_ACTIONS, loadDoneIds, personalizeAction }
 
 const EVENT_STABILITY: Record<string, number> = {
   bereavement: 85,
@@ -103,59 +57,40 @@ const EVENT_STABILITY: Record<string, number> = {
   retirement: 65,
 }
 
-const EVENT_AI_EXPLANATION: Record<string, string> = {
-  bereavement:
-    'This is a sample scenario, not based on your data yet. Families in this situation typically lean on life insurance, employer survivor benefits, and any survivor pension to stay afloat. Connect your policies and documents so we can show your actual coverage instead of this example.',
-  medical:
-    'This is a sample scenario, not based on your data yet. Most health insurance plans cover emergencies after a deductible, up to an annual out-of-pocket maximum, with an HSA sometimes available for extra costs. Connect your insurance documents so we can show your actual coverage instead of this example.',
-  'job-loss':
-    'This is a sample scenario, not based on your data yet. Families typically lean on emergency savings and any income protection insurance to bridge a job loss. Connect your accounts and documents so we can show your actual runway instead of this example.',
-  retirement:
-    'This is a sample scenario, not based on your data yet. Retirement readiness usually comes down to pension progress, employer match, and monthly contributions. Connect your pension and investment accounts so we can show your actual progress instead of this example.',
-}
-
-// Checklist completion has no backend endpoint — persist client-side so
-// "your family's response plan" doesn't forget your progress on reload.
-// Scoped by tenant so a shared device doesn't leak one user's checklist
-// state into another's, and by event so action ids (which repeat across
-// events, e.g. '1'-'5') don't bleed into each other.
-function checklistStorageKey(eventId: string): string {
-  const tenant =
-    typeof window !== 'undefined' ? (localStorage.getItem('lifekeel_tenant') ?? 'anon') : 'anon'
-  return `lifekeel:event-checklist:${tenant}:${eventId}`
-}
-
-function loadDoneIds(eventId: string): Set<string> {
-  if (typeof window === 'undefined') return new Set()
-  try {
-    const raw = localStorage.getItem(checklistStorageKey(eventId))
-    return raw ? new Set(JSON.parse(raw) as string[]) : new Set()
-  } catch {
-    return new Set()
-  }
-}
-
-function saveDoneIds(eventId: string, doneIds: Set<string>): void {
-  try {
-    localStorage.setItem(checklistStorageKey(eventId), JSON.stringify([...doneIds]))
-  } catch {
-    // Best-effort — private browsing / storage-full shouldn't break the checklist.
-  }
-}
-
-// KEEL-014: the checklist used to be 100% generic strings even when the
-// family had already told Keel who their real provider is — this swaps in
-// that real name wherever a matching policy exists, leaving the generic
-// text alone otherwise.
-export function personalizeAction(action: Action, policies: FinancialProfilePolicy[]): string {
-  if (!action.policyTypes || !action.personalize) return action.label
-  const match = policies.find((p) => action.policyTypes!.includes(p.type))
-  return match ? action.personalize(match.provider) : action.label
-}
+// Intent 65 — the sample-narration path is deleted. Where the readiness
+// endpoint has no live data, the page says so and names what to add
+// (missing_inputs via the partial banner) instead of narrating a
+// scenario that was never computed. A wrong number is structurally
+// impossible when there's nothing on screen to put one in.
+const SAMPLE_NARRATIVE =
+  "Keel can't compute this scenario yet — none of your data feeds it. " +
+  'Connect your accounts or add the inputs the banner names, and this ' +
+  'becomes a real projection instead of a placeholder.'
+const PARTIAL_NARRATIVE =
+  'Using the data you have so far — this is a partial picture, with the ' +
+  'missing inputs named above.'
 
 export default function EventDetailClient() {
   const eventId = useRouteParam('/events')
   const event = eventId ? LIFE_EVENTS.find((e) => e.id === eventId) : undefined
+  const router = useRouter()
+
+  // Server-reported life events carry a UUID, not a catalog id — a link to
+  // /events/<uuid> lands here on a miss. That event has its own playbook
+  // page at /life-events/<uuid>; resolve and route rather than claiming
+  // the event doesn't exist (intent 52).
+  useEffect(() => {
+    if (!eventId || event) return
+    let live = true
+    fetchLifeEvents().then((evts) => {
+      if (live && evts.some((e) => e.id === eventId)) {
+        router.replace(`/life-events/${eventId}`)
+      }
+    })
+    return () => {
+      live = false
+    }
+  }, [eventId, event, router])
   const [actions, setActions] = useState<Action[]>(
     EVENT_ACTIONS[event?.id ?? 'default'] ?? EVENT_ACTIONS.default!,
   )
@@ -194,15 +129,20 @@ export default function EventDetailClient() {
   }
 
   const fallbackStability = event ? (EVENT_STABILITY[event.id] ?? 80) : 80
-  const fallbackExplanation = event
-    ? (EVENT_AI_EXPLANATION[event.id] ??
-      'This is a sample scenario, not based on your data yet. Connect your accounts and documents to see a personalized readiness assessment for this situation.')
-    : 'This event could not be found.'
-  const { stability, explanation, live, insightId, ruleId } = useEventReadiness(
+  const fallbackExplanation = event ? SAMPLE_NARRATIVE : 'This event could not be found.'
+  const { stability, explanation, live, missingInputs, insightId, ruleId } = useEventReadiness(
     eventId ?? '',
     fallbackStability,
     fallbackExplanation,
   )
+
+  // "Partial", not "sample" (intent 53): when the readiness endpoint named
+  // missing inputs, the banner already says "using the data you have so
+  // far" — the explanation body must not call the same numbers a sample.
+  const displayExplanation =
+    !live && missingInputs.length > 0 && explanation === fallbackExplanation
+      ? PARTIAL_NARRATIVE
+      : explanation
 
   // Tier 1 "prepare, don't send" (PRD-103) — draftText is editable once
   // generated; the only exits are copy-to-clipboard and a mailto: link,
@@ -305,7 +245,7 @@ export default function EventDetailClient() {
               {stability !== null && (
                 <span
                   className="text-2xl font-bold"
-                  style={{ color: stability >= 80 ? '#4ade80' : '#fbbf24' }}
+                  style={{ color: stability >= 80 ? '#92e1d7' : '#ffda87' }}
                 >
                   {stability}%
                 </span>
@@ -317,8 +257,8 @@ export default function EventDetailClient() {
                   <motion.div
                     className="h-full rounded-full"
                     style={{
-                      backgroundColor: stability >= 80 ? '#4ade80' : '#fbbf24',
-                      boxShadow: `0 0 12px ${stability >= 80 ? '#4ade80' : '#fbbf24'}80`,
+                      backgroundColor: stability >= 80 ? '#92e1d7' : '#ffda87',
+                      boxShadow: `0 0 12px ${stability >= 80 ? '#92e1d7' : '#ffda87'}80`,
                     }}
                     initial={{ width: 0 }}
                     animate={{ width: `${stability}%` }}
@@ -336,6 +276,13 @@ export default function EventDetailClient() {
               <div className="flex items-center gap-1.5 text-xs text-success mt-2">
                 <CheckCircle2 size={12} />
                 <span>Based on your family's data</span>
+              </div>
+            ) : missingInputs.length > 0 ? (
+              <div className="flex items-start gap-1.5 text-xs text-warning mt-2">
+                <AlertTriangle size={12} className="mt-0.5 flex-shrink-0" />
+                <span>
+                  Using the data you have so far — add {missingInputs.join(', ')} for a real number.
+                </span>
               </div>
             ) : (
               <div className="flex items-center gap-1.5 text-xs text-warning mt-2">
@@ -359,6 +306,35 @@ export default function EventDetailClient() {
             <EventScenarioCard eventId={event.id} />
           </motion.div>
         )}
+
+        {/* Intent 32: the retirement surface's interactive estimate —
+            contribution slider re-projects via the server math; writes
+            nothing and is labelled an estimate, not a recommendation. */}
+        {event.id === 'retirement' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            <RetirementEstimate />
+          </motion.div>
+        )}
+
+        {/* Intent 33: opt-in to the reduced dashboard — Home then shows only
+            these steps, the fund figure and the vault until they exit. */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.18 }}
+        >
+          <Link
+            href="/"
+            onClick={() => localStorage.setItem(CRISIS_EVENT_KEY, event.id)}
+            className="flex items-center justify-center gap-2 w-full rounded-xl border border-family-500/30 bg-family-500/10 text-family-500 text-sm font-semibold min-h-[44px] mb-4"
+          >
+            <Siren size={15} /> Crisis mode — reduce Home to just these steps
+          </Link>
+        </motion.div>
 
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -386,8 +362,8 @@ export default function EventDetailClient() {
                 <motion.div
                   className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
                   animate={{
-                    backgroundColor: action.done ? '#4ade80' : 'rgb(var(--tint) / 0.05)',
-                    borderColor: action.done ? '#4ade80' : 'rgb(var(--tint) / 0.1)',
+                    backgroundColor: action.done ? '#92e1d7' : 'rgb(var(--tint) / 0.05)',
+                    borderColor: action.done ? '#92e1d7' : 'rgb(var(--tint) / 0.1)',
                   }}
                   style={{ border: '2px solid' }}
                 >
@@ -413,7 +389,7 @@ export default function EventDetailClient() {
               <Bot size={18} className="text-family-400" />
               <span className="text-sm font-semibold text-family-400">AI Explains</span>
             </div>
-            <p className="text-sm text-ink-secondary leading-relaxed">{explanation}</p>
+            <p className="text-sm text-ink-secondary leading-relaxed">{displayExplanation}</p>
             {learnMoreHref(ruleId) && (
               <Link
                 href={learnMoreHref(ruleId)!}

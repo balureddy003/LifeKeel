@@ -6,6 +6,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Components } from 'react-markdown'
 import { Bot, Send, CloudOff, RotateCcw } from 'lucide-react'
+import { DisclaimerFooter } from '@/components/Disclaimer'
 import { LifeSafetyNotice } from '@/components/LifeSafetyNotice'
 import { AI_SUGGESTIONS } from '@/lib/life-data'
 import { AIAnswerCard } from '@/components/AIAnswer'
@@ -67,6 +68,9 @@ interface ChatMessage {
   showPerplexity?: boolean
   userQuery?: string
   status?: AssistantAnswerStatus
+  /** Server-side read timestamp — rendered on live answers so a stale
+   *  answer in the thread after a profile edit is honestly dated. */
+  dataAsOf?: string
 }
 
 function assistantMessage(
@@ -74,6 +78,7 @@ function assistantMessage(
   content: string,
   status: AssistantAnswerStatus,
   id?: string,
+  dataAsOf?: string,
 ): ChatMessage {
   return {
     id: id ?? `ai-${Date.now()}`,
@@ -87,6 +92,7 @@ function assistantMessage(
     showPerplexity: status === 'canned',
     userQuery: query,
     status,
+    ...(dataAsOf ? { dataAsOf } : {}),
   }
 }
 
@@ -192,8 +198,8 @@ export default function AssistantPage() {
     setThinking(true)
 
     try {
-      const { content, status } = await fetchAIResponse(text)
-      setMessages((prev) => [...prev, assistantMessage(text, content, status)])
+      const { content, status, dataAsOf } = await fetchAIResponse(text)
+      setMessages((prev) => [...prev, assistantMessage(text, content, status, undefined, dataAsOf)])
     } catch {
       // fetchAIResponse swallows its own errors into 'unavailable' — this
       // catch is defensive only.
@@ -210,9 +216,9 @@ export default function AssistantPage() {
     haptic('light')
     setThinking(true)
     try {
-      const { content, status } = await fetchAIResponse(query)
+      const { content, status, dataAsOf } = await fetchAIResponse(query)
       setMessages((prev) =>
-        prev.map((m) => (m.id === id ? assistantMessage(query, content, status, id) : m)),
+        prev.map((m) => (m.id === id ? assistantMessage(query, content, status, id, dataAsOf) : m)),
       )
     } finally {
       setThinking(false)
@@ -233,8 +239,10 @@ export default function AssistantPage() {
   }, [])
 
   return (
-    <div className="flex flex-col h-[calc(100vh-80px)] overflow-x-hidden">
-      <PageHeader title="Keel" subtitle="Ask me anything about your family" />
+    <div className="app-chat flex flex-col overflow-x-hidden">
+      <div className="px-5">
+        <PageHeader title="Keel" subtitle="Ask me anything about your family" />
+      </div>
 
       {/* Live-verification finding: new messages appeared with no signal
           to screen readers — a blind/low-vision user had no way to know
@@ -246,7 +254,7 @@ export default function AssistantPage() {
         ref={scrollRef}
         role="log"
         aria-label="Conversation with Keel"
-        className="flex-1 overflow-y-auto px-5 py-2 space-y-3 no-scrollbar"
+        className="min-h-0 flex-1 overflow-y-auto px-4 py-2 space-y-3 no-scrollbar"
       >
         {messages.map((msg) => (
           <motion.div
@@ -256,7 +264,7 @@ export default function AssistantPage() {
             className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`max-w-[85%] rounded-2xl px-4 py-3 ${
+              className={`min-w-0 max-w-[94%] sm:max-w-[85%] rounded-2xl px-4 py-3 ${
                 msg.role === 'user'
                   ? 'bg-gradient-to-b from-family-500 to-family-600 text-white'
                   : 'glass text-ink-primary'
@@ -299,6 +307,15 @@ export default function AssistantPage() {
                   <ReactMarkdown remarkPlugins={[remarkGfm]} components={CHAT_MARKDOWN_COMPONENTS}>
                     {config.showMoney ? msg.content : msg.content.replace(CURRENCY_PATTERN, '•••')}
                   </ReactMarkdown>
+                  {msg.status === 'live' && msg.dataAsOf && (
+                    <p className="mt-2 text-[11px] text-ink-tertiary">
+                      From your data as of{' '}
+                      {new Date(msg.dataAsOf).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </p>
+                  )}
                 </div>
               ) : (
                 <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
@@ -388,7 +405,7 @@ export default function AssistantPage() {
             onKeyDown={(e) => e.key === 'Enter' && sendMessage(input)}
             placeholder="Ask about insurance, retirement, goals..."
             aria-label="Ask Keel a question"
-            className="glass-input flex-1 rounded-2xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none min-h-[52px] focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+            className="glass-input min-w-0 flex-1 rounded-2xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none min-h-[52px] focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
           />
           <motion.button
             onClick={() => sendMessage(input)}
@@ -401,6 +418,7 @@ export default function AssistantPage() {
           </motion.button>
         </div>
       </div>
+      <DisclaimerFooter />
     </div>
   )
 }

@@ -8,8 +8,8 @@
  *   - Push notifications for urgent family alerts
  */
 
-const CACHE_NAME = 'lifekeel-v5'
-const STATIC_CACHE = 'lifekeel-static-v5'
+const CACHE_NAME = 'lifekeel-v6'
+const STATIC_CACHE = 'lifekeel-static-v6'
 
 // Public shell only (PRD-147). Authenticated routes are not precached: doing
 // so fetched ~20 pages the user may never open, on first load, over mobile
@@ -74,19 +74,21 @@ self.addEventListener('fetch', (e) => {
     return
   }
 
-  // Navigation → Stale-while-revalidate (offline-first for app shell)
+  // Navigation → Network first, cache fallback. Stale-while-revalidate here
+  // served the *previous release's* bundle after every deploy — the cached
+  // HTML references build chunks that no longer exist, so returning users
+  // ran a stale app (intent 58). The cache still covers a true offline open.
   if (request.mode === 'navigate' || request.headers.get('accept')?.includes('text/html')) {
     e.respondWith(
-      caches.match(request).then((cached) => {
-        const fetchPromise = fetch(request)
-          .then((res) => {
+      fetch(request)
+        .then((res) => {
+          if (res.ok) {
             const clone = res.clone()
             caches.open(CACHE_NAME).then((c) => c.put(request, clone))
-            return res
-          })
-          .catch(() => cached ?? caches.match('/'))
-        return cached ?? fetchPromise
-      }),
+          }
+          return res
+        })
+        .catch(() => caches.match(request).then((cached) => cached ?? caches.match('/'))),
     )
     return
   }

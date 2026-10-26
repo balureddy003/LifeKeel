@@ -538,6 +538,8 @@ export function registerDocumentRoutes(
           status: doc['status'] ?? 'uploaded',
           uploadedAt: doc['uploaded_at']?.toISOString() ?? '',
           extractedData: doc['extracted_data'] ?? {},
+          // Free tier can set this manually — the renewal detectors read it.
+          renewalDate: doc['renewal_date'] ?? null,
         })),
         aiExtractionEnabled,
       }
@@ -573,6 +575,7 @@ export function registerDocumentRoutes(
       rawText: '',
       classification: doc['classification'] ?? null,
       documentDate: doc['document_date'] ?? null,
+      renewalDate: doc['renewal_date'] ?? null,
       scan: (doc['scan'] as { result?: string } | undefined)?.result ?? 'not_performed',
       candidates: (await loadCandidates(db, tenant_id, req.params.id))?.fields ?? [],
       processingStartedAt: doc['processing_started_at']?.toISOString() ?? null,
@@ -586,6 +589,25 @@ export function registerDocumentRoutes(
       extractionHeldReason: doc['extraction_held_reason'] ?? null,
     }
   })
+
+  // ── PATCH /documents/:id — set/clear a stored document's renewal date ───
+  // Intent 59: free-tier "Stored — renews on X" confirmation. Optional,
+  // editable, and the renewal detectors read it.
+  fastify.patch<{ Params: { id: string }; Body: { renewal_date?: string | null } }>(
+    '/documents/:id',
+    async (req, reply) => {
+      const { tenant_id } = req.authContext
+      const renewal = req.body?.renewal_date
+      if (renewal !== undefined && renewal !== null && !/^\d{4}-\d{2}-\d{2}$/.test(renewal)) {
+        return reply.status(400).send({ error: 'renewal_date must be YYYY-MM-DD or null' })
+      }
+      const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
+      const doc = await documents.findOne({ id: req.params.id })
+      if (!doc) return reply.status(404).send({ error: 'Document not found' })
+      await documents.updateOne({ id: req.params.id }, { $set: { renewal_date: renewal ?? null } })
+      return { id: req.params.id, renewalDate: renewal ?? null }
+    },
+  )
 
   // ── GET /documents/:id/file ──────────────────────────────────────────────
   // Original bytes for the AI Memory review drawer (source next to what Keel

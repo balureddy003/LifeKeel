@@ -423,3 +423,28 @@ describe('social decisions', () => {
       expect(d.batchable).toBe(false)
   })
 })
+
+describe('search read-back attention', () => {
+  it('raises a warning when a configured integration failed its last pull, for managers only', async () => {
+    await db.collection('search_readback_state').insertMany([
+      {
+        _id: 'search_console',
+        status: 'needs_attention',
+        last_attempt_at: new Date(),
+        last_error: 'forbidden: HTTP 403',
+      },
+      { _id: 'ga4', status: 'connected', last_attempt_at: new Date() },
+    ] as never)
+    const mine = await buildDecisions(db, { user_id: 'me', roles: ['super_admin'] })
+    const items = mine.filter((d) => d.kind === 'search_attention')
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({
+      severity: 'warning',
+      batchable: false,
+      required_permission: 'marketing.manage',
+    })
+    expect(items[0]!.why).toContain('403')
+    const support = await buildDecisions(db, { user_id: 'me', roles: ['support'] })
+    expect(support.filter((d) => d.kind === 'search_attention')).toEqual([])
+  })
+})

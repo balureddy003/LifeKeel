@@ -114,11 +114,42 @@ function diffFeatureFields(
 // (approved/dismissed/completed/resolved/archived) is closed.
 const OPEN_STATES = ['identified', 'sent'] as const
 
+// Fields a re-evaluation must never overwrite on an open insight — the
+// lifecycle and user record, as opposed to the detector's current figures.
+const REFRESH_PRESERVE = new Set([
+  '_id',
+  'id',
+  'tenant_id',
+  'detector_id',
+  'rule_id',
+  'entity_key',
+  'state',
+  'created_at',
+  'resolved_at',
+  'resolved_reason',
+  'repeat_count',
+  'dismissed_at',
+  'dismiss_reason',
+  'delivered_at',
+  'delivery_attempts',
+  'feedback',
+])
+
+export interface DerivationClosure {
+  /** The detector/engine version that produced the artefact. */
+  detector_version?: string
+  /** financial_profiles.version the inputs were read from (KEEL-006). */
+  profile_version?: number
+  /** Roster/permission revision the artefact was derived under. */
+  permission_version?: string | number
+}
+
 export async function persistAndDeliverInsights(
   db: Db,
   insights: Insight[],
   tenantId: string,
   deliveryRouter?: DeliveryRouter,
+  closure?: DerivationClosure,
 ): Promise<void> {
   if (insights.length === 0) return
 
@@ -150,7 +181,11 @@ export async function persistAndDeliverInsights(
   // openMatches to the next check, instead of racing on a stale read.
   const newInsights: Insight[] = []
   for (const insight of insights) {
-    const key = { detector_id: insight.detector_id, rule_id: insight.rule_id, entity_key: insight.entity_key ?? '' }
+    const key = {
+      detector_id: insight.detector_id,
+      rule_id: insight.rule_id,
+      entity_key: insight.entity_key ?? '',
+    }
 
     const openMatches = await insightsCol
       .find({ ...key, state: { $in: OPEN_STATES } })
@@ -169,6 +204,21 @@ export async function persistAndDeliverInsights(
           { $set: { state: 'resolved', resolved_at: new Date(), resolved_reason: 'duplicate' } },
         )
       }
+      // Intent 22: a re-fire used to be skipped whole, leaving the open
+      // card's reasoning frozen at first-fire figures (stale cover amounts
+      // after a profile edit). Refresh figure-bearing fields on the newest
+      // open card while preserving its lifecycle — state, timestamps,
+      // dismissal/repeat history and delivery bookkeeping are the user's
+      // record, not the detector's.
+      const refresh = Object.fromEntries(
+        Object.entries(insight as unknown as Record<string, unknown>).filter(
+          ([k, v]) => v !== undefined && !REFRESH_PRESERVE.has(k),
+        ),
+      )
+      await insightsCol.updateOne(
+        { id: openMatches[0]!.id },
+        { $set: { ...refresh, refreshed_at: new Date(), ...(closure ? { closure } : {}) } },
+      )
       continue
     }
 
@@ -189,17 +239,15 @@ export async function persistAndDeliverInsights(
     // than the insight reading as a carbon copy. Deliberately appended
     // after the detector's own reasoning so the rule's neutral,
     // informational voice is untouched.
-    const priors = await insightsCol
-      .find(key)
-      .sort({ created_at: -1 })
-      .toArray()
+    const priors = await insightsCol.find(key).sort({ created_at: -1 }).toArray()
     if (priors.length > 0) {
       const repeatCount = priors.length + 1
       const changed = diffFeatureFields(
         priors[0]!.feature_snapshot as Record<string, string | number | boolean> | undefined,
         insight.feature_snapshot as Record<string, string | number | boolean> | undefined,
       )
-      const ordinal = repeatCount === 2 ? 'second' : repeatCount === 3 ? 'third' : `${repeatCount}th`
+      const ordinal =
+        repeatCount === 2 ? 'second' : repeatCount === 3 ? 'third' : `${repeatCount}th`
       const suffix =
         changed.length > 0
           ? ` Keel has flagged this before — this is the ${ordinal} time. Since then: ${changed.join(', ')} changed.`
@@ -222,7 +270,11 @@ export async function persistAndDeliverInsights(
   // trade for the isolation guarantee, not a meaningful performance cost.
   await Promise.all(
     newInsights.map((insight) =>
-      insightsCol.updateOne({ id: insight.id }, { $setOnInsert: insight }, { upsert: true }),
+      insightsCol.updateOne(
+        { id: insight.id },
+        { $setOnInsert: closure ? { ...insight, closure } : insight },
+        { upsert: true },
+      ),
     ),
   )
   await ensureVerifiedMoments(db, newInsights, tenantId)
@@ -270,11 +322,13 @@ export async function resolveStaleInsights(
   if (checked.size === 0) return
 
   const insightsCol = getTenantCollection<Insight>(db, 'insights', tenantId)
-  const open: Insight[] = await insightsCol.find({
-    detector_id: detectorId,
-    rule_id: { $in: checkedRuleIds },
-    state: { $in: OPEN_STATES },
-  }).toArray()
+  const open: Insight[] = await insightsCol
+    .find({
+      detector_id: detectorId,
+      rule_id: { $in: checkedRuleIds },
+      state: { $in: OPEN_STATES },
+    })
+    .toArray()
 
   const stale = open.filter((i) => !fired.has(`${i.rule_id}${i.entity_key ?? ''}`))
   if (stale.length === 0) return
@@ -284,4 +338,36 @@ export async function resolveStaleInsights(
     { $set: { state: 'resolved', resolved_at: new Date() } },
   )
   for (const insight of stale) emitInsightEvent(db, tenantId, insight, 'insight_resolved')
+}
+
+/** Intent 67 (M1 derivation closure): the minimal invalidation set.
+ *  Given the current derivation versions, returns the open insights whose
+ *  stored closure names a STALE version — i.e. exactly the artefacts a
+ *  change invalidates, not the whole collection. Today the callers
+ *  regenerate everything and dedupe after; this is the lookup that lets a
+ *  future write path recompute only what the change touched, and the
+ *  measured-invalidation metric is `stale` vs `total`. */
+export async function findStaleArtefacts(
+  db: Db,
+  tenantId: string,
+  current: DerivationClosure,
+): Promise<{ stale: Insight[]; total: number }> {
+  const insightsCol = getTenantCollection<Insight>(db, 'insights', tenantId)
+  const open = await insightsCol.find({ state: { $in: OPEN_STATES } }).toArray()
+  const stale = open.filter((i: Insight) => {
+    const c = (i as Record<string, unknown>).closure as DerivationClosure | undefined
+    if (!c) return false // pre-closure insights are not invalidated by this pass
+    return (
+      (current.detector_version !== undefined &&
+        c.detector_version !== undefined &&
+        c.detector_version !== current.detector_version) ||
+      (current.profile_version !== undefined &&
+        c.profile_version !== undefined &&
+        c.profile_version !== current.profile_version) ||
+      (current.permission_version !== undefined &&
+        c.permission_version !== undefined &&
+        c.permission_version !== current.permission_version)
+    )
+  })
+  return { stale, total: open.length }
 }

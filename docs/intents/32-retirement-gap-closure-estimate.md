@@ -35,3 +35,12 @@ persisting hypothetical scenarios (that's the PRD-115 scenario
 infrastructure if ever wanted), actuarial-grade projection changes.
 
 **Becomes** — PRD in docs/prd/, extending the retirement readiness surface.
+
+---
+
+**Status: implemented — PR #259.** `GET /family/retirement/estimate`
+re-projects via the same `projectRetirement()` the detector uses
+(contribution/age overrides, writes nothing); a contribution slider on
+`/events/retirement` reads achievable-vs-target income against the
+recorded figures, labelled an estimate. Endpoint tests cover
+re-projection and the no-profile case.

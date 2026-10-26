@@ -33,9 +33,16 @@ export function clearStripePriceCache(): void {
   cache.clear()
 }
 
-function envOverride(plan: Plan, currency: string): string | null {
+function envOverride(plan: Plan, currency: string, interval: 'month' | 'year'): string | null {
   const p = plan.toUpperCase()
   const c = currency.toUpperCase()
+  if (interval === 'year') {
+    return (
+      process.env[`STRIPE_PRICE_${p}_${c}_ANNUAL`] ||
+      process.env[`STRIPE_PRICE_${p}_ANNUAL`] ||
+      null
+    )
+  }
   return process.env[`STRIPE_PRICE_${p}_${c}`] || process.env[`STRIPE_PRICE_${p}`] || null
 }
 
@@ -47,15 +54,16 @@ export async function resolveStripePriceId(
   stripe: PriceLookupClient | null,
   plan: Plan,
   currency: string,
-  opts: { config?: StripeConfig; now?: () => number } = {},
+  opts: { config?: StripeConfig; now?: () => number; interval?: 'month' | 'year' } = {},
 ): Promise<string | null> {
-  const override = envOverride(plan, currency)
+  const interval = opts.interval ?? 'month'
+  const override = envOverride(plan, currency, interval)
   if (override) return override
 
   const now = opts.now ?? Date.now
   let key: string | null = null
   try {
-    key = lookupKeyFor(opts.config ?? loadStripeConfig(), plan, currency)
+    key = lookupKeyFor(opts.config ?? loadStripeConfig(), plan, currency, interval)
   } catch {
     // Missing or invalid config must not take checkout down; fall through.
   }
@@ -71,5 +79,7 @@ export async function resolveStripePriceId(
     }
   }
 
-  return isTestKey() ? getStripePriceId(plan, currency) : null
+  // The legacy baked-in fallback predates billing periods — it only ever
+  // sold the monthly price, so it must not stand in for a missing annual one.
+  return interval === 'month' && isTestKey() ? getStripePriceId(plan, currency) : null
 }

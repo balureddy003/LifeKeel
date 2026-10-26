@@ -23,9 +23,14 @@
 
 import type { FinancialProfile } from '../routes/family-financial-profile.js'
 import type { EstateSignalData } from '../legacy/estate-signal.js'
-import { educationFundingGapMinor, isUnsetTarget, projectRetirement } from '../routes/family-financial-profile.js'
+import {
+  educationFundingGapMinor,
+  isUnsetTarget,
+  projectRetirement,
+} from '../routes/family-financial-profile.js'
 
-export type ReadinessComponentKey = 'emergency_fund' | 'protection' | 'retirement' | 'education' | 'estate'
+export type ReadinessComponentKey =
+  'emergency_fund' | 'protection' | 'retirement' | 'education' | 'estate'
 
 export interface ReadinessComponent {
   key: ReadinessComponentKey
@@ -84,7 +89,19 @@ function emergencyFundComponent(profile: FinancialProfile): ReadinessComponent {
     }
   }
   const months = profile.emergency_fund.emergency_savings_minor / expenses
-  const score = Math.min(100, Math.round((months / MONTHS_OF_COVER_TARGET) * 100))
+  // Piecewise curve (intent 62): a straight months/6 ratio punished a
+  // normal early-career profile — the ordinary 2–3 month buffer read ~35.
+  // Zero runway stays punitive; 3 months is the common 'adequate' mark.
+  const score =
+    months <= 0
+      ? 5
+      : months >= MONTHS_OF_COVER_TARGET
+        ? 100
+        : Math.round(
+            months <= 3
+              ? 5 + (months / 3) * 60
+              : 65 + ((months - 3) / (MONTHS_OF_COVER_TARGET - 3)) * 35,
+          )
   const rounded = Math.round(months * 10) / 10
   return {
     key: 'emergency_fund',
@@ -100,7 +117,11 @@ function emergencyFundComponent(profile: FinancialProfile): ReadinessComponent {
   }
 }
 
-type Earner = { employment_status: string; income_protection_monthly_minor: number; member_id?: string }
+type Earner = {
+  employment_status: string
+  income_protection_monthly_minor: number
+  member_id?: string
+}
 
 /** Mirrors protection-gap.yaml's gates so a subscore and its explaining
  *  insight never disagree: life cover only counts when the family has a
@@ -109,10 +130,14 @@ type Earner = { employment_status: string; income_protection_monthly_minor: numb
  *  dependents on file. Each applicable check earns its share of 100. */
 function protectionComponent(profile: FinancialProfile): ReadinessComponent {
   const hasDependents = profile.education_funds.length > 0
-  const need = profile.household.mortgage_outstanding_minor
-    + educationFundingGapMinor(profile.education_funds)
-    + profile.household.annual_living_expenses_minor * 5
-  const yearsToRetirement = Math.max(0, profile.retirement.target_retirement_age - profile.retirement.current_age)
+  const need =
+    profile.household.mortgage_outstanding_minor +
+    educationFundingGapMinor(profile.education_funds) +
+    profile.household.annual_living_expenses_minor * 5
+  const yearsToRetirement = Math.max(
+    0,
+    profile.retirement.target_retirement_age - profile.retirement.current_age,
+  )
 
   const checks: Array<{ weight: number; earned: number; label: string; met: boolean }> = []
 
@@ -127,7 +152,9 @@ function protectionComponent(profile: FinancialProfile): ReadinessComponent {
 
   const earners: Earner[] = [profile.household, ...profile.household.members]
   const protectable = earners.filter(
-    (e) => (e.employment_status === 'employed' || e.employment_status === 'self_employed') && yearsToRetirement > 1,
+    (e) =>
+      (e.employment_status === 'employed' || e.employment_status === 'self_employed') &&
+      yearsToRetirement > 1,
   )
   if (protectable.length > 0) {
     const covered = protectable.filter((e) => {
@@ -150,8 +177,15 @@ function protectionComponent(profile: FinancialProfile): ReadinessComponent {
   }
 
   if (hasDependents) {
-    const covered = profile.policies.some((p) => p.type === 'health' || p.type === 'critical_illness')
-    checks.push({ weight: 20, earned: covered ? 20 : 0, label: 'health / critical illness', met: covered })
+    const covered = profile.policies.some(
+      (p) => p.type === 'health' || p.type === 'critical_illness',
+    )
+    checks.push({
+      weight: 20,
+      earned: covered ? 20 : 0,
+      label: 'health / critical illness',
+      met: covered,
+    })
   }
 
   if (checks.length === 0) {
@@ -160,7 +194,8 @@ function protectionComponent(profile: FinancialProfile): ReadinessComponent {
       label: 'Protection',
       score: null,
       weight: READINESS_WEIGHTS.protection,
-      detail: 'No protection needs apply to this household (no dependents, mortgage, or income to protect).',
+      detail:
+        'No protection needs apply to this household (no dependents, mortgage, or income to protect).',
     }
   }
 
@@ -193,7 +228,11 @@ function protectionComponent(profile: FinancialProfile): ReadinessComponent {
         ? [
             {
               label: 'Health / critical illness policy',
-              value: profile.policies.some((p) => p.type === 'health' || p.type === 'critical_illness') ? 'On file' : 'Not on file',
+              value: profile.policies.some(
+                (p) => p.type === 'health' || p.type === 'critical_illness',
+              )
+                ? 'On file'
+                : 'Not on file',
             },
           ]
         : []),
@@ -213,7 +252,12 @@ function retirementComponent(profile: FinancialProfile): ReadinessComponent {
     }
   }
   const projection = projectRetirement(r)
-  const score = Math.min(100, Math.round((projection.achievable_retirement_income_minor / r.target_retirement_income_minor) * 100))
+  const score = Math.min(
+    100,
+    Math.round(
+      (projection.achievable_retirement_income_minor / r.target_retirement_income_minor) * 100,
+    ),
+  )
   return {
     key: 'retirement',
     label: 'Retirement',
@@ -226,7 +270,10 @@ function retirementComponent(profile: FinancialProfile): ReadinessComponent {
     drivers: [
       { label: 'Pension balance', value_minor: r.pension_balance_minor },
       { label: 'Monthly contribution', value_minor: r.monthly_contribution_minor },
-      { label: 'Projected sustainable income', value_minor: projection.achievable_retirement_income_minor },
+      {
+        label: 'Projected sustainable income',
+        value_minor: projection.achievable_retirement_income_minor,
+      },
       { label: 'Target income', value_minor: r.target_retirement_income_minor },
     ],
   }
@@ -240,10 +287,15 @@ function educationComponent(profile: FinancialProfile): ReadinessComponent {
       label: 'Education',
       score: null,
       weight: READINESS_WEIGHTS.education,
-      detail: profile.education_funds.length === 0 ? 'No education funds on file.' : 'No education targets set.',
+      detail:
+        profile.education_funds.length === 0
+          ? 'No education funds on file.'
+          : 'No education targets set.',
     }
   }
-  const scores = funded.map((f) => Math.min(100, (f.current_savings_minor / f.target_savings_minor) * 100))
+  const scores = funded.map((f) =>
+    Math.min(100, (f.current_savings_minor / f.target_savings_minor) * 100),
+  )
   const score = Math.round(scores.reduce((s, x) => s + x, 0) / scores.length)
   return {
     key: 'education',
@@ -256,7 +308,7 @@ function educationComponent(profile: FinancialProfile): ReadinessComponent {
         : `Average ${score}% of target across ${funded.length} funds.`,
     drivers: funded.map((f) => ({
       label: `${f.child_name}: saved vs target`,
-      value: `${Math.round((f.current_savings_minor / 100)).toLocaleString('en-GB')} / ${Math.round((f.target_savings_minor / 100)).toLocaleString('en-GB')}`,
+      value: `${Math.round(f.current_savings_minor / 100).toLocaleString('en-GB')} / ${Math.round(f.target_savings_minor / 100).toLocaleString('en-GB')}`,
     })),
   }
 }
@@ -317,16 +369,49 @@ function estateComponent(
     const locationDocs = legacy.original_location_total ?? 0
     const checks = [
       legacyCheck('Wills recorded', legacy.adults_total, legacy.adults_with_will, 25, 'adults'),
-      legacyCheck('Powers of attorney recorded', legacy.adults_total, legacy.adults_with_poa, 20, 'adults'),
-      legacyCheck('Guardian nominations', legacy.minors_total, legacy.minors_with_guardian_nomination, 15, 'minors'),
-      legacyCheck('Executors resolvable', wills, wills - legacy.wills_with_dead_or_missing_executor, 10, 'wills'),
-      legacyCheck('Property title evidence', legacy.properties_total, legacy.properties_total - legacy.properties_without_title_evidence, 15, 'properties'),
-      legacyCheck('Original location known', locationDocs, locationDocs - legacy.documents_without_original_location, 10, 'documents'),
+      legacyCheck(
+        'Powers of attorney recorded',
+        legacy.adults_total,
+        legacy.adults_with_poa,
+        20,
+        'adults',
+      ),
+      legacyCheck(
+        'Guardian nominations',
+        legacy.minors_total,
+        legacy.minors_with_guardian_nomination,
+        15,
+        'minors',
+      ),
+      legacyCheck(
+        'Executors resolvable',
+        wills,
+        wills - legacy.wills_with_dead_or_missing_executor,
+        10,
+        'wills',
+      ),
+      legacyCheck(
+        'Property title evidence',
+        legacy.properties_total,
+        legacy.properties_total - legacy.properties_without_title_evidence,
+        15,
+        'properties',
+      ),
+      legacyCheck(
+        'Original location known',
+        locationDocs,
+        locationDocs - legacy.documents_without_original_location,
+        10,
+        'documents',
+      ),
       legacyCheck('Reviewed within 3 years', wills, wills - legacy.wills_stale, 5, 'wills'),
     ].filter((c): c is NonNullable<typeof c> => c !== null)
 
     const totalWeight = checks.reduce((s, c) => s + c.weight, 0)
-    const score = totalWeight === 0 ? null : Math.round((checks.reduce((s, c) => s + c.earned, 0) / totalWeight) * 100)
+    const score =
+      totalWeight === 0
+        ? null
+        : Math.round((checks.reduce((s, c) => s + c.earned, 0) / totalWeight) * 100)
     const incomplete = checks.filter((c) => c.earned < c.weight).length
     return {
       key: 'estate',
@@ -337,7 +422,7 @@ function estateComponent(
         score === null
           ? 'Nothing in the legacy register is scorable yet.'
           : incomplete === 0
-            ? "Everything recorded in the legacy register is complete and current."
+            ? 'Everything recorded in the legacy register is complete and current.'
             : `${incomplete} of ${checks.length} legacy checks need attention.`,
       drivers: checks.map((c) => c.driver),
       caption: ESTATE_CAPTION,
@@ -429,7 +514,10 @@ export interface MemberSlice {
 
 const ADULT_ROLES = new Set(['organizer', 'parent', 'adult'])
 
-function memberProtectionComponent(profile: FinancialProfile | null, slice: MemberSlice): ReadinessComponent {
+function memberProtectionComponent(
+  profile: FinancialProfile | null,
+  slice: MemberSlice,
+): ReadinessComponent {
   const base = {
     key: 'protection' as const,
     label: 'Protection',
@@ -447,7 +535,11 @@ function memberProtectionComponent(profile: FinancialProfile | null, slice: Memb
   const checks: Array<{ weight: number; earned: number; label: string; met: boolean }> = []
 
   const earner = slice.earner
-  if (earner && (earner.employment_status === 'employed' || earner.employment_status === 'self_employed') && yearsToRetirement > 1) {
+  if (
+    earner &&
+    (earner.employment_status === 'employed' || earner.employment_status === 'self_employed') &&
+    yearsToRetirement > 1
+  ) {
     const covered =
       earner.income_protection_monthly_minor > 0 ||
       slice.policies.some((p) => p.type === 'income_protection')
@@ -492,7 +584,10 @@ function memberProtectionComponent(profile: FinancialProfile | null, slice: Memb
  *  household target is a joint number, so the member's slice of it is
  *  proportional to what they earn. No pension data → honest null, same
  *  rule as the family score. */
-function memberRetirementComponent(profile: FinancialProfile | null, slice: MemberSlice): ReadinessComponent {
+function memberRetirementComponent(
+  profile: FinancialProfile | null,
+  slice: MemberSlice,
+): ReadinessComponent {
   const base = {
     key: 'retirement' as const,
     label: 'Retirement',
@@ -505,11 +600,16 @@ function memberRetirementComponent(profile: FinancialProfile | null, slice: Memb
     return {
       ...base,
       score: null,
-      detail: 'No pension figures on file for this member — add their balance and monthly contribution in the Financial Profile.',
+      detail:
+        'No pension figures on file for this member — add their balance and monthly contribution in the Financial Profile.',
     }
   }
   if (slice.age === null) {
-    return { ...base, score: null, detail: 'Set this member\'s date of birth to project their pension.' }
+    return {
+      ...base,
+      score: null,
+      detail: "Set this member's date of birth to project their pension.",
+    }
   }
   if (isUnsetTarget(profile.retirement.target_retirement_income_minor)) {
     return { ...base, score: null, detail: 'No household retirement income target set.' }
@@ -518,7 +618,11 @@ function memberRetirementComponent(profile: FinancialProfile | null, slice: Memb
     profile.household.monthly_salary_minor +
     profile.household.members.reduce((s, m) => s + m.monthly_salary_minor, 0)
   if (totalSalary <= 0 || earner.monthly_salary_minor <= 0) {
-    return { ...base, score: null, detail: 'No salary on file to derive this member\'s share of the retirement target.' }
+    return {
+      ...base,
+      score: null,
+      detail: "No salary on file to derive this member's share of the retirement target.",
+    }
   }
   const memberTargetMinor = Math.round(
     (profile.retirement.target_retirement_income_minor * earner.monthly_salary_minor) / totalSalary,
@@ -531,7 +635,10 @@ function memberRetirementComponent(profile: FinancialProfile | null, slice: Memb
     target_retirement_income_minor: memberTargetMinor,
     expected_annual_growth_pct: profile.retirement.expected_annual_growth_pct,
   })
-  const score = Math.min(100, Math.round((projection.achievable_retirement_income_minor / memberTargetMinor) * 100))
+  const score = Math.min(
+    100,
+    Math.round((projection.achievable_retirement_income_minor / memberTargetMinor) * 100),
+  )
   return {
     ...base,
     score,
@@ -553,15 +660,23 @@ function memberEducationComponent(slice: MemberSlice): ReadinessComponent {
     return {
       ...base,
       score: null,
-      detail: slice.educationFunds.length === 0 ? 'No education fund linked to this member yet.' : 'No education target set.',
+      detail:
+        slice.educationFunds.length === 0
+          ? 'No education fund linked to this member yet.'
+          : 'No education target set.',
     }
   }
-  const scores = funded.map((f) => Math.min(100, (f.current_savings_minor / f.target_savings_minor) * 100))
+  const scores = funded.map((f) =>
+    Math.min(100, (f.current_savings_minor / f.target_savings_minor) * 100),
+  )
   const score = Math.round(scores.reduce((s, x) => s + x, 0) / scores.length)
   return {
     ...base,
     score,
-    detail: funded.length === 1 ? `Fund is ~${score}% of target.` : `Average ${score}% of target across ${funded.length} funds.`,
+    detail:
+      funded.length === 1
+        ? `Fund is ~${score}% of target.`
+        : `Average ${score}% of target across ${funded.length} funds.`,
   }
 }
 

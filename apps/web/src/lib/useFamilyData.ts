@@ -16,6 +16,7 @@ import {
   fetchEventReadiness as fetchEventReadinessApi,
   type FinancialProfile,
   type ReadinessComponentKey,
+  type ReadinessComponent,
   RESOLVED_INSIGHT_STATES,
   type FamilyInsight,
   type FamilyGoal,
@@ -81,6 +82,10 @@ export function useFamilyReadinessScore() {
   // When the displayed score was last computed — the score card renders
   // this so "nothing changed" reads as a fresh check, not a stale number.
   const [computedAt, setComputedAt] = useState<string | null>(null)
+  // Intent 20: the component subscores behind the number, for the
+  // "Why this score" expander — empty when the offline fallback produced
+  // the score (it has no components to show).
+  const [components, setComponents] = useState<ReadinessComponent[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -92,6 +97,7 @@ export function useFamilyReadinessScore() {
           score: apiScore,
           hasLiveData: liveData,
           computedAt: at,
+          components: apiComponents,
         } = await Promise.race([
           fetchFamilyReadinessScore(),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 10_000)),
@@ -100,6 +106,7 @@ export function useFamilyReadinessScore() {
           setScore(apiScore)
           setHasLiveData(liveData)
           setComputedAt(at)
+          setComponents(apiComponents)
         }
       } catch {
         // Live-verification finding: this had no catch — a rejected fetch
@@ -120,7 +127,7 @@ export function useFamilyReadinessScore() {
     }
   }, [])
 
-  return { score, hasLiveData, computedAt, loading }
+  return { score, hasLiveData, computedAt, components, loading }
 }
 
 // A target of <= £1 (100 minor units) is unset — see isUnsetTarget in the API.
@@ -421,6 +428,7 @@ export function useEventReadiness(
   const [stability, setStability] = useState<number | null>(null)
   const [explanation, setExplanation] = useState(fallbackExplanation)
   const [hasLiveData, setHasLiveData] = useState(false)
+  const [missingInputs, setMissingInputs] = useState<string[]>([])
   const [insightId, setInsightId] = useState<string | null>(null)
   const [ruleId, setRuleId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -464,10 +472,14 @@ export function useEventReadiness(
         setStability(result.stability)
         setExplanation(insightText ?? result.explanation)
         setHasLiveData(true)
+        setMissingInputs([])
       } else {
         setStability(null)
         setExplanation(insightText ?? fallbackExplanation)
         setHasLiveData(false)
+        // Intent 21: the API names what the formula needs — a thin profile
+        // gets a "using what you have so far" state, not a silent sample.
+        setMissingInputs(result.missing_inputs ?? [])
       }
       setInsightId(found?.id ?? null)
       setRuleId(found?.rule_id ?? null)
@@ -489,6 +501,7 @@ export function useEventReadiness(
     explanation,
     hasLiveData,
     live: hasLiveData || insightId !== null,
+    missingInputs,
     insightId,
     ruleId,
     loading,

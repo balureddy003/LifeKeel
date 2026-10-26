@@ -95,6 +95,16 @@ describe('classifyVerifiedIntent', () => {
     },
   )
 
+  it('a compound job-loss + bereavement question surfaces both intents', () => {
+    // Intent 57: the death half of a compound question must not silently
+    // drop — bereavement maps to the policies op (life cover on file).
+    const intent = classifyVerifiedIntent('lost my job and my partner passed away')
+    expect(intent).toEqual({
+      kind: 'clarify',
+      options: expect.arrayContaining(['income_stops', 'policies']),
+    })
+  })
+
   it('a question matching two operations clarifies instead of guessing', () => {
     const intent = classifyVerifiedIntent(
       'how much is in our emergency fund and when does the car insurance renew?',
@@ -166,7 +176,7 @@ describe('renderVerifiedAnswer', () => {
     expect(a.content).toContain("can't be fully scored")
     // Estate is out of this resolver's scope — it must say restricted, not guess.
     expect(a.content).toContain('restricted')
-    expect(a.content).toContain('Emergency fund: 50/100')
+    expect(a.content).toContain('Emergency fund: 65/100')
   })
 
   it('readiness: with estateInputs it scores estate like /family/readiness instead of gating it out', () => {
@@ -204,7 +214,7 @@ describe('renderVerifiedAnswer', () => {
     expect(a.content).toContain('scenario calculator')
     // income 6500/mo (4000+2500), expenses 3000/mo, savings 9000 → runway 3 mo
     expect(a.content).toContain('runway')
-    expect(a.content).toMatch(/cover about \*\*3\.?\d* months\*\*/)
+    expect(a.content).toMatch(/cover \*\*about 3\.?\d* months\*\*/)
   })
 
   it('income stops: honest when there is not enough profile to project', () => {

@@ -219,6 +219,7 @@ import { ensureScopeContractIndexes } from './family/scope-contracts.js'
 import { registerMarketingPlanRoutes } from './routes/marketing-plan.js'
 import { registerMarketingBankRoutes } from './routes/marketing-bank.js'
 import { registerMarketingStandingRoutes } from './routes/marketing-standing.js'
+import { registerMarketingSearchRoutes } from './routes/marketing-search.js'
 import { registerMarketingProfileRoutes } from './routes/marketing-profiles.js'
 import { registerLeadRoutes } from './routes/leads.js'
 import { registerHeartbeatUnsubscribeRoutes } from './routes/heartbeat-unsubscribe.js'
@@ -558,6 +559,29 @@ try {
       { missedExecutionTolerance: 3_600_000 },
     )
     log.info({}, 'Marketing draft generation cron started')
+
+    // Search Console and GA4 read-back (intent 47) — daily at 06:30, read-only. A no-op until
+    // GOOGLE_READONLY_SERVICE_ACCOUNT_JSON and the property settings are present.
+    cron.schedule(
+      '30 6 * * *',
+      async () => {
+        try {
+          await withCronLock(workflowDb, 'search-readback', async () => {
+            const { runSearchReadback } = await import('./marketing/search-readback.js')
+            await runSearchReadback(workflowDb)
+            // Weekly, on Mondays: turn real queries into a short list of topics for a person to consider.
+            if (new Date().getUTCDay() === 1) {
+              const { generateSuggestions } = await import('./marketing/topic-suggestions.js')
+              await generateSuggestions(workflowDb)
+            }
+          })
+        } catch (err) {
+          log.error({ err }, 'Search read-back failed')
+        }
+      },
+      { missedExecutionTolerance: 3_600_000 },
+    )
+    log.info({}, 'Search read-back cron started')
 
     // Engagement polling — hourly; refreshes like/repost/reply counts on
     // published posts where the channel exposes public metrics (Bluesky).
@@ -2295,6 +2319,7 @@ if (workflowDb) {
   registerMarketingPlanRoutes(app, workflowDb)
   registerMarketingBankRoutes(app, workflowDb)
   registerMarketingStandingRoutes(app, workflowDb)
+  registerMarketingSearchRoutes(app, workflowDb)
   ensureAutopilotIndexes(workflowDb)
   void ensureRevenueIndexes(workflowDb)
   void ensureMarketingSpendIndexes(workflowDb)

@@ -13,6 +13,7 @@ describe('marketing-formats.yaml', () => {
       'hard_day_steps',
       'myth_vs_file',
       'one_thing_to_check',
+      'stat_of_week',
     ])
     expect(held.map((f) => f.id).sort()).toEqual(['calendar_moment', 'illustrative_scene'])
   })
@@ -46,13 +47,15 @@ describe('chooseFormat / chooseHook', () => {
   })
 
   it('never returns held or thread formats, and repeats least-used once all are taken', () => {
-    const taken = new Set(['myth_vs_file', 'one_thing_to_check', 'hard_day_steps'])
+    const taken = new Set(['myth_vs_file', 'one_thing_to_check', 'hard_day_steps', 'stat_of_week'])
     const f = chooseFormat(defs.formats, 'x', new Map([['hard_day_steps', 5]]), taken)
     expect(f!.status).toBe('active')
     expect(f!.id).not.toBe('calendar_moment')
     expect(f!.id).not.toBe('illustrative_scene')
     // Least-used repeats when everything is taken.
-    expect(['myth_vs_file', 'one_thing_to_check']).toContain(f!.id)
+    expect(['myth_vs_file', 'one_thing_to_check', 'stat_of_week', 'hard_day_steps']).toContain(
+      f!.id,
+    )
   })
 
   it('returns null on a channel with no suitable format', () => {

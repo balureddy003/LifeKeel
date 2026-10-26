@@ -19,7 +19,8 @@ import yaml from 'js-yaml'
 import { repoRoot, formatMoney } from '@lifekeel/platform'
 import type { FinancialProfile } from '../routes/family-financial-profile.js'
 
-export type LifeEventType = 'job_loss' | 'bereavement' | 'disability' | 'medical' | 'car' | 'property' | 'travel'
+export type LifeEventType =
+  'job_loss' | 'bereavement' | 'disability' | 'medical' | 'car' | 'property' | 'travel'
 
 export interface PlaybookStep {
   id: string
@@ -43,6 +44,11 @@ export interface Playbook {
   title: string
   intro: string
   steps: PlaybookStep[]
+  /** Roster name of the member this event was reported for, when scoped —
+   *  the page header uses it so a member-scoped playbook says who it's
+   *  about ("If Priya's income stopped") rather than reading as the
+   *  household aggregate (intent 56). */
+  affected_member_name?: string
 }
 
 interface RawPlaybookStep {
@@ -187,15 +193,23 @@ function renderBereavementStep(
 
     const parts: string[] = []
     if (theirs.length > 0) {
-      parts.push(`The policies on file for the person who passed away: ${describe(theirs)}. Contact each one to start a claim or notify them of the death.`)
+      parts.push(
+        `The policies on file for the person who passed away: ${describe(theirs)}. Contact each one to start a claim or notify them of the death.`,
+      )
     } else {
-      parts.push("We don't have any policies on file specifically linked to the person who passed away — if they held life insurance, health cover, or other policies we don't know about, gather the provider details and contact each one.")
+      parts.push(
+        "We don't have any policies on file specifically linked to the person who passed away — if they held life insurance, health cover, or other policies we don't know about, gather the provider details and contact each one.",
+      )
     }
     if (unattributed.length > 0) {
-      parts.push(`Also on file, not yet linked to a specific person — confirm whether these were theirs: ${describe(unattributed)}.`)
+      parts.push(
+        `Also on file, not yet linked to a specific person — confirm whether these were theirs: ${describe(unattributed)}.`,
+      )
     }
     if (others.length > 0) {
-      parts.push(`Other household policies on file (${describe(others)}) belong to other family members and don't need to be touched for this.`)
+      parts.push(
+        `Other household policies on file (${describe(others)}) belong to other family members and don't need to be touched for this.`,
+      )
     }
     return parts.join(' ')
   }
@@ -226,7 +240,10 @@ function renderDisabilityStep(
 
     if (hasIncomeProtection || hasCriticalIllnessPolicy) {
       const parts: string[] = []
-      if (hasIncomeProtection) parts.push(`${formatMoney(earner.income_protection_monthly_minor)}/month of income protection`)
+      if (hasIncomeProtection)
+        parts.push(
+          `${formatMoney(earner.income_protection_monthly_minor)}/month of income protection`,
+        )
       if (hasCriticalIllnessPolicy) {
         const policy = profile.policies.find((p) => p.type === 'critical_illness')!
         parts.push(`a critical-illness policy with ${policy.provider}`)
@@ -249,10 +266,14 @@ function renderMedicalStep(
     const parts: string[] = []
     const health = profile.policies.filter((p) => p.type === 'health')
     const critical = profile.policies.filter((p) => p.type === 'critical_illness')
-    if (health.length > 0) parts.push(`health insurance with ${health.map((p) => p.provider).join(', ')}`)
-    if (critical.length > 0) parts.push(`critical-illness cover with ${critical.map((p) => p.provider).join(', ')}`)
+    if (health.length > 0)
+      parts.push(`health insurance with ${health.map((p) => p.provider).join(', ')}`)
+    if (critical.length > 0)
+      parts.push(`critical-illness cover with ${critical.map((p) => p.provider).join(', ')}`)
     if (earner.income_protection_monthly_minor > 0) {
-      parts.push(`${formatMoney(earner.income_protection_monthly_minor)}/month of income protection`)
+      parts.push(
+        `${formatMoney(earner.income_protection_monthly_minor)}/month of income protection`,
+      )
     }
     if (parts.length > 0) {
       return `Based on your real data, you have ${parts.join(' and ')} on file. Contact the provider(s) now — many health policies require notification within days of an emergency admission.`
@@ -266,7 +287,9 @@ function renderCarStep(stepId: string, profile: FinancialProfile): string {
   if (stepId === 'check_car_insurance') {
     const car = profile.policies.filter((p) => p.type === 'car')
     if (car.length > 0) {
-      const list = car.map((p) => p.provider + (p.policy_number ? ` (policy ${p.policy_number})` : '')).join(', ')
+      const list = car
+        .map((p) => p.provider + (p.policy_number ? ` (policy ${p.policy_number})` : ''))
+        .join(', ')
       return `Based on your real data, your car insurance on file: ${list}. Report the accident to the insurer within their notification window — have the policy number and the other party's details ready.`
     }
     return "We don't have a car insurance policy on file for your family. If you're covered, find the policy number and the insurer's claim line now — and add the policy to your financial profile later so Keel can quote it back to you here."
@@ -279,11 +302,18 @@ function renderPropertyStep(stepId: string, profile: FinancialProfile): string {
     const home = profile.policies.filter((p) => p.type === 'home')
     const parts: string[] = []
     if (home.length > 0) parts.push(`home insurance with ${home.map((p) => p.provider).join(', ')}`)
-    if (profile.household.mortgage_outstanding_minor > 0) {
-      parts.push(`a mortgage of ${formatMoney(profile.household.mortgage_outstanding_minor)} outstanding — your lender may need to be notified of major damage too`)
-    }
+    const mortgage = profile.household.mortgage_outstanding_minor
+    if (mortgage > 0) parts.push(`a mortgage of ${formatMoney(mortgage)} outstanding`)
     if (parts.length > 0) {
-      return `Based on your real data, you have ${parts.join(' and ')} on file. Report the damage to the insurer before authorizing non-emergency repairs.`
+      const lenderNote =
+        mortgage > 0 ? ' Your lender may need to be notified of major damage too.' : ''
+      // A mortgage on file but no home policy is still a gap worth naming —
+      // the What-If says it, the playbook should too (intent 50).
+      const noHomeNote =
+        home.length === 0
+          ? ' No home insurance policy is on file — if you have one, add it to your financial profile so the claim line is here next time.'
+          : ''
+      return `Based on your real data, you have ${parts.join(' and ')} on file.${lenderNote} Report the damage to the insurer before authorizing non-emergency repairs.${noHomeNote}`
     }
     return "We don't have home insurance on file for your family. If a policy exists, find the claim line now — and add it to your financial profile later so this step is grounded in real data next time."
   }
@@ -300,9 +330,13 @@ function renderTravelStep(stepId: string, profile: FinancialProfile): string {
     // a secondary possibility either way.
     const travel = profile.policies.filter((p) => p.type === 'travel')
     const health = profile.policies.filter((p) => p.type === 'health')
-    const describe = (p: FinancialProfile['policies'][number]) => p.provider + (p.policy_number ? ` (policy ${p.policy_number})` : '')
+    const describe = (p: FinancialProfile['policies'][number]) =>
+      p.provider + (p.policy_number ? ` (policy ${p.policy_number})` : '')
     if (travel.length > 0) {
-      const healthNote = health.length > 0 ? ` You also have health insurance with ${health.map((p) => p.provider).join(', ')}, which may cover some emergency treatment abroad too.` : ''
+      const healthNote =
+        health.length > 0
+          ? ` You also have health insurance with ${health.map((p) => p.provider).join(', ')}, which may cover some emergency treatment abroad too.`
+          : ''
       return `Based on your real data, you have travel insurance with ${travel.map(describe).join(', ')} on file.${healthNote} Find that policy's 24/7 assistance number and call before paying for anything — most travel insurers only reimburse what they coordinated.`
     }
     if (health.length > 0) {
@@ -342,14 +376,18 @@ function resolveStepContacts(
 ): StepContact[] {
   if (eventType === 'bereavement' && stepId === 'notify_insurers') {
     const hasAttribution = affectedMemberId && profile.policies.some((p) => p.member_id)
-    const relevant = hasAttribution ? profile.policies.filter((p) => p.member_id === affectedMemberId) : profile.policies
+    const relevant = hasAttribution
+      ? profile.policies.filter((p) => p.member_id === affectedMemberId)
+      : profile.policies
     return toContacts(relevant)
   }
   if (eventType === 'disability' && stepId === 'check_cover') {
     return toContacts(profile.policies.filter((p) => p.type === 'critical_illness'))
   }
   if (eventType === 'medical' && stepId === 'notify_health_insurer') {
-    return toContacts(profile.policies.filter((p) => p.type === 'health' || p.type === 'critical_illness'))
+    return toContacts(
+      profile.policies.filter((p) => p.type === 'health' || p.type === 'critical_illness'),
+    )
   }
   if (eventType === 'car' && stepId === 'notify_insurer') {
     return toContacts(profile.policies.filter((p) => p.type === 'car'))
@@ -378,7 +416,8 @@ function isStepCovered(
 
   if (eventType === 'job_loss') {
     if (stepId === 'income_protection') return earner.income_protection_monthly_minor > 0
-    if (stepId === 'notify_mortgage_lender') return profile.household.mortgage_outstanding_minor <= 0
+    if (stepId === 'notify_mortgage_lender')
+      return profile.household.mortgage_outstanding_minor <= 0
   }
   if (eventType === 'bereavement') {
     if (stepId === 'mortgage_protection_check') {
@@ -388,7 +427,10 @@ function isStepCovered(
   }
   if (eventType === 'disability') {
     if (stepId === 'check_cover') {
-      return earner.income_protection_monthly_minor > 0 || profile.policies.some((p) => p.type === 'critical_illness')
+      return (
+        earner.income_protection_monthly_minor > 0 ||
+        profile.policies.some((p) => p.type === 'critical_illness')
+      )
     }
   }
   if (eventType === 'medical') {
@@ -466,16 +508,22 @@ export function renderPlaybook(
   eventType: LifeEventType,
   rawProfile: FinancialProfile,
   affectedMemberId?: string,
+  affectedMemberName?: string,
 ): Playbook {
   const profile = normalizeProfile(rawProfile)
   const raw = loadRawPlaybook(eventType)
   return {
     event_type: raw.event_type,
     title: raw.title,
+    ...(affectedMemberName ? { affected_member_name: affectedMemberName } : {}),
     intro: raw.intro,
     steps: raw.steps.map((step) => {
-      const contacts = step.contact ? resolveStepContacts(eventType, step.id, profile, affectedMemberId) : []
-      const covered = step.computed ? isStepCovered(eventType, step.id, profile, affectedMemberId) : false
+      const contacts = step.contact
+        ? resolveStepContacts(eventType, step.id, profile, affectedMemberId)
+        : []
+      const covered = step.computed
+        ? isStepCovered(eventType, step.id, profile, affectedMemberId)
+        : false
       return {
         id: step.id,
         title: step.title,

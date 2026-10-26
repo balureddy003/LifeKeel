@@ -7,7 +7,13 @@ import {
 import { loadStripeConfig } from '../stripe-config.js'
 
 const config = loadStripeConfig()
-const ENV_KEYS = ['STRIPE_PRICE_STARTER', 'STRIPE_PRICE_STARTER_GBP', 'STRIPE_SECRET_KEY']
+const ENV_KEYS = [
+  'STRIPE_PRICE_STARTER',
+  'STRIPE_PRICE_STARTER_GBP',
+  'STRIPE_PRICE_STARTER_ANNUAL',
+  'STRIPE_PRICE_STARTER_GBP_ANNUAL',
+  'STRIPE_SECRET_KEY',
+]
 
 function client(ids: string[]): PriceLookupClient & { list: ReturnType<typeof vi.fn> } {
   const list = vi.fn(async () => ({ data: ids.map((id) => ({ id })) }))
@@ -42,6 +48,37 @@ describe('resolveStripePriceId', () => {
       active: true,
       limit: 1,
     })
+  })
+
+  it('interval=year resolves the annual lookup key, not the monthly one', async () => {
+    const stripe = client(['price_annual'])
+    expect(await resolveStripePriceId(stripe, 'starter', 'GBP', { config, interval: 'year' })).toBe(
+      'price_annual',
+    )
+    expect(stripe.list).toHaveBeenCalledWith({
+      lookup_keys: ['keel_plus_gbp_annual'],
+      active: true,
+      limit: 1,
+    })
+  })
+
+  it('interval defaults to month when omitted', async () => {
+    const stripe = client(['price_m'])
+    await resolveStripePriceId(stripe, 'starter', 'GBP', { config })
+    expect(stripe.list).toHaveBeenCalledWith({
+      lookup_keys: ['keel_plus_gbp_monthly'],
+      active: true,
+      limit: 1,
+    })
+  })
+
+  it('annual env override wins for interval=year', async () => {
+    process.env['STRIPE_PRICE_STARTER_GBP_ANNUAL'] = 'price_env_annual'
+    const stripe = client([])
+    expect(await resolveStripePriceId(stripe, 'starter', 'GBP', { config, interval: 'year' })).toBe(
+      'price_env_annual',
+    )
+    expect(stripe.list).not.toHaveBeenCalled()
   })
 
   it('caches the lookup for five minutes', async () => {

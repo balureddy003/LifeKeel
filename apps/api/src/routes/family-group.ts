@@ -55,6 +55,18 @@ function isValidDateOfBirth(value: string): boolean {
 // creation below. That's what lets a single "does this authenticated
 // user's id match a roster entry with role 'organizer'" check work for
 // both, with no separate role-linking field needed.
+// Intent 25: a child roster entry's relationship to the adults — kept
+// separate from `role` (which gates access) so a blended family can say
+// "my child" / "partner's child" / "shared" without inventing roles.
+// Optional; display-only — detectors and access checks still read `role`.
+export type RelationshipLabel = 'my_child' | 'partners_child' | 'shared_child' | 'other_child'
+const VALID_RELATIONSHIP_LABELS: readonly RelationshipLabel[] = [
+  'my_child',
+  'partners_child',
+  'shared_child',
+  'other_child',
+]
+
 export interface FamilyMemberDoc {
   id: string
   name: string
@@ -76,6 +88,9 @@ export interface FamilyMemberDoc {
   // Deliberately not required at creation: captured later via PATCH, at
   // the point it's actually needed (progressive disclosure).
   date_of_birth?: string
+  // Intent 25: optional relationship label for children ("my child" /
+  // "partner's child" / "shared"). Set via POST/PATCH; display-only.
+  relationship_label?: RelationshipLabel
 }
 
 export interface FamilyGroupDoc extends Record<string, unknown> {
@@ -116,7 +131,7 @@ interface UserDoc extends Record<string, unknown> {
   email?: string
 }
 
-function toResponse(doc: FamilyGroupDoc) {
+function toResponse(doc: FamilyGroupDoc, inviteViewedAt: Map<string, Date> = new Map()) {
   return {
     id: doc.id,
     name: doc.name,
@@ -128,8 +143,19 @@ function toResponse(doc: FamilyGroupDoc) {
       role: m.role,
       status: m.status,
       joinedAt: m.joined_at,
+      // Intent 63: a pending member's invite status — 'sent' until the
+      // accept page resolves the token, then 'viewed'.
+      ...(m.status === 'pending'
+        ? {
+            inviteStatus: inviteViewedAt.has(m.id) ? 'viewed' : 'sent',
+            ...(inviteViewedAt.has(m.id)
+              ? { inviteViewedAt: inviteViewedAt.get(m.id)!.toISOString() }
+              : {}),
+          }
+        : {}),
       ...(m.user_id ? { userId: m.user_id } : {}),
       ...(m.date_of_birth ? { dateOfBirth: m.date_of_birth } : {}),
+      ...(m.relationship_label ? { relationshipLabel: m.relationship_label } : {}),
     })),
     ...(doc.context_note ? { contextNote: doc.context_note } : {}),
   }
@@ -155,7 +181,22 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
   fastify.get('/family', async (req) => {
     const { tenant_id } = req.authContext
     const doc = await groupsFor(tenant_id).findOne({})
-    return { family: doc ? toResponse(doc) : null }
+    // Invite views for pending members — one query, then looked up per
+    // member in toResponse (intent 63).
+    const viewed = await getTenantCollection<Record<string, unknown>>(
+      db,
+      'family_member_invites',
+      doc?.tenant_id ?? req.authContext.tenant_id,
+    )
+      .find({ viewed_at: { $exists: true } })
+      .toArray()
+      .catch(() => [] as Record<string, unknown>[])
+    const inviteViewedAt = new Map<string, Date>(
+      viewed
+        .filter((i: Record<string, unknown>) => i['member_id'] && i['viewed_at'])
+        .map((i: Record<string, unknown>) => [i['member_id'] as string, i['viewed_at'] as Date]),
+    )
+    return { family: doc ? toResponse(doc, inviteViewedAt) : null }
   })
 
   // ── POST /family ─────────────────────────────────────────────────────────
@@ -222,91 +263,129 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
   })
 
   // ── POST /family/members ────────────────────────────────────────────────
-  fastify.post<{ Body: { name: string; email: string; role: FamilyRole; date_of_birth?: string } }>(
-    '/family/members',
-    async (req, reply) => {
-      const { tenant_id } = req.authContext
-      const { name, email, role, date_of_birth } =
-        req.body ??
-        ({} as { name: string; email: string; role: FamilyRole; date_of_birth?: string })
-      if (!name?.trim() || !role)
-        return reply.status(400).send({ error: 'Member name and role required' })
-      const memberNameError = displayNameError(name, 'Member name')
-      if (memberNameError) return reply.status(400).send({ error: memberNameError })
-      if (!VALID_ROLES.includes(role)) {
-        return reply
-          .status(400)
-          .send({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` })
-      }
-      if (date_of_birth && !isValidDateOfBirth(date_of_birth)) {
-        return reply
-          .status(400)
-          .send({ error: "Invalid date of birth. Use 'YYYY-MM-DD', not in the future." })
-      }
+  fastify.post<{
+    Body: {
+      name: string
+      email: string
+      role: FamilyRole
+      date_of_birth?: string
+      relationship_label?: RelationshipLabel
+    }
+  }>('/family/members', async (req, reply) => {
+    const { tenant_id } = req.authContext
+    const { name, email, role, date_of_birth, relationship_label } = req.body ?? {}
+    if (!name?.trim() || !role)
+      return reply.status(400).send({ error: 'Member name and role required' })
+    const memberNameError = displayNameError(name, 'Member name')
+    if (memberNameError) return reply.status(400).send({ error: memberNameError })
+    if (!VALID_ROLES.includes(role)) {
+      return reply
+        .status(400)
+        .send({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` })
+    }
+    if (date_of_birth && !isValidDateOfBirth(date_of_birth)) {
+      return reply
+        .status(400)
+        .send({ error: "Invalid date of birth. Use 'YYYY-MM-DD', not in the future." })
+    }
+    if (relationship_label !== undefined) {
+      if (!VALID_RELATIONSHIP_LABELS.includes(relationship_label))
+        return reply.status(400).send({ error: 'Invalid relationship_label' })
+      if (role !== 'child')
+        return reply.status(400).send({ error: 'relationship_label only applies to child members' })
+    }
 
-      if (!(await isFamilyOrganizer(db, tenant_id, req.authContext.user_id)))
-        return reply.status(403).send({ error: 'Only the organizer can manage the family' })
-      const member: FamilyMemberDoc = {
-        id: randomUUID(),
-        name: name.trim(),
-        email: email?.trim() ?? '',
-        role,
-        status: 'pending',
-        joined_at: new Date().toISOString(),
-        ...(date_of_birth ? { date_of_birth } : {}),
-      }
+    if (!(await isFamilyOrganizer(db, tenant_id, req.authContext.user_id)))
+      return reply.status(403).send({ error: 'Only the organizer can manage the family' })
+    const member: FamilyMemberDoc = {
+      id: randomUUID(),
+      name: name.trim(),
+      email: email?.trim() ?? '',
+      role,
+      status: 'pending',
+      joined_at: new Date().toISOString(),
+      ...(date_of_birth ? { date_of_birth } : {}),
+      ...(relationship_label ? { relationship_label } : {}),
+    }
 
-      const result = (await groupsFor(tenant_id).findOneAndUpdate(
-        {},
-        { $push: { members: member }, $set: { updated_at: new Date() } },
-        { returnDocument: 'after' },
-      )) as FamilyGroupDoc | null
-      if (!result) return reply.status(404).send({ error: 'Family not found — create one first' })
-      return reply.status(201).send({ family: toResponse(result) })
-    },
-  )
+    const result = (await groupsFor(tenant_id).findOneAndUpdate(
+      {},
+      { $push: { members: member }, $set: { updated_at: new Date() } },
+      { returnDocument: 'after' },
+    )) as FamilyGroupDoc | null
+    if (!result) return reply.status(404).send({ error: 'Family not found — create one first' })
+    return reply.status(201).send({ family: toResponse(result) })
+  })
 
   // ── PATCH /family/members/:id ───────────────────────────────────────────
   // Accepts role and/or date_of_birth — the only two mutable fields on a
   // roster member today (name/email are set once, at invite time). At
   // least one must be present.
-  fastify.patch<{ Params: { id: string }; Body: { role?: FamilyRole; date_of_birth?: string } }>(
-    '/family/members/:id',
-    async (req, reply) => {
-      const { tenant_id } = req.authContext
-      const { role, date_of_birth } =
-        req.body ?? ({} as { role?: FamilyRole; date_of_birth?: string })
-      if (role === undefined && date_of_birth === undefined) {
-        return reply.status(400).send({ error: 'role or date_of_birth required' })
-      }
-      if (role !== undefined && !VALID_ROLES.includes(role)) {
-        return reply
-          .status(400)
-          .send({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` })
-      }
-      if (date_of_birth !== undefined && !isValidDateOfBirth(date_of_birth)) {
-        return reply
-          .status(400)
-          .send({ error: "Invalid date of birth. Use 'YYYY-MM-DD', not in the future." })
-      }
+  fastify.patch<{
+    Params: { id: string }
+    Body: {
+      role?: FamilyRole
+      date_of_birth?: string
+      relationship_label?: RelationshipLabel | null
+    }
+  }>('/family/members/:id', async (req, reply) => {
+    const { tenant_id } = req.authContext
+    const { role, date_of_birth, relationship_label } = req.body ?? {}
+    if (role === undefined && date_of_birth === undefined && relationship_label === undefined) {
+      return reply.status(400).send({ error: 'role, date_of_birth or relationship_label required' })
+    }
+    if (role !== undefined && !VALID_ROLES.includes(role)) {
+      return reply
+        .status(400)
+        .send({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` })
+    }
+    if (relationship_label !== undefined && relationship_label !== null) {
+      if (!VALID_RELATIONSHIP_LABELS.includes(relationship_label))
+        return reply.status(400).send({ error: 'Invalid relationship_label' })
+    }
+    if (date_of_birth !== undefined && !isValidDateOfBirth(date_of_birth)) {
+      return reply
+        .status(400)
+        .send({ error: "Invalid date of birth. Use 'YYYY-MM-DD', not in the future." })
+    }
 
-      if (!(await isFamilyOrganizer(db, tenant_id, req.authContext.user_id)))
-        return reply.status(403).send({ error: 'Only the organizer can manage the family' })
-      if (req.params.id === req.authContext.user_id && role !== undefined && role !== 'organizer')
-        return reply.status(409).send({ error: 'An organizer cannot remove their own role' })
-      const set: Record<string, unknown> = { updated_at: new Date() }
-      if (role !== undefined) set['members.$.role'] = role
-      if (date_of_birth !== undefined) set['members.$.date_of_birth'] = date_of_birth
+    if (!(await isFamilyOrganizer(db, tenant_id, req.authContext.user_id)))
+      return reply.status(403).send({ error: 'Only the organizer can manage the family' })
+    if (req.params.id === req.authContext.user_id && role !== undefined && role !== 'organizer')
+      return reply.status(409).send({ error: 'An organizer cannot remove their own role' })
 
-      const result = (await groupsFor(tenant_id).findOneAndUpdate(
-        { 'members.id': req.params.id },
-        { $set: set },
-        { returnDocument: 'after' },
-      )) as FamilyGroupDoc | null
-      if (!result) return reply.status(404).send({ error: 'Member not found' })
-      return { family: toResponse(result) }
-    },
-  )
+    // Labels only make sense on children — check against the effective
+    // role (a single PATCH may set role and label together).
+    if (relationship_label !== undefined && relationship_label !== null) {
+      const group = (await groupsFor(tenant_id).findOne({
+        'members.id': req.params.id,
+      })) as FamilyGroupDoc | null
+      const member = group?.members.find((m) => m.id === req.params.id)
+      if (!member) return reply.status(404).send({ error: 'Member not found' })
+      if ((role ?? member.role) !== 'child')
+        return reply.status(400).send({ error: 'relationship_label only applies to child members' })
+    }
+
+    const set: Record<string, unknown> = { updated_at: new Date() }
+    const unset: Record<string, unknown> = {}
+    if (role !== undefined) set['members.$.role'] = role
+    if (date_of_birth !== undefined) set['members.$.date_of_birth'] = date_of_birth
+    if (relationship_label !== undefined && relationship_label !== null)
+      set['members.$.relationship_label'] = relationship_label
+    if (relationship_label === null) unset['members.$.relationship_label'] = ''
+    // A label set when the member was a child must not survive a role
+    // change to adult/parent — the child-only guard above only covers
+    // the same request.
+    if (role !== undefined && role !== 'child') unset['members.$.relationship_label'] = ''
+
+    const result = (await groupsFor(tenant_id).findOneAndUpdate(
+      { 'members.id': req.params.id },
+      Object.keys(unset).length ? { $set: set, $unset: unset } : { $set: set },
+      { returnDocument: 'after' },
+    )) as FamilyGroupDoc | null
+    if (!result) return reply.status(404).send({ error: 'Member not found' })
+    return { family: toResponse(result) }
+  })
 
   // ── DELETE /family/members/:id ──────────────────────────────────────────
   fastify.delete<{ Params: { id: string } }>('/family/members/:id', async (req, reply) => {

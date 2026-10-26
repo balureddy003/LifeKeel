@@ -45,11 +45,11 @@ export function SwipeableRow({ onDismiss, children, disabled }: SwipeableRowProp
     <div className="relative">
       <motion.div
         className="absolute inset-0 flex items-center justify-end pr-6 rounded-3xl pointer-events-none"
-        style={{ background: '#f87171', opacity: bgOpacity }}
+        style={{ background: '#ffafa3', opacity: bgOpacity }}
         aria-hidden="true"
       >
         <motion.div style={{ scale: iconScale }}>
-          <Trash2 size={20} color="#fff" />
+          <Trash2 size={20} color="#302440" />
         </motion.div>
       </motion.div>
       <motion.div

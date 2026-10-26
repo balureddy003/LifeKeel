@@ -215,12 +215,16 @@ export interface EventReadiness {
   stability: number
   explanation: string
   hasLiveData: boolean
+  /** Present on non-live results when the event has a formula but the
+   *  profile lacks its inputs — the UI names these instead of a silent
+   *  "sample scenario" (intent 21). */
+  missing_inputs?: string[]
 }
 
 export async function fetchEventReadiness(
   eventId: string,
-): Promise<EventReadiness | { hasLiveData: false }> {
-  return apiFetch<EventReadiness | { hasLiveData: false }>(
+): Promise<EventReadiness | { hasLiveData: false; missing_inputs?: string[] }> {
+  return apiFetch<EventReadiness | { hasLiveData: false; missing_inputs?: string[] }>(
     `/family/events/${encodeURIComponent(eventId)}/readiness`,
     { hasLiveData: false },
   )
@@ -407,15 +411,24 @@ export async function fetchFamilyReadinessScore(): Promise<{
    *  read and says so via computed_at; surfaced on the score card so a
    *  stable score reads as "just checked, unchanged" rather than stale. */
   computedAt: string | null
+  /** The five subscores behind the composite — powers the "Why this score"
+   *  expander (intent 20). Empty on the offline fallback, which has no
+   *  components to explain. */
+  components: ReadinessComponent[]
 }> {
   const server = await fetchFamilyReadiness()
   if (server && server.has_live_data && server.score !== null) {
-    return { score: server.score, hasLiveData: true, computedAt: server.computed_at }
+    return {
+      score: server.score,
+      hasLiveData: true,
+      computedAt: server.computed_at,
+      components: server.components,
+    }
   }
   if (server && !server.has_live_data)
-    return { score: 0, hasLiveData: false, computedAt: server.computed_at }
+    return { score: 0, hasLiveData: false, computedAt: server.computed_at, components: [] }
   if (server && server.has_live_data && server.score === null)
-    return { score: 0, hasLiveData: true, computedAt: server.computed_at }
+    return { score: 0, hasLiveData: true, computedAt: server.computed_at, components: [] }
 
   const insights = await fetchFamilyInsights()
   if (insights.length === 0) {
@@ -425,8 +438,13 @@ export async function fetchFamilyReadinessScore(): Promise<{
     // also has zero insights — scoring that 100 told a family with a
     // £400k mortgage and no life cover they were "on track".
     return profile?.insights_evaluated_at
-      ? { score: 100, hasLiveData: true, computedAt: profile.insights_evaluated_at }
-      : { score: 0, hasLiveData: false, computedAt: null }
+      ? {
+          score: 100,
+          hasLiveData: true,
+          computedAt: profile.insights_evaluated_at,
+          components: [],
+        }
+      : { score: 0, hasLiveData: false, computedAt: null, components: [] }
   }
   const openPenalty = insights
     .filter((i) => !RESOLVED_INSIGHT_STATES.includes(i.state))
@@ -435,6 +453,7 @@ export async function fetchFamilyReadinessScore(): Promise<{
     score: Math.round(Math.max(0, Math.min(100, 100 - openPenalty * 10))),
     hasLiveData: true,
     computedAt: new Date().toISOString(),
+    components: [],
   }
 }
 
@@ -1232,7 +1251,7 @@ export async function fetchAIResponse(
   query: string,
   memberId?: string,
   opts?: { memberName?: string },
-): Promise<{ content: string; status: AssistantAnswerStatus }> {
+): Promise<{ content: string; status: AssistantAnswerStatus; dataAsOf?: string }> {
   // Deterministic emergency short-circuit — before any network call, so
   // a "chest pain"-type message gets safety guidance instantly, offline
   // or while the assistant is down, and the text never leaves the
@@ -1301,11 +1320,16 @@ export async function fetchAIResponse(
         isLive?: boolean
         quarantined?: boolean
         emergency?: boolean
+        data_as_of?: string
       }
       if (typeof data.content === 'string') {
         return {
           content: curtain.restore(data.content),
           status: data.emergency === true ? 'emergency' : data.isLive ? 'live' : 'canned',
+          // The server stamps when the underlying profile/insights were
+          // read — the chat shows it so an older answer after a profile
+          // edit is honestly dated, not silently stale (intent 30).
+          ...(typeof data.data_as_of === 'string' ? { dataAsOf: data.data_as_of } : {}),
         }
       }
       reportError(new Error('assistant/ask returned no content'), { path: '/assistant/ask' })
@@ -1356,6 +1380,9 @@ export interface FamilyDocument {
     | 'failed'
   uploadedAt: string
   extractedData?: Record<string, string>
+  /** Optional renewal date (YYYY-MM-DD) — free tier sets it manually;
+   *  the renewal detectors read it (intent 59). */
+  renewalDate?: string | null
 }
 
 /** Accepted by the upload pipeline; the server enforces the same list. */
@@ -1477,6 +1504,23 @@ export async function uploadDocument(
   })
   if (!res.ok) throw new Error(`Upload failed: ${res.status}`)
   return (await res.json()) as FamilyDocument
+}
+
+/** Set/clear a stored document's renewal date — the free-tier
+ *  'Stored — renews on X' confirmation (intent 59). */
+export async function patchDocumentRenewal(
+  documentId: string,
+  renewalDate: string | null,
+): Promise<boolean> {
+  const token = getAuthToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  const res = await credFetch(`${getApiBase()}/documents/${documentId}`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({ renewal_date: renewalDate }),
+  })
+  return res.ok
 }
 
 export async function fetchDocuments(): Promise<{
@@ -2286,11 +2330,17 @@ export interface ApiFamilyMember {
   email: string
   role: 'organizer' | 'parent' | 'adult' | 'child'
   status: 'active' | 'pending'
+  /** Pending members only — 'sent' until the accept page resolves the
+   *  token, then 'viewed' (intent 63). */
+  inviteStatus?: 'sent' | 'viewed'
+  inviteViewedAt?: string
   joinedAt: string
   /** The `users.id` this roster entry is bound to after invite acceptance (PRD-123). */
   userId?: string
   /** ISO 'YYYY-MM-DD', optional. */
   dateOfBirth?: string
+  /** Intent 25: blended-family relationship on child members — display-only. */
+  relationshipLabel?: 'my_child' | 'partners_child' | 'shared_child' | 'other_child'
 }
 
 export interface ApiFamilyGroup {
@@ -2361,12 +2411,24 @@ export async function addFamilyGroupMember(
   email: string,
   role: ApiFamilyMember['role'],
   dateOfBirth?: string,
+  relationshipLabel?: ApiFamilyMember['relationshipLabel'],
 ): Promise<ApiFamilyGroup> {
   return familyGroupRequest('/family/members', 'POST', {
     name,
     email,
     role,
     ...(dateOfBirth ? { date_of_birth: dateOfBirth } : {}),
+    ...(relationshipLabel ? { relationship_label: relationshipLabel } : {}),
+  })
+}
+
+/** Intent 25: set (or clear, with null) a child member's relationship label. */
+export async function updateFamilyGroupMemberRelationshipLabel(
+  id: string,
+  label: ApiFamilyMember['relationshipLabel'] | null,
+): Promise<ApiFamilyGroup> {
+  return familyGroupRequest(`/family/members/${id}`, 'PATCH', {
+    relationship_label: label,
   })
 }
 
@@ -3097,6 +3159,10 @@ export interface FinancialProfilePolicy {
   // Who the policy *protects* — distinct from member_id (the holder). Lets
   // family_policy_review flag beneficiaries who've left the roster.
   beneficiary_member_id?: string
+  /** Intent 38: prior premiums, appended server-side when the recorded
+   *  amount changes — the price-creep trail. Current premium stays in
+   *  monthly_premium_minor. */
+  premium_history?: Array<{ amount_minor: number; effective_from: string }>
 }
 
 export interface FinancialProfile {
@@ -3111,6 +3177,8 @@ export interface FinancialProfile {
     income_protection_monthly_minor: number
     /** Total non-mortgage monthly debt service — feeds family_debt_health's DTI check. */
     monthly_debt_payments_minor: number
+    /** Intent 26: free-text income context (seasonal/irregular) — verbatim, never parsed. */
+    income_notes?: string
     // PRD-104: additive — a mixed-earner household (one partner retired,
     // one still working; one salaried, one self-employed) couldn't be
     // represented at all before this, so the arbitrary single status
@@ -3330,6 +3398,9 @@ export interface LifeEventPlaybook {
   title: string
   intro: string
   steps: LifeEventPlaybookStep[]
+  /** Roster name when the event was reported for one member — the header
+   *  says who this playbook is about (intent 56). */
+  affected_member_name?: string
 }
 
 export interface LifeEvent {
@@ -3706,7 +3777,9 @@ export async function fetchBillingSubscription(): Promise<BillingSubscription | 
   return apiFetch<BillingSubscription | null>('/billing/subscription', null)
 }
 
-export async function startLifeKeelPlusCheckout(): Promise<string> {
+export async function startLifeKeelPlusCheckout(
+  interval: 'month' | 'year' = 'month',
+): Promise<string> {
   const base = getApiBase()
   const token = getAuthToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -3715,7 +3788,7 @@ export async function startLifeKeelPlusCheckout(): Promise<string> {
   const res = await credFetch(`${base}/billing/checkout`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ plan: 'starter', app: 'family' }),
+    body: JSON.stringify({ plan: 'starter', app: 'family', interval }),
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'Could not start checkout')
@@ -5123,6 +5196,78 @@ export function editBankEntry(id: string, content: string): Promise<BankEntry> {
   return marketingRequest(`/marketing/bank/${id}`, 'PATCH', { content })
 }
 
+// ── Operator: Search Console and GA4 read-back (read-only) ────────────────
+
+export type SearchIntegrationStatus = 'connected' | 'not_configured' | 'needs_attention'
+
+export interface SearchView {
+  window_days: number
+  lag_note: string
+  enough_data: boolean
+  configured: { credentials: boolean; search_console: boolean; ga4: boolean }
+  integrations: Record<
+    'search_console' | 'ga4',
+    { status: SearchIntegrationStatus; last_ok_at: string | null; last_error: string | null }
+  >
+  totals: { clicks: number; impressions: number }
+  top_queries: {
+    query: string
+    clicks: number
+    impressions: number
+    ctr: number
+    position: number
+  }[]
+  top_pages: { path: string; clicks: number; impressions: number; ctr: number; position: number }[]
+  near_misses: {
+    query: string
+    clicks: number
+    impressions: number
+    ctr: number
+    position: number
+  }[]
+  ga4: {
+    sessions: number
+    first_party_visits: number
+    note: string
+    by_source: { source_medium: string; sessions: number; engaged: number; key_events: number }[]
+  }
+}
+
+export interface TopicSuggestion {
+  id: string
+  query: string
+  impressions: number
+  clicks: number
+  position: number
+  nearest: { kind: 'brief' | 'guide'; id: string; title: string; overlap: number } | null
+}
+
+export function fetchSearchView(days = 28): Promise<SearchView> {
+  return operatorRequest(`/operator/marketing/search?days=${days}`)
+}
+
+export async function fetchTopicSuggestions(): Promise<TopicSuggestion[]> {
+  const data = await operatorRequest<{ suggestions: TopicSuggestion[] }>(
+    '/operator/marketing/search/suggestions',
+  )
+  return data.suggestions
+}
+
+export function runSearchReadbackNow(): Promise<Record<string, unknown>> {
+  return marketingRequest('/operator/marketing/search/run', 'POST')
+}
+
+export function generateTopicSuggestions(): Promise<{ suggested: number }> {
+  return marketingRequest('/operator/marketing/search/suggestions/generate', 'POST')
+}
+
+export function setTopicSuggestion(id: string, action: 'dismiss' | 'used'): Promise<{ ok: true }> {
+  return marketingRequest(
+    `/operator/marketing/search/suggestions/${encodeURIComponent(id)}/${action}`,
+    'POST',
+  )
+}
+
 // ── Operator: marketing economics ─────────────────────────────────────────
 
 export interface EconomicsRate {
@@ -6024,4 +6169,31 @@ export async function refineMarketingPost(
       ((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'Refine failed',
     )
   return res.json()
+}
+
+export interface RetirementEstimate {
+  hasData: boolean
+  current?: {
+    monthly_contribution_minor: number
+    current_age: number
+    target_retirement_age: number
+  }
+  projection?: {
+    achievable_retirement_income_minor: number
+    projected_retirement_age: number
+    additional_monthly_contribution_needed_minor: number
+    target_retirement_income_minor: number
+  }
+}
+
+/** Intent 32: hypothetical re-projection — writes nothing server-side. */
+export async function fetchRetirementEstimate(params: {
+  monthlyContributionMinor?: number
+  retirementAge?: number
+}): Promise<RetirementEstimate> {
+  const q = new URLSearchParams()
+  if (params.monthlyContributionMinor !== undefined)
+    q.set('monthly_contribution_minor', String(params.monthlyContributionMinor))
+  if (params.retirementAge !== undefined) q.set('retirement_age', String(params.retirementAge))
+  return apiFetch<RetirementEstimate>(`/family/retirement/estimate?${q}`, { hasData: false })
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react'
-import type { User, FamilyGroup, FamilyRole } from './auth-types'
+import type { User, FamilyGroup, FamilyRole, RelationshipLabel } from './auth-types'
 import { ROLE_EMOJI } from './auth-types'
 import {
   fetchFamilyGroup,
@@ -47,6 +47,10 @@ export interface SignInResult {
 interface AuthContextValue {
   user: User | null
   family: FamilyGroup | null
+  /** The server family check itself failed — family=null here means
+   *  "couldn't look", not "none exists". AppShell must never show
+   *  "Create Family Group" on this flag (it reads as account loss). */
+  familyLoadFailed: boolean
   isAuthenticated: boolean
   isLoading: boolean
   signUp: (
@@ -84,6 +88,7 @@ interface AuthContextValue {
     email: string,
     role: FamilyRole,
     dateOfBirth?: string,
+    relationshipLabel?: RelationshipLabel,
   ) => Promise<void>
   removeMember: (id: string) => Promise<void>
   updateMemberRole: (id: string, role: FamilyRole) => Promise<void>
@@ -191,6 +196,7 @@ async function apiAuthRequest(
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [family, setFamily] = useState<FamilyGroup | null>(null)
+  const [familyLoadFailed, setFamilyLoadFailed] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
@@ -253,8 +259,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // The family roster is persisted server-side now — fetch the real
         // one instead of only trusting the local cache, so a login on a
         // fresh session restores the household instead of re-onboarding.
-        const apiFamily = await fetchFamilyGroup()
-        setFamily(apiFamily ? toFamilyGroup(apiFamily) : (cached?.family ?? null))
+        // The fetch is isolated from the outer try: a failed /family must
+        // surface as "couldn't check" (familyLoadFailed), not collapse into
+        // "no family" — and it must not discard the fresh /auth/me user by
+        // falling into the cache-restore catch below.
+        try {
+          const apiFamily = await fetchFamilyGroup()
+          setFamily(apiFamily ? toFamilyGroup(apiFamily) : (cached?.family ?? null))
+          setFamilyLoadFailed(false)
+        } catch {
+          setFamilyLoadFailed(true)
+          setFamily(cached?.family ?? null)
+        }
       } catch {
         // Network failure on rehydrate — fall back to cached local state
         // rather than force a logout, since the app is offline-first.
@@ -277,6 +293,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const persist = (u: User | null, f: FamilyGroup | null) => {
     setUser(u)
     setFamily(f)
+    // A deliberate write settles the family question one way or the other.
+    setFamilyLoadFailed(false)
     try {
       if (u) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify({ user: u, family: f }))
@@ -546,6 +564,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string,
     role: FamilyRole,
     dateOfBirth?: string,
+    relationshipLabel?: RelationshipLabel,
   ) => {
     // Optimistic: show the pending member immediately; the roster shouldn't
     // wait on the network for an action the user just confirmed.
@@ -564,13 +583,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             status: 'pending' as const,
             joinedAt: new Date().toISOString(),
             ...(dateOfBirth ? { dateOfBirth } : {}),
+            ...(relationshipLabel ? { relationshipLabel } : {}),
           },
         ],
       }
       persist(user, optimistic)
     }
     try {
-      const apiFamily = await addFamilyGroupMember(name, email, role, dateOfBirth)
+      const apiFamily = await addFamilyGroupMember(
+        name,
+        email,
+        role,
+        dateOfBirth,
+        relationshipLabel,
+      )
       persist(user, toFamilyGroup(apiFamily))
     } catch (err) {
       persist(user, previous)
@@ -645,8 +671,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       const apiFamily = await fetchFamilyGroup()
       setFamily(apiFamily ? toFamilyGroup(apiFamily) : null)
+      setFamilyLoadFailed(false)
     } catch {
-      // ignore — keep existing state
+      // ignore — keep existing state; a stale familyLoadFailed flag stays
+      // so the AppShell retry path keeps working until a check succeeds.
     }
   }
 
@@ -655,6 +683,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         family,
+        familyLoadFailed,
         isAuthenticated: !!user,
         isLoading,
         signUp,

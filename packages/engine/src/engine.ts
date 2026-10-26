@@ -258,6 +258,15 @@ export interface EvaluateInput {
   history?: EvaluationContext['history']
   /** Restrict evaluation to detectors activated for the tenant's active goals. */
   active_detector_ids?: string[]
+  /**
+   * Intent 68 (M2 disclosure join): the requester's audience clearance.
+   * Insights carry a `disclosure` label — the most restrictive audience
+   * the rule's inputs touch — and this filter enforces it INSIDE
+   * evaluate(), so a youth request can't be answered by stripping an
+   * adult-scoped insight at HTTP afterward. Defaults to 'organiser'
+   * (legacy callers see everything).
+   */
+  requester_clearance?: 'youth' | 'member' | 'organiser'
   schema_version?: string
   source?: string
 }
@@ -589,6 +598,17 @@ export class Engine {
       const detStart = Date.now()
       const result = await detector.detectAll(detectorContext, event_id)
       const detLatency = Date.now() - detStart
+
+      // Intent 68: disclosure join inside evaluate, not at the route —
+      // an insight is dropped here when the rule that produced it reads
+      // fields the requester can't see.
+      const clearanceRank = { youth: 0, member: 1, organiser: 2, household: 0 } as const
+      const requester = input.requester_clearance ?? 'organiser'
+      if (requester !== 'organiser') {
+        result.insights = result.insights.filter(
+          (i) => clearanceRank[i.disclosure ?? 'household'] <= clearanceRank[requester],
+        )
+      }
 
       allResults.push(result)
       detectors_run++

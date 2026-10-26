@@ -1,0 +1,47 @@
+.lk-home-experience .lk-home-content .lk-home-pricing { max-width: 1240px; margin: 0 auto; padding: 88px 32px; }
+.lk-home-experience .lk-home-content .lk-home-pricing-heading { max-width: 760px; margin-bottom: 38px; }
+.lk-home-experience .lk-home-content .lk-home-pricing-heading h2 { font: 550 clamp(32px, 4vw, 50px)/1.1 var(--home-font, var(--font-body), system-ui); letter-spacing: -.045em; margin: 16px 0; }
+.lk-home-experience .lk-home-content .lk-home-pricing-heading > p:last-child { color: var(--home-muted, #302440); font-size: 17px; line-height: 1.8; max-width: 64ch; }
+.lk-home-experience .lk-home-content .lk-home-plan-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.lk-home-experience .lk-home-content .lk-home-plan { display: flex; flex-direction: column; padding: 34px; border: 1px solid var(--home-line, #85679f); border-radius: 20px; background: var(--home-surface, #d3b8f5); color: var(--home-ink, #302440); }
+.lk-home-experience .lk-home-content .lk-home-plan-plus { border: 2px solid var(--home-accent, #302440); padding: 33px; background: var(--home-soft); }
+.lk-home-experience .lk-home-content .lk-home-plan-label { display: flex; align-items: center; gap: 8px; font-size: 16px; line-height: 1.6; font-weight: 750; letter-spacing: .1em; color: var(--home-accent-text, var(--home-accent, #302440)); }
+.lk-home-experience .lk-home-content .lk-home-plan h3 { margin: 22px 0 16px; font-size: 29px; line-height: 1.2; font-weight: 750; letter-spacing: -.04em; }
+.lk-home-experience .lk-home-content .lk-home-price { display: flex; align-items: baseline; flex-wrap: wrap; gap: 12px; margin: 0 0 20px; }
+.lk-home-experience .lk-home-content .lk-home-price strong { font-size: 57px; line-height: 1; font-weight: 800; letter-spacing: -.06em; }
+.lk-home-experience .lk-home-content .lk-home-price span { font-size: 16px; color: var(--home-muted, #302440); }
+.lk-home-experience .lk-home-content .lk-home-plan > p:not(.lk-home-price) { color: var(--home-muted, #302440); font-size: 15px; line-height: 1.75; margin: 0; }
+.lk-home-experience .lk-home-content .lk-home-plan ul { display: grid; align-content: start; gap: 17px; list-style: none; margin: 28px 0 32px; padding: 0; flex: 1; }
+.lk-home-experience .lk-home-content .lk-home-plan li { display: flex; align-items: flex-start; gap: 11px; font-size: 16px; line-height: 1.65; }
+.lk-home-experience .lk-home-content .lk-home-plan li svg { margin-top: 3px; flex: none; color: var(--home-accent-text, var(--home-accent, #302440)); }
+.lk-home-experience .lk-home-content .lk-home-plan-cta { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; min-height: 54px; border: 1px solid var(--home-accent, #302440); border-radius: 999px; background: var(--home-cta); color: var(--home-on-accent); font-size: 16px; font-weight: 700; text-decoration: none; }
+.lk-home-experience .lk-home-content .lk-home-plan-plus .lk-home-plan-cta { background: var(--home-cta); color: var(--home-on-accent, #d3b8f5); }
+.lk-home-experience .lk-home-content .lk-home-plan small { font-size: 16px; line-height: 1.7; color: var(--home-muted, #302440); margin-top: 13px; }
+.lk-home-experience .lk-home-content .lk-home-plan-cta:hover { text-decoration: underline; text-underline-offset: 4px; }
+.lk-home-experience .lk-home-content .lk-home-comparison-heading { margin-top: 52px; margin-bottom: 22px; }
+.lk-home-experience .lk-home-content .lk-home-comparison-heading h3 { font-size: 26px; line-height: 1.3; letter-spacing: -.035em; margin: 0 0 8px; }
+.lk-home-experience .lk-home-content .lk-home-comparison-heading p { color: var(--home-muted, #302440); font-size: 15px; line-height: 1.7; }
+.lk-home-experience .lk-home-content .lk-home-compare { overflow-x: auto; border: 1px solid var(--home-line, #85679f); border-radius: 14px; background: var(--home-surface, #d3b8f5); }
+.lk-home-experience .lk-home-content .lk-home-compare table { width: 100%; min-width: 620px; border-collapse: collapse; text-align: left; font-size: 16px; line-height: 1.6; }
+.lk-home-experience .lk-home-content .lk-home-compare th, .lk-home-experience .lk-home-content .lk-home-compare td { padding: 18px 22px; border-bottom: 1px solid var(--home-line, #85679f); }
+.lk-home-experience .lk-home-content .lk-home-compare thead { background: var(--home-surface); }
+.lk-home-experience .lk-home-content .lk-home-compare thead th { font-weight: 750; }
+.lk-home-experience .lk-home-content .lk-home-compare tbody th { font-weight: 600; width: 42%; }
+.lk-home-experience .lk-home-content .lk-home-compare td { color: var(--home-muted, #302440); width: 29%; }
+.lk-home-experience .lk-home-content .lk-home-compare tbody tr:last-child > * { border-bottom: 0; }
+.lk-home-experience .lk-home-content .lk-home-price-notes { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 24px; color: var(--home-muted, #302440); font-size: 16px; line-height: 1.8; }
+.lk-home-experience .lk-home-content .lk-home-price-notes p { margin: 0; }
+.lk-home-experience .lk-home-content .lk-home-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+@media (max-width: 700px) {
+  .lk-home-experience .lk-home-content .lk-home-pricing { padding: 56px 22px; }
+  .lk-home-experience .lk-home-content .lk-home-plan-grid, .lk-home-experience .lk-home-content .lk-home-price-notes { grid-template-columns: 1fr; }
+  .lk-home-experience .lk-home-content .lk-home-plan { padding: 25px; }
+  .lk-home-experience .lk-home-content .lk-home-plan-plus { padding: 24px; }
+  .lk-home-experience .lk-home-content .lk-home-price strong { font-size: 49px; }
+  .lk-home-experience .lk-home-content .lk-home-compare th, .lk-home-experience .lk-home-content .lk-home-compare td { padding: 15px 18px; }
+}
+
+.lk-home-experience .lk-home-content .lk-home-compare-hint { display: none; }
+@media (max-width: 700px) {
+  .lk-home-experience .lk-home-content .lk-home-compare-hint { display: block; color: var(--home-muted); font-size: 16px; line-height: 1.6; margin: 0 0 12px; }
+}

@@ -29,3 +29,22 @@ look once the baseline is proven).
 
 **Becomes** — PRD in docs/prd/ if the audit finds systemic issues; fast-path
 PRs if it's a handful of missing labels/focus states.
+
+---
+
+**Status: baseline audit done + first fixes — this PR.** Static pass
+across the app shell and the core journeys (home, inbox, financial-profile
+wizard, settings/roster, upload, assistant):
+
+- **Clean:** `:focus-visible` ring styles exist globally (`globals.css`);
+  a repo-wide scan for icon-only `<button>`s without `aria-label`/`title`
+  found **zero**; nav items carry `aria-label`; the assistant transcript
+  is `role="log"`; financial-profile `Field`s render real `<label>` +
+  `aria-invalid`; upload progress is `role="status" aria-live`.
+- **Fixed here:** the settings add-member name/email inputs used
+  placeholder-only labels — now `aria-label`ed.
+- **Still open (needs assistive tech, not code reading):** real
+  screen-reader walkthrough of the setup flow, focus-order check in
+  modals/expanders, and contrast measurements against tokens — recorded
+  here so a reviewer knows exactly what the pass covered and what it
+  didn't.

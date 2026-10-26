@@ -20,10 +20,10 @@ Fast-path fixes, not PRDs. Each may resolve to a small PR once root-caused.
 
 | Intent | Item | Why first |
 |---|---|---|
-| 34 | "Create Family Group" shown to accounts that have a family — suspected race in the family gate | A signed-in member seeing "create a family" reads as *data loss*. Highest-severity bug in all inputs. |
-| 29 | OTP intermittency; `example.com` addresses fail | The front door. Every downstream metric is multiplied by signup success. |
-| 30 | Ask Keel previous-answer bleed; occasional lag | The surface users check the score against. Likely a stale snapshot — may fold into PRD-212's resolver. |
-| 31 | Sandbox checkout → webhook → Plus unlock never verified e2e | Cheap to verify now; must be green before any Wave 4 monetization push. |
+| 34 | ~~"Create Family Group" shown to accounts that have a family~~ **implemented — PR #243** | Was a transient-failure collapse on mount, not a race; now a retry state. |
+| 29 | OTP intermittency; `example.com` addresses fail | **partially implemented — PR #244** — deterministic test path; live-env reproduction open. |
+| 30 | Ask Keel previous-answer bleed; occasional lag | **implemented — PR #245** — no server bleed path found; answers now carry `data_as_of`. |
+| 31 | Billing unlock verification | **verified — sandbox e2e** (real `cs_test_` checkout + signed webhook → starter plan + credits; replay idempotent) |
 
 **Exit:** each item reproduced, root-caused, fixed or filed as a defect.
 
@@ -33,9 +33,9 @@ The two Fails and their shared root cause (honesty under imperfect data).
 
 | Intent | Item | Notes |
 |---|---|---|
-| 20 | Score calibration + "Why this score" component expander | Components already computed and returned (`GET /family/readiness`); this is mostly a *surface* plus a calibration pass against the persona set. The single most-cited fix across all five inputs. |
-| 21 | Scenario partial-data honesty — kill silent "Sample scenario" fallbacks | Runway stays visible + "Using the data you have so far" banner naming missing inputs. The critic's "emotional core" gap. |
-| 22 | Derived-surface freshness after profile/policy edits | Score already recomputes per-read; insight/explanation text needs the same guarantee or a visible recalculated-at provenance. |
+| 20 | Score calibration + "Why this score" component expander | **implemented — PR #246**: expander shipped; personas pinned (72 healthy / 14 stressed — shape sound, no weight change). |
+| 21 | Scenario partial-data honesty | **implemented — PR #247**: missing-inputs named via `missing_inputs`; annual-expense fallback added; not-found path already sound. |
+| 22 | Derived-surface freshness | **implemented — PR #248**: re-fire now refreshes an open insight's figures (`refreshed_at`); root cause was the open-match skip. |
 
 **Re-test gate:** the QA persona set re-run — young couple / first-home
 profile lands in the 50–65 band, high-debt self-employed in 20–35, and no
@@ -48,12 +48,12 @@ the expert panel's #1 conversion lever after trust.
 
 | Intent | Item | Notes |
 |---|---|---|
-| 27 | Upload feedback loop: progress, "Document stored", honest Plus mention | The free "aha": effort in → visible value out, before any paywall. |
-| 28 + 37 | Wizard inline validation, pre-fill, per-step autosave, "Continue setup", numeric input modes, cross-device resume | One piece of work — the interruptible, forgiving form. Mobile-first: validation above the keyboard. |
-| 23 | Invite: share-sheet link, resend, sent/opened/waiting status | "As easy as sharing a calendar invite." The family loop feeds retention *and* conversion. |
-| 24 | Severity signalling: urgent-first sort, colour/icon band, debt-pressure state | Must scan one-handed on a phone; pairs with 20's expander. |
-| 35 | Mobile nav collapse at 390px; deliberate tablet layout | Mobile is the primary device for the target user (a busy parent); 6/10 easiness is the floor, not the ceiling. |
-| 36 | Accessibility baseline audit → fixes | Keyboard-only setup verified; axe or equivalent kept green. Runs in parallel — cheap, mostly mechanical. |
+| 27 | Upload feedback loop | **partial — PR #249** (progress bar; toast/status/upsell existed; renewal-date field open) |
+| 28 + 37 | Wizard validation/autosave/resume | **implemented — PRs #254 + #257** (blur validation + first-incomplete-step resume; rest pre-existing) |
+| 23 | Invite share + status | **partial — PR #250** (share sheet + "Waiting for X" sent status; opened/viewed tracking needs API state) |
+| 24 | Severity signalling | **implemented — PR #251** (band + chip; urgent-first sort not yet added) |
+| 35 | Mobile nav collapse + tablet layout | **partial — PR #255** (5-item mobile bar done; tablet two-column open) |
+| 36 | Accessibility baseline audit | **done** — static pass clean + label fixes; assistive-tech walkthrough still open. |
 
 **Re-test gate:** mobile easiness ≥8/10; signup→profile→first-insight
 completable one-handed with interruption; invite completable via share
@@ -66,9 +66,9 @@ the quiet-engagement layer the PRD backlog already plans.
 
 | Item | Source | Notes |
 |---|---|---|
-| Blended-family relationship labels | intent 25 | Lowest-scoring persona in the critic review; small schema + roster/chart surface. |
-| Variable-income capture (second-earner prominence + income notes) | intent 26 | Business-owner persona's top gap. |
-| Premium history + price-creep alert | intent 38 | Rule-2 edge — informational on *own* data only; copy review required. Needs premium-history on the policy record (PRD-143 later). |
+| Blended-family relationship labels | intent 25 — **implemented, PR #252** (`relationship_label` on child members) | Lowest-scoring persona in the critic review; chart surface still open. |
+| Variable-income capture | intent 26 — **implemented, PR #253** | `income_notes` verbatim field; second-earner already covered by PRD-104. |
+| Premium history + price-creep alert | intent 38 — **implemented, PR #258** | `premium_history` + `premium_increased` rule + evals + wizard round-trip. |
 | Readiness feed + Quiet Care digest | PRD-136, 138 (proposed) | The engagement engine: opened even when nothing is wrong. Sequenced after 23 so digests can reach the second adult. |
 | Notification tiers/caps + channel fallback | PRD-139, 140 (proposed) | Ships with 136/138 — cadence without calm is spam. |
 
@@ -81,17 +81,17 @@ Gated on Wave 0's billing verification being green.
 
 | Item | Source | Notes |
 |---|---|---|
-| Founder decisions (gate) | intent 39 | (a) free/Plus line — manual-everything+stored-doc free vs Plus-removes-typing; (b) annual price point shown as monthly-equivalent; (c) emergency pack: file-only (PRD-220) vs hosted executor-shared — a trust-tier decision, not drift. |
-| Packaging + paywall moments | intent 39 → PRD-006/206 | Post-upload "Plus reads the rest and keeps {partner} in the loop"; annual plan frame. |
-| Billing cutover | PRD-006 | Dormant Stripe path to production, after 31 verifies the loop. |
+| Founder decisions (gate) | intent 39 | **Decided 2026-10-25** — free keeps a 1–2-doc extraction taste + file pack; Plus = extraction, digests, hosted pack, monitoring. Annual £59.99/yr vs £7.99/mo. Hosted pack still pending PRD-220. |
+| Packaging + paywall moments | intent 39 → PRD-006/206 | **Implemented** — annual plan frame (`keel_plus_gbp_annual` £59.99/yr, "£5/mo billed yearly"), `interval` on `/billing/checkout`, upgrade-page monthly/annual picker; post-upload Plus mention already live. |
+| Billing cutover | PRD-006 | Sandbox loop verified (intent 31); production cutover needs live keys + webhook endpoint. |
 | Reviewed extraction pipeline | PRD-143 (proposed) | The Plus headline feature; confirm-before-commit gate. |
 
 ## Wave 5 — differentiation
 
 | Item | Source | Notes |
 |---|---|---|
-| Crisis mode — three next actions | intent 33 | Needs PRD-108 playbooks + intent 24's severity. The "rely on it on the worst day" payoff of the whole strategy. |
-| Retirement gap-closure estimate | intent 32 | Advice-rule-sensitive; arithmetic on own inputs only. |
+| Crisis mode — dashboard reduced to 3 next actions | intent 33 — **implemented, PR #262** | opt-in on event page; reuses EVENT_ACTIONS. |
+| Retirement "close the gap" estimate | intent 32 — **implemented, PR #259** | estimate endpoint + contribution slider on /events/retirement. |
 | Legacy map | PRD-137 (proposed) | Estate depth beyond vault booleans; includes the checklist/solicitor-pointer idea (generic pointers only). |
 | Partner/adviser channel | PRD-207 (proposed) | Counsel first; zero-commission constraint recorded. |
 

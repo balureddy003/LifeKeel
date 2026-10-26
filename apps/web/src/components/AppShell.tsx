@@ -6,7 +6,6 @@ import { usePathname, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Home,
-  Inbox,
   Users,
   CalendarClock,
   Settings,
@@ -14,7 +13,6 @@ import {
   Siren,
   Bot,
   MailWarning,
-  Wallet,
   X,
   Fingerprint,
 } from 'lucide-react'
@@ -25,6 +23,7 @@ import { useMode } from '@/lib/mode-context'
 import { useAppStore } from '@/lib/store'
 import { MeshGradient, Skeleton, SkeletonCard } from './Glass'
 import { EmergencyMode } from './EmergencyMode'
+import { AppHeroHeader } from './AppHeroHeader'
 import { CommandPalette } from './CommandPalette'
 import { DisclaimerFooter } from './Disclaimer'
 import {
@@ -44,12 +43,17 @@ import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
 import { isNativeShell, biometricLockEnabled, verifyBiometric } from '@/lib/native'
 
+// Intent 35: five items at 390px, not six — the multi-device review's own
+// list (Home, Events, Ask Keel, Family, Settings). Inbox and Finances drop
+// out of the bar: both are surfaced from Home (unread insights, the
+// finances sections), and their routes still highlight Home below. Ask
+// Keel earns a first-class slot — it was previously reachable only via
+// deep links, which the same review flagged.
 const NAV_ITEMS = [
   { href: '/', label: 'Home', icon: Home },
-  { href: '/inbox', label: 'Inbox', icon: Inbox },
-  { href: '/family', label: 'Family', icon: Users },
-  { href: '/finances', label: 'Finances', icon: Wallet },
   { href: '/events', label: 'Events', icon: CalendarClock },
+  { href: '/assistant', label: 'Ask Keel', icon: Bot },
+  { href: '/family', label: 'Family', icon: Users },
   { href: '/settings', label: 'Settings', icon: Settings },
 ]
 
@@ -58,13 +62,18 @@ const NAV_ITEMS = [
 const ROUTE_TAB_OVERRIDES: Record<string, string> = {
   '/member': '/family',
   '/asset': '/family',
-  '/financial-profile': '/finances',
-  '/vault': '/finances',
-  '/cashflow': '/finances',
-  '/assets': '/finances',
-  '/documents': '/finances',
-  '/upload': '/finances',
-  '/connect': '/finances',
+  // Inbox and the Finances subpages were dropped from the bar in the 5-item
+  // cut — Home is the surface that links to them, so it's the tab that
+  // stays lit while the user is there.
+  '/inbox': '/',
+  '/finances': '/',
+  '/financial-profile': '/',
+  '/vault': '/',
+  '/cashflow': '/',
+  '/assets': '/',
+  '/documents': '/',
+  '/upload': '/',
+  '/connect': '/',
 }
 
 function LiquidTabBar() {
@@ -84,8 +93,8 @@ function LiquidTabBar() {
   }, [pathname])
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-nav glass-nav safe-area-bottom">
-      <div className="max-w-md mx-auto px-4 pb-1 pt-1.5 relative">
+    <nav className="app-bottom-nav fixed z-nav glass-nav" aria-label="Primary">
+      <div className="mx-auto px-2 py-1 relative">
         <div className="flex items-center justify-around h-16 relative">
           {NAV_ITEMS.map((item, i) => {
             const active = i === activeIndex
@@ -94,13 +103,14 @@ function LiquidTabBar() {
                 key={item.href}
                 href={item.href}
                 aria-label={item.label}
+                aria-current={active ? 'page' : undefined}
                 onClick={() => haptic('light')}
                 className="flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 relative z-raised"
               >
                 {active && (
                   <motion.div
                     layoutId="tab-pill"
-                    className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-10 h-8 rounded-full bg-family-500/10"
+                    className="absolute inset-x-1 inset-y-0 rounded-2xl bg-family-500/15"
                     transition={{ type: 'spring', stiffness: 400, damping: 32 }}
                   />
                 )}
@@ -119,7 +129,10 @@ function LiquidTabBar() {
                     strokeWidth={active ? 2.5 : 2}
                     className={active ? 'text-family-accent' : 'text-ink-tertiary'}
                   />
-                  {item.href === '/inbox' && inboxUnreadCount > 0 && (
+                  {/* The unread badge moved with Inbox to Home when the bar
+                      shrank to five items — Home is where inbox content is
+                      surfaced from now. */}
+                  {item.href === '/' && inboxUnreadCount > 0 && (
                     <motion.span
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
@@ -130,7 +143,7 @@ function LiquidTabBar() {
                   )}
                 </motion.div>
                 <motion.span
-                  className={`text-caption font-semibold relative z-raised ${active ? 'text-family-accent' : 'text-ink-tertiary'}`}
+                  className={`text-[12px] font-semibold relative z-raised ${active ? 'text-family-accent' : 'text-ink-tertiary'}`}
                 >
                   {item.label}
                 </motion.span>
@@ -358,11 +371,6 @@ function ModeEffects() {
 // the wrong differentiator under crisis stress, when a mis-tap matters
 // most. Shape + a text label make this unmistakable at a glance.
 //
-// SOS also sits at the TOP of the floating stack (bottom-52), not beside
-// the nav bar — Ask Keel owns the bottom-32 slot nearest the thumb. The
-// dangerous mis-tap direction is wanting chat and hitting emergency; with
-// SOS a full button-height above Ask Keel, a fumbled Ask Keel tap lands on
-// the tab bar or empty space, never on the emergency sequence.
 function EmergencyButton() {
   const { config, activateEmergency } = useMode()
   if (!config.showEmergencyButton) return null
@@ -374,24 +382,26 @@ function EmergencyButton() {
         activateEmergency()
       }}
       whileTap={{ scale: 0.95 }}
-      className="fixed bottom-52 right-4 z-fab h-12 pl-3 pr-4 rounded-full flex items-center gap-1.5"
+      className="relative h-11 pl-3 pr-3 rounded-full flex items-center gap-1.5"
       style={{
-        background: 'linear-gradient(135deg, #f87171, #dc2626)',
-        border: '1px solid rgba(255,255,255,0.2)',
+        background: 'linear-gradient(135deg, #ffafa3, #ffafa3)',
+        border: '1px solid rgba(211,184,245,0.5)',
         // Dark elevation shadow (not just the red glow) so this reads as a
         // layer floating above the page, not as part of whatever row it
         // happens to be scrolled over.
-        boxShadow: '0 12px 24px -6px rgba(0,0,0,0.55), 0 8px 20px rgba(248,113,113,0.3)',
+        boxShadow: '0 12px 24px -6px rgba(48,36,64,0.4), 0 8px 20px rgba(255,175,163,0.3)',
       }}
       aria-label="Emergency"
     >
       <motion.div animate={{ scale: [1, 1.1, 1] }} transition={{ duration: 2, repeat: Infinity }}>
-        <Siren size={18} color="#fff" />
+        <Siren size={18} color="#302440" />
       </motion.div>
-      <span className="text-xs font-bold text-white tracking-wide">SOS</span>
+      <span className="text-xs font-bold tracking-wide" style={{ color: '#302440' }}>
+        SOS
+      </span>
       <motion.div
         className="absolute inset-0 rounded-full"
-        style={{ border: '2px solid rgba(248,113,113,0.4)' }}
+        style={{ border: '2px solid rgba(255,175,163,0.4)' }}
         animate={{ scale: [1, 1.25], opacity: [0.6, 0] }}
         transition={{ duration: 2, repeat: Infinity }}
       />
@@ -418,13 +428,11 @@ function AskKeelButton({ context }: { context?: string }) {
         router.push(context ? `/assistant?context=${encodeURIComponent(context)}` : '/assistant')
       }}
       whileTap={{ scale: 0.9 }}
-      // Always the bottom slot (bottom-32): the frequent, harmless action
-      // stays nearest the thumb; SOS — the dangerous mis-tap — is above it.
-      className="fixed bottom-32 right-4 z-fab w-12 h-12 rounded-full flex items-center justify-center"
+      className="relative w-11 h-11 rounded-full flex items-center justify-center"
       style={{
         background: 'rgb(var(--family-500))',
         border: '1px solid rgb(var(--tint) / 0.15)',
-        boxShadow: '0 12px 24px -6px rgba(0,0,0,0.35)',
+        boxShadow: '0 12px 24px -6px rgba(48,36,64,0.3)',
       }}
       aria-label="Ask Keel"
     >
@@ -433,10 +441,13 @@ function AskKeelButton({ context }: { context?: string }) {
   )
 }
 
-// Public content pages. They do not depend on who is signed in, so they render straight away
-// instead of waiting behind the auth check: the static HTML a search engine fetches then holds
-// the page's text, not a loading skeleton (PRD-210, phase 1).
+// Pages that do not depend on who is signed in, so they render straight away instead of
+// waiting behind the auth check: the static HTML a search engine fetches then holds the page's
+// text, not a loading skeleton (PRD-210, phase 1). Sign-in and sign-up are here so they never
+// flash the dashboard skeleton first.
 const PUBLIC_CONTENT_PREFIXES = [
+  '/login',
+  '/signup',
   '/blog',
   '/guides',
   '/terms',
@@ -450,11 +461,13 @@ const PUBLIC_CONTENT_PREFIXES = [
 ]
 
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, family, user, createFamily } = useAuth()
+  const { isAuthenticated, isLoading, family, familyLoadFailed, user, createFamily, refresh } =
+    useAuth()
   const pathname = usePathname()
   const router = useRouter()
   const [skipping, setSkipping] = useState(false)
   const [skipFailed, setSkipFailed] = useState(false)
+  const [retryingFamily, setRetryingFamily] = useState(false)
   const isPublicContent = PUBLIC_CONTENT_PREFIXES.some((p) => pathname.startsWith(p))
 
   // "/" also renders the marketing page while the auth check runs, so it is in the static HTML.
@@ -563,19 +576,53 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     )
   }
 
+  // "Could not check" is not "does not exist": when the /family read failed,
+  // an account that has a family must get a retry, never the create screen —
+  // offering to create a second roster reads as account loss (intent 34).
+  if (
+    isAuthenticated &&
+    !family &&
+    familyLoadFailed &&
+    !isAuthRoute &&
+    !pathname.startsWith('/family-setup')
+  ) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[65dvh] px-4 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-warning/10 border border-warning/20 flex items-center justify-center mb-6">
+          <Users size={32} className="text-warning" />
+        </div>
+        <h1 className="text-2xl font-bold mb-2">We couldn&apos;t load your family</h1>
+        <p className="text-ink-tertiary mb-8 max-w-xs">
+          You&apos;re signed in — the family data just didn&apos;t come through. Check your
+          connection and try again.
+        </p>
+        <button
+          disabled={retryingFamily}
+          onClick={() => {
+            setRetryingFamily(true)
+            refresh().finally(() => setRetryingFamily(false))
+          }}
+          className="w-full max-w-xs bg-gradient-to-b from-family-500 to-family-600 text-white font-semibold rounded-2xl py-4 text-base shadow-lg shadow-family-500/25 disabled:opacity-60"
+        >
+          {retryingFamily ? 'Checking…' : 'Try again'}
+        </button>
+      </div>
+    )
+  }
+
   if (isAuthenticated && !family && !isAuthRoute && !pathname.startsWith('/family-setup')) {
     return (
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        className="flex flex-col items-center justify-center min-h-screen px-6 text-center"
+        className="flex flex-col items-center justify-center min-h-[65dvh] px-4 text-center"
       >
         <div className="w-16 h-16 rounded-2xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-6">
           <Users size={32} className="text-family-400" />
         </div>
         <h1 className="text-2xl font-bold mb-2">Set up your family</h1>
         <p className="text-ink-tertiary mb-8 max-w-xs">
-          Create your family group to start protecting what matters most.
+          Add your family now, or explore LifeKeel and add their details later.
         </p>
         <Link href="/family-setup" className="w-full max-w-xs">
           <motion.button
@@ -640,7 +687,7 @@ function BiometricGate({ children }: { children: React.ReactNode }) {
   if (!locked) return <>{children}</>
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen px-6 text-center">
+    <div className="flex flex-col items-center justify-center min-h-[65dvh] px-4 text-center">
       <div className="w-16 h-16 rounded-2xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-6">
         <Fingerprint size={32} className="text-family-400" />
       </div>
@@ -774,36 +821,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const showEmergency = showNav && pathname !== '/assistant' && config.showEmergencyButton
   const showAskKeel = showNav && pathname !== '/assistant'
 
-  // Below md, LiquidTabBar owns the bottom band and this reserves scroll
-  // room for it. At md+ NavRail replaces it (a left rail, no bottom band),
-  // so only a small resting gutter is needed there — not the full
-  // bottom-bar-sized one. When both floating buttons stack (Ask Keel above
-  // Emergency), the reserved band needs to be taller than either alone.
-  const bottomPadding =
-    showEmergency && showAskKeel
-      ? 'pb-56 md:pb-10'
-      : showEmergency || showAskKeel
-        ? 'pb-32 md:pb-10'
-        : showNav
-          ? 'pb-20 md:pb-10'
-          : ''
-  // The floating button(s) sit fixed bottom-right, independent of scroll
-  // position — without a matching permanent gutter, any list row that
-  // happens to render in that band sits underneath and gets its text/tap
-  // target covered, not just during a scroll gesture but at rest on first
-  // load. Reserving the space here (rather than hunting down every list row
-  // across every page) guarantees it never happens.
-  const emergencyGutter = showEmergency || showAskKeel ? 'pr-16' : ''
+  const bottomPadding = showNav ? 'app-nav-space' : ''
 
-  // The public marketing page manages its own responsive width (it's the
-  // screen most likely to actually be opened on a laptop — a link from
-  // email, a search result) rather than inheriting the phone-width wrapper.
-  // The authenticated app stays phone-width at compact, but widens in step
-  // with NavRail appearing at md+ — a deliberately modest scale-up (not
-  // "use all the space"), so existing pages built at phone-width proportions
-  // don't suddenly stretch into unreadably wide line lengths. railGutter
-  // reserves NavRail's own width so the content centers in what's left of
-  // the viewport, not in the full viewport underneath the rail.
   const isMarketingPage = !isAuthenticated && pathname === '/'
   // The sign-in screens (AuthShell) and the public pages (PublicShell) frame themselves on the
   // same container as the landing page, so they must not inherit the phone-width wrapper.
@@ -813,9 +832,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     '/login',
     '/reset-password',
     '/verify-email',
+    '/verify-otp',
     '/account-deleted',
+    '/invite',
+    '/auth/callback',
     '/terms',
     '/privacy',
+    '/cookies',
+    '/legal',
     '/trust',
     '/security',
     '/cookies',
@@ -830,11 +854,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const widthClass =
     isMarketingPage || isOperatorRoute || ownsLayout || signedOutFallback
       ? ''
-      : 'max-w-md md:max-w-xl lg:max-w-3xl xl:max-w-4xl mx-auto'
-  const railGutter = showNav ? 'md:pl-[88px]' : ''
+      : 'app-content mx-auto w-full'
+  const railGutter = showNav ? 'min-[1400px]:pl-[88px]' : ''
+  const showHero = !isMarketingPage && !isOperatorRoute && !ownsLayout && !signedOutFallback
 
   return (
-    <div className="min-h-screen text-ink-primary">
+    <div className={`min-h-screen text-ink-primary ${showNav ? 'app-shell-with-rail' : ''}`}>
       {/* Live-verification finding: at md+ widths NavRail renders before
           page content in DOM order, so a keyboard user tabs through the
           logo + all 5 nav links (6 stops) on every single page before
@@ -855,6 +880,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {showNav && <NavRail />}
       <div className={[railGutter, 'min-h-screen'].filter(Boolean).join(' ')}>
         {/* in flow, inside the rail gutter, so it pushes the page down instead of covering its header */}
+        {showHero && (
+          <AppHeroHeader>
+            {showEmergency && <EmergencyButton />}
+            {showAskKeel && <AskKeelButton context={pathname} />}
+          </AppHeroHeader>
+        )}
         <VerifyEmailBanner />
         <div
           id="main-content"
@@ -862,7 +893,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           className={[
             widthClass,
             bottomPadding,
-            emergencyGutter,
             isMarketingPage || ownsLayout || signedOutFallback ? '' : 'pt-2',
             'relative z-raised outline-none',
           ]
@@ -870,12 +900,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             .join(' ')}
         >
           <AuthGate>{children}</AuthGate>
-          {showNav && <DisclaimerFooter />}
+          {showNav && pathname !== '/assistant' && <DisclaimerFooter />}
         </div>
       </div>
       {showNav && <LiquidTabBar />}
-      {showEmergency && <EmergencyButton />}
-      {showAskKeel && <AskKeelButton context={pathname} />}
+      {(showEmergency || showAskKeel) && (
+        <div className="hidden min-[1400px]:flex fixed bottom-8 right-4 z-fab flex-col items-end gap-4">
+          {showEmergency && <EmergencyButton />}
+          {showAskKeel && <AskKeelButton context={pathname} />}
+        </div>
+      )}
       <EmergencyMode
         active={emergencyActive}
         onDeactivate={deactivateEmergency}

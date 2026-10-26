@@ -302,7 +302,7 @@ describe('automatic drafting uses every platform', () => {
       () => async () => "LifeKeel keeps your family's chart. Free to start.",
       NOW,
     )
-    expect(drafted).toBe(3)
+    expect(drafted).toBe(4)
     expect([
       ...new Set(
         (await db.collection('marketing_posts').find({}).toArray()).map((p) => p['channel']),

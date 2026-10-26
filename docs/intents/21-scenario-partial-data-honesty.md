@@ -32,3 +32,14 @@ reads as broken, not as partial.
 the scenario math itself; the free-text narrative freshness (intent 22).
 
 **Becomes** — PRD amending PRD-115/PRD-132's scenario surface contract.
+
+---
+
+**Status: implemented — PR #247.** `computeEventReadiness` no-data results
+now carry `missing_inputs` naming what the formula needs; the UI renders
+"Using the data you have so far — add X" instead of a silent sample.
+Bonus fix: job-loss now applies the annual-living-expenses fallback so
+more thin profiles get a real runway. The not-found path already had a
+proper empty state; no-formula events keep the honest sample label.
+Deferred to a later pass: deeper partial-scenario math inside
+`EventScenarioCard` (PRD-132 surface).

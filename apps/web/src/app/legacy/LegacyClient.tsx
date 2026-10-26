@@ -108,10 +108,10 @@ const MEDICAL_HELPER =
 const CAPTION = "Completeness and freshness of what's recorded — not legal validity."
 
 const VERIFICATION_STYLES: Record<LegacyVerification, { label: string; cls: string }> = {
-  document_linked: { label: 'document linked', cls: 'bg-emerald-500/15 text-emerald-400' },
+  document_linked: { label: 'document linked', cls: 'bg-success/15 text-success' },
   user_declared: { label: 'user declared', cls: 'bg-tint/10 text-ink-secondary' },
-  family_understanding: { label: 'family understanding', cls: 'bg-amber-500/15 text-amber-400' },
-  unverified: { label: 'unverified', cls: 'bg-red-500/15 text-red-400' },
+  family_understanding: { label: 'family understanding', cls: 'bg-warning/15 text-warning' },
+  unverified: { label: 'unverified', cls: 'bg-danger/15 text-danger' },
 }
 
 function VBadge({ v }: { v?: LegacyVerification | undefined }) {
@@ -725,8 +725,8 @@ function PropertySheet({
 
 // ── Family map (plain SVG layered layout) ────────────────────────────────
 
-const NODE_W = 150
-const NODE_H = 44
+const NODE_W = 200
+const NODE_H = 66
 const COL_X = { member: 20, document: 260, policy: 260, asset: 520, contact: 520 }
 const COL_ORDER: LegacyGraph['nodes'][number]['kind'][] = [
   'member',
@@ -760,78 +760,90 @@ function LegacyMap({
   const height = Math.max(...[...positions.values()].map((p) => p.y), 0) + NODE_H + 40
 
   return (
-    <svg
-      viewBox={`0 0 720 ${Math.max(height, 120)}`}
-      className="w-full"
-      role="img"
-      aria-label="Family legacy map"
+    <div
+      className="overflow-x-auto"
+      tabIndex={0}
+      role="region"
+      aria-label="Scrollable family legacy map"
     >
-      {graph.edges.map((e, i) => {
-        const a = positions.get(e.from)
-        const b = positions.get(e.to)
-        if (!a || !b) return null
-        return (
-          <g
-            key={i}
-            onMouseEnter={() => setHoverEdge(i)}
-            onMouseLeave={() => setHoverEdge(null)}
-            onClick={() => setHoverEdge(i)}
-          >
-            <line
-              x1={a.x + NODE_W}
-              y1={a.y + NODE_H / 2}
-              x2={b.x}
-              y2={b.y + NODE_H / 2}
-              stroke={hoverEdge === i ? '#c08a24' : 'rgba(148,163,184,0.35)'}
-              strokeWidth={hoverEdge === i ? 2 : 1}
-            />
-            {hoverEdge === i && (
-              <text
-                x={(a.x + NODE_W + b.x) / 2}
-                y={(a.y + b.y) / 2 + NODE_H / 2 - 4}
-                textAnchor="middle"
-                fontSize="10"
-                fill="#94a3b8"
-              >
-                {e.kind.replace(/_/g, ' ')}
-                {e.label ? ` — ${e.label}` : ''}
-              </text>
-            )}
-          </g>
-        )
-      })}
-      {graph.nodes.map((n) => {
-        const p = positions.get(n.id)!
-        return (
-          <g key={n.id} onClick={() => onNodeClick(n)} className="cursor-pointer">
-            <rect
-              x={p.x}
-              y={p.y}
-              width={NODE_W}
-              height={NODE_H}
-              rx={12}
-              fill="rgba(148,163,184,0.08)"
-              stroke="rgba(148,163,184,0.25)"
-            />
-            <text
-              x={p.x + 10}
-              y={p.y + 18}
-              fontSize="11"
-              fill="currentColor"
-              className="text-ink-primary"
-              fontWeight={600}
+      <svg
+        viewBox={`0 0 720 ${Math.max(height, 120)}`}
+        className="w-full"
+        style={{ minWidth: 720 }}
+        role="img"
+        aria-label="Family legacy map"
+      >
+        {graph.edges.map((e, i) => {
+          const a = positions.get(e.from)
+          const b = positions.get(e.to)
+          if (!a || !b) return null
+          return (
+            <g
+              key={i}
+              onMouseEnter={() => setHoverEdge(i)}
+              onMouseLeave={() => setHoverEdge(null)}
+              onClick={() => setHoverEdge(i)}
             >
-              {n.label.length > 20 ? `${n.label.slice(0, 19)}…` : n.label}
-            </text>
-            <text x={p.x + 10} y={p.y + 34} fontSize="9" fill="#94a3b8">
-              {n.kind}
-              {n.verification ? ` · ${n.verification.replace(/_/g, ' ')}` : ''}
-              {n.sublabel ? ` · ${n.sublabel.slice(0, 22)}` : ''}
-            </text>
-          </g>
-        )
-      })}
-    </svg>
+              <line
+                x1={a.x + NODE_W}
+                y1={a.y + NODE_H / 2}
+                x2={b.x}
+                y2={b.y + NODE_H / 2}
+                stroke={hoverEdge === i ? '#8763aa' : 'rgba(211,184,245,0.35)'}
+                strokeWidth={hoverEdge === i ? 2 : 1}
+              />
+              {hoverEdge === i && (
+                <text
+                  x={(a.x + NODE_W + b.x) / 2}
+                  y={(a.y + b.y) / 2 + NODE_H / 2 - 4}
+                  textAnchor="middle"
+                  fontSize="16"
+                  fill="#8763aa"
+                >
+                  {e.kind.replace(/_/g, ' ')}
+                  {e.label ? ` — ${e.label}` : ''}
+                </text>
+              )}
+            </g>
+          )
+        })}
+        {graph.nodes.map((n) => {
+          const p = positions.get(n.id)!
+          const detail = [n.kind, n.verification?.replace(/_/g, ' '), n.sublabel]
+            .filter(Boolean)
+            .join(' · ')
+          return (
+            <g key={n.id} onClick={() => onNodeClick(n)} className="cursor-pointer">
+              <title>
+                {n.label}: {detail}
+              </title>
+              <rect
+                x={p.x}
+                y={p.y}
+                width={NODE_W}
+                height={NODE_H}
+                rx={12}
+                fill="rgba(211,184,245,0.08)"
+                stroke="rgba(211,184,245,0.25)"
+              />
+              <text
+                x={p.x + 10}
+                y={p.y + 24}
+                fontSize="16"
+                fill="currentColor"
+                className="text-ink-primary"
+                fontWeight={600}
+              >
+                {n.label.length > 20 ? `${n.label.slice(0, 19)}…` : n.label}
+              </text>
+              <text x={p.x + 10} y={p.y + 50} fontSize="16" fill="#8763aa">
+                {detail.length > 22 ? `${detail.slice(0, 21)}…` : detail}
+              </text>
+            </g>
+          )
+        })}
+      </svg>
+    </div>
   )
 }
 
@@ -1109,7 +1121,7 @@ export default function LegacyClient() {
                                 : 'named people'}
                           </span>
                           {reviewDue(d) && (
-                            <span className="rounded-full bg-amber-500/15 text-amber-400 px-1.5 py-px text-[10px] font-medium">
+                            <span className="rounded-full bg-warning/15 text-warning px-1.5 py-px text-[10px] font-medium">
                               Review due
                             </span>
                           )}
@@ -1283,12 +1295,12 @@ export default function LegacyClient() {
                         </div>
                         <div className="flex flex-wrap gap-1.5">
                           <span
-                            className={`rounded-full px-1.5 py-px text-[10px] ${a.legacy.insured === 'yes' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400'}`}
+                            className={`rounded-full px-1.5 py-px text-[10px] ${a.legacy.insured === 'yes' ? 'bg-success/15 text-success' : 'bg-warning/15 text-warning'}`}
                           >
                             insured: {a.legacy.insured}
                           </span>
                           {a.legacy.dispute !== 'none' && a.legacy.dispute !== 'unknown' && (
-                            <span className="rounded-full bg-red-500/15 text-red-400 px-1.5 py-px text-[10px]">
+                            <span className="rounded-full bg-danger/15 text-danger px-1.5 py-px text-[10px]">
                               dispute {a.legacy.dispute}
                             </span>
                           )}
@@ -1396,7 +1408,7 @@ export default function LegacyClient() {
             {selectedNotes.map((n) => (
               <div key={n.id} className="rounded-xl bg-tint/[0.04] p-2.5 mb-1.5">
                 <p className="text-xs text-ink-secondary">{n.text}</p>
-                <span className="rounded-full bg-amber-500/15 text-amber-400 px-1.5 py-px text-[10px] font-medium mt-1 inline-block">
+                <span className="rounded-full bg-warning/15 text-warning px-1.5 py-px text-[10px] font-medium mt-1 inline-block">
                   family understanding
                 </span>
               </div>
