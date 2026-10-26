@@ -24,6 +24,7 @@ const RESULT: ScenarioResult = {
   ],
   projectedRunwayStartMonth: null,
   fundDepletedAtMonth: null,
+  educationFundProjection: null,
 } as ScenarioResult
 
 /** Every number the narration could legitimately show, derived only from
