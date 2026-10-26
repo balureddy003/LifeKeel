@@ -214,7 +214,7 @@ describe('renderVerifiedAnswer', () => {
     expect(a.content).toContain('scenario calculator')
     // income 6500/mo (4000+2500), expenses 3000/mo, savings 9000 → runway 3 mo
     expect(a.content).toContain('runway')
-    expect(a.content).toMatch(/cover about \*\*3\.?\d* months\*\*/)
+    expect(a.content).toMatch(/cover \*\*about 3\.?\d* months\*\*/)
   })
 
   it('income stops: honest when there is not enough profile to project', () => {

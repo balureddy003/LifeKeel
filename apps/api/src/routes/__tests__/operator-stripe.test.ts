@@ -159,7 +159,7 @@ describe('operator Billing setup (Stripe)', () => {
     const body = res.json()
     expect(body.applied).toBe(true)
     expect(fake.state.products).toHaveLength(1)
-    expect(fake.state.prices).toHaveLength(1)
+    expect(fake.state.prices).toHaveLength(2) // monthly anchor + annual (PR #264)
     expect(fake.state.portals).toHaveLength(1)
     expect(fake.state.endpoints).toHaveLength(0)
     expect(fake.state.calls).not.toContain('webhookEndpoints.create')
@@ -199,7 +199,7 @@ describe('operator Billing setup (Stripe)', () => {
       payload: { reason: 'restore the declared price', apply: true, confirm_price_change: true },
     })
     expect(ok.statusCode).toBe(200)
-    expect(fake.state.prices.find((p) => p.active !== false)!.unit_amount).toBe(799)
+    expect(fake.state.prices.find((p) => p.active !== false)!.unit_amount).toBe(5999) // annual is the live price (PR #264)
   })
 
   it('refuses to apply to a LIVE account without confirm_live, and to an unrecognised key', async () => {
