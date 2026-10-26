@@ -105,3 +105,6 @@ suspected bug (reproduce first); 36 is an audit before fixes.
 | `59-stored-doc-renewal-date.md` | Optional renewal_date on stored docs feeds renewal detectors | — | OPEN |
 | `60-post-setup-engagement-card.md` | One honest engagement card on Home after setup | — | OPEN |
 | `61-gateway-provider-preference.md` | Provider pick prefers approved+configured processors | — | OPEN |
+| `62-score-weight-softening-early-career.md` | Rebalance score weights — early-career baseline lands mid-band | — | OPEN |
+| `63-invite-sent-viewed-status.md` | Invite sent/viewed timestamps on the roster | — | OPEN |
+| `64-shipped-fields-visibility.md` | Surface shipped relationship_label + income_notes prominently | — | OPEN |
