@@ -101,15 +101,15 @@ suspected bug (reproduce first); 36 is an audit before fixes.
 | `55-insight-severity-wiring.md` | Detector severity → insight priority; guardianship/will/zero-runway high | — | OPEN |
 | `56-member-name-on-scoped-pages.md` | Member-scoped pages name the affected member | — | OPEN |
 | `57-compound-event-answers.md` | Compound Ask Keel answers cover both events | — | OPEN |
-| `58-sw-network-first-html.md` | Network-first HTML; deploys don't strand stale bundles | — | OPEN |
-| `59-stored-doc-renewal-date.md` | Optional renewal_date on stored docs feeds renewal detectors | — | OPEN |
-| `60-post-setup-engagement-card.md` | One honest engagement card on Home after setup | — | OPEN |
-| `61-gateway-provider-preference.md` | Provider pick prefers approved+configured processors | — | OPEN |
-| `62-score-weight-softening-early-career.md` | Rebalance score weights — early-career baseline lands mid-band | — | OPEN |
-| `63-invite-sent-viewed-status.md` | Invite sent/viewed timestamps on the roster | — | OPEN |
-| `64-shipped-fields-visibility.md` | Surface shipped relationship_label + income_notes prominently | — | OPEN |
-| `65-numeral-presence-test.md` | Every rendered numeral must be in the solver payload; delete sample path | — | OPEN |
-| `66-score-ceiling-surfaced.md` | Components state when missing data caps them | — | OPEN |
-| `67-derivation-closure.md` | Artefact closures + minimal invalidation, measured | — | OPEN |
-| `68-disclosure-join-in-engine.md` | Disclosure labels joined inside evaluate, not at the route | — | OPEN |
+| `58-sw-network-first-html.md` | Network-first HTML; deploys don't strand stale bundles | #282 | IMPLEMENTED |
+| `59-stored-doc-renewal-date.md` | Optional renewal_date on stored docs feeds renewal detectors | #283 | IMPLEMENTED |
+| `60-post-setup-engagement-card.md` | One honest engagement card on Home after setup | #284 | IMPLEMENTED |
+| `61-gateway-provider-preference.md` | Provider pick prefers approved+configured processors | #285 | IMPLEMENTED |
+| `62-score-weight-softening-early-career.md` | Rebalance score weights — early-career baseline lands mid-band | #286 | IMPLEMENTED |
+| `63-invite-sent-viewed-status.md` | Invite sent/viewed timestamps on the roster | #287 | IMPLEMENTED |
+| `64-shipped-fields-visibility.md` | Surface shipped relationship_label + income_notes prominently | #288 | IMPLEMENTED |
+| `65-numeral-presence-test.md` | Every rendered numeral must be in the solver payload; delete sample path | #289 | IMPLEMENTED |
+| `66-score-ceiling-surfaced.md` | Components state when missing data caps them | #290 | IMPLEMENTED |
+| `67-derivation-closure.md` | Artefact closures + minimal invalidation, measured | #291 | IMPLEMENTED |
+| `68-disclosure-join-in-engine.md` | Disclosure labels joined inside evaluate, not at the route | #292 | IMPLEMENTED |
 | `69-fab-stack-above-nav.md` | SOS/gold FABs anchored above nav, inside reserved band | — | IMPLEMENTED |
