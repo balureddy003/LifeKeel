@@ -324,18 +324,7 @@ export function PageHeader({
     ) : null
 
   return (
-    // -mx-5 bleeds the sticky bar to the page edges — this is a contract:
-    // it only aligns because every page root uses `px-5` (verified across
-    // all ~30 consumers; the assistant page, which pads at px-4, renders
-    // its own header). Change the shared page gutter and this has to move
-    // with it.
-    // Light-theme finding: bg-navbg/80 is near-opaque white, so the header
-    // read as a hard-edged slab that ends at the content column instead of
-    // the screen edge. Lighter tint plus a bottom fade mask (which also
-    // fades the blur and removes the need for a border line) lets it melt
-    // into the glass background while still keeping the title legible over
-    // content scrolling underneath.
-    <header className="sticky top-0 z-sticky safe-area-top bg-navbg/55 backdrop-blur-xl -mx-5 px-5 py-2 [mask-image:linear-gradient(to_bottom,#000_80%,transparent),linear-gradient(to_right,transparent,#000_6%,#000_94%,transparent)] [mask-composite:intersect] [-webkit-mask-image:linear-gradient(to_bottom,#000_80%,transparent),linear-gradient(to_right,transparent,#000_6%,#000_94%,transparent)] [-webkit-mask-composite:source-in]">
+    <header className="sticky top-[var(--app-header-height,0px)] z-sticky safe-area-top bg-navbg/95 backdrop-blur-xl -mx-5 px-5 py-2">
       {backHref && (
         <Link
           href={backHref}

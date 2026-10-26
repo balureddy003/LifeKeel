@@ -426,7 +426,9 @@ html[data-session] .lk-landing-gate { visibility: hidden; }
 @media (min-width: 1400px) {
   :root { --app-dock-space: 0px; }
   .app-bottom-nav { display: none; }
-  .app-content { padding-inline: 24px; }
+  .app-content { max-width: 56rem; padding-inline: 0; }
+  .app-shell-with-rail { --app-header-height: 0px; }
+  .app-shell-with-rail .app-hero { display: none; }
   .app-nav-space { padding-bottom: 40px; }
   .app-hero-inner { padding-inline: 44px; }
 }

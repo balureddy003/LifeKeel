@@ -23,6 +23,7 @@ import { useMode } from '@/lib/mode-context'
 import { useAppStore } from '@/lib/store'
 import { MeshGradient, Skeleton, SkeletonCard } from './Glass'
 import { EmergencyMode } from './EmergencyMode'
+import { AppHeroHeader } from './AppHeroHeader'
 import { CommandPalette } from './CommandPalette'
 import { DisclaimerFooter } from './Disclaimer'
 import {
@@ -855,7 +856,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const showHero = !isMarketingPage && !isOperatorRoute && !ownsLayout && !signedOutFallback
 
   return (
-    <div className="min-h-screen text-ink-primary">
+    <div className={`min-h-screen text-ink-primary ${showNav ? 'app-shell-with-rail' : ''}`}>
       {/* Live-verification finding: at md+ widths NavRail renders before
           page content in DOM order, so a keyboard user tabs through the
           logo + all 5 nav links (6 stops) on every single page before
@@ -877,28 +878,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className={[railGutter, 'min-h-screen'].filter(Boolean).join(' ')}>
         {/* in flow, inside the rail gutter, so it pushes the page down instead of covering its header */}
         {showHero && (
-          <header className="app-hero">
-            <div className="app-hero-inner">
-              <Link href="/" aria-label="LifeKeel home" className="flex items-center gap-3 min-w-0">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src="/icon.svg"
-                  alt=""
-                  width={36}
-                  height={36}
-                  className="rounded-xl shrink-0"
-                />
-                <div className="min-w-0">
-                  <div className="text-xl font-semibold tracking-tight">LifeKeel</div>
-                  <p className="text-caption text-ink-tertiary">Your family, together</p>
-                </div>
-              </Link>
-              <div className="flex items-center gap-2 shrink-0">
-                {showEmergency && <EmergencyButton />}
-                {showAskKeel && <AskKeelButton context={pathname} />}
-              </div>
-            </div>
-          </header>
+          <AppHeroHeader>
+            {showEmergency && <EmergencyButton />}
+            {showAskKeel && <AskKeelButton context={pathname} />}
+          </AppHeroHeader>
         )}
         <VerifyEmailBanner />
         <div
@@ -918,6 +901,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
       {showNav && <LiquidTabBar />}
+      {(showEmergency || showAskKeel) && (
+        <div className="hidden min-[1400px]:flex fixed bottom-8 right-4 z-fab flex-col items-end gap-4">
+          {showEmergency && <EmergencyButton />}
+          {showAskKeel && <AskKeelButton context={pathname} />}
+        </div>
+      )}
       <EmergencyMode
         active={emergencyActive}
         onDeactivate={deactivateEmergency}
