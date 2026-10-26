@@ -7,7 +7,13 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { PageHeader, GlassCard, EmptyState } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { useToast } from '@/components/Toast'
-import { uploadDocument, fetchDocuments, UPLOAD_ACCEPT, type FamilyDocument } from '@/lib/api'
+import {
+  uploadDocument,
+  fetchDocuments,
+  patchDocumentRenewal,
+  UPLOAD_ACCEPT,
+  type FamilyDocument,
+} from '@/lib/api'
 import { screenDocumentBeforeUpload } from '@/lib/on-device-doc-screen'
 import { useAppStore } from '@/lib/store'
 import { displayDocName } from '@/lib/doc-name'
@@ -414,7 +420,30 @@ export default function UploadPage() {
                         >
                           {statusIcon(doc.status)} {statusLabel(doc.status, doc.extractedData)}
                         </span>
+                        {doc.renewalDate && (
+                          <span className="text-xs text-ink-tertiary">
+                            · Renews {doc.renewalDate}
+                          </span>
+                        )}
                       </div>
+                      {doc.status === 'stored' && (
+                        <label className="mt-1 flex items-center gap-1.5 text-xs text-ink-tertiary">
+                          Renews
+                          <input
+                            type="date"
+                            value={doc.renewalDate ?? ''}
+                            className="bg-transparent text-xs text-ink-secondary border border-tint/10 rounded px-1 py-0.5"
+                            onChange={async (e) => {
+                              const v = e.target.value || null
+                              if (await patchDocumentRenewal(doc.id, v)) {
+                                setDocuments((prev) =>
+                                  prev.map((d) => (d.id === doc.id ? { ...d, renewalDate: v } : d)),
+                                )
+                              }
+                            }}
+                          />
+                        </label>
+                      )}
                     </div>
                     {doc.status === 'extracted' && (
                       <ChevronRight size={16} className="text-ink-tertiary flex-shrink-0" />
