@@ -306,6 +306,7 @@ export class Detector {
         },
         detector_id: this.config.id,
         rule_id: rule.id,
+        ...(rule.disclosure ? { disclosure: rule.disclosure } : {}),
         derived_from_signals: context.derived_from_signals ?? [],
         state: 'identified' as const,
         created_at: firedAt,
