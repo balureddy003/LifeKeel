@@ -28,176 +28,218 @@
 # _with_loss/_profitable and severe_/moderate_ variants) — kept here so
 # existing insight documents still tagged with the old ID classify correctly;
 # the current YAMLs no longer emit these IDs for newly-fired insights.
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: position_over_threshold
   category: risk
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: price_drop_below_avg
   category: risk
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: position_over_threshold_with_loss
   category: risk
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: position_over_threshold_profitable
   category: risk
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: severe_price_drop
   category: risk
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: moderate_price_drop
   category: risk
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: trailing_stop_breached
   category: risk
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: attractive_dividend_yield
   category: revenue
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: momentum_above_add_threshold
   category: revenue
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: excess_cash
   category: revenue
 
 # ── family ───────────────────────────────────────────────────────────────────
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: education_fund_behind_target
   category: risk
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: education_fund_not_started
   category: risk
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: emergency_fund_below_3_months
   category: risk
-- signal_type_pattern: "*"
+  urgency: high
+- signal_type_pattern: '*'
   rule_id_pattern: emergency_fund_overfunded
   category: goal_progress
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: life_insurance_below_household_needs
   category: risk
-- signal_type_pattern: "*"
+  urgency: high
+- signal_type_pattern: '*'
   rule_id_pattern: no_income_protection
   category: risk
-- signal_type_pattern: "*"
+  urgency: high
+- signal_type_pattern: '*'
+  rule_id_pattern: high_interest_debt_unaddressed
+  category: risk
+  urgency: high
+# Estate/legacy rules: named gaps with dependents — the highest-stakes
+# family flags (intent 55). Guardianship + missing will are 'high'; the
+# remaining estate flags are 'risk' at default urgency.
+- signal_type_pattern: '*'
+  rule_id_pattern: estate_no_will
+  category: risk
+  urgency: high
+- signal_type_pattern: '*'
+  rule_id_pattern: legacy_guardianship_gap
+  category: risk
+  urgency: high
+- signal_type_pattern: '*'
+  rule_id_pattern: estate_no_power_of_attorney
+  category: risk
+- signal_type_pattern: '*'
+  rule_id_pattern: legacy_will_review_due
+  category: risk
+- signal_type_pattern: '*'
+  rule_id_pattern: legacy_executor_missing
+  category: risk
+- signal_type_pattern: '*'
+  rule_id_pattern: legacy_property_title_gap
+  category: risk
+- signal_type_pattern: '*'
+  rule_id_pattern: legacy_foreign_property_review
+  category: risk
+- signal_type_pattern: '*'
+  rule_id_pattern: legacy_will_asset_mismatch
+  category: risk
+- signal_type_pattern: '*'
+  rule_id_pattern: legacy_beneficiary_conflict
+  category: risk
+- signal_type_pattern: '*'
+  rule_id_pattern: legacy_original_location_unknown
+  category: risk
+- signal_type_pattern: '*'
   rule_id_pattern: retirement_behind_target_age
   category: risk
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: no_retirement_savings
   category: risk
 
 # ── finance (SMB) ────────────────────────────────────────────────────────────
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: critical_cash_shortfall
   category: risk
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: receivables_payables_mismatch
   category: risk
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: exact_duplicate
   category: cost-savings
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: near_duplicate
   category: cost-savings
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: high_value_overdue
   category: revenue
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: early_warning_overdue
   category: revenue
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: serial_late_payer
   category: risk
 
 # ── property ─────────────────────────────────────────────────────────────────
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: material_asking_drop
   category: revenue
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: repeated_reductions
   category: revenue
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: fix_ending_rate_drop
   category: revenue
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: ltv_band_improved
   category: revenue
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: yield_below_benchmark
   category: risk
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: extended_void
   category: risk
 
 # ── saas ─────────────────────────────────────────────────────────────────────
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: login_dropoff
   category: risk
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: payment_failure_churn
   category: risk
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: support_ticket_spike
   category: risk
 
 # ── social ───────────────────────────────────────────────────────────────────
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: engagement_cusum_down
   category: risk
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: zero_engagement
   category: risk
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: goal_stalled
   category: goal_progress
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: goal_behind_pace
   category: goal_progress
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: goal_on_track
   category: goal_progress
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: goal_ahead_of_pace
   category: goal_progress
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: goal_achieved
   category: goal_progress
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: engagement_spike_2sigma
   category: revenue
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: viral_threshold
   category: revenue
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: low_engagement
   category: risk
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: very_low_impressions
   category: risk
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: viral_engagement
   category: revenue
 
 # ── ecommerce ────────────────────────────────────────────────────────────────
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: high_value_cart_abandoned
   category: revenue
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: repeat_abandoner
   category: revenue
 
 # ── cross-connector ──────────────────────────────────────────────────────────
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: acquisition_conversion_stall
   category: revenue
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: cash_crunch_early_warning
   category: risk
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: churn_cluster
   category: risk
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: compound_growth_risk_high
   category: risk
-- signal_type_pattern: "*"
+- signal_type_pattern: '*'
   rule_id_pattern: fulfillment_sales_block
   category: risk

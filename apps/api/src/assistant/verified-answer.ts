@@ -150,6 +150,13 @@ const OP_PATTERNS: Array<{ op: VerifiedOperationId; patterns: RegExp[] }> = [
       /(list|show|tell me about) .*(polic|insur|cover)/i,
       /do (we|i) have.*(insurance|cover|policy)/i,
       /what('s| is) covered/i,
+      // Bereavement maps to the policies op: when a partner dies the
+      // relevant honest answer is the life cover on file (intent 57 —
+      // a compound "lost my job and my partner passed away" must surface
+      // both intents, not silently drop the second).
+      /(die|died|death|passed away|pass(es|ed)? away)/i,
+      /(partner|spouse|husband|wife).*(die|died|dead|gone|no longer)/i,
+      /\b(bereav|survivor)/i,
     ],
   },
 ]
