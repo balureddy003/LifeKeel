@@ -518,6 +518,13 @@ export function registerFamilyJoinRoutes(
       if (!family || !member || member.status !== 'pending') {
         return reply.status(404).send({ error: 'This invite link is invalid or has expired' })
       }
+      // Intent 63: resolving the token IS the view — stamp viewed_at so the
+      // organizer's roster can move 'Sent' → 'Viewed'. Anonymous timestamp
+      // only; nothing else about the opener is recorded. $setOnInsert-style
+      // first-view wins: a second open doesn't move the timestamp.
+      if (filter && !(invite as { viewed_at?: Date }).viewed_at) {
+        await invites.updateOne(filter, { $set: { viewed_at: new Date() } }).catch(() => {})
+      }
       return {
         member_name: member.name,
         family_name: family.name,

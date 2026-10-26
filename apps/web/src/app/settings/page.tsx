@@ -685,7 +685,7 @@ export default function SettingsPage() {
                     <span
                       className={`text-xs ${m.status === 'pending' ? 'text-warning' : 'text-success'}`}
                     >
-                      {memberStatusLabel(m.status, m.role)}
+                      {memberStatusLabel(m.status, m.role, m.inviteStatus)}
                     </span>
                     {/* Adding an adult only creates the roster entry — the
                         actual invite (email or copyable link) lives on

@@ -131,7 +131,7 @@ interface UserDoc extends Record<string, unknown> {
   email?: string
 }
 
-function toResponse(doc: FamilyGroupDoc) {
+function toResponse(doc: FamilyGroupDoc, inviteViewedAt: Map<string, Date> = new Map()) {
   return {
     id: doc.id,
     name: doc.name,
@@ -143,6 +143,16 @@ function toResponse(doc: FamilyGroupDoc) {
       role: m.role,
       status: m.status,
       joinedAt: m.joined_at,
+      // Intent 63: a pending member's invite status — 'sent' until the
+      // accept page resolves the token, then 'viewed'.
+      ...(m.status === 'pending'
+        ? {
+            inviteStatus: inviteViewedAt.has(m.id) ? 'viewed' : 'sent',
+            ...(inviteViewedAt.has(m.id)
+              ? { inviteViewedAt: inviteViewedAt.get(m.id)!.toISOString() }
+              : {}),
+          }
+        : {}),
       ...(m.user_id ? { userId: m.user_id } : {}),
       ...(m.date_of_birth ? { dateOfBirth: m.date_of_birth } : {}),
       ...(m.relationship_label ? { relationshipLabel: m.relationship_label } : {}),
@@ -171,7 +181,22 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
   fastify.get('/family', async (req) => {
     const { tenant_id } = req.authContext
     const doc = await groupsFor(tenant_id).findOne({})
-    return { family: doc ? toResponse(doc) : null }
+    // Invite views for pending members — one query, then looked up per
+    // member in toResponse (intent 63).
+    const viewed = await getTenantCollection<Record<string, unknown>>(
+      db,
+      'family_member_invites',
+      doc?.tenant_id ?? req.authContext.tenant_id,
+    )
+      .find({ viewed_at: { $exists: true } })
+      .toArray()
+      .catch(() => [] as Record<string, unknown>[])
+    const inviteViewedAt = new Map<string, Date>(
+      viewed
+        .filter((i: Record<string, unknown>) => i['member_id'] && i['viewed_at'])
+        .map((i: Record<string, unknown>) => [i['member_id'] as string, i['viewed_at'] as Date]),
+    )
+    return { family: doc ? toResponse(doc, inviteViewedAt) : null }
   })
 
   // ── POST /family ─────────────────────────────────────────────────────────

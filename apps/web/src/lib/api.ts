@@ -2310,6 +2310,10 @@ export interface ApiFamilyMember {
   email: string
   role: 'organizer' | 'parent' | 'adult' | 'child'
   status: 'active' | 'pending'
+  /** Pending members only — 'sent' until the accept page resolves the
+   *  token, then 'viewed' (intent 63). */
+  inviteStatus?: 'sent' | 'viewed'
+  inviteViewedAt?: string
   joinedAt: string
   /** The `users.id` this roster entry is bound to after invite acceptance (PRD-123). */
   userId?: string
