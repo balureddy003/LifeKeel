@@ -97,6 +97,36 @@ describe('recordInsightAction', () => {
     expect(store.insight_attribution).toHaveLength(0)
   })
 
+  it('detectorIds scopes credit to the detectors the action can address', async () => {
+    const store = {
+      insights: [
+        insight('protection', 5, 'family_protection_gap'),
+        insight('education', 5, 'family_education_shortfall'),
+        insight('debt', 5, 'family_debt_health'),
+      ],
+      insight_attribution: [] as Record<string, unknown>[],
+    }
+    // A bereavement playbook step credits protection + estate only —
+    // never the unrelated education or debt flags (intent 48).
+    const n = await recordInsightAction(makeDb(store) as never, 't1', 'step_completed', {
+      detectorIds: ['family_protection_gap', 'family_estate_readiness'],
+    })
+    expect(n).toBe(1)
+    expect(store.insight_attribution.map((r) => r['insight_id'])).toEqual(['protection'])
+  })
+
+  it('insightIds still wins over detectorIds when both are given', async () => {
+    const store = {
+      insights: [insight('a', 5), insight('b', 5, 'family_debt_health')],
+      insight_attribution: [] as Record<string, unknown>[],
+    }
+    await recordInsightAction(makeDb(store) as never, 't1', 'insight_approved', {
+      insightIds: ['b'],
+      detectorIds: ['family_protection_gap'],
+    })
+    expect(store.insight_attribution.map((r) => r['insight_id'])).toEqual(['b'])
+  })
+
   it('dedupes repeat actions: a second save refreshes, not duplicates', async () => {
     const store = {
       insights: [insight('a', 5)],

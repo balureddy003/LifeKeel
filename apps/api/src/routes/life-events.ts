@@ -33,6 +33,25 @@ import { renderPlaybook, type LifeEventType } from '../life-events/render-playbo
 import { computeEventReadiness } from '../life-events/event-readiness.js'
 import { maybeSendVaultReminder } from '../life-events/vault-reminder.js'
 import { recordInsightAction } from '../insights/insight-attribution.js'
+
+/** Which family detectors a playbook step could plausibly resolve —
+ *  step-completion attribution stays inside this set so an unrelated
+ *  flag is never credited (intent 48). Events with no adequacy detector
+ *  yet (car/property/travel coverage) map to the policy-review hygiene
+ *  detector, the only one that could hold a related flag. */
+const EVENT_INSIGHT_SCOPE: Record<string, string[]> = {
+  job_loss: ['family_emergency_fund_adequacy', 'family_emergency_trajectory', 'family_debt_health'],
+  bereavement: ['family_protection_gap', 'family_estate_readiness'],
+  disability: ['family_protection_gap'],
+  medical: ['family_protection_gap'],
+  car: ['family_policy_review'],
+  property: ['family_policy_review'],
+  travel: ['family_policy_review'],
+  retirement: ['family_retirement_gap'],
+  university: ['family_education_shortfall', 'family_education_pacing'],
+  'new-child': ['family_estate_readiness'],
+  marriage: ['family_estate_readiness'],
+}
 import type { FinancialProfile } from './family-financial-profile.js'
 
 // Full Emergency-Mode taxonomy: the 5 crisis tiles (bereavement, medical,
@@ -376,11 +395,13 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
         : { $pull: { 'data.completed_step_ids': stepId } }
       await col.updateOne({ tenant_id, signal_type: 'family.life_event', id }, op)
 
-      // Insight→action attribution: checking off a playbook step is a
-      // real action on whatever flagged it — recorded against the ambient
-      // window, same posture as a profile save.
+      // Insight→action attribution: a playbook step only addresses the
+      // detectors that flag this event's domain — ticking "get life cover
+      // quotes" must not credit an unrelated education or debt insight.
       if (done) {
-        await recordInsightAction(db, tenant_id, 'step_completed').catch(() => {})
+        await recordInsightAction(db, tenant_id, 'step_completed', {
+          detectorIds: EVENT_INSIGHT_SCOPE[doc.data.event_type] ?? [],
+        }).catch(() => {})
       }
 
       const stored = (doc.data.completed_step_ids ?? []).filter((s) => s !== stepId)
