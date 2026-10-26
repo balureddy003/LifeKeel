@@ -523,7 +523,14 @@ export function registerFamilyJoinRoutes(
       // only; nothing else about the opener is recorded. $setOnInsert-style
       // first-view wins: a second open doesn't move the timestamp.
       if (filter && !(invite as { viewed_at?: Date }).viewed_at) {
-        await invites.updateOne(filter, { $set: { viewed_at: new Date() } }).catch(() => {})
+        // try/catch, not .catch(): a collection shim without updateOne
+        // throws synchronously — and a view-stamp failure must never
+        // break the accept page either way.
+        try {
+          await invites.updateOne(filter, { $set: { viewed_at: new Date() } })
+        } catch {
+          /* view-stamp is best-effort; the resolve still succeeds */
+        }
       }
       return {
         member_name: member.name,
