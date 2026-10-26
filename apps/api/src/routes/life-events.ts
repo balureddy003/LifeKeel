@@ -33,6 +33,25 @@ import { renderPlaybook, type LifeEventType } from '../life-events/render-playbo
 import { computeEventReadiness } from '../life-events/event-readiness.js'
 import { maybeSendVaultReminder } from '../life-events/vault-reminder.js'
 import { recordInsightAction } from '../insights/insight-attribution.js'
+
+/** Which family detectors a playbook step could plausibly resolve —
+ *  step-completion attribution stays inside this set so an unrelated
+ *  flag is never credited (intent 48). Events with no adequacy detector
+ *  yet (car/property/travel coverage) map to the policy-review hygiene
+ *  detector, the only one that could hold a related flag. */
+const EVENT_INSIGHT_SCOPE: Record<string, string[]> = {
+  job_loss: ['family_emergency_fund_adequacy', 'family_emergency_trajectory', 'family_debt_health'],
+  bereavement: ['family_protection_gap', 'family_estate_readiness'],
+  disability: ['family_protection_gap'],
+  medical: ['family_protection_gap'],
+  car: ['family_policy_review'],
+  property: ['family_policy_review'],
+  travel: ['family_policy_review'],
+  retirement: ['family_retirement_gap'],
+  university: ['family_education_shortfall', 'family_education_pacing'],
+  'new-child': ['family_estate_readiness'],
+  marriage: ['family_estate_readiness'],
+}
 import type { FinancialProfile } from './family-financial-profile.js'
 
 /** Roster display name for an affected_member_id — member-scoped playbooks
@@ -202,6 +221,20 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
         return reply
           .status(400)
           .send({ error: 'Submit a financial profile before reporting a life event' })
+      }
+
+      // Intent 49: an event "for" a member that isn't on the roster is a
+      // client mistake, not data — reject it rather than storing an
+      // orphaned reference the chart and playbooks can't resolve.
+      if (affected_member_id) {
+        const group = await getTenantCollection<{ members?: { id?: string }[] }>(
+          db,
+          'family_groups',
+          tenant_id,
+        ).findOne({})
+        if (!(group?.members ?? []).some((m) => m.id === affected_member_id)) {
+          return reply.status(404).send({ error: 'Member not found' })
+        }
       }
 
       const id = crypto.randomUUID()
@@ -413,11 +446,13 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
         : { $pull: { 'data.completed_step_ids': stepId } }
       await col.updateOne({ tenant_id, signal_type: 'family.life_event', id }, op)
 
-      // Insight→action attribution: checking off a playbook step is a
-      // real action on whatever flagged it — recorded against the ambient
-      // window, same posture as a profile save.
+      // Insight→action attribution: a playbook step only addresses the
+      // detectors that flag this event's domain — ticking "get life cover
+      // quotes" must not credit an unrelated education or debt insight.
       if (done) {
-        await recordInsightAction(db, tenant_id, 'step_completed').catch(() => {})
+        await recordInsightAction(db, tenant_id, 'step_completed', {
+          detectorIds: EVENT_INSIGHT_SCOPE[doc.data.event_type] ?? [],
+        }).catch(() => {})
       }
 
       const stored = (doc.data.completed_step_ids ?? []).filter((s) => s !== stepId)

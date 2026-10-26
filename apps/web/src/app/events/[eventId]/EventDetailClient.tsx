@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
+import { useRouter } from 'next/navigation'
 import { useRouteParam } from '@/lib/useRouteParam'
 import Link from 'next/link'
 import {
@@ -24,7 +25,12 @@ import { DraftProvenanceNote } from '@/components/DraftProvenance'
 import { haptic } from '@/lib/haptics'
 import { useEventReadiness } from '@/lib/useFamilyData'
 import { useAuth } from '@/lib/auth-context'
-import { prepareInsightDraft, fetchFinancialProfile, type FinancialProfilePolicy } from '@/lib/api'
+import {
+  prepareInsightDraft,
+  fetchFinancialProfile,
+  fetchLifeEvents,
+  type FinancialProfilePolicy,
+} from '@/lib/api'
 import { learnMoreHref } from '@/lib/detector-content'
 import EventScenarioCard, { eventHasScenario } from './ScenarioCard'
 import RetirementEstimate from './RetirementEstimate'
@@ -65,6 +71,24 @@ const EVENT_AI_EXPLANATION: Record<string, string> = {
 export default function EventDetailClient() {
   const eventId = useRouteParam('/events')
   const event = eventId ? LIFE_EVENTS.find((e) => e.id === eventId) : undefined
+  const router = useRouter()
+
+  // Server-reported life events carry a UUID, not a catalog id — a link to
+  // /events/<uuid> lands here on a miss. That event has its own playbook
+  // page at /life-events/<uuid>; resolve and route rather than claiming
+  // the event doesn't exist (intent 52).
+  useEffect(() => {
+    if (!eventId || event) return
+    let live = true
+    fetchLifeEvents().then((evts) => {
+      if (live && evts.some((e) => e.id === eventId)) {
+        router.replace(`/life-events/${eventId}`)
+      }
+    })
+    return () => {
+      live = false
+    }
+  }, [eventId, event, router])
   const [actions, setActions] = useState<Action[]>(
     EVENT_ACTIONS[event?.id ?? 'default'] ?? EVENT_ACTIONS.default!,
   )
@@ -112,6 +136,17 @@ export default function EventDetailClient() {
     fallbackStability,
     fallbackExplanation,
   )
+
+  // "Partial", not "sample" (intent 53): when the readiness endpoint named
+  // missing inputs, the banner already says "using the data you have so
+  // far" — the explanation body must not call the same numbers a sample.
+  const displayExplanation =
+    !live && missingInputs.length > 0 && explanation === fallbackExplanation
+      ? explanation.replace(
+          'This is a sample scenario, not based on your data yet.',
+          'Using the data you have so far — this is a partial picture, with the missing inputs named above.',
+        )
+      : explanation
 
   // Tier 1 "prepare, don't send" (PRD-103) — draftText is editable once
   // generated; the only exits are copy-to-clipboard and a mailto: link,
@@ -358,7 +393,7 @@ export default function EventDetailClient() {
               <Bot size={18} className="text-family-400" />
               <span className="text-sm font-semibold text-family-400">AI Explains</span>
             </div>
-            <p className="text-sm text-ink-secondary leading-relaxed">{explanation}</p>
+            <p className="text-sm text-ink-secondary leading-relaxed">{displayExplanation}</p>
             {learnMoreHref(ruleId) && (
               <Link
                 href={learnMoreHref(ruleId)!}

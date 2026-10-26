@@ -302,13 +302,18 @@ function renderPropertyStep(stepId: string, profile: FinancialProfile): string {
     const home = profile.policies.filter((p) => p.type === 'home')
     const parts: string[] = []
     if (home.length > 0) parts.push(`home insurance with ${home.map((p) => p.provider).join(', ')}`)
-    if (profile.household.mortgage_outstanding_minor > 0) {
-      parts.push(
-        `a mortgage of ${formatMoney(profile.household.mortgage_outstanding_minor)} outstanding — your lender may need to be notified of major damage too`,
-      )
-    }
+    const mortgage = profile.household.mortgage_outstanding_minor
+    if (mortgage > 0) parts.push(`a mortgage of ${formatMoney(mortgage)} outstanding`)
     if (parts.length > 0) {
-      return `Based on your real data, you have ${parts.join(' and ')} on file. Report the damage to the insurer before authorizing non-emergency repairs.`
+      const lenderNote =
+        mortgage > 0 ? ' Your lender may need to be notified of major damage too.' : ''
+      // A mortgage on file but no home policy is still a gap worth naming —
+      // the What-If says it, the playbook should too (intent 50).
+      const noHomeNote =
+        home.length === 0
+          ? ' No home insurance policy is on file — if you have one, add it to your financial profile so the claim line is here next time.'
+          : ''
+      return `Based on your real data, you have ${parts.join(' and ')} on file.${lenderNote} Report the damage to the insurer before authorizing non-emergency repairs.${noHomeNote}`
     }
     return "We don't have home insurance on file for your family. If a policy exists, find the claim line now — and add it to your financial profile later so this step is grounded in real data next time."
   }
