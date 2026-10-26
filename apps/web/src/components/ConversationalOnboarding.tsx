@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Send, Bot, User, Baby, Sparkles, PartyPopper, Plus } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { Turnstile, useTurnstile } from '@/components/security/Turnstile'
@@ -211,6 +212,7 @@ export function ConversationalOnboarding() {
   // calls resolve, swapping the loader for a brief celebration moment
   // before navigating — so the user sees "success", not just a redirect.
   const [setupDone, setSetupDone] = useState(false)
+  const [skipError, setSkipError] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   // setSubmitting alone isn't enough to block a rapid double-fire of the
   // same handler — React state doesn't update synchronously, so two calls
@@ -529,9 +531,6 @@ export function ConversationalOnboarding() {
     // user sees "Your family is set up!" rather than a silent redirect.
     setSetupDone(true)
     haptic('success')
-    setTimeout(() => {
-      router.push('/financial-profile?source=onboarding')
-    }, 1800)
   }
 
   const handleTextSubmit = () => {
@@ -588,7 +587,13 @@ export function ConversationalOnboarding() {
                 </motion.svg>
               </motion.div>
               <h1 className="text-2xl font-bold mb-2">Your family is set up!</h1>
-              <p className="text-sm text-ink-tertiary">Next, add what you have on file</p>
+              <p className="text-sm text-ink-tertiary">Add more details whenever you’re ready.</p>
+              <Link href="/" className="btn-primary mt-6">
+                Continue to dashboard
+              </Link>
+              <Link href="/financial-profile?source=onboarding" className="btn-secondary mt-3">
+                Add financial details
+              </Link>
             </motion.div>
           ) : (
             <motion.div
@@ -621,7 +626,41 @@ export function ConversationalOnboarding() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-80px)]">
+    <div className="app-setup-chat flex flex-col">
+      {user && (
+        <div className="px-4 pt-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm text-ink-tertiary">Add details now or later from Family.</p>
+          <button
+            type="button"
+            disabled={submitting || isLoading}
+            className="text-sm font-semibold text-family-accent underline underline-offset-4 disabled:opacity-40"
+            onClick={async () => {
+              if (submittingRef.current) return
+              submittingRef.current = true
+              setSubmitting(true)
+              setSkipError(false)
+              try {
+                if (!family) await createFamily(`${user.name}'s Family`, user)
+                takeOnboardingDraft()
+                track('family_setup_skipped')
+                router.replace('/')
+              } catch {
+                setSkipError(true)
+              } finally {
+                submittingRef.current = false
+                setSubmitting(false)
+              }
+            }}
+          >
+            {submitting ? 'Please wait…' : 'Skip for now'}
+          </button>
+          {skipError && (
+            <p role="alert" className="w-full text-sm text-danger">
+              Couldn’t skip right now. Please try again.
+            </p>
+          )}
+        </div>
+      )}
       {/* Progress bar */}
       <div className="px-4 pt-4">
         <div className="flex items-center justify-between mb-2">
@@ -652,7 +691,7 @@ export function ConversationalOnboarding() {
         ref={scrollRef}
         role="log"
         aria-label="Onboarding conversation with Keel"
-        className="flex-1 overflow-y-auto px-4 py-2 space-y-3 no-scrollbar"
+        className="min-h-0 flex-1 overflow-y-auto px-4 py-2 space-y-3 no-scrollbar"
       >
         {messages.map((msg) => (
           <motion.div
@@ -710,7 +749,7 @@ export function ConversationalOnboarding() {
                     next[i] = e.target.value
                     setMultiValues(next)
                   }}
-                  className="glass-input flex-1 rounded-2xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none"
+                  className="glass-input min-w-0 flex-1 rounded-2xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none"
                 />
                 {i === multiValues.length - 1 && (
                   <motion.button
@@ -744,7 +783,7 @@ export function ConversationalOnboarding() {
               onKeyDown={(e) => e.key === 'Enter' && !submitting && handleTextSubmit()}
               disabled={submitting}
               autoFocus
-              className="glass-input flex-1 rounded-2xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none min-h-[52px] disabled:opacity-40"
+              className="glass-input min-w-0 flex-1 rounded-2xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none min-h-[52px] disabled:opacity-40"
             />
             <motion.button
               whileTap={{ scale: 0.9 }}

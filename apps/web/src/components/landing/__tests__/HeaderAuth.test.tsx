@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, within } from '@testing-library/react'
 import { SiteHeader } from '../SiteHeader'
 import { SiteFooter } from '../SiteFooter'
 import { AuthShell } from '../AuthShell'
@@ -41,7 +41,11 @@ describe('SiteHeader', () => {
   it('links the sections, signs in and starts on the app host, and reports the clicks', () => {
     render(<SiteHeader />)
     expect(screen.getByRole('link', { name: 'Pricing' }).getAttribute('href')).toBe('#pricing')
-    expect(screen.getByRole('link', { name: 'Guides' }).getAttribute('href')).toBe('/guides')
+    expect(
+      within(screen.getByRole('navigation', { name: 'Main' }))
+        .getByRole('link', { name: 'Guides' })
+        .getAttribute('href'),
+    ).toBe('/guides')
     const start = screen.getByRole('link', { name: 'Get started' })
     expect(start.getAttribute('href')).toMatch(/\/signup$/)
     const stop = (e: Event) => e.preventDefault() // jsdom cannot navigate

@@ -374,3 +374,59 @@ html[data-session] .lk-landing-gate { visibility: hidden; }
 @media screen {
   .text-\[10px\], .text-\[11px\] { font-size: 16px; }
 }
+
+:root {
+  --app-header-height: calc(80px + env(safe-area-inset-top, 0px));
+  --app-dock-space: calc(96px + env(safe-area-inset-bottom, 0px));
+}
+.app-content, .app-hero-inner { max-width: 1600px; min-width: 0; }
+.app-content { overflow-wrap: anywhere; }
+.app-hero {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  padding-top: env(safe-area-inset-top, 0px);
+  background: rgb(var(--nav-bg) / .92);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  border-bottom: 1px solid rgb(var(--haze-light) / .7);
+}
+.app-hero-inner {
+  min-height: 80px;
+  margin-inline: auto;
+  padding-left: max(20px, env(safe-area-inset-left, 0px));
+  padding-right: max(20px, env(safe-area-inset-right, 0px));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.app-bottom-nav {
+  bottom: max(10px, env(safe-area-inset-bottom, 0px));
+  left: max(10px, env(safe-area-inset-left, 0px));
+  right: max(10px, env(safe-area-inset-right, 0px));
+  max-width: 600px;
+  margin-inline: auto;
+  border: 1px solid rgb(var(--haze) / .65);
+  border-radius: 28px;
+  background: rgb(var(--nav-bg) / .92);
+  box-shadow: 0 6px 32px rgb(0 0 0 / .12), inset 0 1px 0 rgb(var(--tint) / .08);
+}
+.app-nav-space { padding-bottom: var(--app-dock-space); }
+.app-chat { height: calc(100dvh - var(--app-header-height) - var(--app-dock-space) - 8px); min-height: 320px; }
+.app-setup-chat { height: calc(100dvh - var(--app-header-height) - 8px); min-height: 400px; }
+.app-chat > :not([role='log']), .app-setup-chat > :not([role='log']) { flex-shrink: 0; }
+.app-chat input, .app-setup-chat input { min-width: 0; }
+@media (max-width: 599px) {
+  .app-hero-inner { padding-inline: 12px; }
+  .app-content .px-5 { padding-inline: 12px; }
+  .app-content .-mx-5 { margin-inline: -12px; }
+  .app-content .px-4 { padding-inline: 12px; }
+}
+@media (min-width: 1400px) {
+  :root { --app-dock-space: 0px; }
+  .app-bottom-nav { display: none; }
+  .app-content { padding-inline: 24px; }
+  .app-nav-space { padding-bottom: 40px; }
+  .app-hero-inner { padding-inline: 44px; }
+}

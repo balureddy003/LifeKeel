@@ -6,7 +6,7 @@ import { appUrl } from '@/lib/region'
 import { track } from '@/lib/growth-track'
 import { haptic } from '@/lib/haptics'
 import { Brand } from './Brand'
-import { Moon, Sun } from 'lucide-react'
+import { Moon, Sun, Home, BookOpen, ShieldCheck, Menu } from 'lucide-react'
 import { useThemePreference } from '@/lib/theme'
 import './landing.css'
 import './hero.css'
@@ -102,35 +102,33 @@ export function SiteHeader({
               </a>
             </>
           )}
-          <button
-            ref={menuBtn}
-            type="button"
-            className="lk-menu-btn"
-            aria-expanded={open}
-            aria-controls="lk-menu"
-            aria-label={open ? 'Close menu' : 'Open menu'}
-            onClick={() => setOpen((o) => !o)}
-          >
-            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
-              {open ? (
-                <path
-                  d="M5 5 L19 19 M19 5 L5 19"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-              ) : (
-                <path
-                  d="M4 7 H20 M4 12 H20 M4 17 H20"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-              )}
-            </svg>
-          </button>
         </div>
       </div>
+      <nav className="lk-mobile-nav" aria-label="Primary">
+        <Link href="/" onClick={() => setOpen(false)}>
+          <Home size={21} />
+          <span>Home</span>
+        </Link>
+        <Link href="/guides" onClick={() => setOpen(false)}>
+          <BookOpen size={21} />
+          <span>Guides</span>
+        </Link>
+        <Link href="/security" onClick={() => setOpen(false)}>
+          <ShieldCheck size={21} />
+          <span>Security</span>
+        </Link>
+        <button
+          ref={menuBtn}
+          type="button"
+          aria-expanded={open}
+          aria-controls="lk-menu"
+          aria-label={open ? 'Close menu' : 'Open menu'}
+          onClick={() => setOpen((o) => !o)}
+        >
+          <Menu size={21} />
+          <span>Menu</span>
+        </button>
+      </nav>
       <nav id="lk-menu" className="lk-menu" aria-label="Menu" hidden={!open}>
         {LINKS.map((l) =>
           l.page ? (

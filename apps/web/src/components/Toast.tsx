@@ -43,13 +43,16 @@ let nextId = 0
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([])
 
-  const show = useCallback<ShowToast>(({ message, variant = 'success', duration = 3000, onUndo }) => {
-    const id = nextId++
-    setToasts((prev) => [...prev, { id, message, variant, onUndo }])
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id))
-    }, duration)
-  }, [])
+  const show = useCallback<ShowToast>(
+    ({ message, variant = 'success', duration = 3000, onUndo }) => {
+      const id = nextId++
+      setToasts((prev) => [...prev, { id, message, variant, onUndo }])
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id))
+      }, duration)
+    },
+    [],
+  )
 
   const dismiss = useCallback((id: number) => {
     setToasts((prev) => prev.filter((t) => t.id !== id))
@@ -61,7 +64,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {/* Portal-free: renders at the bottom of the provider tree, above
           the nav bar but below modals. safe-area-bottom keeps it clear of
           the home indicator on notched devices. */}
-      <div className="fixed bottom-24 md:bottom-8 left-0 right-0 z-banner flex flex-col items-center gap-2 pointer-events-none px-4">
+      <div className="fixed bottom-[var(--app-dock-space)] min-[1400px]:bottom-8 left-0 right-0 z-banner flex flex-col items-center gap-2 pointer-events-none px-4">
         <AnimatePresence>
           {toasts.map((toast) => {
             const Icon = VARIANT_ICON[toast.variant]
@@ -80,7 +83,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 <span className="text-sm font-medium text-ink-primary flex-1">{toast.message}</span>
                 {toast.onUndo && (
                   <button
-                    onClick={() => { toast.onUndo?.(); dismiss(toast.id) }}
+                    onClick={() => {
+                      toast.onUndo?.()
+                      dismiss(toast.id)
+                    }}
                     className="text-sm font-semibold text-family-400 px-2 py-1 rounded-lg active:opacity-70"
                   >
                     Undo

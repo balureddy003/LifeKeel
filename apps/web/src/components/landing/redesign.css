@@ -292,3 +292,50 @@
  .landing.landing .lk-menu-btn { display: inline-flex; align-items: center; justify-content: center; }
  .landing.landing .lk-menu:not([hidden]) { display: grid; }
 }
+
+.landing .lk-mobile-nav { display: none; }
+@media (max-width: 1399px) {
+  body:has(.lk-mobile-nav) { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+  .landing.landing .lk-nav { display: none; }
+  .landing.landing .lk-mobile-nav {
+    position: fixed;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    z-index: 60;
+    bottom: max(10px, env(safe-area-inset-bottom, 0px));
+    left: 10px;
+    right: 10px;
+    max-width: 600px;
+    margin-inline: auto;
+    padding: 6px;
+    border: 1px solid var(--line);
+    border-radius: 28px;
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    backdrop-filter: blur(24px) saturate(150%);
+    -webkit-backdrop-filter: blur(24px) saturate(150%);
+    box-shadow: 0 6px 32px rgb(0 0 0 / .12);
+  }
+  .landing .lk-mobile-nav :is(a, button) {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 3px; min-height: 60px; border: 0; border-radius: 22px;
+    background: transparent; color: var(--ink); text-decoration: none; font: 600 12px/1.2 var(--body);
+  }
+  .landing .lk-mobile-nav :is(a, button):hover,
+  .landing .lk-mobile-nav button[aria-expanded='true'] { background: var(--wash); }
+  .landing.landing .lk-menu:not([hidden]) {
+    position: fixed; display: grid; z-index: 59;
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+    left: 12px; right: 12px; max-width: 600px;
+    max-height: calc(100dvh - 200px); overflow-y: auto;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 24px; padding: 12px 20px;
+    box-shadow: 0 8px 40px rgb(0 0 0 / .12);
+  }
+  .landing.landing .lk-public-body { max-width: none; padding-inline: var(--lk-gutter); }
+  .landing.landing.lk-auth .lk-auth-layout { max-width: none; }
+}
+@media (min-width: 861px) and (max-width: 1399px) {
+  .landing.landing { --lk-gutter: 20px; }
+}
+
+@media (max-width: 1399px) { .landing.landing { --lk-gutter: 20px; } }
+@media (max-width: 599px) { .landing.landing { --lk-gutter: 12px; } }
