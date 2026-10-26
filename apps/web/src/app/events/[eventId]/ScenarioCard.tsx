@@ -32,7 +32,16 @@ import {
 } from '@/lib/api'
 
 function gbp(minor: number): string {
-  return `£${Math.round(minor / 100).toLocaleString('en-GB')}`
+  return `${minor < 0 ? '-' : ''}£${Math.round(Math.abs(minor) / 100).toLocaleString('en-GB')}`
+}
+
+/** Honest runway phrasing — never fake precision (150.0 months) or a
+ *  double hedge ("about less than a month"). >5 years reads as a span,
+ *  not a decimal (intent 51). */
+export function runwayPhrase(months: number): string {
+  if (months < 1) return 'less than a month'
+  if (months > 60) return 'more than five years'
+  return `about ${Math.round(months)} ${Math.round(months) === 1 ? 'month' : 'months'}`
 }
 
 interface EarnerOption {
@@ -78,7 +87,7 @@ const MEDICAL_MONTHS = 12
 function runwayLine(result: ScenarioResult): string {
   return result.projectedRunwayMonths === null
     ? 'income would still cover expenses'
-    : `savings would cover about ${result.projectedRunwayMonths} months of spending`
+    : `savings would cover ${runwayPhrase(result.projectedRunwayMonths)} of spending`
 }
 
 /**
@@ -129,7 +138,7 @@ const SCENARIO_TEMPLATES: Record<string, ScenarioTemplate> = {
       const today = runwayIfStoppedNow(r, incomeLost)
       return (
         (today
-          ? `Today: if ${who} stopped now, your ${gbp(today.savingsMinor)} of savings would cover about ${today.months} months of spending. `
+          ? `Today: if ${who} stopped now, your ${gbp(today.savingsMinor)} of savings would cover ${runwayPhrase(today.months)} of spending. `
           : '') +
         `In ${horizonMonths} months, if you keep saving at today's pace: savings would reach about ${gbp(r.savingsAtChangeMinor)}, and then ${runwayLine(r)}.`
       )
