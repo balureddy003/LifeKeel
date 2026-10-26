@@ -137,6 +137,17 @@ export default function EventDetailClient() {
     fallbackExplanation,
   )
 
+  // "Partial", not "sample" (intent 53): when the readiness endpoint named
+  // missing inputs, the banner already says "using the data you have so
+  // far" — the explanation body must not call the same numbers a sample.
+  const displayExplanation =
+    !live && missingInputs.length > 0 && explanation === fallbackExplanation
+      ? explanation.replace(
+          'This is a sample scenario, not based on your data yet.',
+          'Using the data you have so far — this is a partial picture, with the missing inputs named above.',
+        )
+      : explanation
+
   // Tier 1 "prepare, don't send" (PRD-103) — draftText is editable once
   // generated; the only exits are copy-to-clipboard and a mailto: link,
   // never a send call from this app.
@@ -382,7 +393,7 @@ export default function EventDetailClient() {
               <Bot size={18} className="text-family-400" />
               <span className="text-sm font-semibold text-family-400">AI Explains</span>
             </div>
-            <p className="text-sm text-ink-secondary leading-relaxed">{explanation}</p>
+            <p className="text-sm text-ink-secondary leading-relaxed">{displayExplanation}</p>
             {learnMoreHref(ruleId) && (
               <Link
                 href={learnMoreHref(ruleId)!}
