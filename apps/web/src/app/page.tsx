@@ -1087,6 +1087,12 @@ export default function HomePage() {
                             </li>
                           ))}
                         </ul>
+                        {scoreComponents.some((c) => c.gated || c.score === null) && (
+                          <p className="mt-2 text-[11px] text-ink-tertiary">
+                            The score counts only what's on file — uncounted sections can't pull it
+                            up or down until they have data.
+                          </p>
+                        )}
                       </details>
                     )}
                     {profileCompleteness > 0 && profileCompleteness < 100 && (
