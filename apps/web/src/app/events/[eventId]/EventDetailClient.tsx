@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
+import { useRouter } from 'next/navigation'
 import { useRouteParam } from '@/lib/useRouteParam'
 import Link from 'next/link'
 import {
@@ -24,7 +25,12 @@ import { DraftProvenanceNote } from '@/components/DraftProvenance'
 import { haptic } from '@/lib/haptics'
 import { useEventReadiness } from '@/lib/useFamilyData'
 import { useAuth } from '@/lib/auth-context'
-import { prepareInsightDraft, fetchFinancialProfile, type FinancialProfilePolicy } from '@/lib/api'
+import {
+  prepareInsightDraft,
+  fetchFinancialProfile,
+  fetchLifeEvents,
+  type FinancialProfilePolicy,
+} from '@/lib/api'
 import { learnMoreHref } from '@/lib/detector-content'
 import EventScenarioCard, { eventHasScenario } from './ScenarioCard'
 import RetirementEstimate from './RetirementEstimate'
@@ -65,6 +71,24 @@ const EVENT_AI_EXPLANATION: Record<string, string> = {
 export default function EventDetailClient() {
   const eventId = useRouteParam('/events')
   const event = eventId ? LIFE_EVENTS.find((e) => e.id === eventId) : undefined
+  const router = useRouter()
+
+  // Server-reported life events carry a UUID, not a catalog id — a link to
+  // /events/<uuid> lands here on a miss. That event has its own playbook
+  // page at /life-events/<uuid>; resolve and route rather than claiming
+  // the event doesn't exist (intent 52).
+  useEffect(() => {
+    if (!eventId || event) return
+    let live = true
+    fetchLifeEvents().then((evts) => {
+      if (live && evts.some((e) => e.id === eventId)) {
+        router.replace(`/life-events/${eventId}`)
+      }
+    })
+    return () => {
+      live = false
+    }
+  }, [eventId, event, router])
   const [actions, setActions] = useState<Action[]>(
     EVENT_ACTIONS[event?.id ?? 'default'] ?? EVENT_ACTIONS.default!,
   )
