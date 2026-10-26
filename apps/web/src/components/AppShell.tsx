@@ -441,10 +441,13 @@ function AskKeelButton({ context }: { context?: string }) {
   )
 }
 
-// Public content pages. They do not depend on who is signed in, so they render straight away
-// instead of waiting behind the auth check: the static HTML a search engine fetches then holds
-// the page's text, not a loading skeleton (PRD-210, phase 1).
+// Pages that do not depend on who is signed in, so they render straight away instead of
+// waiting behind the auth check: the static HTML a search engine fetches then holds the page's
+// text, not a loading skeleton (PRD-210, phase 1). Sign-in and sign-up are here so they never
+// flash the dashboard skeleton first.
 const PUBLIC_CONTENT_PREFIXES = [
+  '/login',
+  '/signup',
   '/blog',
   '/guides',
   '/terms',

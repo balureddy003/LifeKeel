@@ -339,3 +339,11 @@
 
 @media (max-width: 1399px) { .landing.landing { --lk-gutter: 20px; } }
 @media (max-width: 599px) { .landing.landing { --lk-gutter: 12px; } }
+
+@media (max-width: 1399px) {
+  .landing.landing .lk-public-body:has(.lk-docs) { max-width: none; padding-inline: var(--lk-gutter); }
+  .landing.landing .lk-public-body > .lk-docs,
+  .landing.landing .lk-docs-main { max-width: none; }
+  .landing.landing.lk-auth .lk-auth-top { padding-inline: var(--lk-gutter); }
+  .landing.landing.lk-auth .lk-auth-layout { width: 100%; padding-inline: var(--lk-gutter); box-sizing: border-box; }
+}
