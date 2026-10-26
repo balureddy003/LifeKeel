@@ -95,8 +95,8 @@ describe('computeReadiness', () => {
       },
     }
     const c = computeReadiness(p, []).components.find((c) => c.key === 'emergency_fund')!
-    // £7.5k vs £2.5k/mo → 3 months → 50
-    expect(c.score).toBe(50)
+    // £7.5k vs £2.5k/mo → 3 months → 65 (piecewise curve — 3 months is 'adequate')
+    expect(c.score).toBe(65)
   })
 
   it('protection scores partial per-earner income protection', () => {
