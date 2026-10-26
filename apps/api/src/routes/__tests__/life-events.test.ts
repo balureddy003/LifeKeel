@@ -182,7 +182,12 @@ function makeDb(profile: typeof BASE_PROFILE | null) {
   const col = {
     findOne: vi.fn(async () => profile),
   }
-  return { collection: () => col } as any
+  const groupCol = {
+    findOne: vi.fn(async () => ({ members: [{ id: 'm-1' }, { id: 'm-2' }, { id: 'member-1' }] })),
+  }
+  return {
+    collection: (name: string) => (name === 'family_groups' ? groupCol : col),
+  } as any
 }
 
 async function buildApp(profile: typeof BASE_PROFILE | null = BASE_PROFILE) {
@@ -218,6 +223,26 @@ describe('PRD-108: POST /family/life-events', () => {
       payload: { event_type: 'divorce' },
     })
     expect(res.statusCode).toBe(400)
+  })
+
+  it('rejects an affected_member_id that names no roster member', async () => {
+    const { app } = await buildApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/life-events',
+      payload: { event_type: 'job_loss', affected_member_id: 'ghost-member' },
+    })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('accepts an affected_member_id that names a roster member', async () => {
+    const { app } = await buildApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/life-events',
+      payload: { event_type: 'job_loss', affected_member_id: 'm-1' },
+    })
+    expect(res.statusCode).toBe(201)
   })
 
   it("this session's exact acceptance criterion — job-loss runway shows the real emergency fund ÷ real monthly expenses, not a placeholder", async () => {
