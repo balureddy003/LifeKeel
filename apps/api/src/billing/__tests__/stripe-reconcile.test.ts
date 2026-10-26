@@ -46,7 +46,7 @@ describe('reconcileStripe', () => {
         .filter((a) => a.op === 'create')
         .map((a) => a.object)
         .sort(),
-    ).toEqual(['portal', 'price', 'product', 'webhook'])
+    ).toEqual(['portal', 'price', 'price', 'product', 'webhook'])
     expect(state.calls).toEqual([])
   })
 
