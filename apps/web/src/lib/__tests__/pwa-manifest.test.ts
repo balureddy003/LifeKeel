@@ -50,6 +50,6 @@ describe('service worker precache', () => {
     const list = /const APP_SHELL = \[([^\]]*)\]/.exec(sw)![1]!
     for (const authed of ['/vault', '/family', '/settings', '/documents', '/inbox'])
       expect(list).not.toContain(`'${authed}'`)
-    expect(sw).toContain('lifekeel-v5')
+    expect(sw).toContain('lifekeel-v6')
   })
 })
