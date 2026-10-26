@@ -52,7 +52,7 @@ interface EarnerOption {
   monthlySalaryMinor: number
 }
 
-interface Selections {
+export interface Selections {
   earner: EarnerOption | null
   amountMinor: number
   horizonMonths: number
@@ -108,7 +108,7 @@ export function runwayIfStoppedNow(
   return { savingsMinor, months: Math.round((savingsMinor / shortfall) * 10) / 10 }
 }
 
-const SCENARIO_TEMPLATES: Record<string, ScenarioTemplate> = {
+export const SCENARIO_TEMPLATES: Record<string, ScenarioTemplate> = {
   'job-loss': {
     title: 'If it happened later',
     // G7: scope chips — "Whole household" plus one option per earner. A

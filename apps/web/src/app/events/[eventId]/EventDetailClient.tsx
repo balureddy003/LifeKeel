@@ -57,16 +57,18 @@ const EVENT_STABILITY: Record<string, number> = {
   retirement: 65,
 }
 
-const EVENT_AI_EXPLANATION: Record<string, string> = {
-  bereavement:
-    'This is a sample scenario, not based on your data yet. Families in this situation typically lean on life insurance, employer survivor benefits, and any survivor pension to stay afloat. Connect your policies and documents so we can show your actual coverage instead of this example.',
-  medical:
-    'This is a sample scenario, not based on your data yet. Most health insurance plans cover emergencies after a deductible, up to an annual out-of-pocket maximum, with an HSA sometimes available for extra costs. Connect your insurance documents so we can show your actual coverage instead of this example.',
-  'job-loss':
-    'This is a sample scenario, not based on your data yet. Families typically lean on emergency savings and any income protection insurance to bridge a job loss. Connect your accounts and documents so we can show your actual runway instead of this example.',
-  retirement:
-    'This is a sample scenario, not based on your data yet. Retirement readiness usually comes down to pension progress, employer match, and monthly contributions. Connect your pension and investment accounts so we can show your actual progress instead of this example.',
-}
+// Intent 65 — the sample-narration path is deleted. Where the readiness
+// endpoint has no live data, the page says so and names what to add
+// (missing_inputs via the partial banner) instead of narrating a
+// scenario that was never computed. A wrong number is structurally
+// impossible when there's nothing on screen to put one in.
+const SAMPLE_NARRATIVE =
+  "Keel can't compute this scenario yet — none of your data feeds it. " +
+  'Connect your accounts or add the inputs the banner names, and this ' +
+  'becomes a real projection instead of a placeholder.'
+const PARTIAL_NARRATIVE =
+  'Using the data you have so far — this is a partial picture, with the ' +
+  'missing inputs named above.'
 
 export default function EventDetailClient() {
   const eventId = useRouteParam('/events')
@@ -127,10 +129,7 @@ export default function EventDetailClient() {
   }
 
   const fallbackStability = event ? (EVENT_STABILITY[event.id] ?? 80) : 80
-  const fallbackExplanation = event
-    ? (EVENT_AI_EXPLANATION[event.id] ??
-      'This is a sample scenario, not based on your data yet. Connect your accounts and documents to see a personalized readiness assessment for this situation.')
-    : 'This event could not be found.'
+  const fallbackExplanation = event ? SAMPLE_NARRATIVE : 'This event could not be found.'
   const { stability, explanation, live, missingInputs, insightId, ruleId } = useEventReadiness(
     eventId ?? '',
     fallbackStability,
@@ -142,10 +141,7 @@ export default function EventDetailClient() {
   // far" — the explanation body must not call the same numbers a sample.
   const displayExplanation =
     !live && missingInputs.length > 0 && explanation === fallbackExplanation
-      ? explanation.replace(
-          'This is a sample scenario, not based on your data yet.',
-          'Using the data you have so far — this is a partial picture, with the missing inputs named above.',
-        )
+      ? PARTIAL_NARRATIVE
       : explanation
 
   // Tier 1 "prepare, don't send" (PRD-103) — draftText is editable once
