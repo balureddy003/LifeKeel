@@ -134,6 +134,14 @@ export const TriggerSchema = z.object({
   detector_id: z.string(),
   rule_id: z.string(),
   /**
+   * Intent 68 (M2 disclosure join): the most restrictive audience the
+   * insight's inputs touched — computed INSIDE evaluate(), not filtered
+   * at HTTP. 'household' is everyone including youth; 'member' is adults;
+   * 'organiser' is the organiser only. A youth request can never receive
+   * an insight derived from an adult-scoped field.
+   */
+  disclosure: z.enum(['household', 'member', 'organiser']).optional(),
+  /**
    * 'approved': a human has approved this insight's actions but execution
    * hasn't been confirmed to have finished yet — durable, so a crash
    * between approval and execution still records the decision.
@@ -310,6 +318,14 @@ export const DetectorRuleSchema = z.object({
    * it and dispatch; the family's trust-tier rules (CLAUDE.md) apply.
    */
   action_intents: z.array(ActionIntentSchema).optional(),
+  /**
+   * Intent 68 (M2): the audience clearance this rule's inputs touch.
+   * 'organiser' = adult-only figures (estate, cover amounts); 'member' =
+   * member-scoped; 'household' (default) = everyone incl. youth. The
+   * insight inherits it — a youth request can never receive an insight
+   * derived from an organiser-scoped rule.
+   */
+  disclosure: z.enum(['household', 'member', 'organiser']).optional(),
   /**
    * Decision Support Quality (items 02/03):
    * Templates for alternatives, risk assessment, and exit criteria.

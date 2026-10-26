@@ -11,12 +11,13 @@ description: >
 version: 2.0.0
 signal_types:
   - family.estate
-industries: ["family", "estate", "protection"]
+industries: ['family', 'estate', 'protection']
 
 rules:
   - id: estate_no_will
+    disclosure: organiser
     name: No Will On File In The Estate Vault
-    condition: "data.has_will == 0"
+    condition: 'data.has_will == 0'
     confidence: 0.7
     # Estate gaps have no honest minor-unit cost — impact is 0 by design.
     impact_low: 0
@@ -31,8 +32,9 @@ rules:
       - Tell the other adults in your family where the original document is kept
 
   - id: estate_no_power_of_attorney
+    disclosure: organiser
     name: No Power Of Attorney On File In The Estate Vault
-    condition: "data.has_power_of_attorney == 0"
+    condition: 'data.has_power_of_attorney == 0'
     confidence: 0.7
     impact_low: 0
     impact_high: 0
@@ -46,8 +48,9 @@ rules:
       - Tell the other adults in your family who holds authority and where it's documented
 
   - id: legacy_will_review_due
+    disclosure: organiser
     name: A Will On File May Predate A Recorded Change
-    condition: "data.wills_stale > 0"
+    condition: 'data.wills_stale > 0'
     confidence: 0.7
     impact_low: 0
     impact_high: 0
@@ -61,8 +64,9 @@ rules:
       - Record the fresh review date in the legacy register when it's done
 
   - id: legacy_guardianship_gap
+    disclosure: organiser
     name: Guardian Nomination Not Recorded For A Dependent Child
-    condition: "data.minors_total > 0 and data.minors_with_guardian_nomination < data.minors_total"
+    condition: 'data.minors_total > 0 and data.minors_with_guardian_nomination < data.minors_total'
     confidence: 0.7
     impact_low: 0
     impact_high: 0
@@ -76,8 +80,9 @@ rules:
       - Consult a solicitor about formalising guardianship wishes for each child
 
   - id: legacy_executor_missing
+    disclosure: organiser
     name: A Named Executor Is No Longer Reachable In The Register
-    condition: "data.wills_with_dead_or_missing_executor > 0"
+    condition: 'data.wills_with_dead_or_missing_executor > 0'
     confidence: 0.7
     impact_low: 0
     impact_high: 0
@@ -91,8 +96,9 @@ rules:
       - Consult a solicitor about updating the executor named in the will
 
   - id: legacy_property_title_gap
+    disclosure: organiser
     name: Property Ownership Documentation Incomplete
-    condition: "data.properties_without_title_evidence > 0 or data.properties_ownership_unknown > 0"
+    condition: 'data.properties_without_title_evidence > 0 or data.properties_ownership_unknown > 0'
     confidence: 0.7
     impact_low: 0
     impact_high: 0
@@ -106,8 +112,9 @@ rules:
       - Consult a qualified local professional if the ownership record is unclear or contested
 
   - id: legacy_foreign_property_review
+    disclosure: organiser
     name: Property In Another Jurisdiction Has No Local Professional Recorded
-    condition: "data.properties_foreign_without_contact > 0"
+    condition: 'data.properties_foreign_without_contact > 0'
     confidence: 0.7
     impact_low: 0
     impact_high: 0
@@ -121,8 +128,9 @@ rules:
       - Ask that professional how local rules treat the property
 
   - id: legacy_will_asset_mismatch
+    disclosure: organiser
     name: A Recorded Property Is Not Referenced By Any Will On File
-    condition: "data.assets_unreferenced_by_any_will > 0"
+    condition: 'data.assets_unreferenced_by_any_will > 0'
     confidence: 0.7
     impact_low: 0
     impact_high: 0
@@ -136,8 +144,9 @@ rules:
       - Consult a solicitor about whether the will should name the property
 
   - id: legacy_beneficiary_conflict
+    disclosure: organiser
     name: Named Beneficiaries Differ Across Recorded Documents
-    condition: "data.beneficiary_conflicts > 0"
+    condition: 'data.beneficiary_conflicts > 0'
     confidence: 0.7
     impact_low: 0
     impact_high: 0
@@ -151,8 +160,9 @@ rules:
       - Consult a qualified local professional to confirm which designation applies where
 
   - id: legacy_original_location_unknown
+    disclosure: organiser
     name: Original Document Location Not Recorded
-    condition: "data.documents_without_original_location > 0"
+    condition: 'data.documents_without_original_location > 0'
     confidence: 0.7
     impact_low: 0
     impact_high: 0
