@@ -1380,6 +1380,9 @@ export interface FamilyDocument {
     | 'failed'
   uploadedAt: string
   extractedData?: Record<string, string>
+  /** Optional renewal date (YYYY-MM-DD) — free tier sets it manually;
+   *  the renewal detectors read it (intent 59). */
+  renewalDate?: string | null
 }
 
 /** Accepted by the upload pipeline; the server enforces the same list. */
@@ -1501,6 +1504,23 @@ export async function uploadDocument(
   })
   if (!res.ok) throw new Error(`Upload failed: ${res.status}`)
   return (await res.json()) as FamilyDocument
+}
+
+/** Set/clear a stored document's renewal date — the free-tier
+ *  'Stored — renews on X' confirmation (intent 59). */
+export async function patchDocumentRenewal(
+  documentId: string,
+  renewalDate: string | null,
+): Promise<boolean> {
+  const token = getAuthToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  const res = await credFetch(`${getApiBase()}/documents/${documentId}`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({ renewal_date: renewalDate }),
+  })
+  return res.ok
 }
 
 export async function fetchDocuments(): Promise<{
