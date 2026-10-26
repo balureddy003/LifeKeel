@@ -427,7 +427,7 @@ function renderIncomeStops(data: VerifiedAnswerData): RenderedAnswer {
       `computed from your profile, not estimated:\n\n` +
       numbers +
       (runway !== null
-        ? `\n\nSo the emergency fund would cover about **${runway} months** of the current gap.`
+        ? `\n\nSo the emergency fund would cover **${runway < 1 ? 'less than a month' : runway > 60 ? 'more than five years' : `about ${Math.round(runway)} ${Math.round(runway) === 1 ? 'month' : 'months'}`}** of the current gap.`
         : "\n\nUnder this scenario income would still cover expenses — the fund isn't drawn down.") +
       freshnessLine(data.profile),
     operation: 'income_stops',

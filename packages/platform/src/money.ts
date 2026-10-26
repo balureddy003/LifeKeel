@@ -9,7 +9,22 @@
  */
 
 export type MinorUnits = number & { readonly __brand: 'MinorUnits' }
-export type Currency = 'GBP' | 'USD' | 'EUR' | 'AUD' | 'CAD' | 'INR' | 'SGD' | 'AED' | 'ZAR' | 'NZD' | 'CHF' | 'JPY' | 'BRL' | 'MXN' | string
+export type Currency =
+  | 'GBP'
+  | 'USD'
+  | 'EUR'
+  | 'AUD'
+  | 'CAD'
+  | 'INR'
+  | 'SGD'
+  | 'AED'
+  | 'ZAR'
+  | 'NZD'
+  | 'CHF'
+  | 'JPY'
+  | 'BRL'
+  | 'MXN'
+  | string
 
 /** Convert a decimal string/number to minor units (integer pence/cents) */
 export function toMinorUnits(amount: string | number, decimals = 2): MinorUnits {
@@ -34,7 +49,20 @@ export function fromMinorUnits(minorUnits: number, decimals = 2): string {
 /** Format for display with currency symbol */
 export function formatMoney(minorUnits: number, currency: Currency = 'GBP'): string {
   const symbols: Record<string, string> = {
-    GBP: '£', USD: '$', EUR: '€', AUD: 'A$', CAD: 'C$', INR: '₹', SGD: 'S$', AED: 'د.إ', ZAR: 'R', NZD: 'NZ$', CHF: 'Fr', JPY: '¥', BRL: 'R$', MXN: 'Mex$',
+    GBP: '£',
+    USD: '$',
+    EUR: '€',
+    AUD: 'A$',
+    CAD: 'C$',
+    INR: '₹',
+    SGD: 'S$',
+    AED: 'د.إ',
+    ZAR: 'R',
+    NZD: 'NZ$',
+    CHF: 'Fr',
+    JPY: '¥',
+    BRL: 'R$',
+    MXN: 'Mex$',
   }
   const symbol = symbols[currency] ?? currency
   // Every detector-generated insight/playbook/notification renders money
@@ -42,8 +70,12 @@ export function formatMoney(minorUnits: number, currency: Currency = 'GBP'): str
   // without a grouping separator, a real figure like a life-cover shortfall
   // reads as "£200000.00", genuinely harder to parse at a glance than
   // "£200,000.00" and working against this app's any-age-accessible goal.
-  const major = (minorUnits / 100).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  return `${symbol}${major}`
+  // Whole amounts show no decimal tail ("£3,500" not "£3,500.00"); the
+  // sign belongs before the symbol ("-£2,000" not "£-2,000").
+  const major = (Math.abs(minorUnits) / 100).toLocaleString('en-GB', {
+    maximumFractionDigits: 2,
+  })
+  return `${minorUnits < 0 ? '-' : ''}${symbol}${major}`
 }
 
 export interface MoneyDisplay {
@@ -52,12 +84,29 @@ export interface MoneyDisplay {
   symbol: string
 }
 
-export function formatMoneyDisplay(minorUnits: number, currency: Currency = 'GBP', locale = 'en-GB'): MoneyDisplay {
+export function formatMoneyDisplay(
+  minorUnits: number,
+  currency: Currency = 'GBP',
+  locale = 'en-GB',
+): MoneyDisplay {
   const major = minorUnits / 100
   try {
-    const standard = new Intl.NumberFormat(locale, { style: 'currency', currency, notation: 'standard' })
-    const compact = new Intl.NumberFormat(locale, { style: 'currency', currency, notation: 'compact', maximumFractionDigits: 1 })
-    return { formatted: standard.format(major), compact: compact.format(major), symbol: standard.formatToParts(0).find(part => part.type === 'currency')?.value ?? currency }
+    const standard = new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency,
+      notation: 'standard',
+    })
+    const compact = new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency,
+      notation: 'compact',
+      maximumFractionDigits: 1,
+    })
+    return {
+      formatted: standard.format(major),
+      compact: compact.format(major),
+      symbol: standard.formatToParts(0).find((part) => part.type === 'currency')?.value ?? currency,
+    }
   } catch {
     return formatMoneyDisplay(minorUnits, currency, 'en-GB')
   }
