@@ -3374,6 +3374,9 @@ export interface LifeEventPlaybook {
   title: string
   intro: string
   steps: LifeEventPlaybookStep[]
+  /** Roster name when the event was reported for one member — the header
+   *  says who this playbook is about (intent 56). */
+  affected_member_name?: string
 }
 
 export interface LifeEvent {
