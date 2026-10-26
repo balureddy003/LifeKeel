@@ -180,7 +180,7 @@ describe('listInsightAttributions', () => {
 
 describe('findStaleArtefacts (intent 67 — derivation closure)', () => {
   it('returns only insights whose closure names a stale version', async () => {
-    const { findStaleArtefacts } = await import('../../insights-persist')
+    const { findStaleArtefacts } = await import('../../insights-persist.js')
     const store = {
       insights: [
         {
@@ -221,7 +221,7 @@ describe('findStaleArtefacts (intent 67 — derivation closure)', () => {
       profile_version: 4,
       detector_version: 'd1',
     })
-    expect(stale.map((i) => i.id)).toEqual(['i1'])
+    expect(stale.map((i: { id: string }) => i.id)).toEqual(['i1'])
     expect(total).toBe(3)
   })
 })
