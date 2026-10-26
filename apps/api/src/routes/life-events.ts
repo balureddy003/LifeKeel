@@ -172,6 +172,20 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
           .send({ error: 'Submit a financial profile before reporting a life event' })
       }
 
+      // Intent 49: an event "for" a member that isn't on the roster is a
+      // client mistake, not data — reject it rather than storing an
+      // orphaned reference the chart and playbooks can't resolve.
+      if (affected_member_id) {
+        const group = await getTenantCollection<{ members?: { id?: string }[] }>(
+          db,
+          'family_groups',
+          tenant_id,
+        ).findOne({})
+        if (!(group?.members ?? []).some((m) => m.id === affected_member_id)) {
+          return reply.status(404).send({ error: 'Member not found' })
+        }
+      }
+
       const id = crypto.randomUUID()
       const reported_at = new Date().toISOString()
       await persistSignal({
