@@ -369,7 +369,7 @@ function ModeEffects() {
 // the wrong differentiator under crisis stress, when a mis-tap matters
 // most. Shape + a text label make this unmistakable at a glance.
 //
-// SOS also sits at the TOP of the floating stack (bottom-52), not beside
+// SOS also sits at the TOP of the floating stack (bottom-40), not beside
 // the nav bar — Ask Keel owns the bottom-32 slot nearest the thumb. The
 // dangerous mis-tap direction is wanting chat and hitting emergency; with
 // SOS a full button-height above Ask Keel, a fumbled Ask Keel tap lands on
@@ -385,7 +385,7 @@ function EmergencyButton() {
         activateEmergency()
       }}
       whileTap={{ scale: 0.95 }}
-      className="fixed bottom-52 right-4 z-fab h-12 pl-3 pr-4 rounded-full flex items-center gap-1.5"
+      className="fixed bottom-40 right-4 z-fab h-12 pl-3 pr-4 rounded-full flex items-center gap-1.5"
       style={{
         background: 'linear-gradient(135deg, #f87171, #dc2626)',
         border: '1px solid rgba(255,255,255,0.2)',
@@ -429,9 +429,11 @@ function AskKeelButton({ context }: { context?: string }) {
         router.push(context ? `/assistant?context=${encodeURIComponent(context)}` : '/assistant')
       }}
       whileTap={{ scale: 0.9 }}
-      // Always the bottom slot (bottom-32): the frequent, harmless action
+      // Always the bottom slot (bottom-20): the frequent, harmless action
       // stays nearest the thumb; SOS — the dangerous mis-tap — is above it.
-      className="fixed bottom-32 right-4 z-fab w-12 h-12 rounded-full flex items-center justify-center"
+      // Both sit inside the page's pb-56 reserved band (224px), so at rest
+      // they hover over the gutter and never mid-screen over card content.
+      className="fixed bottom-20 right-4 z-fab w-12 h-12 rounded-full flex items-center justify-center"
       style={{
         background: 'rgb(var(--family-500))',
         border: '1px solid rgb(var(--tint) / 0.15)',
