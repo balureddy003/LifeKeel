@@ -91,3 +91,25 @@ suspected bug (reproduce first); 36 is an audit before fixes.
 | `45-hook-ab-variants.md` | one weekly slot emits a hook-variant pair | feeds PRD-221 priors |
 | `46-standing-approvals.md` | autonomous marketing engine with a human gate: content bank, policy, scheduler, breakers | amends intent 03 |
 | `47-search-console-and-ga4-readback.md` | read-only Search Console and GA4 read-back, a Search panel, topic suggestions from real queries | extends PRD-210 |
+| `48-insight-attribution-scope-and-display.md` | Attribution: tick credits only its insight; feed shows titles not rule_ids | — | OPEN |
+| `49-event-member-validation.md` | 404 on affected_member_id for a missing roster member | — | OPEN |
+| `50-property-playbook-honesty.md` | Property playbook names the no-policy gap; copy bug fixed | — | OPEN |
+| `51-runway-and-money-copy-honesty.md` | No fake-precise runways, negative money, or 'about less than a month' | — | OPEN |
+| `52-event-id-resolution.md` | Event detail resolves server ids to catalog scenarios | — | OPEN |
+| `53-sample-label-vs-partial-banner.md` | 'Partial', not 'sample', when missing-inputs banner shows | — | OPEN |
+| `54-profile-completeness-recalibration.md` | Completeness weights asked sections; per-section breakdown | — | OPEN |
+| `55-insight-severity-wiring.md` | Detector severity → insight priority; guardianship/will/zero-runway high | — | OPEN |
+| `56-member-name-on-scoped-pages.md` | Member-scoped pages name the affected member | — | OPEN |
+| `57-compound-event-answers.md` | Compound Ask Keel answers cover both events | — | OPEN |
+| `58-sw-network-first-html.md` | Network-first HTML; deploys don't strand stale bundles | — | OPEN |
+| `59-stored-doc-renewal-date.md` | Optional renewal_date on stored docs feeds renewal detectors | — | OPEN |
+| `60-post-setup-engagement-card.md` | One honest engagement card on Home after setup | — | OPEN |
+| `61-gateway-provider-preference.md` | Provider pick prefers approved+configured processors | — | OPEN |
+| `62-score-weight-softening-early-career.md` | Rebalance score weights — early-career baseline lands mid-band | — | OPEN |
+| `63-invite-sent-viewed-status.md` | Invite sent/viewed timestamps on the roster | — | OPEN |
+| `64-shipped-fields-visibility.md` | Surface shipped relationship_label + income_notes prominently | — | OPEN |
+| `65-numeral-presence-test.md` | Every rendered numeral must be in the solver payload; delete sample path | — | OPEN |
+| `66-score-ceiling-surfaced.md` | Components state when missing data caps them | — | OPEN |
+| `67-derivation-closure.md` | Artefact closures + minimal invalidation, measured | — | OPEN |
+| `68-disclosure-join-in-engine.md` | Disclosure labels joined inside evaluate, not at the route | — | OPEN |
+| `69-fab-stack-above-nav.md` | SOS/gold FABs anchored above nav, inside reserved band | — | IMPLEMENTED |
