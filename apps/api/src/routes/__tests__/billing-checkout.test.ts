@@ -189,7 +189,7 @@ describe('POST /billing/checkout — existing subscription guard', () => {
     // tenant_id on the subscription object lets customer.subscription.*
     // webhooks resolve the tenant even if checkout.session.completed was lost.
     expect(createArgs['subscription_data']).toEqual({
-      metadata: { tenant_id: TENANT, plan: 'starter' },
+      metadata: { tenant_id: TENANT, plan: 'starter', billing_interval: 'month' },
     })
   })
   it('sells the price found by its lookup_key, not a hard-coded id', async () => {
