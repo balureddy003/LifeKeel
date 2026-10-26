@@ -366,15 +366,21 @@ function resolveProvider(cfg: LlmConfig, model: string): LlmProvider {
   if (fromModel) return fromModel
   const override = envProviderOverride()
   if (override) return override
-  // Fall back to whichever API key is available. New providers go last so a
-  // newly-configured key never silently flips an existing deployment — use
-  // the operator override or LIFEKEEL_LLM_PROVIDER to promote one.
-  if (process.env['ANTHROPIC_API_KEY']) return 'anthropic'
-  if (process.env['OPENAI_API_KEY']) return 'openai'
+  // Fall back to whichever API key is available. Approved processors
+  // (definitions/ai-processors.yaml) scan first — an unreviewed provider
+  // is refused by policy in non-dev anyway, so letting it win over an
+  // approved configured key just yields canned replies (prod QA
+  // 2026-10-25: openai was configured, groq approved and bound — openai
+  // won the scan and every interactive call refused). Within each tier
+  // newer providers still scan last so a new key never silently flips a
+  // live deployment; use the operator override or LIFEKEEL_LLM_PROVIDER
+  // to promote one.
   if (process.env['AZURE_OPENAI_ENDPOINT']) return 'azure'
   if (process.env['VERTEX_PROJECT']) return 'vertex'
   if (process.env['GROQ_API_KEY']) return 'groq'
   if (process.env['XAI_API_KEY']) return 'xai'
+  if (process.env['ANTHROPIC_API_KEY']) return 'anthropic'
+  if (process.env['OPENAI_API_KEY']) return 'openai'
   if (
     process.env['OLLAMA_BASE_URL'] ||
     model.startsWith('llama') ||
@@ -1090,12 +1096,15 @@ export function createLlmRouterFromEnv(cfg: LlmConfig = {}): LlmFn {
 export function detectActiveProvider(): LlmProvider | null {
   const override = envProviderOverride()
   if (override) return override
-  if (process.env['ANTHROPIC_API_KEY']) return 'anthropic'
-  if (process.env['OPENAI_API_KEY']) return 'openai'
+  // Approved processors scan first (intent 61) — mirrors resolveProvider:
+  // an unreviewed provider is refused in non-dev, so letting it win over an
+  // approved configured key only yields canned replies.
   if (process.env['AZURE_OPENAI_ENDPOINT']) return 'azure'
   if (process.env['VERTEX_PROJECT']) return 'vertex'
   if (process.env['GROQ_API_KEY']) return 'groq'
   if (process.env['XAI_API_KEY']) return 'xai'
+  if (process.env['ANTHROPIC_API_KEY']) return 'anthropic'
+  if (process.env['OPENAI_API_KEY']) return 'openai'
   if (process.env['OLLAMA_BASE_URL']) return 'ollama'
   return null
 }
