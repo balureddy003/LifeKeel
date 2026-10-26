@@ -350,7 +350,11 @@ export default function LifeEventPlaybookClient() {
         <PageHeader
           title={playbook.title}
           backHref="/life-events"
-          subtitle="Based on your family's real data"
+          subtitle={
+            playbook.affected_member_name
+              ? `Affecting ${playbook.affected_member_name} · based on your family's real data`
+              : "Based on your family's real data"
+          }
         />
 
         {URGENT_TYPES.has(event.event_type) && <LifeSafetyNotice compact />}

@@ -54,6 +54,22 @@ const EVENT_INSIGHT_SCOPE: Record<string, string[]> = {
 }
 import type { FinancialProfile } from './family-financial-profile.js'
 
+/** Roster display name for an affected_member_id — member-scoped playbooks
+ *  name who they're for (intent 56). */
+async function memberNameFor(
+  db: Db,
+  tenantId: string,
+  memberId: string | undefined | null,
+): Promise<string | undefined> {
+  if (!memberId) return undefined
+  const group = await getTenantCollection<{ members?: { id?: string; name?: string }[] }>(
+    db,
+    'family_groups',
+    tenantId,
+  ).findOne({})
+  return (group?.members ?? []).find((m) => m.id === memberId)?.name
+}
+
 // Full Emergency-Mode taxonomy: the 5 crisis tiles (bereavement, medical,
 // car, property, travel) plus job_loss/disability. Until this list covered
 // all of them, the tiles routed to the hypothetical /events simulator —
@@ -135,10 +151,26 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
 
     const profile = await profileFor(tenant_id).findOne({})
 
+    const memberNames = new Map<string, string>()
+    for (const doc of docs) {
+      const mid = doc.data.affected_member_id
+      if (mid && !memberNames.has(mid)) {
+        const name = await memberNameFor(db, tenant_id, mid)
+        if (name) memberNames.set(mid, name)
+      }
+    }
+
     return {
       events: docs.map((doc) => {
         const playbook = profile
-          ? renderPlaybook(doc.data.event_type, profile, doc.data.affected_member_id)
+          ? renderPlaybook(
+              doc.data.event_type,
+              profile,
+              doc.data.affected_member_id,
+              doc.data.affected_member_id
+                ? memberNames.get(doc.data.affected_member_id)
+                : undefined,
+            )
           : null
         return {
           id: doc.id,
@@ -244,7 +276,12 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
         )
       }
 
-      const playbook = renderPlaybook(event_type, profile, affected_member_id)
+      const playbook = renderPlaybook(
+        event_type,
+        profile,
+        affected_member_id,
+        await memberNameFor(db, tenant_id, affected_member_id),
+      )
 
       // Crisis-release re-scope (see the plan): a Tier-3 notification, not
       // an autonomous release — every adult already has standing vault

@@ -44,6 +44,11 @@ export interface Playbook {
   title: string
   intro: string
   steps: PlaybookStep[]
+  /** Roster name of the member this event was reported for, when scoped —
+   *  the page header uses it so a member-scoped playbook says who it's
+   *  about ("If Priya's income stopped") rather than reading as the
+   *  household aggregate (intent 56). */
+  affected_member_name?: string
 }
 
 interface RawPlaybookStep {
@@ -503,12 +508,14 @@ export function renderPlaybook(
   eventType: LifeEventType,
   rawProfile: FinancialProfile,
   affectedMemberId?: string,
+  affectedMemberName?: string,
 ): Playbook {
   const profile = normalizeProfile(rawProfile)
   const raw = loadRawPlaybook(eventType)
   return {
     event_type: raw.event_type,
     title: raw.title,
+    ...(affectedMemberName ? { affected_member_name: affectedMemberName } : {}),
     intro: raw.intro,
     steps: raw.steps.map((step) => {
       const contacts = step.contact
