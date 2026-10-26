@@ -135,11 +135,21 @@ const REFRESH_PRESERVE = new Set([
   'feedback',
 ])
 
+export interface DerivationClosure {
+  /** The detector/engine version that produced the artefact. */
+  detector_version?: string
+  /** financial_profiles.version the inputs were read from (KEEL-006). */
+  profile_version?: number
+  /** Roster/permission revision the artefact was derived under. */
+  permission_version?: string | number
+}
+
 export async function persistAndDeliverInsights(
   db: Db,
   insights: Insight[],
   tenantId: string,
   deliveryRouter?: DeliveryRouter,
+  closure?: DerivationClosure,
 ): Promise<void> {
   if (insights.length === 0) return
 
@@ -207,7 +217,7 @@ export async function persistAndDeliverInsights(
       )
       await insightsCol.updateOne(
         { id: openMatches[0]!.id },
-        { $set: { ...refresh, refreshed_at: new Date() } },
+        { $set: { ...refresh, refreshed_at: new Date(), ...(closure ? { closure } : {}) } },
       )
       continue
     }
@@ -260,7 +270,11 @@ export async function persistAndDeliverInsights(
   // trade for the isolation guarantee, not a meaningful performance cost.
   await Promise.all(
     newInsights.map((insight) =>
-      insightsCol.updateOne({ id: insight.id }, { $setOnInsert: insight }, { upsert: true }),
+      insightsCol.updateOne(
+        { id: insight.id },
+        { $setOnInsert: closure ? { ...insight, closure } : insight },
+        { upsert: true },
+      ),
     ),
   )
   await ensureVerifiedMoments(db, newInsights, tenantId)
@@ -324,4 +338,36 @@ export async function resolveStaleInsights(
     { $set: { state: 'resolved', resolved_at: new Date() } },
   )
   for (const insight of stale) emitInsightEvent(db, tenantId, insight, 'insight_resolved')
+}
+
+/** Intent 67 (M1 derivation closure): the minimal invalidation set.
+ *  Given the current derivation versions, returns the open insights whose
+ *  stored closure names a STALE version — i.e. exactly the artefacts a
+ *  change invalidates, not the whole collection. Today the callers
+ *  regenerate everything and dedupe after; this is the lookup that lets a
+ *  future write path recompute only what the change touched, and the
+ *  measured-invalidation metric is `stale` vs `total`. */
+export async function findStaleArtefacts(
+  db: Db,
+  tenantId: string,
+  current: DerivationClosure,
+): Promise<{ stale: Insight[]; total: number }> {
+  const insightsCol = getTenantCollection<Insight>(db, 'insights', tenantId)
+  const open = await insightsCol.find({ state: { $in: OPEN_STATES } }).toArray()
+  const stale = open.filter((i: Insight) => {
+    const c = (i as Record<string, unknown>).closure as DerivationClosure | undefined
+    if (!c) return false // pre-closure insights are not invalidated by this pass
+    return (
+      (current.detector_version !== undefined &&
+        c.detector_version !== undefined &&
+        c.detector_version !== current.detector_version) ||
+      (current.profile_version !== undefined &&
+        c.profile_version !== undefined &&
+        c.profile_version !== current.profile_version) ||
+      (current.permission_version !== undefined &&
+        c.permission_version !== undefined &&
+        c.permission_version !== current.permission_version)
+    )
+  })
+  return { stale, total: open.length }
 }
