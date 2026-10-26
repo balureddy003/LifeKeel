@@ -45,12 +45,28 @@ describe('PRD-108: renderPlaybook', () => {
   })
 
   it('job-loss runway reflects a real emergency_fund ÷ monthly_expenses computation, not a static string', () => {
-    const withThreeMonths = renderPlaybook('job_loss', makeProfile({
-      emergency_fund: { emergency_savings_minor: 900000, monthly_expenses_minor: 300000, has_high_interest_debt: false, high_interest_debt_balance_minor: 0 },
-    }))
-    const withOneMonth = renderPlaybook('job_loss', makeProfile({
-      emergency_fund: { emergency_savings_minor: 300000, monthly_expenses_minor: 300000, has_high_interest_debt: false, high_interest_debt_balance_minor: 0 },
-    }))
+    const withThreeMonths = renderPlaybook(
+      'job_loss',
+      makeProfile({
+        emergency_fund: {
+          emergency_savings_minor: 900000,
+          monthly_expenses_minor: 300000,
+          has_high_interest_debt: false,
+          high_interest_debt_balance_minor: 0,
+        },
+      }),
+    )
+    const withOneMonth = renderPlaybook(
+      'job_loss',
+      makeProfile({
+        emergency_fund: {
+          emergency_savings_minor: 300000,
+          monthly_expenses_minor: 300000,
+          has_high_interest_debt: false,
+          high_interest_debt_balance_minor: 0,
+        },
+      }),
+    )
     const runway3 = withThreeMonths.steps.find((s) => s.id === 'runway')!.body
     const runway1 = withOneMonth.steps.find((s) => s.id === 'runway')!.body
     expect(runway3).toContain('3 months')
@@ -59,24 +75,49 @@ describe('PRD-108: renderPlaybook', () => {
   })
 
   it('job-loss mortgage step reflects a real outstanding balance when one is on file, and an honest absence otherwise', () => {
-    const withMortgage = renderPlaybook('job_loss', makeProfile({
-      household: { employment_status: 'employed', monthly_salary_minor: 400000, annual_living_expenses_minor: 3600000, mortgage_outstanding_minor: 25_000_000, life_cover_minor: 10_000_000, income_protection_monthly_minor: 400000, monthly_debt_payments_minor: 0, members: [] },
-    }))
+    const withMortgage = renderPlaybook(
+      'job_loss',
+      makeProfile({
+        household: {
+          employment_status: 'employed',
+          monthly_salary_minor: 400000,
+          annual_living_expenses_minor: 3600000,
+          mortgage_outstanding_minor: 25_000_000,
+          life_cover_minor: 10_000_000,
+          income_protection_monthly_minor: 400000,
+          monthly_debt_payments_minor: 0,
+          members: [],
+        },
+      }),
+    )
     const withoutMortgage = renderPlaybook('job_loss', makeProfile())
 
     const stepWith = withMortgage.steps.find((s) => s.id === 'notify_mortgage_lender')!.body
     const stepWithout = withoutMortgage.steps.find((s) => s.id === 'notify_mortgage_lender')!.body
-    expect(stepWith).toContain('£250,000.00') // 25,000,000 minor units
+    expect(stepWith).toContain('£250,000') // 25,000,000 minor units
     expect(stepWithout).toMatch(/don't have a mortgage on file/i)
   })
 
   it("bereavement's notify_insurers step lists every policy by provider and type when nothing is member-attributed", () => {
-    const playbook = renderPlaybook('bereavement', makeProfile({
-      policies: [
-        { type: 'life', provider: 'Aviva', coverage_amount_minor: 10_000_000, monthly_premium_minor: 2000 },
-        { type: 'home', provider: 'Direct Line', coverage_amount_minor: 2_000_000, monthly_premium_minor: 500 },
-      ],
-    }))
+    const playbook = renderPlaybook(
+      'bereavement',
+      makeProfile({
+        policies: [
+          {
+            type: 'life',
+            provider: 'Aviva',
+            coverage_amount_minor: 10_000_000,
+            monthly_premium_minor: 2000,
+          },
+          {
+            type: 'home',
+            provider: 'Direct Line',
+            coverage_amount_minor: 2_000_000,
+            monthly_premium_minor: 500,
+          },
+        ],
+      }),
+    )
     const body = playbook.steps.find((s) => s.id === 'notify_insurers')!.body
     expect(body).toContain('Aviva')
     expect(body).toContain('Direct Line')
@@ -88,13 +129,34 @@ describe('PRD-108: renderPlaybook', () => {
   // tell the family to "contact" both in one undifferentiated, urgent-
   // sounding instruction during the worst week of their life.
   it("bereavement's notify_insurers step separates the deceased's own policies from other family members' when member_id is on file", () => {
-    const playbook = renderPlaybook('bereavement', makeProfile({
-      policies: [
-        { type: 'life', provider: 'Aviva', coverage_amount_minor: 10_000_000, monthly_premium_minor: 2000, member_id: 'deceased-1' },
-        { type: 'life', provider: 'Legal & General', coverage_amount_minor: 5_000_000, monthly_premium_minor: 1500, member_id: 'surviving-spouse-1' },
-        { type: 'home', provider: 'Direct Line', coverage_amount_minor: 2_000_000, monthly_premium_minor: 500 },
-      ],
-    }), 'deceased-1')
+    const playbook = renderPlaybook(
+      'bereavement',
+      makeProfile({
+        policies: [
+          {
+            type: 'life',
+            provider: 'Aviva',
+            coverage_amount_minor: 10_000_000,
+            monthly_premium_minor: 2000,
+            member_id: 'deceased-1',
+          },
+          {
+            type: 'life',
+            provider: 'Legal & General',
+            coverage_amount_minor: 5_000_000,
+            monthly_premium_minor: 1500,
+            member_id: 'surviving-spouse-1',
+          },
+          {
+            type: 'home',
+            provider: 'Direct Line',
+            coverage_amount_minor: 2_000_000,
+            monthly_premium_minor: 500,
+          },
+        ],
+      }),
+      'deceased-1',
+    )
     const body = playbook.steps.find((s) => s.id === 'notify_insurers')!.body
 
     // The deceased's own policy reads as the urgent, "contact this" instruction.
@@ -108,57 +170,122 @@ describe('PRD-108: renderPlaybook', () => {
   })
 
   it("bereavement's notify_insurers step falls back to the undifferentiated list when an affected member is named but no policy is attributed to anyone", () => {
-    const playbook = renderPlaybook('bereavement', makeProfile({
-      policies: [
-        { type: 'life', provider: 'Aviva', coverage_amount_minor: 10_000_000, monthly_premium_minor: 2000 },
-      ],
-    }), 'deceased-1')
+    const playbook = renderPlaybook(
+      'bereavement',
+      makeProfile({
+        policies: [
+          {
+            type: 'life',
+            provider: 'Aviva',
+            coverage_amount_minor: 10_000_000,
+            monthly_premium_minor: 2000,
+          },
+        ],
+      }),
+      'deceased-1',
+    )
     const body = playbook.steps.find((s) => s.id === 'notify_insurers')!.body
-    expect(body).toBe('Based on your real data, your family\'s policies on file are: Aviva (life). Contact each provider to start a claim or notify them of the death.')
+    expect(body).toBe(
+      "Based on your real data, your family's policies on file are: Aviva (life). Contact each provider to start a claim or notify them of the death.",
+    )
   })
 
   it("disability's check_cover branches correctly on income_protection and critical_illness cover", () => {
-    const covered = renderPlaybook('disability', makeProfile({
-      policies: [{ type: 'critical_illness', provider: 'Bupa', coverage_amount_minor: 5_000_000, monthly_premium_minor: 1500 }],
-    }))
-    const uncovered = renderPlaybook('disability', makeProfile({
-      household: { employment_status: 'employed', monthly_salary_minor: 400000, annual_living_expenses_minor: 3600000, mortgage_outstanding_minor: 0, life_cover_minor: 10_000_000, income_protection_monthly_minor: 0, monthly_debt_payments_minor: 0, members: [] },
-    }))
+    const covered = renderPlaybook(
+      'disability',
+      makeProfile({
+        policies: [
+          {
+            type: 'critical_illness',
+            provider: 'Bupa',
+            coverage_amount_minor: 5_000_000,
+            monthly_premium_minor: 1500,
+          },
+        ],
+      }),
+    )
+    const uncovered = renderPlaybook(
+      'disability',
+      makeProfile({
+        household: {
+          employment_status: 'employed',
+          monthly_salary_minor: 400000,
+          annual_living_expenses_minor: 3600000,
+          mortgage_outstanding_minor: 0,
+          life_cover_minor: 10_000_000,
+          income_protection_monthly_minor: 0,
+          monthly_debt_payments_minor: 0,
+          members: [],
+        },
+      }),
+    )
     expect(covered.steps.find((s) => s.id === 'check_cover')!.body).toMatch(/how to claim/i)
     expect(uncovered.steps.find((s) => s.id === 'check_cover')!.body).toMatch(/why that matters/i)
   })
 
   it('resolves affectedMemberId against household.members[] rather than only the household total', () => {
-    const playbook = renderPlaybook('disability', makeProfile({
-      household: {
-        employment_status: 'employed',
-        monthly_salary_minor: 400000,
-        annual_living_expenses_minor: 3600000,
-        mortgage_outstanding_minor: 0,
-        life_cover_minor: 10_000_000,
-        income_protection_monthly_minor: 0,
-        monthly_debt_payments_minor: 0,
-        members: [{ member_id: 'member-1', employment_status: 'employed', monthly_salary_minor: 300000, income_protection_monthly_minor: 300000 }],
-      },
-    }), 'member-1')
+    const playbook = renderPlaybook(
+      'disability',
+      makeProfile({
+        household: {
+          employment_status: 'employed',
+          monthly_salary_minor: 400000,
+          annual_living_expenses_minor: 3600000,
+          mortgage_outstanding_minor: 0,
+          life_cover_minor: 10_000_000,
+          income_protection_monthly_minor: 0,
+          monthly_debt_payments_minor: 0,
+          members: [
+            {
+              member_id: 'member-1',
+              employment_status: 'employed',
+              monthly_salary_minor: 300000,
+              income_protection_monthly_minor: 300000,
+            },
+          ],
+        },
+      }),
+      'member-1',
+    )
     expect(playbook.steps.find((s) => s.id === 'check_cover')!.body).toMatch(/how to claim/i)
   })
 
   it('falls back to household-level fields when affectedMemberId does not match any roster member', () => {
-    const playbook = renderPlaybook('disability', makeProfile({
-      household: { employment_status: 'employed', monthly_salary_minor: 400000, annual_living_expenses_minor: 3600000, mortgage_outstanding_minor: 0, life_cover_minor: 10_000_000, income_protection_monthly_minor: 0, monthly_debt_payments_minor: 0, members: [] },
-    }), 'no-such-member')
+    const playbook = renderPlaybook(
+      'disability',
+      makeProfile({
+        household: {
+          employment_status: 'employed',
+          monthly_salary_minor: 400000,
+          annual_living_expenses_minor: 3600000,
+          mortgage_outstanding_minor: 0,
+          life_cover_minor: 10_000_000,
+          income_protection_monthly_minor: 0,
+          monthly_debt_payments_minor: 0,
+          members: [],
+        },
+      }),
+      'no-such-member',
+    )
     expect(playbook.steps.find((s) => s.id === 'check_cover')!.body).toMatch(/why that matters/i)
   })
 })
 
 describe('travel playbook — check_travel_cover', () => {
   const step = (policies: FinancialProfile['policies']) =>
-    renderPlaybook('travel', makeProfile({ policies })).steps.find((s) => s.id === 'check_travel_cover')!.body
+    renderPlaybook('travel', makeProfile({ policies })).steps.find(
+      (s) => s.id === 'check_travel_cover',
+    )!.body
 
   it('names a real travel policy on file, rather than claiming travel cover is never tracked', () => {
     const body = step([
-      { type: 'travel', provider: 'Aviva', coverage_amount_minor: 0, monthly_premium_minor: 0, policy_number: 'TRV-1' },
+      {
+        type: 'travel',
+        provider: 'Aviva',
+        coverage_amount_minor: 0,
+        monthly_premium_minor: 0,
+        policy_number: 'TRV-1',
+      },
     ])
     expect(body).toContain('Aviva')
     expect(body).toContain('TRV-1')
@@ -175,7 +302,9 @@ describe('travel playbook — check_travel_cover', () => {
   })
 
   it('falls back to health cover when no travel policy is on file', () => {
-    const body = step([{ type: 'health', provider: 'Bupa', coverage_amount_minor: 0, monthly_premium_minor: 0 }])
+    const body = step([
+      { type: 'health', provider: 'Bupa', coverage_amount_minor: 0, monthly_premium_minor: 0 },
+    ])
     expect(body).toContain('Bupa')
     expect(body).not.toContain('travel insurance with')
   })
@@ -188,45 +317,105 @@ describe('travel playbook — check_travel_cover', () => {
 })
 
 describe('step contacts — real phone/email a "contact" step can put in front of the family', () => {
-  it('travel: surfaces the travel policy\'s real assistance number, the exact gap the session\'s original crisis scenario needed', () => {
-    const playbook = renderPlaybook('travel', makeProfile({
-      policies: [{ type: 'travel', provider: 'Aviva', coverage_amount_minor: 0, monthly_premium_minor: 0, contact_phone: '+44 1603 622 999', contact_email: 'claims@aviva.co.uk' }],
-    }))
+  it("travel: surfaces the travel policy's real assistance number, the exact gap the session's original crisis scenario needed", () => {
+    const playbook = renderPlaybook(
+      'travel',
+      makeProfile({
+        policies: [
+          {
+            type: 'travel',
+            provider: 'Aviva',
+            coverage_amount_minor: 0,
+            monthly_premium_minor: 0,
+            contact_phone: '+44 1603 622 999',
+            contact_email: 'claims@aviva.co.uk',
+          },
+        ],
+      }),
+    )
     const step = playbook.steps.find((s) => s.id === 'emergency_assistance')!
-    expect(step.contacts).toEqual([{ provider: 'Aviva', phone: '+44 1603 622 999', email: 'claims@aviva.co.uk' }])
+    expect(step.contacts).toEqual([
+      { provider: 'Aviva', phone: '+44 1603 622 999', email: 'claims@aviva.co.uk' },
+    ])
   })
 
   it('a policy with no contact info on file yields no contacts, not a guessed one', () => {
-    const playbook = renderPlaybook('car', makeProfile({
-      policies: [{ type: 'car', provider: 'Admiral', coverage_amount_minor: 0, monthly_premium_minor: 0 }],
-    }))
+    const playbook = renderPlaybook(
+      'car',
+      makeProfile({
+        policies: [
+          { type: 'car', provider: 'Admiral', coverage_amount_minor: 0, monthly_premium_minor: 0 },
+        ],
+      }),
+    )
     const step = playbook.steps.find((s) => s.id === 'notify_insurer')!
     expect(step.contacts).toBeUndefined()
   })
 
-  it('bereavement: only the deceased-attributed policy\'s contact surfaces, not an unrelated survivor\'s', () => {
-    const playbook = renderPlaybook('bereavement', makeProfile({
-      policies: [
-        { type: 'life', provider: 'Aviva', coverage_amount_minor: 0, monthly_premium_minor: 0, member_id: 'deceased', contact_phone: '0800 000 000' },
-        { type: 'life', provider: 'Legal & General', coverage_amount_minor: 0, monthly_premium_minor: 0, member_id: 'survivor', contact_phone: '0800 111 111' },
-      ],
-    }), 'deceased')
+  it("bereavement: only the deceased-attributed policy's contact surfaces, not an unrelated survivor's", () => {
+    const playbook = renderPlaybook(
+      'bereavement',
+      makeProfile({
+        policies: [
+          {
+            type: 'life',
+            provider: 'Aviva',
+            coverage_amount_minor: 0,
+            monthly_premium_minor: 0,
+            member_id: 'deceased',
+            contact_phone: '0800 000 000',
+          },
+          {
+            type: 'life',
+            provider: 'Legal & General',
+            coverage_amount_minor: 0,
+            monthly_premium_minor: 0,
+            member_id: 'survivor',
+            contact_phone: '0800 111 111',
+          },
+        ],
+      }),
+      'deceased',
+    )
     const step = playbook.steps.find((s) => s.id === 'notify_insurers')!
     expect(step.contacts).toEqual([{ provider: 'Aviva', phone: '0800 000 000', email: undefined }])
   })
 
   it('a step with no matching policy field (e.g. a mortgage lender or employer) legitimately has no contacts to offer', () => {
-    const playbook = renderPlaybook('job_loss', makeProfile({
-      household: { employment_status: 'employed', monthly_salary_minor: 400000, annual_living_expenses_minor: 3600000, mortgage_outstanding_minor: 20_000_000, life_cover_minor: 0, income_protection_monthly_minor: 0, monthly_debt_payments_minor: 0, members: [] },
-    }))
+    const playbook = renderPlaybook(
+      'job_loss',
+      makeProfile({
+        household: {
+          employment_status: 'employed',
+          monthly_salary_minor: 400000,
+          annual_living_expenses_minor: 3600000,
+          mortgage_outstanding_minor: 20_000_000,
+          life_cover_minor: 0,
+          income_protection_monthly_minor: 0,
+          monthly_debt_payments_minor: 0,
+          members: [],
+        },
+      }),
+    )
     const step = playbook.steps.find((s) => s.id === 'notify_mortgage_lender')!
     expect(step.contacts).toBeUndefined()
   })
 
   it('a non-contact step never carries contacts, even if a matching policy has phone/email on file', () => {
-    const playbook = renderPlaybook('car', makeProfile({
-      policies: [{ type: 'car', provider: 'Admiral', coverage_amount_minor: 0, monthly_premium_minor: 0, contact_phone: '0800 222 222' }],
-    }))
+    const playbook = renderPlaybook(
+      'car',
+      makeProfile({
+        policies: [
+          {
+            type: 'car',
+            provider: 'Admiral',
+            coverage_amount_minor: 0,
+            monthly_premium_minor: 0,
+            contact_phone: '0800 222 222',
+          },
+        ],
+      }),
+    )
     const step = playbook.steps.find((s) => s.id === 'check_car_insurance')!
     expect(step.contact).toBe(false)
     expect(step.contacts).toBeUndefined()
