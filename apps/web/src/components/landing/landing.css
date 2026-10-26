@@ -1,32 +1,28 @@
-/*
- * Landing tokens (PRD-209). Scoped to .landing so the signed-in app is untouched.
- * The app sets data-theme on <html> before first paint, so dark is keyed off that.
- * landing-contrast.test.ts parses this file and checks every text pair.
- */
+@import './redesign.css';
+
+/* Public and account screens share the app's four-colour palette. */
 .landing {
-  --bg: #eef3f4; --surface: #ffffff; --ink: #0e2433; --muted: #42596a; --line: #cfdce0; --field-line: #6b8391;
-  --brass: #a6730f; --brass-text: #7a5206; --ok: #1f7a5a; --ok-text: #17664a;
-  --cta: #d9a441; --on-cta: #14202a; --crest: rgba(255, 255, 255, 0.55);
-  --sky-a: #cfe3ea; --sky-b: #f7ecd9; --dusk-a: #cfd9e6; --dusk-b: #ebd9c4;
-  --sn1: #d3ead9; --sn2: #f6e6b4; --sn3: #ecc8a0; --sn4: #d0dcea;
-  --wave: #2b7f97; --wave-2: #1d6a82; --wave-3: #14566b;
-  --display: var(--font-display), Georgia, 'Times New Roman', serif;
+  --bg: #fdfcf9; --surface: #ffffff; --ink: #21332e; --muted: #52615b;
+  --line: #dedfd7; --field-line: #718278;
+  --brass: #294936; --brass-text: #294936; --ok: #1f5950; --ok-text: #1f5950;
+  --cta: #a9e995; --on-cta: #21332e; --crest: #92e1d7;
+  --sky-a: #d3b8f5; --sky-b: #92e1d7; --dusk-a: #ffafa3; --dusk-b: #ffda87;
+  --sn1: #92e1d7; --sn2: #d3b8f5; --sn3: #ffafa3; --sn4: #ffda87;
+  --wave: #d3b8f5; --wave-2: #92e1d7; --wave-3: #ffafa3;
+  --display: var(--font-body), system-ui, -apple-system, 'Segoe UI', sans-serif;
   --body: var(--font-body), system-ui, -apple-system, 'Segoe UI', sans-serif;
   --wordmark: var(--font-wordmark), Georgia, 'Times New Roman', serif;
   --mono: var(--font-mono), ui-monospace, Menlo, Consolas, monospace;
-  background: var(--bg);
-  color: var(--ink);
-  font-family: var(--body);
-  /* contain child margins so this background paints them, not the app behind */
-  display: flow-root;
+  background: var(--bg); color: var(--ink); font-family: var(--body); display: flow-root;
 }
 :root[data-theme='dark'] .landing {
-  --bg: #0a1822; --surface: #10242f; --ink: #e8eef2; --muted: #93a9b6; --line: #22404f; --field-line: #5f8193;
-  --brass: #e2b45c; --brass-text: #e2b45c; --ok: #6fc2a0; --ok-text: #6fc2a0;
-  --cta: #e2b45c; --on-cta: #1a1203; --crest: rgba(255, 255, 255, 0.16);
-  --sky-a: #0d2a3a; --sky-b: #1d4a5c; --dusk-a: #0a1420; --dusk-b: #2d2540;
-  --sn1: #123a34; --sn2: #3a3320; --sn3: #3a2a1c; --sn4: #16283c;
-  --wave: #1f5f77; --wave-2: #17475a; --wave-3: #0f3647;
+  --bg: #17231f; --surface: #21332c; --ink: #f6f6ec; --muted: #bfcdc3;
+  --line: #425349; --field-line: #bfcdc3;
+  --brass: #b6eda3; --brass-text: #b6eda3; --ok: #92e1d7; --ok-text: #92e1d7;
+  --cta: #a9e995; --on-cta: #21332e; --crest: #92e1d7;
+  --sky-a: #302440; --sky-b: #234b48; --dusk-a: #5b3b38; --dusk-b: #604c2c;
+  --sn1: #234b48; --sn2: #302440; --sn3: #5b3b38; --sn4: #604c2c;
+  --wave: #d3b8f5; --wave-2: #92e1d7; --wave-3: #ffafa3;
 }
 .landing :focus-visible { outline: 3px solid var(--brass-text); outline-offset: 3px; }
 

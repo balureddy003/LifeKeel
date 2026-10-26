@@ -21,22 +21,32 @@ export function LifeSafetyNotice({ compact = false }: { compact?: boolean }) {
 
   if (compact) {
     return (
-      <div className="rounded-xl border border-danger/30 px-3.5 py-3 mb-4 flex items-start gap-2" style={{ background: 'rgba(248,113,113,0.08)' }}>
+      <div
+        className="rounded-xl border border-danger/30 px-3.5 py-3 mb-4 flex items-start gap-2"
+        style={{ background: 'rgba(255,175,163,0.08)' }}
+      >
         <ShieldAlert size={15} className="text-danger flex-shrink-0 mt-0.5" />
         <p className="text-xs leading-relaxed text-ink-secondary">
-          <span className="font-semibold text-ink-primary">If anyone is in immediate danger, call {emergency.label}</span> now
-          — the steps below are insurance and financial admin, not first response.
+          <span className="font-semibold text-ink-primary">
+            If anyone is in immediate danger, call {emergency.label}
+          </span>{' '}
+          now — the steps below are insurance and financial admin, not first response.
         </p>
       </div>
     )
   }
 
   return (
-    <div className="rounded-2xl border border-danger/30 px-4 py-3 flex items-start gap-2.5" style={{ background: 'rgba(248,113,113,0.1)' }}>
+    <div
+      className="rounded-2xl border border-danger/30 px-4 py-3 flex items-start gap-2.5"
+      style={{ background: 'rgba(255,175,163,0.1)' }}
+    >
       <ShieldAlert size={18} className="text-danger flex-shrink-0 mt-0.5" />
       <p className="text-sm leading-relaxed text-ink-primary">
-        <span className="font-semibold">If anyone is in immediate danger, call {emergency.label} now.</span> Keel can
-        help with the insurance and financial steps after.
+        <span className="font-semibold">
+          If anyone is in immediate danger, call {emergency.label} now.
+        </span>{' '}
+        Keel can help with the insurance and financial steps after.
       </p>
     </div>
   )

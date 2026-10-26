@@ -1,17 +1,15 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: [
-    './src/**/*.{js,ts,jsx,tsx,mdx}',
-  ],
+  content: ['./src/**/*.{js,ts,jsx,tsx,mdx}'],
   theme: {
     extend: {
       colors: {
         // Refined accent — cool indigo/violet (Linear/Perplexity-inspired)
         family: {
-          50: '#fdf6e7',
-          100: '#faecc8',
-          200: '#f3d896',
-          300: '#ecc56a',
+          50: '#d3b8f5',
+          100: '#92e1d7',
+          200: '#ffafa3',
+          300: '#ffda87',
           // Text/link purple on the page surface — reads from the CSS var
           // so it stays AA-legible in both themes (light theme darkens it).
           400: 'rgb(var(--family-400) / <alpha-value>)',
@@ -31,8 +29,8 @@ module.exports = {
           accent: 'rgb(var(--family-accent) / <alpha-value>)',
           600: 'rgb(var(--family-600) / <alpha-value>)',
           700: 'rgb(var(--family-700) / <alpha-value>)',
-          800: '#7a5206',
-          900: '#5c3d04',
+          800: '#5b3978',
+          900: '#302440',
         },
         // The one token every white-alpha surface goes through. Dark theme
         // maps it to white; light theme to near-black — so bg-tint/5 is the
@@ -81,31 +79,31 @@ module.exports = {
       // was never intentional, just unscaled. html is 17px so rem steps
       // resolve slightly larger than a stock Tailwind setup.
       fontSize: {
-        caption:      ['10px',   '13px'],  // tab labels, badges
-        footnote:     ['12px',   '16px'],  // fine print, timestamps, card meta
-        subhead:      ['13.5px', '18px'],  // secondary body, list subtitles
-        callout:      ['15px',   '20px'],  // emphasized body, card titles
-        lead:         ['1.05rem','1.5'],   // hero/intro paragraphs
-        'title-sm':   ['1.3rem', '1.2'],   // section headings
-        'title-md':   ['1.5rem', '1.2'],   // page-section headings
-        'title-lg':   ['1.8rem', '1.15'],  // page titles (PageHeader)
-        'display-sm': ['2.1rem', '1.15'],  // marketing hero
-        'display':    ['2.6rem', '1.1'],   // marketing hero, lg+
+        caption: ['16px', '24px'], // tab labels, badges
+        footnote: ['12px', '16px'], // fine print, timestamps, card meta
+        subhead: ['16px', '24px'], // secondary body, list subtitles
+        callout: ['15px', '20px'], // emphasized body, card titles
+        lead: ['1.05rem', '1.5'], // hero/intro paragraphs
+        'title-sm': ['1.3rem', '1.2'], // section headings
+        'title-md': ['1.5rem', '1.2'], // page-section headings
+        'title-lg': ['1.8rem', '1.15'], // page titles (PageHeader)
+        'display-sm': ['2.1rem', '1.15'], // marketing hero
+        display: ['2.6rem', '1.1'], // marketing hero, lg+
       },
       // Named stacking scale — replaces ad-hoc z-10/20/30/40/50/[60]/[100]/
       // [200] literals that only held order by coincidence. Layers read
       // bottom→top: backdrop < content < sticky headers < nav < FABs <
       // banners < overlays < modals < skip link (always topmost).
       zIndex: {
-        behind: '-10',   // MeshGradient page backdrop
-        raised: '10',    // in-component stacking above sibling layers
-        sticky: '20',    // sticky page headers (PageHeader)
-        nav: '30',       // primary navigation (tab bar, rail, marketing nav)
-        fab: '40',       // floating action buttons (Ask Keel, Emergency)
-        banner: '50',    // status banners (OfflineBanner)
-        overlay: '60',   // EmergencyMode full-screen overlay
-        modal: '100',    // BottomSheet, CommandPalette
-        skip: '200',     // skip-to-content link — nothing goes above this
+        behind: '-10', // MeshGradient page backdrop
+        raised: '10', // in-component stacking above sibling layers
+        sticky: '20', // sticky page headers (PageHeader)
+        nav: '30', // primary navigation (tab bar, rail, marketing nav)
+        fab: '40', // floating action buttons (Ask Keel, Emergency)
+        banner: '50', // status banners (OfflineBanner)
+        overlay: '60', // EmergencyMode full-screen overlay
+        modal: '100', // BottomSheet, CommandPalette
+        skip: '200', // skip-to-content link — nothing goes above this
       },
       animation: {
         'slide-up': 'slideUp 0.3s ease-out',

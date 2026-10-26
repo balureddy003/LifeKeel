@@ -237,7 +237,7 @@ function ElderlyHome() {
               style={{
                 minHeight: 80,
                 background: item.danger
-                  ? 'linear-gradient(135deg, #f87171, #dc2626)'
+                  ? 'linear-gradient(135deg, #ffafa3, #ffafa3)'
                   : 'rgb(var(--tint) / 0.03)',
                 border: item.danger ? 'none' : '1px solid rgb(var(--tint) / 0.08)',
                 backdropFilter: item.danger ? 'none' : 'blur(40px)',
@@ -252,11 +252,11 @@ function ElderlyHome() {
                     : 'rgb(var(--family-accent) / 0.1)',
                 }}
               >
-                <Icon size={24} color={item.danger ? '#fff' : 'rgb(var(--family-accent))'} />
+                <Icon size={24} color={item.danger ? '#302440' : 'rgb(var(--family-accent))'} />
               </div>
               <span
                 className="text-xl font-semibold"
-                style={{ color: item.danger ? '#fff' : undefined }}
+                style={{ color: item.danger ? '#302440' : undefined }}
               >
                 {item.label}
               </span>

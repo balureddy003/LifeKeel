@@ -245,7 +245,7 @@ export default function EventDetailClient() {
               {stability !== null && (
                 <span
                   className="text-2xl font-bold"
-                  style={{ color: stability >= 80 ? '#4ade80' : '#fbbf24' }}
+                  style={{ color: stability >= 80 ? '#92e1d7' : '#ffda87' }}
                 >
                   {stability}%
                 </span>
@@ -257,8 +257,8 @@ export default function EventDetailClient() {
                   <motion.div
                     className="h-full rounded-full"
                     style={{
-                      backgroundColor: stability >= 80 ? '#4ade80' : '#fbbf24',
-                      boxShadow: `0 0 12px ${stability >= 80 ? '#4ade80' : '#fbbf24'}80`,
+                      backgroundColor: stability >= 80 ? '#92e1d7' : '#ffda87',
+                      boxShadow: `0 0 12px ${stability >= 80 ? '#92e1d7' : '#ffda87'}80`,
                     }}
                     initial={{ width: 0 }}
                     animate={{ width: `${stability}%` }}
@@ -362,8 +362,8 @@ export default function EventDetailClient() {
                 <motion.div
                   className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
                   animate={{
-                    backgroundColor: action.done ? '#4ade80' : 'rgb(var(--tint) / 0.05)',
-                    borderColor: action.done ? '#4ade80' : 'rgb(var(--tint) / 0.1)',
+                    backgroundColor: action.done ? '#92e1d7' : 'rgb(var(--tint) / 0.05)',
+                    borderColor: action.done ? '#92e1d7' : 'rgb(var(--tint) / 0.1)',
                   }}
                   style={{ border: '2px solid' }}
                 >

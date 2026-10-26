@@ -15,17 +15,20 @@ interface TimelinePoint {
   runwayMonths: number | null
 }
 
-export function ScenarioTimeline({ timeline, fundDepletedAtMonth }: {
+export function ScenarioTimeline({
+  timeline,
+  fundDepletedAtMonth,
+}: {
   timeline: TimelinePoint[]
   fundDepletedAtMonth: number | null
 }) {
   if (!timeline || timeline.length < 2) return null
 
   const W = 280
-  const H = 80
-  const PAD_X = 8
-  const PAD_TOP = 12
-  const PAD_BOTTOM = 20
+  const H = 108
+  const PAD_X = 16
+  const PAD_TOP = 26
+  const PAD_BOTTOM = 26
 
   const maxMonth = Math.max(...timeline.map((p) => p.atMonth))
   const maxSavings = Math.max(...timeline.map((p) => p.savingsMinor))
@@ -38,22 +41,21 @@ export function ScenarioTimeline({ timeline, fundDepletedAtMonth }: {
 
   // Build the path — smooth curve through points
   const points = timeline.map((p) => ({ x: toX(p.atMonth), y: toY(p.savingsMinor) }))
-  const linePath = points
-    .map((p, i) => (i === 0 ? `M${p.x},${p.y}` : `L${p.x},${p.y}`))
-    .join(' ')
+  const linePath = points.map((p, i) => (i === 0 ? `M${p.x},${p.y}` : `L${p.x},${p.y}`)).join(' ')
 
   // Area fill under the line
   const areaPath = `${linePath} L${points[points.length - 1]!.x},${H - PAD_BOTTOM} L${points[0]!.x},${H - PAD_BOTTOM} Z`
 
   // Depletion marker — where the fund hits zero
-  const depleted = fundDepletedAtMonth !== null && fundDepletedAtMonth <= maxMonth
-    ? toX(fundDepletedAtMonth)
-    : null
+  const depleted =
+    fundDepletedAtMonth !== null && fundDepletedAtMonth <= maxMonth
+      ? toX(fundDepletedAtMonth)
+      : null
 
   // Color: red if fund depletes, amber if declining, green if stable/growing
   const isDepleted = fundDepletedAtMonth !== null
   const isDeclining = timeline[timeline.length - 1]!.savingsMinor < timeline[0]!.savingsMinor
-  const strokeColor = isDepleted ? '#f87171' : isDeclining ? '#fbbf24' : '#4ade80'
+  const strokeColor = isDepleted ? '#ffafa3' : isDeclining ? '#ffda87' : '#92e1d7'
 
   const fmt = (minor: number) => `£${Math.round(minor / 100).toLocaleString('en-GB')}`
 
@@ -109,7 +111,7 @@ export function ScenarioTimeline({ timeline, fundDepletedAtMonth }: {
             y1={PAD_TOP}
             x2={depleted}
             y2={H - PAD_BOTTOM}
-            stroke="#f87171"
+            stroke="#ffafa3"
             strokeWidth={1}
             strokeDasharray="3 3"
             initial={{ opacity: 0 }}
@@ -119,18 +121,31 @@ export function ScenarioTimeline({ timeline, fundDepletedAtMonth }: {
         )}
 
         {/* Month labels */}
-        {timeline.map((p) => (
-          <text
-            key={`label-${p.atMonth}`}
-            x={toX(p.atMonth)}
-            y={H - 4}
-            textAnchor="middle"
-            className="fill-ink-tertiary"
-            fontSize={8}
-          >
-            {p.atMonth === 0 ? 'now' : `mo ${p.atMonth}`}
-          </text>
-        ))}
+        {timeline
+          .filter(
+            (_, index) =>
+              index === 0 ||
+              index === timeline.length - 1 ||
+              index % Math.ceil((timeline.length - 1) / 3) === 0,
+          )
+          .map((p) => (
+            <text
+              key={`label-${p.atMonth}`}
+              x={toX(p.atMonth)}
+              y={H - 4}
+              textAnchor={
+                p.atMonth === timeline[0]!.atMonth
+                  ? 'start'
+                  : p.atMonth === maxMonth
+                    ? 'end'
+                    : 'middle'
+              }
+              className="fill-ink-tertiary"
+              fontSize={16}
+            >
+              {p.atMonth === 0 ? 'now' : `mo ${p.atMonth}`}
+            </text>
+          ))}
 
         {/* Value labels at first and last points */}
         <text
@@ -138,7 +153,7 @@ export function ScenarioTimeline({ timeline, fundDepletedAtMonth }: {
           y={points[0]!.y - 6}
           textAnchor="start"
           className="fill-ink-secondary"
-          fontSize={8}
+          fontSize={16}
           fontWeight={600}
         >
           {fmt(timeline[0]!.savingsMinor)}
@@ -148,7 +163,7 @@ export function ScenarioTimeline({ timeline, fundDepletedAtMonth }: {
           y={points[points.length - 1]!.y - 6}
           textAnchor="end"
           className="fill-ink-secondary"
-          fontSize={8}
+          fontSize={16}
           fontWeight={600}
         >
           {fmt(timeline[timeline.length - 1]!.savingsMinor)}
@@ -157,11 +172,11 @@ export function ScenarioTimeline({ timeline, fundDepletedAtMonth }: {
         {/* Depletion label */}
         {depleted !== null && (
           <text
-            x={depleted}
+            x={Math.min(W - 42, Math.max(42, depleted))}
             y={PAD_TOP - 2}
             textAnchor="middle"
-            fill="#f87171"
-            fontSize={7}
+            fill="#ffafa3"
+            fontSize={16}
             fontWeight={600}
           >
             fund out

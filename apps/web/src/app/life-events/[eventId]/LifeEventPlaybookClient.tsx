@@ -438,8 +438,8 @@ export default function LifeEventPlaybookClient() {
                     <motion.div
                       className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
                       animate={{
-                        backgroundColor: done ? '#4ade80' : 'rgb(var(--tint) / 0.05)',
-                        borderColor: done ? '#4ade80' : 'rgb(var(--tint) / 0.1)',
+                        backgroundColor: done ? '#92e1d7' : 'rgb(var(--tint) / 0.05)',
+                        borderColor: done ? '#92e1d7' : 'rgb(var(--tint) / 0.1)',
                       }}
                       style={{ border: '2px solid' }}
                     >

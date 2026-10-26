@@ -1869,20 +1869,7 @@ export default function FinancialProfilePage() {
         </motion.div>
       </AnimatePresence>
 
-      {/* Sticky rather than inline-after-the-form — on a long step (Insurance
-          Policies, with several policy cards), the primary action used to
-          sit wherever the form happened to end, so reaching it meant
-          scrolling all the way down first. A fixed thumb-reachable footer
-          is the standard mobile-form pattern for exactly this reason.
-          bottom-0 docked this flush with the true viewport edge, directly
-          underneath the persistent mobile tab bar (nav: z-30, this had no
-          z-index at all) — confirmed live: every tap on "Continue" landed
-          on the tab bar's Family icon instead, silently discarding the
-          step's answers (Continue never even fires). bottom-24 (matching
-          Toast's identical "float above the mobile nav" offset) clears the
-          nav's own h-16 + safe-area instead of hiding behind it; no mobile
-          nav exists at md+, where this reverts to true bottom-0. */}
-      <div className="sticky bottom-24 md:bottom-0 z-raised -mx-5 px-5 pt-3 pb-3 mt-2 flex gap-2 bg-navbg/90 backdrop-blur-xl border-t border-tint/[0.05] safe-area-bottom">
+      <div className="sticky bottom-[var(--app-dock-space)] min-[1400px]:bottom-0 z-raised -mx-5 px-5 pt-3 pb-3 mt-2 flex gap-2 bg-navbg/90 backdrop-blur-xl border-t border-tint/[0.05] safe-area-bottom">
         {stepIndex > 0 && (
           <button
             type="button"

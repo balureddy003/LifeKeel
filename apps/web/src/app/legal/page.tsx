@@ -1,6 +1,14 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { PageHeader } from '@/components/Glass'
+import {
+  ArrowUpRight,
+  Cookie,
+  FileText,
+  Fingerprint,
+  ShieldCheck,
+  LockKeyhole,
+  Scale,
+} from 'lucide-react'
 
 export const metadata: Metadata = {
   title: 'Legal — LifeKeel',
@@ -9,57 +17,74 @@ export const metadata: Metadata = {
   alternates: { canonical: 'https://lifekeel.co.uk/legal/' },
 }
 
-const PAGES = [
+const DOCUMENTS = [
   {
     href: '/terms',
-    title: 'Terms of Service',
-    text: 'The agreement for using LifeKeel: what it is and is not, accounts, billing, acceptable use and liability.',
+    title: 'Terms of service',
+    description: 'The agreement for using LifeKeel, your account and our service.',
+    Icon: FileText,
   },
   {
     href: '/privacy',
-    title: 'Privacy Notice',
-    text: 'What we collect, why, the lawful basis for each use, who we share it with and how long we keep it.',
+    title: 'Privacy notice',
+    description: 'What information we use, why we use it and the choices you have.',
+    Icon: Fingerprint,
   },
   {
     href: '/cookies',
-    title: 'Cookies & device storage',
-    text: 'Every cookie and storage entry LifeKeel sets on your device, and how to change your choice.',
+    title: 'Cookies & storage',
+    description: 'What is stored on your device and how to manage optional cookies.',
+    Icon: Cookie,
   },
   {
     href: '/legal/gdpr',
     title: 'GDPR & your data rights',
-    text: 'Your rights under UK and EU data-protection law, how to use them in LifeKeel, and how to complain.',
+    description: 'Your rights under UK and EU data-protection law and how to use them.',
+    Icon: Scale,
   },
   {
     href: '/security',
     title: 'Security',
-    text: 'How your family’s information is protected, and how to report a weakness to us.',
+    description: 'How to report a vulnerability and help keep LifeKeel safe.',
+    Icon: LockKeyhole,
   },
   {
     href: '/trust',
-    title: 'Trust',
-    text: 'The statements we make about handling your data, each with the evidence behind it.',
+    title: 'Trust centre',
+    description: 'Published safeguards, processing information and backup details.',
+    Icon: ShieldCheck,
   },
 ]
 
-export default function LegalIndex() {
+export default function LegalPage() {
   return (
-    <div className="px-5 pt-2 pb-12">
-      <PageHeader title="Legal" />
-      <p className="text-sm text-ink-secondary leading-relaxed mb-6 max-w-[62ch]">
-        The documents that govern how LifeKeel works and how it handles your household&apos;s
-        information. LifeKeel provides information, not regulated financial advice.
+    <div className="lk-legal-index">
+      <p className="lk-eyebrow">LEGAL & TRUST</p>
+      <h1>
+        Clear terms.
+        <br />
+        No small print surprises.
+      </h1>
+      <p className="lk-intro">
+        Your family&apos;s information deserves clear explanations. Find our policies, your choices
+        and the details behind how LifeKeel works.
       </p>
-      <div className="grid gap-3 sm:grid-cols-2">
-        {PAGES.map((p) => (
-          <Link key={p.href} href={p.href} className="block">
-            <article className="glass h-full rounded-2xl p-5 transition-colors hover:border-family-500/40">
-              <h2 className="text-lg font-semibold text-ink-primary">{p.title}</h2>
-              <p className="mt-1.5 text-sm leading-relaxed text-ink-secondary">{p.text}</p>
-            </article>
+      <div className="lk-legal-index-grid">
+        {DOCUMENTS.map(({ href, title, description, Icon }) => (
+          <Link key={href} href={href} className="lk-legal-card">
+            <Icon size={26} aria-hidden="true" />
+            <h2>{title}</h2>
+            <p>{description}</p>
+            <span>
+              Read more <ArrowUpRight size={17} aria-hidden="true" />
+            </span>
           </Link>
         ))}
       </div>
+      <p className="lk-fine">
+        Have a question? <Link href="/support">Talk to us through Support.</Link> Each policy states
+        its own status and effective date where applicable.
+      </p>
     </div>
   )
 }

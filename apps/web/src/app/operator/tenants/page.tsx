@@ -5,7 +5,15 @@ import Link from 'next/link'
 import { ChevronDown, ChevronUp, Search, Users } from 'lucide-react'
 import { GlassCard } from '@/components/Glass'
 import { useToast } from '@/components/Toast'
-import { fetchOperatorTenants, fetchOperatorTenant, suspendOperatorTenant, reactivateOperatorTenant, type OperatorTenant, type OperatorTenantHealth, type OperatorTenantMember } from '@/lib/api'
+import {
+  fetchOperatorTenants,
+  fetchOperatorTenant,
+  suspendOperatorTenant,
+  reactivateOperatorTenant,
+  type OperatorTenant,
+  type OperatorTenantHealth,
+  type OperatorTenantMember,
+} from '@/lib/api'
 import { ReasonAction } from '../_components/ReasonAction'
 import { Pager } from '../_components/Pager'
 
@@ -21,7 +29,7 @@ const STATUS_OPTIONS = [
  *  number never reads as a black box. */
 function healthClasses(score: number): string {
   if (score >= 80) return 'border-success/30 text-success'
-  if (score >= 50) return 'border-amber-500/40 text-amber-400'
+  if (score >= 50) return 'border-warning/40 text-warning'
   return 'border-danger/40 text-danger'
 }
 
@@ -59,7 +67,11 @@ export default function OperatorTenantsPage() {
     setLoading(true)
     setError(null)
     try {
-      const result = await fetchOperatorTenants(q, { status: statusFilter || undefined }, { limit: PAGE_SIZE, ...(cursor ? { cursor } : {}) })
+      const result = await fetchOperatorTenants(
+        q,
+        { status: statusFilter || undefined },
+        { limit: PAGE_SIZE, ...(cursor ? { cursor } : {}) },
+      )
       setTenants(result.tenants)
       setTotal(result.total)
       setNextCursor(result.next_cursor)
@@ -71,7 +83,9 @@ export default function OperatorTenantsPage() {
   }, [])
 
   const currentCursor = cursors[cursors.length - 1]
-  useEffect(() => { if (ready) void load(query.trim(), status, currentCursor) }, [ready, load, cursors, status]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (ready) void load(query.trim(), status, currentCursor)
+  }, [ready, load, cursors, status]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function onQueryChange(value: string) {
     setQuery(value)
@@ -124,10 +138,19 @@ export default function OperatorTenantsPage() {
   return (
     <div>
       <h1 className="text-2xl font-semibold">Tenants</h1>
-      <p className="mt-1 text-sm text-ink-tertiary">Family workspaces, plans, membership and lifecycle state.</p>
+      <p className="mt-1 text-sm text-ink-tertiary">
+        Family workspaces, plans, membership and lifecycle state.
+      </p>
       <form onSubmit={search} className="mt-5 flex gap-2">
-        <input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="Tenant name or ID" className="glass-input min-w-0 flex-1 rounded-xl px-4 py-3 text-sm" />
-        <button className="rounded-xl bg-family-500 px-4 text-white" aria-label="Search tenants"><Search size={18} /></button>
+        <input
+          value={query}
+          onChange={(event) => onQueryChange(event.target.value)}
+          placeholder="Tenant name or ID"
+          className="glass-input min-w-0 flex-1 rounded-xl px-4 py-3 text-sm"
+        />
+        <button className="rounded-xl bg-family-500 px-4 text-white" aria-label="Search tenants">
+          <Search size={18} />
+        </button>
       </form>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {STATUS_OPTIONS.map((option) => (
@@ -141,8 +164,12 @@ export default function OperatorTenantsPage() {
         ))}
       </div>
       {error && <p className="mt-4 text-sm text-danger">{error}</p>}
-      <p className="mt-5 text-xs text-ink-tertiary">{total !== undefined ? `${total.toLocaleString()} tenants` : `${tenants.length} shown`}</p>
-      {loading ? <div className="shimmer mt-2 h-32 rounded-2xl" /> : (
+      <p className="mt-5 text-xs text-ink-tertiary">
+        {total !== undefined ? `${total.toLocaleString()} tenants` : `${tenants.length} shown`}
+      </p>
+      {loading ? (
+        <div className="shimmer mt-2 h-32 rounded-2xl" />
+      ) : (
         <div className="mt-2 space-y-3">
           {tenants.map((tenant) => (
             <GlassCard key={tenant.tenant_id} className="p-4">
@@ -160,7 +187,11 @@ export default function OperatorTenantsPage() {
                       {tenant.health.score}
                     </span>
                   )}
-                  <span className={`rounded-full border px-2 py-0.5 text-xs ${tenant.status === 'suspended' ? 'border-danger/25 text-danger' : 'border-tint/[0.08]'}`}>{tenant.status ?? 'unknown'}</span>
+                  <span
+                    className={`rounded-full border px-2 py-0.5 text-xs ${tenant.status === 'suspended' ? 'border-danger/25 text-danger' : 'border-tint/[0.08]'}`}
+                  >
+                    {tenant.status ?? 'unknown'}
+                  </span>
                 </div>
               </div>
               <div className="mt-3 flex gap-4 text-sm text-ink-secondary">
@@ -168,8 +199,13 @@ export default function OperatorTenantsPage() {
                   onClick={() => void toggleMembers(tenant.tenant_id)}
                   className="flex items-center gap-1 text-family-400 hover:underline"
                 >
-                  <Users size={14} /> {tenant.user_count} {tenant.user_count === 1 ? 'user' : 'users'}
-                  {expanded === tenant.tenant_id ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                  <Users size={14} /> {tenant.user_count}{' '}
+                  {tenant.user_count === 1 ? 'user' : 'users'}
+                  {expanded === tenant.tenant_id ? (
+                    <ChevronUp size={12} />
+                  ) : (
+                    <ChevronDown size={12} />
+                  )}
                 </button>
                 <span>{tenant.plan ?? 'free'} plan</span>
                 {tenant.country && <span>{tenant.country}</span>}
@@ -177,7 +213,12 @@ export default function OperatorTenantsPage() {
               {tenant.health && tenant.health.factors.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {tenant.health.factors.map((f) => (
-                    <span key={f.label} className="rounded-full bg-danger/10 px-2 py-0.5 text-[11px] text-danger">{f.label}</span>
+                    <span
+                      key={f.label}
+                      className="rounded-full bg-danger/10 px-2 py-0.5 text-[11px] text-danger"
+                    >
+                      {f.label}
+                    </span>
                   ))}
                 </div>
               )}
@@ -188,19 +229,33 @@ export default function OperatorTenantsPage() {
                   ) : (
                     <>
                       {(members[tenant.tenant_id] ?? []).map((member) => (
-                        <div key={member.id} className="flex items-center justify-between gap-2 py-1.5 text-xs">
+                        <div
+                          key={member.id}
+                          className="flex items-center justify-between gap-2 py-1.5 text-xs"
+                        >
                           <div className="min-w-0">
                             <span className="font-medium text-ink-secondary">{member.name}</span>{' '}
                             <span className="text-ink-tertiary">{member.email}</span>
                           </div>
                           <div className="flex shrink-0 items-center gap-2 text-ink-tertiary">
                             <span>{member.roles.join(', ')}</span>
-                            <span className={member.status === 'suspended' ? 'text-danger' : 'text-success'}>{member.status ?? 'active'}</span>
+                            <span
+                              className={
+                                member.status === 'suspended' ? 'text-danger' : 'text-success'
+                              }
+                            >
+                              {member.status ?? 'active'}
+                            </span>
                           </div>
                         </div>
                       ))}
-                      {(members[tenant.tenant_id] ?? []).length === 0 && <p className="text-xs text-ink-tertiary">No members.</p>}
-                      <Link href={`/operator/users?tenant=${encodeURIComponent(tenant.tenant_id)}`} className="mt-2 inline-block text-xs text-family-400 hover:underline">
+                      {(members[tenant.tenant_id] ?? []).length === 0 && (
+                        <p className="text-xs text-ink-tertiary">No members.</p>
+                      )}
+                      <Link
+                        href={`/operator/users?tenant=${encodeURIComponent(tenant.tenant_id)}`}
+                        className="mt-2 inline-block text-xs text-family-400 hover:underline"
+                      >
                         Manage members in Users →
                       </Link>
                     </>
@@ -209,17 +264,42 @@ export default function OperatorTenantsPage() {
               )}
               <div className="mt-3">
                 {tenant.status === 'suspended' ? (
-                  <ReasonAction label="Reactivate tenant" onConfirm={async (r) => { await reactivateOperatorTenant(tenant.tenant_id, r); toast({ message: 'Tenant reactivated' }); await load(query.trim(), status, currentCursor) }} />
+                  <ReasonAction
+                    label="Reactivate tenant"
+                    onConfirm={async (r) => {
+                      await reactivateOperatorTenant(tenant.tenant_id, r)
+                      toast({ message: 'Tenant reactivated' })
+                      await load(query.trim(), status, currentCursor)
+                    }}
+                  />
                 ) : (
-                  <ReasonAction label="Suspend tenant" destructive onConfirm={async (r) => { await suspendOperatorTenant(tenant.tenant_id, r); toast({ message: 'Tenant suspended' }); await load(query.trim(), status, currentCursor) }} />
+                  <ReasonAction
+                    label="Suspend tenant"
+                    destructive
+                    onConfirm={async (r) => {
+                      await suspendOperatorTenant(tenant.tenant_id, r)
+                      toast({ message: 'Tenant suspended' })
+                      await load(query.trim(), status, currentCursor)
+                    }}
+                  />
                 )}
               </div>
             </GlassCard>
           ))}
-          {tenants.length === 0 && <p className="text-sm text-ink-tertiary">No tenants match this filter.</p>}
+          {tenants.length === 0 && (
+            <p className="text-sm text-ink-tertiary">No tenants match this filter.</p>
+          )}
         </div>
       )}
-      <Pager page={cursors.length} count={tenants.length} total={total} hasNext={nextCursor !== undefined} onPrev={goPrev} onNext={goNext} loading={loading} />
+      <Pager
+        page={cursors.length}
+        count={tenants.length}
+        total={total}
+        hasNext={nextCursor !== undefined}
+        onPrev={goPrev}
+        onNext={goNext}
+        loading={loading}
+      />
     </div>
   )
 }

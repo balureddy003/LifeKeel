@@ -16,6 +16,8 @@ const SRC = path.resolve(__dirname, '..', '..')
 
 const PUBLIC_FILES = [
   'components/MarketingLanding.tsx',
+  'components/landing/HomeExperience.tsx',
+  'components/landing/HomePricing.tsx',
   'components/landing/SiteHeader.tsx',
   'components/landing/SiteFooter.tsx',
   'components/landing/SignupCard.tsx',

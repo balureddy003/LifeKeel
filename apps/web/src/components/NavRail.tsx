@@ -34,18 +34,6 @@ const ROUTE_TAB_OVERRIDES: Record<string, string> = {
   '/connect': '/finances',
 }
 
-/**
- * The medium/expanded-width counterpart to LiquidTabBar — Material Design
- * 3's navigation-rail pattern (a left-edge icon+label strip) rather than
- * the same bottom bar just stretched wider. Shown only at md: and up;
- * AppShell hides LiquidTabBar at that same breakpoint so exactly one
- * navigation surface is ever visible.
- *
- * This is also the only place the Keel mark appears anywhere in the
- * authenticated app — on a phone the bottom bar carries the app's
- * identity implicitly (it's the one thing on screen after the OS chrome);
- * on a wider screen there's room for the mark itself, so it gets one.
- */
 export function NavRail() {
   const pathname = usePathname()
   const [activeIndex, setActiveIndex] = useState(0)
@@ -53,18 +41,18 @@ export function NavRail() {
 
   useEffect(() => {
     const overrideEntry = Object.entries(ROUTE_TAB_OVERRIDES).find(([prefix]) =>
-      pathname.startsWith(prefix)
+      pathname.startsWith(prefix),
     )
     const effectivePath = overrideEntry ? overrideEntry[1] : pathname
     const idx = NAV_ITEMS.findIndex((item) =>
-      item.href === '/' ? effectivePath === '/' : effectivePath.startsWith(item.href)
+      item.href === '/' ? effectivePath === '/' : effectivePath.startsWith(item.href),
     )
     setActiveIndex(idx >= 0 ? idx : 0)
   }, [pathname])
 
   return (
     <nav
-      className="hidden md:flex fixed top-0 left-0 bottom-0 z-nav w-[88px] flex-col items-center safe-area-top"
+      className="hidden min-[1400px]:flex fixed top-0 left-0 bottom-0 z-nav w-[88px] flex-col items-center safe-area-top"
       style={{
         background: 'rgb(var(--nav-bg) / 0.85)',
         backdropFilter: 'blur(24px) saturate(120%)',
