@@ -23,13 +23,13 @@ describe('P1 gap fixes', () => {
   })
 
   it('members who have not joined are not labelled with a bare "Pending"', () => {
-    expect(memberStatusLabel('pending')).toBe('Not joined yet')
+    expect(memberStatusLabel('pending')).toBe('Invite sent')
     expect(memberStatusLabel('active')).toBe('Active')
   })
 
   it('a pending child is never labelled as if an invitation is outstanding — minors cannot join', () => {
     expect(memberStatusLabel('pending', 'child')).toBe('Managed by adults')
-    expect(memberStatusLabel('pending', 'adult')).toBe('Not joined yet')
+    expect(memberStatusLabel('pending', 'adult')).toBe('Invite sent')
   })
 
   it('the cash flow note does not claim scenarios read the ledger', () => {
