@@ -108,3 +108,7 @@ suspected bug (reproduce first); 36 is an audit before fixes.
 | `62-score-weight-softening-early-career.md` | Rebalance score weights — early-career baseline lands mid-band | — | OPEN |
 | `63-invite-sent-viewed-status.md` | Invite sent/viewed timestamps on the roster | — | OPEN |
 | `64-shipped-fields-visibility.md` | Surface shipped relationship_label + income_notes prominently | — | OPEN |
+| `65-numeral-presence-test.md` | Every rendered numeral must be in the solver payload; delete sample path | — | OPEN |
+| `66-score-ceiling-surfaced.md` | Components state when missing data caps them | — | OPEN |
+| `67-derivation-closure.md` | Artefact closures + minimal invalidation, measured | — | OPEN |
+| `68-disclosure-join-in-engine.md` | Disclosure labels joined inside evaluate, not at the route | — | OPEN |
