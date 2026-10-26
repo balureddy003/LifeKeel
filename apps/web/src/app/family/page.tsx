@@ -7,7 +7,7 @@ import { BarChart3, Settings, AlertTriangle, User } from 'lucide-react'
 import { GlassCard, PageHeader, ListSection, ListRow, PageTransition } from '@/components/Glass'
 import { FamilyRoster } from '@/components/FamilyRoster'
 import { PullToRefresh } from '@/components/PullToRefresh'
-import { ROLE_LABELS } from '@/lib/auth-types'
+import { ROLE_LABELS, RELATIONSHIP_LABELS } from '@/lib/auth-types'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
 import { fetchFinancialProfile, type FinancialProfile } from '@/lib/api'
@@ -35,6 +35,7 @@ export default function FamilyPage() {
     name: m.name,
     emoji: m.emoji,
     role: ROLE_LABELS[m.role],
+    relationshipLabel: m.relationshipLabel,
     chips: chipsFor(m.id, m.role, m.name, profile),
   }))
 
@@ -68,6 +69,11 @@ export default function FamilyPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-1.5">
                           <span className="text-sm font-semibold">{m.name}</span>
+                          {m.relationshipLabel && (
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border text-ink-tertiary bg-tint/[0.04] border-tint/[0.06]">
+                              {RELATIONSHIP_LABELS[m.relationshipLabel]}
+                            </span>
+                          )}
                         </div>
                         <div className="flex flex-wrap gap-1.5">
                           {m.chips.map((chip) => (
