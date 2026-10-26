@@ -27,3 +27,20 @@ new billing features.
 
 **Becomes** — verification task + fast-path fixes for any defects found;
 not a PRD unless a real product gap surfaces.
+
+---
+
+**Status: verified — sandbox e2e passed (2026-10-25).** Run against a
+locally-booted API (merged main) with the configured Stripe sandbox keys:
+
+- `POST /auth/signup` → session token (tenant `lifekeel-verify-3100`)
+- `POST /billing/checkout {plan:'starter'}` → real `cs_test_` session URL
+- Signed `checkout.session.completed` → `POST /billing/webhook` → 200 →
+  `GET /billing/subscription` shows `plan: starter`, `status: active`,
+  starter quotas, credits granted, billing period set
+- Replay of the same event id → 200, no double credit grant (idempotent)
+
+Not covered (Stripe's side, not ours): hosted checkout payment page and
+real Stripe delivery — `stripe listen` needs `stripecli_session_write`
+on the key (the sandbox `rk_test_` lacks it); on staging grant that
+permission or use an `sk_test_` secret to watch real delivery.
