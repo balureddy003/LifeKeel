@@ -409,7 +409,7 @@ function SinceLastVisit({
   openInsightCount,
   loading,
 }: {
-  score: number
+  score: number | null
   hasLiveData: boolean
   openInsightCount: number
   loading: boolean
@@ -418,17 +418,20 @@ function SinceLastVisit({
   const [previous, setPrevious] = useState<VisitSnapshot | null>(null)
   const [ready, setReady] = useState(false)
 
+  // Gate on a computed score, not has_live_data (intent 60): a saved
+  // profile whose detectors haven't evaluated yet still gets the card —
+  // the greeting handles "nothing new" honestly either way.
   useEffect(() => {
-    if (loading || !hasLiveData) return
+    if (loading || score === null) return
     setPrevious(loadLastVisitSnapshot())
     saveLastVisitSnapshot({ score, openInsightCount })
     setReady(true)
     // Snapshot only once per page load — re-running this on every score/count
     // change would overwrite "previous" before the user ever saw the delta.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, hasLiveData])
+  }, [loading, score === null])
 
-  if (!ready) return null
+  if (!ready || score === null) return null
 
   const firstName = user?.name?.split(' ')[0] ?? 'there'
 
