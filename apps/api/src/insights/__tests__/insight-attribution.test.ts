@@ -177,3 +177,51 @@ describe('listInsightAttributions', () => {
     expect(rows.map((r) => r.insight_id)).toEqual(['a'])
   })
 })
+
+describe('findStaleArtefacts (intent 67 — derivation closure)', () => {
+  it('returns only insights whose closure names a stale version', async () => {
+    const { findStaleArtefacts } = await import('../../insights-persist.js')
+    const store = {
+      insights: [
+        {
+          id: 'i1',
+          tenant_id: 't1',
+          detector_id: 'family-protection',
+          rule_id: 'r1',
+          state: 'identified',
+          closure: { profile_version: 3, detector_version: 'd1' },
+        },
+        {
+          id: 'i2',
+          tenant_id: 't1',
+          detector_id: 'family-protection',
+          rule_id: 'r2',
+          state: 'identified',
+          closure: { profile_version: 4, detector_version: 'd1' },
+        },
+        // Pre-closure insight — no closure field, not invalidated by this pass
+        {
+          id: 'i3',
+          tenant_id: 't1',
+          detector_id: 'family-protection',
+          rule_id: 'r3',
+          state: 'identified',
+        },
+        {
+          id: 'i4',
+          tenant_id: 't1',
+          detector_id: 'family-protection',
+          rule_id: 'r4',
+          state: 'resolved',
+          closure: { profile_version: 3 },
+        },
+      ],
+    }
+    const { stale, total } = await findStaleArtefacts(makeDb(store) as never, 't1', {
+      profile_version: 4,
+      detector_version: 'd1',
+    })
+    expect(stale.map((i: { id: string }) => i.id)).toEqual(['i1'])
+    expect(total).toBe(3)
+  })
+})
