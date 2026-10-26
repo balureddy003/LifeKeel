@@ -95,6 +95,16 @@ describe('classifyVerifiedIntent', () => {
     },
   )
 
+  it('a compound job-loss + bereavement question surfaces both intents', () => {
+    // Intent 57: the death half of a compound question must not silently
+    // drop — bereavement maps to the policies op (life cover on file).
+    const intent = classifyVerifiedIntent('lost my job and my partner passed away')
+    expect(intent).toEqual({
+      kind: 'clarify',
+      options: expect.arrayContaining(['income_stops', 'policies']),
+    })
+  })
+
   it('a question matching two operations clarifies instead of guessing', () => {
     const intent = classifyVerifiedIntent(
       'how much is in our emergency fund and when does the car insurance renew?',

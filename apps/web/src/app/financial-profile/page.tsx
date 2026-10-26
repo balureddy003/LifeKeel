@@ -541,25 +541,41 @@ const STEPS: Step[] = [
 // Lightweight completeness estimate — counts how many of the key input
 // fields have meaningful (non-default, non-zero) values.  Used to show
 // a progress ring on Home and Settings without re-fetching the profile.
-function computeCompleteness(form: FormState, funds: EducationFundForm[]): number {
+function computeCompleteness(
+  form: FormState,
+  funds: EducationFundForm[],
+  policies: PolicyForm[] = [],
+): number {
+  const filled = (v: string) => v !== '' && v !== '0'
+  // Count every section the wizard actually asks for, not a fixed
+  // subset — a profile saved through all the income/debt/cover steps
+  // used to read ~18% because debts, mortgage, policies and the second
+  // earner never entered the numerator (intent 54).
   const fields: boolean[] = [
-    form.monthlySalary !== '' && form.monthlySalary !== '0',
-    form.annualLivingExpenses !== '' && form.annualLivingExpenses !== '0',
-    form.lifeCover !== '' && form.lifeCover !== '0',
-    form.incomeProtectionMonthly !== '' && form.incomeProtectionMonthly !== '0',
-    form.emergencySavings !== '' && form.emergencySavings !== '0',
-    form.monthlyExpenses !== '' && form.monthlyExpenses !== '0',
-    form.currentAge !== '' && form.currentAge !== '0',
-    form.targetRetirementAge !== '' && form.targetRetirementAge !== '0',
-    form.pensionBalance !== '' && form.pensionBalance !== '0',
-    form.monthlyContribution !== '' && form.monthlyContribution !== '0',
+    filled(form.monthlySalary),
+    filled(form.annualLivingExpenses),
+    filled(form.mortgageOutstanding),
+    filled(form.lifeCover),
+    filled(form.incomeProtectionMonthly),
+    filled(form.emergencySavings),
+    filled(form.monthlyExpenses),
+    filled(form.monthlyDebtPayments),
+    filled(form.currentAge),
+    filled(form.targetRetirementAge),
+    filled(form.pensionBalance),
+    filled(form.monthlyContribution),
   ]
-  // Education funds: count at least one child with savings entered
-  if (funds.length > 0) {
-    fields.push(funds.some((f) => f.currentSavings !== '' && f.currentSavings !== '0'))
+  if (form.hasSecondEarner) {
+    fields.push(filled(form.secondEarnerMonthlySalary))
   }
-  const filled = fields.filter(Boolean).length
-  return Math.round((filled / fields.length) * 100)
+  if (funds.length > 0) {
+    fields.push(funds.some((f) => filled(f.currentSavings)))
+  }
+  if (policies.length > 0) {
+    fields.push(policies.some((p) => filled(p.provider) || filled(p.coverageAmount)))
+  }
+  const done = fields.filter(Boolean).length
+  return Math.round((done / fields.length) * 100)
 }
 
 export default function FinancialProfilePage() {
@@ -716,7 +732,7 @@ export default function FinancialProfilePage() {
         setForm(f)
         setFunds(funds)
         setPolicies(p)
-        setProfileCompleteness(computeCompleteness(f, funds))
+        setProfileCompleteness(computeCompleteness(f, funds, p))
         // Intent 37: cross-device resume — the draft is server-stored, so a
         // returning session (on any device) should land on the first
         // incomplete step, not back at step 1 re-reading finished work. An
@@ -995,7 +1011,7 @@ export default function FinancialProfilePage() {
       })
       setResult(insightsGenerated)
       setFinancialProfileSubmitted()
-      setProfileCompleteness(computeCompleteness(form, funds))
+      setProfileCompleteness(computeCompleteness(form, funds, policies))
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (err) {
       haptic('warning')
