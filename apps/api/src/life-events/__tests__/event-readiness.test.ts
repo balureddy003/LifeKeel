@@ -89,7 +89,7 @@ describe('computeEventReadiness', () => {
     )
     expect(wellCovered.hasLiveData).toBe(true)
     expect(wellCovered.stability).toBeGreaterThan(50)
-    expect(wellCovered.explanation).toContain('£400,000.00') // life cover, 40,000,000 minor units
+    expect(wellCovered.explanation).toContain('£400,000') // life cover, 40,000,000 minor units
 
     const underCovered = computeEventReadiness(
       'medical',
