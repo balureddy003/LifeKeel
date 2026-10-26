@@ -54,7 +54,7 @@ export async function recordInsightAction(
   db: Db,
   tenantId: string,
   actionType: InsightActionType,
-  opts: { now?: Date; insightIds?: string[] } = {},
+  opts: { now?: Date; insightIds?: string[]; detectorIds?: string[] } = {},
 ): Promise<number> {
   try {
     return await recordInsightActionInner(db, tenantId, actionType, opts)
@@ -69,7 +69,7 @@ async function recordInsightActionInner(
   db: Db,
   tenantId: string,
   actionType: InsightActionType,
-  opts: { now?: Date; insightIds?: string[] } = {},
+  opts: { now?: Date; insightIds?: string[]; detectorIds?: string[] } = {},
 ): Promise<number> {
   const now = opts.now ?? new Date()
   const insightsCol = getTenantCollection<Insight>(db, 'insights', tenantId)
@@ -80,8 +80,12 @@ async function recordInsightActionInner(
         created_at: { $gte: new Date(now.getTime() - ATTRIBUTION_WINDOW_MS) },
         // A targeted action (insight approved) credits just that insight;
         // ambient ones (profile saved, document applied) credit everything
-        // flagged in the window.
+        // flagged in the window; detectorIds scopes to the detectors the
+        // action could plausibly address (e.g. a bereavement playbook step
+        // credits protection-gap and estate insights, never an unrelated
+        // debt or education flag).
         ...(opts.insightIds ? { id: { $in: opts.insightIds } } : {}),
+        ...(opts.insightIds || !opts.detectorIds ? {} : { detector_id: { $in: opts.detectorIds } }),
       })
       .toArray()
   ).slice(0, 200)
@@ -109,7 +113,7 @@ async function recordInsightActionInner(
             direction: 'up',
             member_id: null,
             domain: null,
-            title: `You acted on: ${(i.hypothesis ?? i.rule_id?.replace(/_/g, ' ') ?? 'a flagged gap').slice(0, 80)}`,
+            title: `You acted on: ${(i.hypothesis ?? 'a flagged gap').slice(0, 80)}`,
             summary: 'Something on file changed within 30 days of this flag.',
             evidence: [],
             links: [{ kind: 'insight', id: i.id }],
