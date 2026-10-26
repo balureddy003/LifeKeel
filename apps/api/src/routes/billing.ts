@@ -176,13 +176,20 @@ export function registerBillingRoutes(
    * M6: Uses tenant's billing currency to select the correct Stripe price.
    */
   app.post<{
-    Body: { plan: Plan; app?: 'family' | 'studio'; success_url?: string; cancel_url?: string }
+    Body: {
+      plan: Plan
+      app?: 'family' | 'studio'
+      success_url?: string
+      cancel_url?: string
+      interval?: 'month' | 'year'
+    }
   }>('/billing/checkout', async (req, reply) => {
     if (!stripe) {
       return reply.status(501).send({ error: 'Stripe not configured' })
     }
 
     const { plan, app: originApp, success_url, cancel_url } = req.body
+    const interval = req.body.interval === 'year' ? 'year' : 'month'
     const tenant_id = req.authContext?.tenant_id
 
     if (!tenant_id) {
@@ -238,7 +245,7 @@ export function registerBillingRoutes(
     const currency = String(tenant['billing']?.['currency'] ?? 'GBP')
     let priceId: string | null = null
     try {
-      priceId = await resolveStripePriceId(stripe, plan, currency)
+      priceId = await resolveStripePriceId(stripe, plan, currency, { interval })
     } catch (error) {
       app.log.error(error)
       return reply
@@ -285,13 +292,14 @@ export function registerBillingRoutes(
         metadata: {
           tenant_id,
           plan,
+          billing_interval: interval,
         },
         // tenant_id on the subscription itself — customer.subscription.*
         // events don't carry checkout-session metadata, so this lets the
         // webhook resolve the tenant even if checkout.session.completed
         // never arrived.
         subscription_data: {
-          metadata: { tenant_id, plan },
+          metadata: { tenant_id, plan, billing_interval: interval },
         },
       })
 

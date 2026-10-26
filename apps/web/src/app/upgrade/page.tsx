@@ -94,6 +94,7 @@ export default function UpgradePage() {
   const [isPlus, setIsPlus] = useState(false)
   const [sub, setSub] = useState<BillingSubscription | null>(null)
   const [banner, setBanner] = useState<'success' | 'canceled' | null>(null)
+  const [billingPeriod, setBillingPeriod] = useState<'month' | 'year'>('year')
   const [promoCode, setPromoCode] = useState('')
   const [redeeming, setRedeeming] = useState(false)
   const [promoMessage, setPromoMessage] = useState<string | null>(null)
@@ -149,7 +150,7 @@ export default function UpgradePage() {
     setCheckingOut(true)
     setError(null)
     try {
-      const url = await startLifeKeelPlusCheckout()
+      const url = await startLifeKeelPlusCheckout(billingPeriod)
       window.location.href = url
     } catch (err) {
       haptic('warning')
@@ -304,12 +305,49 @@ export default function UpgradePage() {
             </ul>
           </GlassCard>
 
-          <GlassCard className="p-5 text-center">
-            <div className="text-3xl font-bold">
-              £7.99<span className="text-base font-medium text-ink-tertiary">/month</span>
-            </div>
-            <p className="text-xs text-ink-tertiary mt-1">Cancel anytime</p>
-          </GlassCard>
+          <div role="radiogroup" aria-label="Billing period" className="grid grid-cols-2 gap-3">
+            {(
+              [
+                {
+                  value: 'year',
+                  title: 'Yearly',
+                  price: '£5.00',
+                  per: '/mo billed yearly',
+                  note: '£59.99/yr — save 37%',
+                },
+                {
+                  value: 'month',
+                  title: 'Monthly',
+                  price: '£7.99',
+                  per: '/month',
+                  note: 'Cancel anytime',
+                },
+              ] as const
+            ).map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                role="radio"
+                aria-checked={billingPeriod === opt.value}
+                onClick={() => {
+                  haptic('light')
+                  setBillingPeriod(opt.value)
+                }}
+                className={`rounded-2xl p-4 text-left border transition-colors ${
+                  billingPeriod === opt.value
+                    ? 'border-family-500/50 bg-family-500/[0.08]'
+                    : 'border-tint/[0.08] bg-tint/[0.02]'
+                }`}
+              >
+                <div className="text-xs font-semibold text-ink-tertiary">{opt.title}</div>
+                <div className="text-2xl font-bold mt-1">
+                  {opt.price}
+                  <span className="text-xs font-medium text-ink-tertiary"> {opt.per}</span>
+                </div>
+                <div className="text-[11px] text-ink-tertiary mt-1">{opt.note}</div>
+              </button>
+            ))}
+          </div>
 
           {error && (
             <p role="status" aria-live="polite" className="text-sm text-danger text-center">
