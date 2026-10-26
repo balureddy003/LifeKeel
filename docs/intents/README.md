@@ -112,3 +112,4 @@ suspected bug (reproduce first); 36 is an audit before fixes.
 | `66-score-ceiling-surfaced.md` | Components state when missing data caps them | — | OPEN |
 | `67-derivation-closure.md` | Artefact closures + minimal invalidation, measured | — | OPEN |
 | `68-disclosure-join-in-engine.md` | Disclosure labels joined inside evaluate, not at the route | — | OPEN |
+| `69-fab-stack-above-nav.md` | SOS/gold FABs anchored above nav, inside reserved band | — | IMPLEMENTED |
