@@ -176,7 +176,7 @@ describe('renderVerifiedAnswer', () => {
     expect(a.content).toContain("can't be fully scored")
     // Estate is out of this resolver's scope — it must say restricted, not guess.
     expect(a.content).toContain('restricted')
-    expect(a.content).toContain('Emergency fund: 50/100')
+    expect(a.content).toContain('Emergency fund: 65/100')
   })
 
   it('readiness: with estateInputs it scores estate like /family/readiness instead of gating it out', () => {
