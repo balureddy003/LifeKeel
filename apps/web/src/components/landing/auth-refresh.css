@@ -212,6 +212,9 @@
 .landing.lk-auth.lk-studio .lk-auth-card .lk-pw .lk-input {
   padding-right: 52px;
 }
+.landing.lk-auth.lk-studio .lk-auth-card .lk-otp-box {
+  padding-inline: 0;
+}
 .landing.lk-auth.lk-studio .lk-auth-card .lk-input[aria-invalid='true'] {
   border-color: rgb(var(--danger));
 }
