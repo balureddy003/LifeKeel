@@ -80,7 +80,7 @@
 .lk-home-experience .home-live-signup .lk-btn {
   justify-self: start;
   border-radius: 14px;
-  background: linear-gradient(110deg, #1887ac, #5854d9);
+  background: linear-gradient(110deg, #237bba, #5854d9);
   color: #fff;
   border: 0;
   box-shadow:
@@ -304,7 +304,7 @@
 
 .lk-home-experience .landing.lk-header .lk-btn,
 .lk-home-experience .landing .lk-news button {
-  background: linear-gradient(110deg, #1887ac, #5854d9);
+  background: linear-gradient(110deg, #237bba, #5854d9);
   color: #fff;
   border-color: transparent;
   border-radius: 14px;
