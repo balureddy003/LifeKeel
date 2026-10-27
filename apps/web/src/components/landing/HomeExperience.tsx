@@ -24,27 +24,20 @@ import { Pricing } from './Pricing'
 import { Faq } from './Faq'
 import { DawnClose } from './DawnClose'
 import './home.css'
+import './home-refresh.css'
+import './home-sections.css'
 
 export function HomeExperience() {
   return (
     <main className="lk-home-content">
       <LandingSymbols />
       <section className="home-hero" aria-labelledby="home-title">
-        <div className="home-floating-icons" aria-hidden="true">
-          {[Wallet, ShieldCheck, FolderHeart, UsersRound, Heart, FileText, Mail, Waypoints].map(
-            (Icon, index) => (
-              <span key={index}>
-                <Icon size={29} strokeWidth={1.7} />
-              </span>
-            ),
-          )}
-        </div>
         <div className="home-hero-copy">
           <span className="home-kicker">Free to start. Optional paid plan later.</span>
           <h1 id="home-title">
             Your family’s chart,
             <br />
-            kept current.
+            <span className="home-gradient-text">kept current.</span>
           </h1>
           <p>
             One home for your family’s savings, cover and papers. Tell LifeKeel what you have on
@@ -53,6 +46,26 @@ export function HomeExperience() {
           </p>
           <div className="landing home-live-signup">
             <SignupCard location="home_hero" />
+          </div>
+        </div>
+        <div className="home-chart-art" aria-hidden="true">
+          <div className="home-chart-orbit" />
+          <div className="home-chart-orbit home-chart-orbit-inner" />
+          <svg className="home-chart-lines" viewBox="0 0 480 480" fill="none">
+            <path d="M240 240 110 92M240 240 355 75M240 240 410 220M240 240 355 390M240 240 125 400M240 240 55 250" />
+          </svg>
+          <div className="home-chart-center">
+            <UsersRound size={58} strokeWidth={1.4} />
+          </div>
+          {[Wallet, ShieldCheck, FolderHeart, Heart, FileText, Mail].map((Icon, index) => (
+            <div className={`home-chart-node home-chart-node-${index + 1}`} key={index}>
+              <Icon size={31} strokeWidth={1.6} />
+              <span />
+              <span />
+            </div>
+          ))}
+          <div className="home-chart-seal">
+            <Waypoints size={23} />
           </div>
         </div>
       </section>

@@ -1,0 +1,311 @@
+.lk-home-experience .lk-home-content > .landing {
+  --section-soft: #f3f5ff;
+  --section-cyan: #edfaff;
+  --section-purple: #f7f1ff;
+  --section-border: #e1e6f3;
+  --section-accent: #5046d6;
+  --section-shadow: 0 16px 48px -30px #35428b45;
+  --ok-text: #15705d;
+  --brass-text: #65501b;
+  --field-line: #a4acc2;
+}
+
+:root[data-theme='dark'] .lk-home-experience .lk-home-content > .landing {
+  --section-soft: #20253e;
+  --section-cyan: #142e3d;
+  --section-purple: #2b2342;
+  --section-border: #3b4362;
+  --section-accent: #b9b5ff;
+  --section-shadow: 0 16px 48px -30px #0009;
+  --ok-text: #80dfc4;
+  --brass-text: #f2cc7c;
+  --field-line: #8891b1;
+}
+
+.lk-home-experience .lk-home-content .landing .lk-band {
+  width: min(1180px, calc(100% - 48px));
+  padding: clamp(48px, 6vw, 80px) 32px;
+  margin: 12px auto;
+  font-family: var(--font-body), system-ui, sans-serif;
+  line-height: 1.7;
+}
+
+.lk-home-experience .lk-home-content .landing .lk-band h2 {
+  max-width: 24ch;
+  font-family: var(--font-body), system-ui, sans-serif;
+  font-size: clamp(30px, 3.5vw, 46px);
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 1.15;
+}
+
+.lk-home-experience .lk-home-content .landing .lk-band h3 {
+  font-family: var(--font-body), system-ui, sans-serif;
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: -0.025em;
+}
+
+.lk-home-experience .lk-home-content .landing .lk-band .lk-eyebrow {
+  color: var(--section-accent);
+  font:
+    700 12px/1.5 var(--font-body),
+    system-ui,
+    sans-serif;
+  letter-spacing: 0.14em;
+}
+
+.lk-home-experience .lk-home-content .landing .lk-band .lk-intro {
+  margin-top: 20px;
+  font-size: 17px;
+  line-height: 1.8;
+  max-width: 66ch;
+}
+
+.lk-home-experience .lk-home-content .landing :is(#years, #crisis, #pricing) {
+  background: linear-gradient(135deg, var(--section-soft), var(--section-cyan));
+  border: 1px solid var(--section-border);
+  border-radius: 32px;
+}
+
+.lk-home-experience .lk-home-content .landing :is(#cover, [aria-labelledby='lk-plus-h']) {
+  background: linear-gradient(135deg, var(--section-purple), var(--section-soft));
+  border: 1px solid var(--section-border);
+  border-radius: 32px;
+}
+
+.lk-home-experience .lk-home-content .landing :is(.lk-plan, .lk-cardx, .lk-moment, .lk-plan-card) {
+  border: 1px solid var(--section-border);
+  border-radius: 24px;
+  box-shadow: var(--section-shadow);
+  background: var(--surface);
+}
+
+.lk-home-experience .lk-home-content .landing :is(.lk-plan, .lk-cardx, .lk-plan-card) {
+  padding: clamp(22px, 3vw, 32px);
+}
+
+.lk-home-experience .lk-home-content .landing :is(.lk-sample-grid, .lk-moments, .lk-plans) {
+  margin-top: 36px;
+  gap: 24px;
+}
+
+.lk-home-experience .lk-home-content .landing .lk-opt label {
+  border-color: var(--section-border);
+  min-height: 54px;
+  padding: 12px 16px;
+  border-radius: 14px;
+}
+
+.lk-home-experience .lk-home-content .landing .lk-opt input:checked + label {
+  color: var(--section-accent);
+  border-color: var(--section-accent);
+  box-shadow: inset 0 0 0 1px var(--section-accent);
+  background: var(--section-soft);
+}
+
+.lk-home-experience .lk-home-content .landing .lk-opt input:checked + label::before {
+  border-color: var(--section-accent);
+  background: var(--section-accent);
+}
+
+.lk-home-experience .lk-home-content .landing .lk-mini b {
+  color: var(--section-accent);
+  font:
+    700 48px/1.2 var(--font-body),
+    system-ui,
+    sans-serif;
+  letter-spacing: -0.05em;
+}
+
+.lk-home-experience .lk-home-content .landing .lk-pill {
+  white-space: normal;
+  line-height: 1.4;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.lk-home-experience .lk-home-content .landing .lk-routefig {
+  border-color: var(--section-border);
+  border-radius: 22px;
+}
+
+.lk-home-experience .lk-home-content .landing .lk-mood {
+  height: 6px;
+}
+
+.lk-home-experience .lk-home-content .landing .lk-m-before .lk-mood {
+  background: linear-gradient(90deg, #2ab2d4, #5875ef);
+}
+
+.lk-home-experience .lk-home-content .landing .lk-m-during .lk-mood {
+  background: linear-gradient(90deg, #9265e8, #d76fbe);
+}
+
+.lk-home-experience .lk-home-content .landing .lk-m-after .lk-mood {
+  background: linear-gradient(90deg, #20b8a7, #4c9de0);
+}
+
+.lk-home-experience .lk-home-content .landing .lk-moment header {
+  padding: 26px 24px 18px;
+}
+
+.lk-home-experience .lk-home-content .landing .lk-moment h3 {
+  font-size: 26px;
+}
+
+.lk-home-experience .lk-home-content .landing .lk-band .lk-moment ul {
+  padding: 4px 24px 24px;
+}
+
+.lk-home-experience .lk-home-content .landing :is(.lk-ledger, .lk-trio) {
+  gap: 18px;
+  border: 0;
+  margin-top: 32px;
+  padding: 0;
+}
+
+.lk-home-experience .lk-home-content .landing :is(.lk-ledger, .lk-trio) li {
+  padding: 26px;
+  background: var(--surface);
+  border: 1px solid var(--section-border);
+  border-radius: 20px;
+  box-shadow: var(--section-shadow);
+}
+
+.lk-home-experience .lk-home-content .landing :is(.lk-ledger, .lk-trio) li:nth-child(3n + 1) {
+  border-top: 3px solid #5898ed;
+}
+
+.lk-home-experience .lk-home-content .landing :is(.lk-ledger, .lk-trio) li:nth-child(3n + 2) {
+  border-top: 3px solid #ab7be8;
+}
+
+.lk-home-experience .lk-home-content .landing :is(.lk-ledger, .lk-trio) li:nth-child(3n) {
+  border-top: 3px solid #35b5a6;
+}
+
+.lk-home-experience .lk-home-content .landing :is(.lk-ledger, .lk-trio) p {
+  margin-top: 12px;
+}
+
+.lk-home-experience .lk-home-content .landing .lk-tag {
+  color: var(--section-accent);
+  background: var(--section-soft);
+  border-color: var(--section-border);
+  font:
+    600 11px/1.5 var(--font-body),
+    system-ui,
+    sans-serif;
+  letter-spacing: 0.06em;
+}
+
+.lk-home-experience .lk-home-content .landing .lk-fields div {
+  background: var(--section-soft);
+  border-color: var(--section-border);
+  padding: 12px;
+}
+
+.lk-home-experience .lk-home-content .landing .lk-plan-card.plus {
+  border-color: var(--section-accent);
+  box-shadow:
+    inset 0 3px 0 var(--section-accent),
+    var(--section-shadow);
+}
+
+.lk-home-experience .lk-home-content .landing .lk-plan-card h3 {
+  font-size: 28px;
+}
+
+.lk-home-experience .lk-home-content .landing .lk-price {
+  color: var(--section-accent);
+  font:
+    700 17px/1.5 var(--font-body),
+    system-ui,
+    sans-serif;
+  letter-spacing: -0.02em;
+  text-transform: none;
+}
+
+.lk-home-experience .lk-home-content .landing .lk-btn {
+  color: #fff;
+  background: linear-gradient(110deg, #237bba, #5345d1);
+  border: 1px solid transparent;
+  border-radius: 14px;
+  box-shadow: 0 8px 22px -12px #5046d699;
+}
+
+.lk-home-experience .lk-home-content .landing .lk-btn-quiet {
+  color: var(--section-accent);
+  background: var(--section-soft);
+  border-color: var(--section-border);
+  box-shadow: none;
+}
+
+.lk-home-experience .lk-home-content .landing .lk-faq {
+  max-width: none;
+  gap: 12px;
+}
+
+.lk-home-experience .lk-home-content .landing .lk-faq details {
+  border-color: var(--section-border);
+  border-radius: 18px;
+}
+
+.lk-home-experience .lk-home-content .landing .lk-faq summary {
+  padding: 22px 24px;
+}
+
+.lk-home-experience .lk-home-content .landing .lk-faq summary::after {
+  color: var(--section-accent);
+}
+
+.lk-home-experience .lk-home-content .landing .lk-faq details[open] {
+  background: var(--section-soft);
+  border-color: var(--section-accent);
+}
+
+.lk-home-experience .lk-home-content .landing .lk-faq details p {
+  padding: 0 24px 24px;
+}
+
+.lk-home-experience .lk-home-content .landing .lk-dawn {
+  background: linear-gradient(125deg, var(--section-purple), var(--section-cyan));
+  border-color: var(--section-border);
+  border-radius: 28px;
+}
+
+@media (max-width: 860px) {
+  .lk-home-experience .lk-home-content .landing .lk-band {
+    width: calc(100% - 24px);
+    padding: 44px 20px;
+    margin-block: 8px;
+  }
+
+  .lk-home-experience .lk-home-content .landing :is(.lk-cardx, .lk-plan, .lk-plan-card) {
+    padding: 22px;
+  }
+
+  .lk-home-experience .lk-home-content .landing :is(.lk-ledger, .lk-trio) li {
+    padding: 24px;
+  }
+
+  .lk-home-experience .lk-home-content .landing .lk-fields div {
+    flex-wrap: wrap;
+  }
+
+  .lk-home-experience .lk-home-content .landing .lk-fields dd {
+    text-align: left;
+  }
+
+  .lk-home-experience .lk-home-content .landing .lk-inline-cta .lk-btn {
+    min-width: 0;
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lk-home-experience .lk-home-content .landing :is(.lk-btn, .lk-opt label) {
+    transition: none;
+  }
+}
