@@ -1,8 +1,17 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter, Instrument_Serif, Hanken_Grotesk, IBM_Plex_Mono, Fraunces } from 'next/font/google'
+import {
+  Inter,
+  Instrument_Serif,
+  Hanken_Grotesk,
+  IBM_Plex_Mono,
+  Fraunces,
+  Space_Grotesk,
+  Plus_Jakarta_Sans,
+} from 'next/font/google'
 import { MotionConfig } from 'framer-motion'
 import './globals.css'
 import '@/components/landing/landing.css'
+import '@/components/landing/studio.css'
 import { AuthProvider } from '@/lib/auth-context'
 import { ModeProvider } from '@/lib/mode-context'
 import { AppShell } from '@/components/AppShell'
@@ -53,6 +62,19 @@ const mono = IBM_Plex_Mono({
   subsets: ['latin'],
   weight: ['400', '500'],
   variable: '--font-mono',
+  display: 'swap',
+  preload: false,
+})
+
+const publicHeading = Space_Grotesk({
+  subsets: ['latin'],
+  variable: '--font-public-heading',
+  display: 'swap',
+  preload: false,
+})
+const publicBody = Plus_Jakarta_Sans({
+  subsets: ['latin'],
+  variable: '--font-public-body',
   display: 'swap',
   preload: false,
 })
@@ -115,7 +137,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${display.variable} ${body.variable} ${mono.variable} ${wordmark.variable}`}
+      className={`${inter.variable} ${display.variable} ${body.variable} ${mono.variable} ${wordmark.variable} ${publicHeading.variable} ${publicBody.variable}`}
       suppressHydrationWarning
     >
       <head>

@@ -8,6 +8,7 @@ import './landing.css'
 import './hero.css'
 import './bands.css'
 import './public.css'
+import './public-refresh.css'
 
 /**
  * The frame for the public pages that are not the landing page itself (terms, privacy,
@@ -19,7 +20,7 @@ export function PublicShell({ children }: { children: ReactNode }) {
   // A signed-in person reading Terms from Settings should not be offered "Sign in".
   const { isAuthenticated } = useAuth()
   return (
-    <div className="landing lk-public">
+    <div className="landing lk-public lk-studio">
       <SiteHeader home={false} signedIn={isAuthenticated} />
       <div className="lk-public-body">{children}</div>
       <SiteFooter home={false} />

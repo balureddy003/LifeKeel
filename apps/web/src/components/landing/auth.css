@@ -84,9 +84,6 @@
  .landing.landing .lk-auth-card h1 { font-size: 32px; }
 }
 
-html:has(.lk-auth) { scrollbar-width: none; }
-html:has(.lk-auth)::-webkit-scrollbar,
-body:has(.lk-auth)::-webkit-scrollbar { display: none; }
 .landing.landing .lk-auth-top { padding-top: 16px; }
 .landing.landing .lk-field > label,
 .landing.landing .lk-field > .lk-label { font-size: 16px; font-weight: 600; line-height: 1.4; }
