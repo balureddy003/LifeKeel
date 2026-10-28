@@ -78,6 +78,12 @@ function webCopyFiles(): string[] {
     'apps/web/src/components/ChannelsCard.tsx',
     'apps/web/src/lib/channel-explain.ts',
     'apps/api/src/delivery/push-payload.ts',
+    // Keel inline agent panel: help text, presets, setup step titles and fixed replies.
+    'apps/api/src/keel-agent/help.ts',
+    'apps/api/src/keel-agent/presets.ts',
+    'apps/api/src/keel-agent/orchestrator.ts',
+    'apps/api/src/keel-agent/setup-state.ts',
+    ...walk('apps/web/src/components/keel'),
     'apps/web/src/app/guides/guides-data.ts',
     ...walk('apps/web/src/app/blog'),
     ...landingFiles(),

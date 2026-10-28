@@ -14,6 +14,8 @@ import { PageHeader, CURRENCY_PATTERN, GlassCard } from '@/components/Glass'
 import { useMode } from '@/lib/mode-context'
 import { haptic } from '@/lib/haptics'
 import { fetchAIResponse, type AssistantAnswerStatus } from '@/lib/api'
+import { KeelFullPage } from '@/components/keel/KeelFullPage'
+import { isKeelPanelEnabled } from '@/lib/keel/client'
 
 // Keel's live answers were rendering as a single whitespace-pre-wrap plain
 // text blob — a multi-part answer (narrating a scenario, listing several
@@ -124,7 +126,13 @@ function getContextSuggestions(context: string | null): string[] {
   return [...CONTEXT_SUGGESTIONS[match]!, ...AI_SUGGESTIONS.slice(0, 2)]
 }
 
+// With the inline panel on, /assistant is the expanded view of the same conversation.
+// Off, this is the original full-page chat (the rollout fallback).
 export default function AssistantPage() {
+  return isKeelPanelEnabled() ? <KeelFullPage /> : <LegacyAssistantPage />
+}
+
+function LegacyAssistantPage() {
   const { config } = useMode()
   // Read on mount via an effect, not a useState/useRef initializer — a
   // client-side <Link> navigation here (e.g. from EventDetailClient's

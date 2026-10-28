@@ -57,6 +57,11 @@ export const DELETABLE_COLLECTIONS = [
   'legacy_documents',
   'legacy_notes',
   'member_nudges',
+  // Keel inline agent: owner-scoped chat history, proposals and per-user prefs.
+  'keel_threads',
+  'keel_messages',
+  'keel_proposals',
+  'keel_preferences',
   'external_accounts',
   'pending_trades',
   // ── product state derived from the family ──

@@ -1,4 +1,5 @@
 import { clearAllCaches } from './fetch-cache'
+import { useKeelPanel } from './keel/store'
 
 /**
  * Everything on this device that can hold a signed-in user's data. Keep in
@@ -36,6 +37,8 @@ function deleteDatabase(name: string): Promise<void> {
  * discarded, not flushed under a different user.
  */
 export async function purgeClientData(): Promise<void> {
+  // Keel's in-memory conversation belongs to the person who is signing out.
+  useKeelPanel.getState().resetIdentity(null)
   try {
     for (const key of LOCAL_STORAGE_KEYS) localStorage.removeItem(key)
   } catch {

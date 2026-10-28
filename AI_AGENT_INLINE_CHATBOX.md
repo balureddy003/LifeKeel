@@ -11,6 +11,28 @@
 | **Date** | 2026-10-28 |
 | **Merged from** | `AI_AGENT_INLINE_CHAT_WINDOW.md` (parallel draft): same-household field privacy, bootstrap mode, identity-generation checks, `unknown` step state, route keys, real notification fields, acceptance matrix |
 
+## Implementation status (2026-10-28)
+
+Built on branch `feat/keel-inline-panel`. Where the code differs from the design below, **the code is the
+source of truth**; the differences are:
+
+| Area | Shipped | Differs from the design / deferred |
+|---|---|---|
+| Panel (Phase 1) | Docked / overlay / sheet by free space, resize, Ctrl/Cmd+J, command palette entry, focus return, inert page behind modals, SOS inside modal chrome, identity generation, sign-out purge, `/assistant` as expanded view, `NEXT_PUBLIC_KEEL_PANEL` flag | The member-scoped ask card on member pages is unchanged (it is already inline, not a navigation). The `/assistant` nav-rail link still opens the full-page view of the same conversation |
+| Setup guide (Phase 2) | 12-step deterministic state (Appendix A lists them; examples elsewhere say "of 11" and are illustrative), `unknown` on reader failure, review marker on notification save, field-class projections, bootstrap mode, skip step, save-confirmed refresh | **No Redis cache**: the reads are a handful of small projected queries, so caching would add invalidation risk for no measured gain. **No model narration tasks** (`keel.setup_narration.v1`, `keel.help_answer.v1`): setup, help and presets are reviewed text built by code, so they work with every AI provider down and need no new task policy |
+| Presets and proposals (Phase 3) | `two_adults_two_children` plus a default; organizer-only proposal of `digest_mode`, `heartbeat_cadence`, `min_urgency`; claim-then-apply, conflict check, expiry, audit | YAML file replaced by a TypeScript module (`presets.ts`), covered by `advice-rule.test.ts` the same way |
+| Threads and streaming (Phase 4) | Owner-scoped encrypted history, 30-day retention with read-time expiry filter, SSE streaming, delete one/all, erasure | Sentence-level guarded streaming not built: model text is released whole after the assistant's guards and the delivery check. Account export deliberately excludes Keel history (it is encrypted and per-user) |
+| Tools and evals (Phase 5) | Read-only tool registry bound to the request context, routing table tests, injection and advice-trap tests | **Model-chosen tool calls are not enabled**: they need a tool-calling extension to the AI task gateway first. Open questions go to the existing governed `/assistant/ask` pipeline |
+| Minors | A child account gets a fixed notice and no household data | The design said "youth path"; the fixed notice is safer until a youth setup experience is designed |
+| Rollout (Phase 6) | Web flag `NEXT_PUBLIC_KEEL_PANEL` (`on`/`off`, default on in dev, off in production until set) and API kill switch `KEEL_AGENT_ENABLED=false` | Metrics beyond the audit event (`keel.turn`: route, timing) are not added |
+
+**Verified locally (2026-10-28):** API against real MongoDB 7 and Redis 7, plus the web app in Chrome at desktop
+width. Confirmed: docked panel pushes the page and stays open across navigation; setup progress updates
+after a confirmed save with a local follow-up note; proposal apply writes the settings and flips the
+notification step; SSE streams over real HTTP; history is stored encrypted; another household or another
+adult gets 404 for threads and proposals; browser storage holds layout only. **Not verified live:** the phone
+bottom sheet (the browser window could not be narrowed; covered by unit tests) and a production deploy.
+
 ## Decisions recorded (2026-10-28)
 
 | Question | Decision | Where it lands |

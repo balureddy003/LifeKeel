@@ -97,6 +97,10 @@ function pickUser(user: Record<string, unknown>): Record<string, unknown> {
 const EXPORT_EXCLUDED = new Set<string>([
   'users',
   'tenant_keys',
+  // Keel history is owner-scoped and encrypted; a household-wide export would hand one adult
+  // the other's ciphertext. Each user reads their own history in the app and can delete it there.
+  'keel_threads',
+  'keel_messages',
   'connector_credentials',
   'web_push_subscriptions',
   'mobile_push_tokens',
