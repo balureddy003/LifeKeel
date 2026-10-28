@@ -1,61 +1,145 @@
 /*
- * Public pages (terms, privacy, support, blog, guides, readiness) in the landing look.
+ * Public pages (terms, privacy, support, blog, guides, legal, trust, security, cookies) in the
+ * same bright look as the home page. Tokens, header, footer and buttons come from vivid-theme.css.
  * The app's Tailwind colours read CSS variables (see app/globals.css). Re-pointing those
- * variables inside .lk-public makes every existing class on those pages follow the
- * landing palette without editing each page. Values are the landing tokens as RGB triplets.
+ * variables inside .lk-public makes every existing class on those pages follow the public
+ * palette without editing each page. Values are RGB triplets.
  */
+@import './vivid-theme.css';
+
 .lk-public {
-  --tint: 33 51 46;
-  --surface-0: 253 252 249; --surface-1: 255 255 255; --surface-2: 241 243 233; --surface-3: 231 237 224;
-  --ink-1: 33 51 46; --ink-2: 75 94 84; --ink-3: 82 97 91;
-  --haze: 196 207 195; --haze-light: 222 223 215; --nav-bg: 253 252 249;
-  --family-accent: 41 73 54; --family-400: 41 73 54;
-  --family-500: 169 233 149; --family-600: 191 241 174; --family-700: 146 225 215;
-  --success: 31 89 80; --warning: 108 71 20; --danger: 119 49 44; --info: 91 57 120;
-  min-height: 100vh; font-family: var(--body);
+  --tint: 15 23 42;
+  --surface-0: 248 250 252; --surface-1: 255 255 255; --surface-2: 241 245 249; --surface-3: 226 232 240;
+  --ink-1: 15 23 42; --ink-2: 51 65 85; --ink-3: 71 85 105;
+  --haze: 203 213 225; --haze-light: 226 232 240; --nav-bg: 255 255 255;
+  --family-accent: 37 99 235; --family-400: 29 78 216;
+  --family-500: 37 99 235; --family-600: 79 70 229; --family-700: 8 145 178;
+  --success: 4 120 87; --warning: 180 83 9; --danger: 185 28 28; --info: 79 70 229;
+  min-height: 100vh; font-family: var(--vv-font); position: relative; isolation: isolate;
 }
 :root[data-theme='dark'] .lk-public {
-  --tint: 246 246 236;
-  --surface-0: 23 35 31; --surface-1: 33 51 44; --surface-2: 42 62 53; --surface-3: 51 72 62;
-  --ink-1: 246 246 236; --ink-2: 202 215 205; --ink-3: 184 202 189;
-  --haze: 82 103 90; --haze-light: 105 128 114; --nav-bg: 33 51 44;
-  --family-accent: 169 233 149; --family-400: 169 233 149;
-  --family-500: 169 233 149; --family-600: 191 241 174; --family-700: 146 225 215;
-  --success: 146 225 215; --warning: 255 218 135; --danger: 255 175 163; --info: 211 184 245;
+  --tint: 241 245 249;
+  --surface-0: 11 17 32; --surface-1: 17 26 46; --surface-2: 24 35 58; --surface-3: 36 50 74;
+  --ink-1: 241 245 249; --ink-2: 203 213 225; --ink-3: 165 180 200;
+  --haze: 51 65 85; --haze-light: 71 85 105; --nav-bg: 17 26 46;
+  --family-accent: 147 197 253; --family-400: 147 197 253;
+  --family-500: 37 99 235; --family-600: 79 70 229; --family-700: 103 232 249;
+  --success: 110 231 183; --warning: 252 211 77; --danger: 252 165 165; --info: 196 181 253;
 }
-.lk-public-body { max-width: 880px; margin: 0 auto; padding: 28px max(16px, env(safe-area-inset-right, 0px)) 72px max(16px, env(safe-area-inset-left, 0px)); }
+
+/* the same soft colour wash the home hero sits on */
+.lk-public::before {
+  content: ''; position: absolute; inset: 0 0 auto; height: 720px; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(560px 380px at 6% 0%, rgba(6, 182, 212, 0.18), transparent 70%),
+    radial-gradient(520px 420px at 94% 0%, rgba(99, 102, 241, 0.18), transparent 70%);
+}
+:root[data-theme='dark'] .lk-public::before { opacity: 0.7; }
+
+.lk-public-body { max-width: 900px; margin: 0 auto; padding: 40px max(16px, env(safe-area-inset-right, 0px)) 88px max(16px, env(safe-area-inset-left, 0px)); }
 .lk-public-body > * { min-width: 0; }
 /* the pages carry their own px-5 gutters from the phone-width wrapper; the shell owns the gutter now */
 .lk-public-body > div { padding-inline: 0; }
-.lk-public h1, .lk-public h2 { font-family: var(--display); font-weight: 400; letter-spacing: -0.01em; }
-.lk-public h1 { font-size: clamp(32px, 5vw, 44px); line-height: 1.05; }
-.lk-public h2 { font-size: 1.35rem; line-height: 1.2; }
-/* purple fills and gradient text become the landing's brass call to action */
-.lk-public .bg-family-500 { background-color: var(--cta); color: var(--on-cta); box-shadow: none; }
-.lk-public .bg-family-500.text-white, .lk-public .bg-family-500 .text-white { color: var(--on-cta); }
-.lk-public .text-gradient { background: none; -webkit-text-fill-color: currentColor; color: var(--brass-text); }
-:root[data-theme='dark'] .lk-public .text-gradient { color: var(--brass); }
+.lk-public h1, .lk-public h2, .lk-public h3 { font-family: var(--vv-font); color: rgb(var(--ink-1)); text-wrap: balance; }
+.lk-public h1 { font-size: clamp(34px, 5.4vw, 52px); line-height: 1.04; font-weight: 900; letter-spacing: -0.04em; }
+.lk-public h2 { font-size: 1.45rem; line-height: 1.2; font-weight: 800; letter-spacing: -0.02em; }
+.lk-public h3 { font-weight: 750; }
+
+/* purple fills and gradient text become the bright gradient */
+.lk-public .bg-family-500 { background: var(--vv-grad); color: #fff; box-shadow: 0 10px 22px -12px rgba(37, 99, 235, 0.8); }
+.lk-public .bg-family-500.text-white, .lk-public .bg-family-500 .text-white { color: #fff; }
+.lk-public :is(button, a).bg-family-500 { border-radius: 999px; }
+.lk-public :is(.text-gradient, .bg-clip-text) {
+  background-image: var(--vv-grad); -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+}
+:root[data-theme='dark'] .lk-public :is(.text-gradient, .bg-clip-text) { background-image: linear-gradient(120deg, #67e8f9, #93c5fd 50%, #c4b5fd); }
 .lk-public a { text-underline-offset: 3px; }
-.lk-public :focus-visible { outline: 3px solid var(--brass-text); outline-offset: 2px; }
-:root[data-theme='dark'] .lk-public :focus-visible { outline-color: var(--brass); }
+.lk-public-body a:not([class]) { color: var(--vv-brand-text); font-weight: 600; }
 
 /* PageHeader (app chrome) on public pages: a plain title block, no sticky glass bar, no Assistant button */
-.lk-public-body header.sticky { position: static; background: none; backdrop-filter: none; -webkit-backdrop-filter: none; -webkit-mask-image: none; mask-image: none; margin-inline: 0; padding: 0 0 12px; }
+.lk-public-body header.sticky { position: static; background: none; backdrop-filter: none; -webkit-backdrop-filter: none; -webkit-mask-image: none; mask-image: none; margin-inline: 0; padding: 0 0 16px; }
 .lk-public a[aria-label='Assistant'] { display: none; }
-.lk-public .bg-clip-text { background-image: none; color: rgb(var(--ink-1)); -webkit-text-fill-color: currentColor; }
 
 /* one content width for every public page, whatever max-width the page's own wrapper set */
 .lk-public-body > div { max-width: none; margin-inline: 0; }
-/* cards on public pages use the landing surface, not the app's glass */
-.lk-public .glass, .lk-public .glass-strong { background: var(--surface); border: 1px solid var(--line); backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
+/* cards: white, rounded, soft blue shadow */
+.lk-public :is(.glass, .glass-strong) {
+  background: var(--vv-surface); border: 1px solid var(--vv-line); border-radius: 22px;
+  backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: var(--vv-shadow);
+}
 
 .lk-public-body main.mx-auto { margin-inline: 0; }
 
 /* form fields and progress bars on public pages */
-.lk-public .glass-input { background: var(--surface); border: 1px solid var(--field-line); border-radius: 12px; backdrop-filter: none; -webkit-backdrop-filter: none; color: var(--ink); }
-.lk-public .glass-input:focus-within, .lk-public .glass-input:focus { outline: 3px solid var(--brass-text); outline-offset: 2px; }
-.lk-public .bg-gradient-to-r { background-image: none; background-color: var(--brass); }
-.lk-public .h-1\.5.bg-tint\/5 { background-color: var(--line); }
+.lk-public .glass-input { background: var(--vv-surface); border: 1px solid var(--field-line); border-radius: 14px; backdrop-filter: none; -webkit-backdrop-filter: none; color: var(--vv-ink); }
+.lk-public .glass-input:focus-within, .lk-public .glass-input:focus { outline: 3px solid var(--vv-brand); outline-offset: 2px; }
+.lk-public .bg-gradient-to-r { background-image: var(--vv-grad); }
+.lk-public .h-1\.5.bg-tint\/5 { background-color: var(--vv-line); }
 
 /* the landing header and footer inside a public page still want the landing reset (specificity 0,0,1 so their own rules win) */
 :where(.lk-public .lk-footer, .lk-public .lk-header) :is(p, ul) { margin: 0; padding: 0; }
+
+/*
+ * redesign.css styles these pages at .landing.landing (0,3,0). The rules below sit one class
+ * higher so the bright look wins without editing that shared file.
+ */
+.lk-public.landing.landing.landing h1 { font-size: clamp(30px, 3.6vw, 42px); font-weight: 900; letter-spacing: -0.04em; line-height: 1.08; }
+.lk-public.landing.landing.landing .lk-public-body h2:not(.uppercase) { font-size: 20px; line-height: 1.25; font-weight: 800; letter-spacing: -0.02em; }
+.lk-public.landing.landing.landing .lk-public-body :is(.lk-legal-card, .lk-guide-grid article) h2 { font-size: 19px; }
+.lk-public.landing.landing.landing .lk-public-body h3 { font-size: 15px; }
+.lk-public.landing.landing.landing :is(.lk-eyebrow, .lk-legal-index > .lk-eyebrow) {
+  display: inline-block; width: auto; padding: 6px 14px; border-radius: 999px; font: 800 13px/1.3 var(--vv-font);
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--vv-brand-text);
+  background: color-mix(in srgb, var(--vv-brand) 10%, var(--vv-surface));
+}
+.lk-public.landing.landing.landing .lk-legal-index { text-align: center; }
+.lk-public.landing.landing.landing .lk-legal-index-grid { text-align: left; }
+
+/* index cards (legal, guides): tinted like the home cards, with a gradient icon and a lift on hover */
+.lk-public.landing.landing.landing :is(.lk-legal-card, .lk-guide-grid article) {
+  --ink: var(--vv-ink); --muted: var(--vv-muted); --brass-text: var(--vv-brand-text);
+  --ink-1: var(--pub-ink-1); --ink-2: var(--pub-ink-2); --ink-3: var(--pub-ink-3); --family-400: var(--pub-accent);
+  background: var(--tone-bg, var(--vv-surface)); border: 1px solid color-mix(in srgb, var(--tone-a, #2563eb) 18%, transparent);
+  outline: 0; border-radius: 26px; box-shadow: none; transition: transform 0.25s, box-shadow 0.25s;
+}
+.lk-public.landing.landing.landing :is(.lk-legal-card:hover, .lk-guide-grid > a:hover article) { transform: translateY(-4px); box-shadow: var(--vv-shadow-lg); }
+.lk-public.landing.landing.landing :is(.lk-legal-card:nth-child(4n + 1), .lk-guide-grid > a:nth-child(4n + 1) article) { --tone-bg: var(--vv-cyan-bg); --tone-a: var(--vv-cyan-a); --tone-b: var(--vv-cyan-b); }
+.lk-public.landing.landing.landing :is(.lk-legal-card:nth-child(4n + 2), .lk-guide-grid > a:nth-child(4n + 2) article) { --tone-bg: var(--vv-violet-bg); --tone-a: var(--vv-violet-a); --tone-b: var(--vv-violet-b); }
+.lk-public.landing.landing.landing :is(.lk-legal-card:nth-child(4n + 3), .lk-guide-grid > a:nth-child(4n + 3) article) { --tone-bg: var(--vv-amber-bg); --tone-a: var(--vv-amber-a); --tone-b: var(--vv-amber-b); }
+.lk-public.landing.landing.landing :is(.lk-legal-card:nth-child(4n), .lk-guide-grid > a:nth-child(4n) article) { --tone-bg: var(--vv-green-bg); --tone-a: var(--vv-green-a); --tone-b: var(--vv-green-b); }
+.lk-public.landing.landing.landing .lk-legal-card > svg:first-child {
+  box-sizing: content-box; width: 22px; height: 22px; padding: 11px; border-radius: 14px; color: #fff;
+  background: linear-gradient(135deg, var(--tone-a), var(--tone-b)); box-shadow: 0 8px 16px -8px var(--tone-a);
+}
+.lk-public.landing.landing.landing .lk-legal-card > span { color: var(--vv-brand-text); }
+.lk-public { --pub-ink-1: 15 23 42; --pub-ink-2: 51 65 85; --pub-ink-3: 71 85 105; --pub-accent: 29 78 216; }
+:root[data-theme='dark'] .lk-public { --pub-ink-1: 241 245 249; --pub-ink-2: 203 213 225; --pub-ink-3: 165 180 200; --pub-accent: 147 197 253; }
+
+/* section sidebars (legal, guides) and small labels: the public sans, not mono */
+.lk-public .lk-docs-label, .lk-public.landing.landing.landing .lk-docs-main h2.uppercase { font: 800 12px/1.3 var(--vv-font); letter-spacing: 0.1em; color: var(--vv-muted); }
+.lk-public .lk-docs a[aria-current='page'] { color: #fff; background: var(--vv-grad); border-left-color: transparent; box-shadow: 0 10px 22px -14px rgba(37, 99, 235, 0.9); }
+.lk-public .lk-docs-side a:hover:not([aria-current]) { color: var(--vv-brand-text); background: color-mix(in srgb, var(--vv-brand) 8%, transparent); }
+.lk-public .lk-docs-mnav { border-radius: 18px; box-shadow: var(--vv-shadow); }
+.lk-public .lk-cookie-table { border-radius: 20px; box-shadow: var(--vv-shadow); }
+
+/*
+ * Sectioned pages (legal, guides, security): the same width and side padding as the header's
+ * inner row, so the sidebar lines up with the logo and the content ends where the header does.
+ * The padding steps copy .lk-header-in's breakpoints in redesign.css.
+ */
+.lk-public.landing.landing.landing { --vv-gutter: 32px; }
+@media (max-width: 1100px) { .lk-public.landing.landing.landing { --vv-gutter: 24px; } }
+@media (max-width: 860px) { .lk-public.landing.landing.landing { --vv-gutter: 20px; } }
+@media (max-width: 400px) { .lk-public.landing.landing.landing { --vv-gutter: 12px; } }
+.lk-public.landing.landing.landing .lk-public-body:has(.lk-docs) { max-width: none; padding-inline: 0; }
+.lk-public.landing.landing.landing .lk-public-body > .lk-docs {
+  box-sizing: border-box; max-width: 1320px; margin-inline: auto; padding-inline: var(--vv-gutter);
+}
+.lk-public.landing.landing.landing .lk-docs-main { max-width: none; }
+.lk-public.landing.landing.landing .lk-docs-main > div { max-width: none; margin-inline: 0; padding-inline: 0; }
+/* guide pages wrap their text in a phone-width <main class="mx-auto max-w-2xl"> */
+.lk-public.landing.landing.landing .lk-docs-main > div > main { max-width: none; margin-inline: 0; }
+@media (min-width: 1200px) {
+  .lk-public.landing.landing.landing :is(.lk-legal-index-grid, .lk-guide-grid) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}

@@ -1,0 +1,236 @@
+/*
+ * The bright public look: tokens, the shared header and footer, and buttons. Used by the home
+ * page (.lk-vivid), every page in PublicShell (.lk-public) and the account screens in AuthShell (.lk-auth). Home-only sections live in vivid.css.
+ */
+:is(.lk-vivid, .lk-public, .lk-auth) {
+  --vv-bg: #f8fafc;
+  --vv-surface: #ffffff;
+  --vv-ink: #0f172a;
+  --vv-muted: #475569;
+  --vv-line: #e2e8f0;
+  --vv-brand: #2563eb;
+  --vv-brand-text: #1d4ed8;
+  --vv-grad: linear-gradient(120deg, #0e7490 0%, #2563eb 52%, #4f46e5 100%);
+  --vv-grad-soft: linear-gradient(135deg, #ecfeff 0%, #eff6ff 50%, #eef2ff 100%);
+  --vv-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 32px -12px rgba(37, 99, 235, 0.18);
+  --vv-shadow-lg: 0 30px 70px -30px rgba(37, 99, 235, 0.45);
+  --vv-cyan-bg: #ecfeff;
+  --vv-cyan-a: #0891b2;
+  --vv-cyan-b: #2563eb;
+  --vv-blue-bg: #eff6ff;
+  --vv-blue-a: #2563eb;
+  --vv-blue-b: #4f46e5;
+  --vv-violet-bg: #f5f3ff;
+  --vv-violet-a: #6d28d9;
+  --vv-violet-b: #4f46e5;
+  --vv-amber-bg: #fffbeb;
+  --vv-amber-a: #d97706;
+  --vv-amber-b: #ea580c;
+  --vv-pink-bg: #fdf2f8;
+  --vv-pink-a: #db2777;
+  --vv-pink-b: #9333ea;
+  --vv-green-bg: #ecfdf5;
+  --vv-green-a: #059669;
+  --vv-green-b: #0d9488;
+  --vv-font: var(--font-sans), Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: var(--vv-bg);
+  color: var(--vv-ink);
+  font-family: var(--vv-font);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
+}
+:root[data-theme='dark'] :is(.lk-vivid, .lk-public, .lk-auth) {
+  --vv-bg: #0b1120;
+  --vv-surface: #111a2e;
+  --vv-ink: #f1f5f9;
+  --vv-muted: #a5b4c8;
+  --vv-line: #24324a;
+  --vv-brand: #60a5fa;
+  --vv-brand-text: #93c5fd;
+  --vv-grad-soft: linear-gradient(135deg, #0c2a33 0%, #10213f 50%, #1b1a45 100%);
+  --vv-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px -14px rgba(0, 0, 0, 0.6);
+  --vv-shadow-lg: 0 30px 70px -30px rgba(79, 70, 229, 0.55);
+  --vv-cyan-bg: #0c2a33;
+  --vv-blue-bg: #10213f;
+  --vv-violet-bg: #1d1a45;
+  --vv-amber-bg: #2d2010;
+  --vv-pink-bg: #2e1428;
+  --vv-green-bg: #0d2b24;
+}
+
+/* The landing tokens the shared header, footer and sections read. :is() lifts specificity above landing.css. */
+:is(.lk-vivid .landing, .lk-public.landing, .lk-public .landing, .lk-auth.landing).landing.landing {
+  --bg: var(--vv-bg);
+  --surface: var(--vv-surface);
+  --ink: var(--vv-ink);
+  --muted: var(--vv-muted);
+  --line: var(--vv-line);
+  --field-line: #64748b;
+  --brass: var(--vv-brand);
+  --brass-text: var(--vv-brand-text);
+  --ok: #047857;
+  --ok-text: #047857;
+  --cta: #2563eb;
+  --on-cta: #ffffff;
+  --body: var(--vv-font);
+  --display: var(--vv-font);
+}
+:root[data-theme='dark']
+  :is(
+    .lk-vivid .landing,
+    .lk-public.landing,
+    .lk-public .landing,
+    .lk-auth.landing
+  ).landing.landing {
+  --field-line: #8193ab;
+  --ok: #6ee7b7;
+  --ok-text: #6ee7b7;
+}
+/* No backdrop-filter here: it would trap the fixed phone nav inside the header. */
+:is(.lk-vivid, .lk-public) .landing.landing.lk-header {
+  background: color-mix(in srgb, var(--vv-surface) 94%, transparent);
+}
+@media (min-width: 1000px) and (max-width: 1399px) {
+  :is(.lk-vivid, .lk-public) .landing.landing .lk-nav {
+    display: flex;
+  }
+  :is(.lk-vivid, .lk-public) .landing.landing .lk-mobile-nav {
+    display: none;
+  }
+  html body:has(:is(.lk-vivid, .lk-public)) {
+    padding-bottom: 0;
+  }
+}
+:is(.lk-vivid .landing, .lk-public.landing, .lk-auth.landing).landing.landing
+  .lk-btn:not(.lk-btn-google):not(.lk-btn-quiet):not([disabled]) {
+  background: var(--vv-grad);
+  color: #fff;
+  border-radius: 999px;
+  box-shadow: 0 10px 22px -12px rgba(37, 99, 235, 0.8);
+}
+:is(.lk-vivid .landing, .lk-public.landing, .lk-auth.landing).landing.landing
+  .lk-btn:not(.lk-btn-google):not(.lk-btn-quiet):not([disabled]):hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+:is(.lk-vivid, .lk-public) .landing.landing .lk-nav a:hover {
+  color: var(--vv-brand-text);
+  background: color-mix(in srgb, var(--vv-brand) 9%, transparent);
+}
+:is(.lk-vivid, .lk-public) .landing.landing .lk-footer {
+  background: var(--vv-surface);
+}
+
+:is(.lk-vivid, .lk-public, .lk-auth) :focus-visible {
+  outline: 3px solid var(--vv-brand);
+  outline-offset: 3px;
+}
+:is(.lk-vivid .landing, .lk-public.landing, .lk-auth.landing).landing.landing .lk-btn[disabled] {
+  background: var(--vv-line);
+  color: var(--vv-muted);
+  border-color: transparent;
+  box-shadow: none;
+  border-radius: 999px;
+}
+
+/*
+ * Type scale for the public frames: 14px body, 13px fine print, smaller headings. The signed-in
+ * app keeps its 16px minimums (globals.css); these rules only apply inside the public frames.
+ */
+html:has(:is(.lk-vivid, .lk-public, .lk-auth)) {
+  font-size: 16px;
+}
+:is(.lk-vivid, .lk-public, .lk-auth) {
+  font-size: 14px;
+  line-height: 1.6;
+}
+@media screen {
+  :is(.lk-vivid, .lk-public, .lk-auth) .text-sm,
+  :is(.lk-vivid, .lk-public, .lk-auth) label.text-sm {
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  :is(.lk-vivid, .lk-public, .lk-auth) :is(.text-xs, .text-footnote, label.text-xs) {
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+  :is(.lk-vivid, .lk-public, .lk-auth) :is(.text-\[10px\], .text-\[11px\]) {
+    font-size: 12px;
+  }
+  :is(.lk-vivid, .lk-public, .lk-auth) label {
+    font-size: 14px;
+  }
+}
+:is(.lk-vivid .landing, .lk-public.landing, .lk-auth.landing).landing.landing
+  :is(.lk-band, .lk-fine.lk-key) {
+  font-size: 14px;
+}
+:is(.lk-vivid .landing, .lk-public.landing, .lk-auth.landing).landing.landing
+  :is(
+    .lk-nav a,
+    .lk-signin,
+    .lk-menu a,
+    .lk-btn,
+    .lk-btn-sm,
+    .lk-textlink,
+    .lk-auth-foot a,
+    .lk-docs-side a,
+    .lk-docs-mnav nav a,
+    .lk-legal-card p,
+    .lk-legal-card > span,
+    .lk-field > label,
+    .lk-field > .lk-label,
+    .lk-cookie-table p,
+    .lk-news button,
+    .lk-foot-grid a,
+    .lk-docs-current
+  ) {
+  font-size: 14px;
+}
+:is(.lk-vivid .landing, .lk-public.landing, .lk-auth.landing).landing.landing
+  :is(.lk-fine, .lk-hint, .lk-legal, .lk-or, .lk-news .lk-fine, .lk-legalline) {
+  font-size: 13px;
+  line-height: 1.6;
+}
+:is(.lk-vivid .landing, .lk-public.landing, .lk-auth.landing).landing.landing
+  :is(.lk-intro, .lk-auth-intro > p:not(.lk-eyebrow), .lk-slide-text, .lk-auth-sub) {
+  font-size: 15px;
+  line-height: 1.65;
+}
+:is(.lk-vivid .landing, .lk-public.landing, .lk-auth.landing).landing.landing .lk-footer-intro h2 {
+  font-size: clamp(24px, 2.6vw, 30px);
+}
+:is(.lk-vivid .landing, .lk-public.landing, .lk-auth.landing).landing.landing
+  .lk-footer-subscribe
+  h3 {
+  font-size: 16px;
+}
+/* 16px stays on touch screens so iOS does not zoom into a field on focus */
+@media (hover: hover) and (pointer: fine) {
+  :is(.lk-vivid .landing, .lk-public.landing, .lk-auth.landing).landing.landing
+    :is(.lk-input, .lk-news input),
+  :is(.lk-public, .lk-auth) :is(.glass-input, input, textarea, select) {
+    font-size: 14px;
+  }
+}
+/* redesign.css pins public prose and footer text at 15-16px (specificity 0,5,1); one class higher here */
+.lk-public.landing.landing.landing .lk-public-body p.text-sm {
+  font-size: 14px;
+  line-height: 1.7;
+}
+.lk-public.landing.landing.landing .lk-public-body p.text-xs {
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+:is(.lk-vivid .landing, .lk-public.landing).landing.landing
+  :is(.lk-foot-grid .lk-foot-h, .lk-foot-bottom, .lk-cookie-table) {
+  font-size: 13px;
+}
+:is(.lk-vivid .landing, .lk-public.landing).landing.landing .lk-foot-grid nav a {
+  font-size: 14px;
+}
+/* guide articles set their prose with text-[15px] */
+:is(.lk-public, .lk-auth) .text-\[15px\] {
+  font-size: 14px;
+  line-height: 1.7;
+}

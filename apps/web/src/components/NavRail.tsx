@@ -52,7 +52,7 @@ export function NavRail() {
 
   return (
     <nav
-      className="hidden min-[1400px]:flex fixed top-0 left-0 bottom-0 z-nav w-[88px] flex-col items-center safe-area-top"
+      className="hidden desk:flex fixed top-0 left-0 bottom-0 z-nav w-[88px] flex-col items-center safe-area-top"
       style={{
         background: 'rgb(var(--nav-bg) / 0.85)',
         backdropFilter: 'blur(24px) saturate(120%)',
