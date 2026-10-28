@@ -8,6 +8,7 @@
  * third-party QR renderer would leak the secret to an external service.
  */
 
+import { notifyKeelDataChanged } from '@/lib/keel/client'
 import { useEffect, useState } from 'react'
 import { ListSection, ListRow } from '@/components/Glass'
 import { BottomSheet } from '@/components/BottomSheet'
@@ -145,6 +146,7 @@ export function MfaSettings() {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'That code did not work.')
       setRecoveryCodes(data.recovery_codes ?? [])
+      notifyKeelDataChanged('security')
       setStage('recovery')
       haptic('success')
     } catch (err) {

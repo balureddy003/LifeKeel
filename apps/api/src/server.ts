@@ -202,6 +202,7 @@ import { registerFamilyChannelRoutes } from './routes/family-channels.js'
 import { registerOperatorRetentionRoutes } from './routes/operator-retention.js'
 import { registerOperatorDeletionRoutes } from './routes/operator-deletion.js'
 import { registerAssistantRoutes } from './routes/assistant.js'
+import { registerKeelRoutes } from './keel-agent/routes.js'
 import { registerSupportRoutes } from './routes/support.js'
 import { registerFamilyReadinessRoutes } from './routes/family-readiness.js'
 import { registerFamilyScenarioRoutes } from './routes/family-scenarios.js'
@@ -2289,6 +2290,7 @@ if (workflowDb) {
   await registerEmergencySheetRoutes(app, workflowDb)
   registerFamilyInboxRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerAssistantRoutes(app, workflowDb)
+  registerKeelRoutes(app, workflowDb)
   registerSupportRoutes(app, workflowDb)
   registerFamilyReadinessRoutes(app, workflowDb)
   registerFamilyFreshnessRoutes(app, workflowDb)

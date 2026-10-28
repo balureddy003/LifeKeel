@@ -39,6 +39,9 @@ import { useToast } from './Toast'
 import { AuthShell } from '@/components/landing/AuthShell'
 import { MarketingLanding } from './MarketingLanding'
 import { NavRail } from './NavRail'
+import { KeelDock, PANEL_ID } from './keel/KeelDock'
+import { isKeelPanelEnabled } from '@/lib/keel/client'
+import { useKeelPanel } from '@/lib/keel/store'
 import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
 import { isNativeShell, biometricLockEnabled, verifyBiometric } from '@/lib/native'
@@ -421,11 +424,20 @@ function EmergencyButton() {
 // implementation by linking straight to it.
 function AskKeelButton({ context }: { context?: string }) {
   const router = useRouter()
+  const panelEnabled = isKeelPanelEnabled()
+  const panelOpen = useKeelPanel((s) => s.open && !s.minimised)
   return (
     <motion.button
       onClick={() => {
         haptic('light')
-        router.push(context ? `/assistant?context=${encodeURIComponent(context)}` : '/assistant')
+        // With the inline panel on, Keel opens beside the page the user is on.
+        // Off, it falls back to the full-page chat.
+        if (panelEnabled) {
+          const s = useKeelPanel.getState()
+          if (s.open && !s.minimised) s.closePanel()
+          else s.openPanel()
+        } else
+          router.push(context ? `/assistant?context=${encodeURIComponent(context)}` : '/assistant')
       }}
       whileTap={{ scale: 0.9 }}
       className="relative w-11 h-11 rounded-full flex items-center justify-center"
@@ -435,6 +447,7 @@ function AskKeelButton({ context }: { context?: string }) {
         boxShadow: '0 12px 24px -6px rgba(48,36,64,0.3)',
       }}
       aria-label="Ask Keel"
+      {...(panelEnabled ? { 'aria-expanded': panelOpen, 'aria-controls': PANEL_ID } : {})}
     >
       <Bot size={20} color="rgb(var(--on-cta))" />
     </motion.button>
@@ -707,7 +720,7 @@ function BiometricGate({ children }: { children: React.ReactNode }) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const { isAuthenticated, user, family } = useAuth()
-  const { config, emergencyActive, deactivateEmergency, setMode } = useMode()
+  const { config, emergencyActive, activateEmergency, deactivateEmergency, setMode } = useMode()
   const router = useRouter()
   const setInboxUnreadCount = useAppStore((s) => s.setInboxUnreadCount)
 
@@ -820,6 +833,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const showNav = isAuthenticated && family && !isAuthRoute && !isOperatorRoute
   const showEmergency = showNav && pathname !== '/assistant' && config.showEmergencyButton
   const showAskKeel = showNav && pathname !== '/assistant'
+  // The panel works before a family exists (bootstrap) and on /family-setup, so it has its own rule.
+  const keelEligible =
+    isAuthenticated && !isOperatorRoute && (!isAuthRoute || pathname.startsWith('/family-setup'))
+  // Open or minimised: the panel (or its "Resume Keel" pill) is the control, so the floating button steps aside.
+  const keelOpen = useKeelPanel((st) => st.open)
 
   const bottomPadding = showNav ? 'app-nav-space' : ''
 
@@ -878,7 +896,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <MaintenanceBanner />
       <ModeEffects />
       {showNav && <NavRail />}
-      <div className={[railGutter, 'min-h-screen'].filter(Boolean).join(' ')}>
+      <div
+        className={[railGutter, 'min-h-screen'].filter(Boolean).join(' ')}
+        style={{ paddingRight: 'var(--keel-panel-w, 0px)' }}
+      >
         {/* in flow, inside the rail gutter, so it pushes the page down instead of covering its header */}
         {showHero && (
           <AppHeroHeader>
@@ -904,11 +925,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
       {showNav && <LiquidTabBar />}
-      {(showEmergency || showAskKeel) && (
-        <div className="hidden desk:flex fixed bottom-8 right-4 z-fab flex-col items-end gap-4">
+      {(showEmergency || (showAskKeel && !keelOpen)) && (
+        <div
+          className="hidden desk:flex fixed bottom-8 z-fab flex-col items-end gap-4"
+          // Sits beside a docked Keel panel instead of on top of it.
+          style={{ right: 'calc(1rem + var(--keel-panel-w, 0px))' }}
+        >
           {showEmergency && <EmergencyButton />}
-          {showAskKeel && <AskKeelButton context={pathname} />}
+          {showAskKeel && !keelOpen && <AskKeelButton context={pathname} />}
         </div>
+      )}
+      {isKeelPanelEnabled() && (
+        <KeelDock
+          eligible={keelEligible}
+          onEmergency={() => {
+            useKeelPanel.getState().closePanel()
+            activateEmergency()
+          }}
+        />
       )}
       <EmergencyMode
         active={emergencyActive}

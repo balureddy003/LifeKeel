@@ -18,6 +18,7 @@ import { cachedFetch, invalidateCache } from './fetch-cache'
 import { reportError } from './observability'
 import { detectEmergency, EMERGENCY_REPLY } from './emergency-detection'
 import { getSessionToken } from '@/lib/session-token'
+import { notifyKeelDataChanged } from './keel/client'
 
 export interface FamilyInsight {
   id: string
@@ -864,6 +865,7 @@ export async function createLegacyContact(
     { method: 'POST', body: JSON.stringify(input) },
     null,
   )
+  if (res?.contact) notifyKeelDataChanged('legacy')
   return res?.contact ?? null
 }
 
@@ -1223,11 +1225,13 @@ export async function answerDigestOffer(
 export async function updateNotificationPrefs(
   patch: NotificationPrefsPatch,
 ): Promise<NotificationPrefsResponse | null> {
-  return scenarioRequest<NotificationPrefsResponse | null>(
+  const saved = await scenarioRequest<NotificationPrefsResponse | null>(
     '/family/notifications',
     { method: 'PATCH', body: JSON.stringify(patch) },
     null,
   )
+  if (saved) notifyKeelDataChanged('settings')
+  return saved
 }
 
 /**
@@ -1617,7 +1621,10 @@ export async function reviewDocumentFields(
       candidates?: DocumentCandidate[]
       problems?: { key: string; reason: string }[]
     }
-    if (res.ok && data.candidates) return { ok: true, candidates: data.candidates }
+    if (res.ok && data.candidates) {
+      notifyKeelDataChanged('documents')
+      return { ok: true, candidates: data.candidates }
+    }
     const invalid = data.problems?.some((p) => p.reason === 'invalid_value')
     return {
       ok: false,
@@ -1876,6 +1883,8 @@ export async function applyDocumentToProfile(
   invalidateCache('financial-profile')
   invalidateCache('family-insights')
   invalidateCache('inbox-items')
+  notifyKeelDataChanged('profile')
+  notifyKeelDataChanged('documents')
   return { applied: data.applied ?? [], insightsGenerated: data.insights_generated ?? 0 }
 }
 
@@ -2369,6 +2378,7 @@ async function familyGroupRequest(
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'Request failed')
+  notifyKeelDataChanged('family')
   return data.family as ApiFamilyGroup
 }
 
@@ -2520,6 +2530,7 @@ export async function inviteFamilyMember(
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || "Couldn't send the invite. Please try again.")
+  notifyKeelDataChanged('family')
   return { invited: data.invited, emailed: data.emailed, inviteUrl: data.invite_url }
 }
 
@@ -3344,6 +3355,7 @@ export async function submitFinancialProfile(
   // without dropping it here, a save could sit invisible to them for up to
   // 30s, reading as "my edit didn't save" even though it did.
   invalidateCache('financial-profile')
+  notifyKeelDataChanged('profile')
   // A generate_insights submit can create brand-new insights server-side —
   // Home's score/rings (family-insights) and the Inbox feed (inbox-items)
   // both read their own 30s-cached copy. Confirmed live: finishing the

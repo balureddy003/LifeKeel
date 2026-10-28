@@ -432,3 +432,14 @@ html[data-session] .lk-landing-gate { visibility: hidden; }
   .app-nav-space { padding-bottom: 40px; }
   .app-hero-inner { padding-inline: 44px; }
 }
+
+/* Keel points at a field after sending the user to a page (data-keel-anchor). */
+[data-keel-spotlight='on'] {
+  outline: 2px solid rgb(var(--family-500));
+  outline-offset: 4px;
+  border-radius: 12px;
+  transition: outline-color 0.3s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-keel-spotlight='on'] { transition: none; }
+}

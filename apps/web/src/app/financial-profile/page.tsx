@@ -1435,7 +1435,9 @@ export default function FinancialProfilePage() {
 
           {step.key === 'protection' && (
             <GlassCard className="p-5 mt-4">
-              <SectionTitle>Insurance Policies</SectionTitle>
+              <div data-keel-anchor="policies">
+                <SectionTitle>Insurance Policies</SectionTitle>
+              </div>
               <div className="space-y-4">
                 {policies.map((p, i) => (
                   <div

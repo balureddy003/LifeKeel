@@ -121,6 +121,8 @@ export function registerFamilyNotificationRoutes(app: FastifyInstance, db: Db): 
     }
     if (Object.keys($set).length === 0)
       return reply.status(400).send({ error: 'Nothing to update' })
+    // Marks the preferences as deliberately reviewed (Keel's setup guide reads this; a default is not a review).
+    $set['reviewed_at'] = new Date()
     await prefsCol().updateOne(
       { tenant_id },
       {

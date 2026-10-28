@@ -4,6 +4,7 @@ import path from 'node:path'
 import yaml from 'js-yaml'
 import { repoRoot } from '@lifekeel/platform'
 import { DETECTOR_CONTENT_POSTS } from './detector-content-posts.js'
+import { ensureKeelIndexes } from './keel-agent/threads.js'
 
 export interface Migration {
   id: string
@@ -375,6 +376,13 @@ export const migrations: Migration[] = [
           ),
         ),
       )
+    },
+  },
+  {
+    // Keel inline agent panel: conversation history (30-day TTL), proposals, per-user prefs.
+    id: '20261028000000-keel-agent-indexes',
+    up: async (db) => {
+      await ensureKeelIndexes(db)
     },
   },
 ]

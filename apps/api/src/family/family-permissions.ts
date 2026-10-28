@@ -63,7 +63,7 @@ export function isMinorMember(member: { role: string; date_of_birth?: string | n
 }
 
 /** JWT roles that may change household-wide facts. Join-request and invite users get 'viewer'. */
-const EDITOR_AUTH_ROLES = new Set(['owner', 'admin', 'operator', 'analyst'])
+export const EDITOR_AUTH_ROLES = new Set(['owner', 'admin', 'operator', 'analyst'])
 
 /**
  * May this user change shared household records (financial profile,
