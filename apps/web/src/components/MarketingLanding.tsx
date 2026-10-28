@@ -13,7 +13,7 @@ export function MarketingLanding() {
   }, [])
 
   return (
-    <div className="lk-home-experience">
+    <div className="lk-vivid">
       <SiteHeader />
       <HomeExperience />
       <div className="landing">

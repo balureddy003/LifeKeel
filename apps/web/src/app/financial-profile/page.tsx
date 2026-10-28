@@ -1869,7 +1869,7 @@ export default function FinancialProfilePage() {
         </motion.div>
       </AnimatePresence>
 
-      <div className="sticky bottom-[var(--app-dock-space)] min-[1400px]:bottom-0 z-raised -mx-5 px-5 pt-3 pb-3 mt-2 flex gap-2 bg-navbg/90 backdrop-blur-xl border-t border-tint/[0.05] safe-area-bottom">
+      <div className="sticky bottom-[var(--app-dock-space)] desk:bottom-0 z-raised -mx-5 px-5 pt-3 pb-3 mt-2 flex gap-2 bg-navbg/90 backdrop-blur-xl border-t border-tint/[0.05] safe-area-bottom">
         {stepIndex > 0 && (
           <button
             type="button"

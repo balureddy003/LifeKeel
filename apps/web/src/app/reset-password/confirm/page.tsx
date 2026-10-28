@@ -68,6 +68,7 @@ export default function ConfirmPasswordResetPage() {
   if (!token) {
     return (
       <AuthShell
+        intro="reset"
         title="Invalid reset link"
         sub="This link is missing its reset token. Request a new one to continue."
       >
@@ -80,7 +81,7 @@ export default function ConfirmPasswordResetPage() {
 
   if (done) {
     return (
-      <AuthShell title="Password updated" sub="Taking you to sign in...">
+      <AuthShell intro="reset" title="Password updated" sub="Taking you to sign in...">
         <Link href="/login" className="lk-btn lk-btn-quiet">
           Sign in now
         </Link>
@@ -89,7 +90,7 @@ export default function ConfirmPasswordResetPage() {
   }
 
   return (
-    <AuthShell title="Set a new password" sub="Must be at least 8 characters">
+    <AuthShell intro="reset" title="Set a new password" sub="Must be at least 8 characters">
       <form
         className="lk-form"
         noValidate

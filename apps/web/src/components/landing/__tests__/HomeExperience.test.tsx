@@ -9,13 +9,16 @@ describe('homepage live content', () => {
   it('keeps the live homepage message and detailed sections', () => {
     render(<HomeExperience />)
     for (const name of [
-      'Your family’s chart, kept current.',
+      'Your family’s money, cover and papers. One bright place.',
+      'Three steps to a clearer picture.',
       "Four days in everyone's life, and what Keel would check.",
-      'The same chart, as life changes.',
       'Ready before. Found during. Sorted after.',
+      'When something happens, your family has somewhere to start.',
       'Skip the retyping.',
+      'Six things Keel does not do.',
       'Free to start. One optional paid plan.',
       'Straight answers.',
+      'Make your account. Keel starts checking what you tell it.',
     ])
       expect(screen.getByRole('heading', { name })).toBeTruthy()
     expect(screen.getByText('£7.99 a month')).toBeTruthy()

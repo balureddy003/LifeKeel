@@ -53,6 +53,7 @@ export default function RequestPasswordResetPage() {
   if (sent) {
     return (
       <AuthShell
+        intro="reset"
         title="Check your email"
         sub={`If an account exists for ${email}, we've sent a link to reset your password. It expires in 1 hour.`}
         headingRef={sentHeadingRef}
@@ -65,7 +66,11 @@ export default function RequestPasswordResetPage() {
   }
 
   return (
-    <AuthShell title="Reset your password" sub="Enter your email and we'll send you a reset link">
+    <AuthShell
+      intro="reset"
+      title="Reset your password"
+      sub="Enter your email and we'll send you a reset link"
+    >
       <form
         className="lk-form"
         noValidate

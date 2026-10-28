@@ -423,7 +423,7 @@ html[data-session] .lk-landing-gate { visibility: hidden; }
   .app-content .-mx-5 { margin-inline: -12px; }
   .app-content .px-4 { padding-inline: 12px; }
 }
-@media (min-width: 1400px) {
+@media (min-width: 1400px), (min-width: 1024px) and (hover: hover) and (pointer: fine) {
   :root { --app-dock-space: 0px; }
   .app-bottom-nav { display: none; }
   .app-content { max-width: 56rem; padding-inline: 0; }

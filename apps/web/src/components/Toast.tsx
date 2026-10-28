@@ -64,7 +64,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {/* Portal-free: renders at the bottom of the provider tree, above
           the nav bar but below modals. safe-area-bottom keeps it clear of
           the home indicator on notched devices. */}
-      <div className="fixed bottom-[var(--app-dock-space)] min-[1400px]:bottom-8 left-0 right-0 z-banner flex flex-col items-center gap-2 pointer-events-none px-4">
+      <div className="fixed bottom-[var(--app-dock-space)] desk:bottom-8 left-0 right-0 z-banner flex flex-col items-center gap-2 pointer-events-none px-4">
         <AnimatePresence>
           {toasts.map((toast) => {
             const Icon = VARIANT_ICON[toast.variant]

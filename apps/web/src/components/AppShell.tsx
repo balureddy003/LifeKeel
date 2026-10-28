@@ -855,7 +855,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     isMarketingPage || isOperatorRoute || ownsLayout || signedOutFallback
       ? ''
       : 'app-content mx-auto w-full'
-  const railGutter = showNav ? 'min-[1400px]:pl-[88px]' : ''
+  const railGutter = showNav ? 'desk:pl-[88px]' : ''
   const showHero = !isMarketingPage && !isOperatorRoute && !ownsLayout && !signedOutFallback
 
   return (
@@ -905,7 +905,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
       {showNav && <LiquidTabBar />}
       {(showEmergency || showAskKeel) && (
-        <div className="hidden min-[1400px]:flex fixed bottom-8 right-4 z-fab flex-col items-end gap-4">
+        <div className="hidden desk:flex fixed bottom-8 right-4 z-fab flex-col items-end gap-4">
           {showEmergency && <EmergencyButton />}
           {showAskKeel && <AskKeelButton context={pathname} />}
         </div>

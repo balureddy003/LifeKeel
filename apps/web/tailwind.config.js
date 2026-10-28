@@ -3,6 +3,12 @@ module.exports = {
   content: ['./src/**/*.{js,ts,jsx,tsx,mdx}'],
   theme: {
     extend: {
+      // Sidebar layout: wide screens, plus laptop-size screens with a mouse or trackpad (Macs). iPads stay on the bottom nav.
+      screens: {
+        desk: {
+          raw: '(min-width: 1400px), (min-width: 1024px) and (hover: hover) and (pointer: fine)',
+        },
+      },
       colors: {
         // Refined accent — cool indigo/violet (Linear/Perplexity-inspired)
         family: {
