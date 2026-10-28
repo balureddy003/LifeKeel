@@ -21,6 +21,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { getTenantCollection } from '@lifekeel/platform'
 import { getAuditLogger } from '../audit/audit-log.js'
 import { isHouseholdEditor } from '../family/family-permissions.js'
+import { taskLlm } from '../ai/task-gateway.js'
 import {
   BRIEF_PROBLEM_TYPES,
   BRIEF_SOLVER_VERSION,
@@ -28,6 +29,7 @@ import {
   briefDataVersion,
   briefsFor,
   emitBriefEvent,
+  narrateBrief,
   solveBrief,
   tokenHash,
   type BriefInputs,
@@ -205,6 +207,8 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
       result: solved.result,
       template_sentence: solved.template_sentence,
       narrated_sentence: null,
+      narrated_solver_version: null,
+      narrated_data_version: null,
       solver_version: BRIEF_SOLVER_VERSION,
       data_version: briefDataVersion(problem as BriefProblemType, cleaned),
       stale: false,
@@ -368,6 +372,7 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
       problem_type: brief.problem_type,
       result: brief.result,
       template_sentence: brief.template_sentence,
+      sentence: brief.narrated_sentence ?? brief.template_sentence,
       for_member_name: brief.share.for_member_name,
       confirmed_opened_at: brief.confirmed_opened_at,
       created_at: brief.created_at,
@@ -412,4 +417,23 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
       }
     },
   )
+  /** POST /family/briefs/:id/narrate — optional governed rephrase, cached by versions. */
+  app.post<{ Params: { id: string } }>('/family/briefs/:id/narrate', async (req, reply) => {
+    const ctx = req.authContext
+    if (!ctx) return reply.code(401).send({ error: 'Authentication required' })
+    const { tenant_id } = ctx
+    const brief = await briefsFor(db, tenant_id).findOne({ id: req.params.id })
+    if (!brief) return reply.code(404).send({ error: 'Brief not found' })
+    // The template is always a valid answer — a missing gateway, provider
+    // outage, or exhausted budget must never 500 the narrate path.
+    let llm: ((s: string, p: string, m?: string) => Promise<string>) | null = null
+    try {
+      llm = taskLlm('brief.narrate.v1', tenant_id)
+    } catch {
+      /* gateway not initialised / task policy refuses — template stands */
+    }
+    return llm
+      ? narrateBrief(db, brief, llm)
+      : { sentence: brief.template_sentence, narrated: false, from_cache: false }
+  })
 }

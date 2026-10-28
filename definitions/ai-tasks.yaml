@@ -86,6 +86,27 @@ tasks:
     budget_class: interactive
     guard_policy: family_pii
 
+  # PRD-222: optional governed rephrase of the deterministic brief template.
+  # language_only — the model may never supply or adjust a number; the route
+  # rejects any output numeral absent from the solver payload (numeral-
+  # presence guard) and falls back to the template on failure/budget.
+  brief.narrate.v1:
+    purpose: Rephrase a stored household-brief template sentence in plain English — narration only
+    risk: user_visible
+    authority: language_only
+    data_boundary: approved_hosted_provider
+    processor_terms_ref: approved hosted processors — anthropic/openai API terms, Microsoft Products and Services DPA, Groq/xAI DPAs — not used for training
+    provider_retention_class: limited_abuse_log
+    allowed_models: [tier:fast]
+    allowed_processors: [ollama, anthropic, openai, azure, vertex, groq, xai]
+    primary_model: tier:fast
+    preferred_execution: hosted_sync
+    deadline_ms: 20000
+    max_input_tokens: 2000
+    max_output_tokens: 300
+    budget_class: interactive
+    guard_policy: family_pii
+
   document.classify.v1:
     purpose: Classify an uploaded document (statement, letter, bill, other)
     risk: internal

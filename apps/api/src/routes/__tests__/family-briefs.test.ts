@@ -33,6 +33,7 @@ vi.mock('../../ai/task-gateway.js', () => ({
 import {
   briefsFor,
   markBriefsStale,
+  narrateBrief,
   solveBrief,
   tokenHash,
   type BriefInputs,
@@ -302,5 +303,72 @@ describe('staleness + template invariant', () => {
         expect(found, `numeral "${d}" not in solver payload for ${problem}`).toBe(true)
       }
     }
+  })
+})
+
+describe('brief.narrate — governed, guarded, cached', () => {
+  async function freshBrief() {
+    const res = await createBrief()
+    return briefsFor(db, TENANT).findOne({ id: res.json().brief.id }) as Promise<HouseholdBriefDoc>
+  }
+  const llm = (text: string) => async () => text
+  const throwing = async () => {
+    throw new Error('no provider')
+  }
+
+  it('a grounded narration is stored and returned', async () => {
+    const b = await freshBrief()
+    const out = await narrateBrief(
+      db,
+      b,
+      llm('If income stopped, £6,000 would cover £2,000 a month for about 3.0 months.'),
+    )
+    expect(out.narrated).toBe(true)
+    const doc = await briefsFor(db, TENANT).findOne({ id: b.id })
+    expect(doc!.narrated_sentence).toContain('£6,000')
+    expect(doc!.narrated_solver_version).toBe(b.solver_version)
+  })
+
+  it('rejects any numeral absent from the solver payload and falls back to the template', async () => {
+    const b = await freshBrief()
+    const out = await narrateBrief(db, b, llm('Your savings would last about 42 months.'))
+    expect(out.narrated).toBe(false)
+    expect(out.sentence).toBe(b.template_sentence)
+    const doc = await briefsFor(db, TENANT).findOne({ id: b.id })
+    expect(doc!.narrated_sentence).toBeNull()
+  })
+
+  it('call failure / budget exhausted falls back to the template silently', async () => {
+    const b = await freshBrief()
+    const out = await narrateBrief(db, b, throwing)
+    expect(out.narrated).toBe(false)
+    expect(out.sentence).toBe(b.template_sentence)
+  })
+
+  it('cache hit on matching solver+data versions returns the stored sentence without a model call', async () => {
+    const b = await freshBrief()
+    await narrateBrief(
+      db,
+      b,
+      llm('£6,000 covers £2,000 a month for about 3.0 months if income stops.'),
+    )
+    // Second call: even a throwing model is never reached — versions match.
+    const reloaded = (await briefsFor(db, TENANT).findOne({ id: b.id }))!
+    const out = await narrateBrief(db, reloaded, throwing)
+    expect(out.from_cache).toBe(true)
+    expect(out.narrated).toBe(true)
+    expect(out.sentence).toContain('£6,000')
+  })
+
+  it('POST /family/briefs/:id/narrate with no provider configured falls back to the template', async () => {
+    const res = await createBrief()
+    const r = await app.inject({
+      method: 'POST',
+      url: `/family/briefs/${res.json().brief.id}/narrate`,
+      payload: {},
+    })
+    expect(r.statusCode).toBe(200)
+    expect(r.json().narrated).toBe(false)
+    expect(r.json().sentence).toBe(res.json().brief.template_sentence)
   })
 })

@@ -71,6 +71,8 @@ export interface HouseholdBriefDoc extends Record<string, unknown> {
   /** Rendered only from `result` + inputs — the numeral-presence invariant. */
   template_sentence: string
   narrated_sentence: string | null
+  narrated_solver_version: string | null
+  narrated_data_version: string | null
   solver_version: string
   data_version: string
   stale: boolean
@@ -230,4 +232,96 @@ export async function emitBriefEvent(
     .collection('growth_events')
     .insertOne({ tenant_id: tenantId, event, meta, created_at: new Date() })
     .catch(() => {})
+}
+
+// ─── Optional governed narration (brief.narrate.v1) ─────────────────────────
+//
+// PRD-222: narration is a separate, budgeted, optional step. The model only
+// rephrases the deterministic template — it may never supply or adjust a
+// number. Every numeral in its output must appear in the solver payload or
+// the output is rejected and the template is used. The stored sentence is
+// cached by solver_version + data_version so a hit costs zero model calls.
+
+export interface NarrateOutcome {
+  sentence: string
+  narrated: boolean
+  from_cache: boolean
+}
+
+/** Numbers a narration is allowed to contain — derived from result + inputs. */
+function allowedNumerals(result: unknown, inputs: unknown): Set<number> {
+  const allowed = new Set<number>()
+  const collect = (v: unknown) => {
+    if (typeof v === 'number' && Number.isFinite(v)) allowed.add(Math.round(v))
+    else if (Array.isArray(v)) v.forEach(collect)
+    else if (v && typeof v === 'object' && !(v instanceof Date)) Object.values(v).forEach(collect)
+  }
+  collect(result)
+  collect(inputs)
+  return allowed
+}
+
+/**
+ * Server-side numeral-presence guard (Intent 65 invariant): every numeral
+ * in `text` must exist in the solver payload — £-values compare as pounds
+ * (payload is minor units), plain numbers match within rounding or as the
+ * pounds value of a minor figure.
+ */
+export function numeralsGrounded(text: string, result: unknown, inputs: unknown): boolean {
+  const allowed = allowedNumerals(result, inputs)
+  const digits = text.match(/£?[\d,]+(?:\.\d+)?/g) ?? []
+  return digits.every((d) => {
+    const money = d.startsWith('£')
+    const n = Number(d.replace(/[£,]/g, ''))
+    return money
+      ? [...allowed].some((a) => Math.round(a / 100) === n)
+      : [...allowed].some((a) => Math.abs(a - n) < 0.15 || Math.round(a / 100) === n)
+  })
+}
+
+const NARRATE_SYSTEM =
+  'You rephrase a household financial brief. Use ONLY the facts and numbers given — never add, remove, or change any number, and never name or suggest a product or provider. Return one short, calm paragraph.'
+
+type LlmFn = (system: string, prompt: string, model?: string) => Promise<string>
+
+/**
+ * Narrate a stored brief with a governed LlmFn (taskLlm('brief.narrate.v1')).
+ * Falls back to the template on call failure, budget exhaustion, or any
+ * numeral absent from the solver payload. Cached on the brief by versions.
+ */
+export async function narrateBrief(
+  db: Db,
+  brief: HouseholdBriefDoc,
+  llm: LlmFn,
+): Promise<NarrateOutcome> {
+  if (
+    brief.narrated_sentence &&
+    brief.narrated_solver_version === brief.solver_version &&
+    brief.narrated_data_version === brief.data_version
+  ) {
+    return { sentence: brief.narrated_sentence, narrated: true, from_cache: true }
+  }
+  const prompt =
+    `Template sentence (the only facts you may use):\n${brief.template_sentence}\n\n` +
+    `Solver figures, minor units (pence):\n${JSON.stringify(brief.result)}\n\n` +
+    'Rephrase the template sentence for the partner opening the shared brief.'
+  try {
+    const text = (await llm(NARRATE_SYSTEM, prompt)).trim()
+    if (!text || !numeralsGrounded(text, brief.result, brief.inputs))
+      return { sentence: brief.template_sentence, narrated: false, from_cache: false }
+    await briefsFor(db, brief.tenant_id).updateOne(
+      { id: brief.id },
+      {
+        $set: {
+          narrated_sentence: text,
+          narrated_solver_version: brief.solver_version,
+          narrated_data_version: brief.data_version,
+          updated_at: new Date(),
+        },
+      },
+    )
+    return { sentence: text, narrated: true, from_cache: false }
+  } catch {
+    return { sentence: brief.template_sentence, narrated: false, from_cache: false }
+  }
 }
