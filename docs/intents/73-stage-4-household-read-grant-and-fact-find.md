@@ -6,6 +6,7 @@
 - **Small read API under a household grant (`GET /v1/household-grant/:token`):** projects only the stored brief result (`runway_months`, `solver_version`, `data_version`), `renewal_dates`, `opened_at`, and `document_locations` (never raw file bytes, never `visibility: 'private'` accounts). Does not recompute on every call.
 - **Fact-find export (`POST /family/fact-find/export`):** a deterministic, family-initiated export (JSON and printable summary) containing the household's shared runway brief, earners, commitments, policies on file (provider, type, cover amount, renewal date), and document locations—with no raw files unless the member explicitly exports them—ready to send to an adviser the family already has.
 - **Revocation preserves the graph:** disconnecting an external partner/grant (`DELETE /family/grants/:id`) or removing a household member (`DELETE /family/members/:id`) immediately revokes their token/session access and records an audit event, while keeping the household graph intact.
+- **Grant-type isolation:** `household_grants` tokens are a distinct type from employer seat entitlements (Intent 72) and from member invites — they can only be issued by an adult household editor, never by an employer seat or a partner; an employer seat can never call `GET /v1/household-grant/:token`.
 
 **Constraints**
 - Trust tier touched (0–3, see ARCHITECTURE.md): **Tier 0 / Tier 1** (user-initiated read grant creation/revocation and download-only fact-find export; LifeKeel never introduces or selects an adviser).

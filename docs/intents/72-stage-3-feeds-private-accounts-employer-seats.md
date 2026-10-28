@@ -4,9 +4,9 @@
 
 **Done looks like**
 - **Balances feed the same number:** read-only account balances in `external_accounts` (and, when legally usable after the 2027/28 public MoneyHelper dashboard, read-only pension pots) write into or link directly to the profile fields the deterministic solver already reads (`emergency_savings_minor`, `pension_balance_minor`), bumping the brief's `data_version` and marking affected briefs stale.
-- **One adult can hide an account:** `external_accounts` and `family_assets` gain `owner_user_id` and `visibility: 'shared' | 'private'`. A private account is excluded from shared household briefs and other members' reads.
+- **One adult can hide an account:** `external_accounts` and `family_assets` gain `owner_user_id` and `visibility: 'shared' | 'private'`. A private account is excluded from shared household briefs and other members' reads — **with explicit disclosure, never silent omission**: the shared brief labels the savings figure "savings on file (partial — one adult has private accounts not included)" (or equivalent), so the months are never presented as complete when the household inputs are not.
 - **No pension consolidation journey:** a found or updated pension pot updates the retirement component only; it never triggers a transfer, consolidation, or provider recommendation flow (`CLAUDE.md` Rule 2).
-- **Employer seat:** a flat per-seat fee lets staff run a brief (`employer_seat_grants`), with a hard architectural wall: the employer never receives any brief payload, figures, or individual usage status, and there is zero fee or commission per policy.
+- **Employer seat:** a flat per-seat fee lets staff run a brief (`employer_seat_grants`), with a hard architectural wall: the employer never receives any brief payload, figures, or individual usage status, and there is zero fee or commission per policy. **Seat grants and household grants are distinct, non-transferable types** (Intent 73's `household_grants`): an `employer_seat_grants` entitlement can never be exchanged for, mint, or authenticate as a `household_grants` token — `GET /v1/household-grant/:token` resolves only against `household_grants`, and no code path joins the two.
 
 **Constraints**
 - Trust tier touched (0–3, see ARCHITECTURE.md): **Tier 0** (read-only balance sync, member-scoped visibility filter, billing entitlement).

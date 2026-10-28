@@ -27,8 +27,14 @@ access by the household.
      `household_briefs` result (`runway_months`, `solver_version`,
      `data_version`, `opened_at`), `policies[].renewal_date`, and document
      location labels.
+   - **Grant-type isolation:** the endpoint resolves `:token` only against
+     `household_grants`. Household grants are a distinct, non-transferable type
+     from employer seat entitlements (PRD-224) and member invite tokens — an
+     employer seat can never call this endpoint, and a grant can only be issued
+     by an adult household editor, never by a partner or seat.
    - **Never recomputes on read, never returns raw document/vault files, and
-     never includes `visibility: 'private'` accounts.** Every read writes a
+     never includes `visibility: 'private'` accounts** (private accounts instead
+     surface as `savings_scope: 'partial'` per PRD-224). Every read writes a
      content-free audit event (`grant.read`) visible to the family on
      `/audit-log`.
 2. **Fact-find export for an existing adviser (`POST /family/fact-find/export`):**

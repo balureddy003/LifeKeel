@@ -10,7 +10,7 @@
   4. **Childcare or school bill starting** — models a dated start (and optional end) monthly commitment step in `ScenarioStep[]` and recomputes runway months.
   5. **Quiet month or tax bill** — models a self-employed income dip or dated tax bill (e.g. January/July self-assessment) against emergency savings and runway months.
   6. **Parent needing support** — models a recurring monthly support commitment plus designated handover contacts in the brief.
-- **Commercial packaging:** first brief is free; the household pays (~£59/year, reusing `keel_plus_gbp_annual`) for the second brief or for keeping the household record current over time.
+- **Commercial packaging:** first brief is free; the household pays ~£59/year for the second brief or for keeping the household record current over time, checked via a **new `household_record` annual entitlement**. It may bill on the same £59.99/yr Stripe price (`keel_plus_gbp_annual`), but the entitlement and billing/landing copy must describe it as "second brief + keeping the record current" — never "AI document reading". The existing Plus/OCR framing is repackaged as part of the Stage 1 landing rewrite (PRD-222); document extraction moves to an add-on or secondary feature line rather than the paid headline.
 
 **Constraints**
 - Trust tier touched (0–3, see ARCHITECTURE.md): **Tier 0** (deterministic solver + persisted brief pack).

@@ -28,7 +28,7 @@ employer.
      liquid savings input, increments the tenant's `data_version`, and marks
      dependent `household_briefs` rows `stale: true` (PRD-226). No new service
      is introduced.
-2. **One adult can hide an account:**
+2. **One adult can hide an account — with explicit disclosure, never silent omission:**
    - `external_accounts` and `family_assets` gain `owner_user_id: string` and
      `visibility: 'shared' | 'private'` (default `'shared'`).
    - Any account with `visibility: 'private'` is:
@@ -36,6 +36,14 @@ employer.
      - filtered out server-side on `GET /family/assets`, `GET /connectors/*`,
        and `GET /family/emergency-sheet/preview` whenever `req.authContext.user_id !== doc.owner_user_id`;
      - never exposed on Stage 4 household read grants or fact-find exports.
+   - **When any account is private, the shared brief must say so.** The payload
+     carries `savings_scope: 'complete' | 'partial'`; whenever it is `'partial'`
+     the brief and shared page render "savings on file (partial — one adult has
+     private accounts not included)" (or equivalent reviewed copy) next to the
+     months figure. Silently presenting a runway computed on partial savings as
+     a complete household number violates the partial-data honesty rule
+     (Intent 21/PRD-115) — omission is the bug this clause prevents, not a copy
+     nicety.
 3. **Pension pots update the retirement component only (no consolidation):**
    - Manual pension pot updates today (`household.members[].pension_balance_minor`,
      PRD-119) and read-only pension dashboard feeds later (only after the
@@ -56,6 +64,14 @@ employer.
      `employer_org_id`. The employer sees only aggregate seat-redemption counts
      (with a minimum cohort floor), never household figures, and pays zero fee
      per policy.
+   - **Seat grants and household grants are distinct, non-transferable types.**
+     `employer_seat_redemptions` entitles plan features only; it has no bearer
+     token field and can never mint, be exchanged for, or authenticate as a
+     `household_grants` token (PRD-225) — even if the employee later issues a
+     household grant, that grant is family-scoped and its token resolves only
+     against `household_grants`. `GET /v1/household-grant/:token` looks up
+     exactly one collection, and a fitness test asserts no route joins
+     `employer_seat_redemptions` to any household data path.
 
 ## Constraints
 

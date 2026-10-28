@@ -52,7 +52,10 @@ the other adult has opened it.
      (`authority: language_only`), passes a **server-side numeral-presence
      output guard** (every numeral in the LLM output must exist in `result`;
      otherwise it is rejected and falls back to `template_sentence`), and caches
-     `narrated_sentence` keyed by `solver_version + data_version`.
+     `narrated_sentence` keyed by `solver_version + data_version`. The same
+     Intent 65 numeral-presence test covers the **template generator itself** —
+     every numeral `template_sentence` renders must come from `result`, with no
+     hard-coded figures.
 3. **Send + `opened_at` (`GET /b/:token` / `GET /family/briefs/shared/:token`):**
    - Creating or sharing a brief returns a revocable, unguessable share link
      (raw 24-byte hex token in the URL, SHA-256 hash stored on
@@ -106,6 +109,19 @@ Intent 65 (`numeral-presence-test`), Intent 70, Intent 75.
 
 ## Success metrics
 
-A real couple completes one brief in an evening and both adults view the same
-months (`opened_at` stamped within 24 hours of creation); zero LLM calls on the
-first brief path; p95 brief compute latency < 150 ms.
+Instrumented funnel (events on `growth_events` / audit, content-free enums
+only): `brief_created` → `brief_share_link_generated` → `brief_opened`, where
+`brief_opened` counts only when `opened_at` is stamped by a **second, distinct
+roster member** (`opener_member_id != created_by` — the creator opening their
+own link is instrumented but excluded from the success definition). Both adults
+render `runway_months` from the same stored `result` payload, so "both see the
+same months" is true by construction and verified by asserting the shared page
+reads `result` verbatim. Success = `brief_opened` within 24h of `brief_created`
+on a two-adult household; zero LLM calls on the first brief path; p95 brief
+compute latency < 150 ms.
+
+**Template numeral invariant:** `template_sentence` is generated only from
+fields in the solver `result` payload — no hard-coded example numbers, same
+invariant Intent 65's numeral-presence test already enforces on scenario
+narration. The shared page renders `template_sentence` (or the guarded
+`narrated_sentence`) verbatim; a numeral not in `result` cannot appear.

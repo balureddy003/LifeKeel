@@ -61,11 +61,22 @@ household record current over the year.
        (`monthlyExpenseDeltaMinor`) plus the parent/care handover entries in
        the brief (`who_to_call`, `key_papers`), recomputing household runway
        months and updating the shared brief.
-3. **Commercial model (~£59/year):**
+3. **Commercial model (~£59/year) — new entitlement, not a re-skin of OCR Plus:**
    - The first brief in a household is free (PRD-222).
    - Creating a **second brief**, running Stage 2 problem packs, or keeping the
-     household record updated over time requires the annual household plan
-     (`keel_plus_gbp_annual`, £59.99/year in `billing/stripe-price.ts`).
+     household record updated over time requires a new **`household_record`
+     annual entitlement** checked server-side by plan/entitlement, not by
+     price-id string.
+   - It may bill on the same £59.99/yr Stripe price
+     (`keel_plus_gbp_annual` in `billing/stripe-price.ts`), **but the
+     entitlement and all billing/landing copy must describe it as "second brief
+     + keeping the record current" — never "AI document reading".** Today that
+     price buys OCR extraction (`Pricing.tsx`, `PlusSpotlight.tsx`); this PRD
+     redefines what the annual plan sells. Document extraction moves to an
+     add-on or a secondary feature line; PRD-222's landing rewrite makes the
+     two consistent — shipping the new copy before the reframe lands would
+     leave `/upgrade` and `Pricing.tsx` contradicting each other, so the
+     entitlement check must not gate on the old Plus framing.
    - Billing copy on `/upgrade` and `Pricing.tsx` states this plainly: pay for
      the second brief and keeping the household record current — never for
      product recommendations or commissions.
