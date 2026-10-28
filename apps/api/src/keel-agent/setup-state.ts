@@ -174,6 +174,8 @@ type Who = 'organizer' | 'editor' | 'self'
 interface Evaluation {
   status: StepStatus
   reason_code?: string
+  /** Replaces the step title when the remaining work differs from the default ask. */
+  title?: string
   evidence: Record<string, number | boolean>
   /** Which reader failure makes this step unknown. */
   needs: Array<keyof Snapshot>
@@ -243,7 +245,15 @@ const STEP_DEFS: StepDef[] = [
       const noDob = kids.filter((k) => !k.date_of_birth).length
       return {
         status: kids.length === 0 ? 'not_started' : noDob > 0 ? 'partial' : 'done',
-        ...(noDob > 0 ? { reason_code: 'missing_date_of_birth' } : {}),
+        ...(noDob > 0
+          ? {
+              reason_code: 'missing_date_of_birth',
+              title:
+                noDob === 1
+                  ? "Add your child's date of birth"
+                  : "Add your children's dates of birth",
+            }
+          : {}),
         evidence: { children: kids.length, children_missing_dob: noDob },
         needs: ['family'],
       }
@@ -514,7 +524,7 @@ export function computeSetupState(snapshot: Snapshot, ctx: KeelContext): SetupSt
 
     return {
       id: def.id,
-      title: def.title,
+      title: (!failed && ev.title) || def.title,
       status,
       ...(reason_code ? { reason_code } : {}),
       evidence: failed ? {} : ev.evidence,

@@ -92,8 +92,10 @@ Rules:
 - The "Open insights" list below is the only set of gaps Keel has formally flagged — each one already passed a specific threshold (e.g. an education fund is only flagged once it's within 5 years of its target date). When a question leads you to describe a gap that ISN'T in that list — a figure that's merely below target but not close enough to be flagged yet — say so plainly (e.g. "on track for now, but worth revisiting closer to the date") rather than using the same urgent language ("shortfall", "not fully funded", "gap") you'd use for a flagged insight. Matching tone to formal flags keeps a distant, low-priority observation from reading as equally urgent to a real one.
 - The family legacy map below lists estate and inheritance records the family declared — you may describe what records exist and who they name, label unverified claims as such, but you must never state that a document is legally valid, who legally owns a property, or what anyone will inherit.`
 
+// No follow-up question here: a canned "would you like…?" can't be answered
+// by the fallback either, so the family just gets the same reply again.
 const FALLBACK_CONTENT =
-  "Based on the information you've entered, here is a summary from your family's data. This is for informational purposes only — please consult a qualified professional before making financial decisions. Would you like to see the specific numbers from your family's profile?"
+  "Keel can't reach its AI service right now, so I can't answer that one. I can still answer some questions straight from your records — try asking about your emergency fund, policy renewal dates, the insurance policies on file, education savings or your family readiness score."
 
 // Returned when a query carries special-category hints but the
 // self-hosted model isn't deployed — the assistant.answer.sensitive.v1

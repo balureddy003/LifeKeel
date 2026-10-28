@@ -109,6 +109,19 @@ describe('vertex provider routing', () => {
     expect(url).toContain('ollama.test:11434')
   })
 
+  it('keeps a tier call on the env-detected provider even when the tier model name maps elsewhere', async () => {
+    // Regression: azure's tier:fast model is 'gpt-4o-mini', which name
+    // detection maps to openai — with only Azure configured every Ask Keel
+    // call failed with "OPENAI_API_KEY not set" and returned the fallback.
+    process.env['AZURE_OPENAI_ENDPOINT'] = 'https://example.openai.azure.com'
+    process.env['AZURE_OPENAI_API_KEY'] = 'k'
+    const fetchMock = vi.fn().mockResolvedValue(okResponse(completion('hi')))
+    vi.stubGlobal('fetch', fetchMock)
+    await createLlmRouterFromEnv()('s', 'p', 'tier:fast')
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toContain('example.openai.azure.com')
+  })
+
   it('routes to api.x.ai with the grok-4.3 tier model when the override selects xai', async () => {
     process.env['XAI_API_KEY'] = 'k'
     const fetchMock = vi.fn().mockResolvedValue(okResponse(completion('hi')))
