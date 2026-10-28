@@ -109,11 +109,7 @@ export default function SignUpPage() {
   }
 
   return (
-    <AuthShell
-      title="Create your account"
-      sub="Takes 30 seconds. No credit card needed."
-      aside={<RegionSwitch />}
-    >
+    <AuthShell title="Create your account" aside={<RegionSwitch />}>
       <button
         type="button"
         className="lk-btn lk-btn-google"
@@ -214,11 +210,6 @@ export default function SignUpPage() {
           {loading ? 'Creating...' : 'Create your free account'}
         </button>
       </form>
-
-      <p className="lk-hint lk-center">
-        Next you add the people in your household, then what you have on file. Your financial data
-        isn&apos;t sold.
-      </p>
 
       <p className="lk-hint lk-center">
         By continuing, you agree to our{' '}

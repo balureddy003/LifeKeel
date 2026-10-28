@@ -76,12 +76,6 @@ describe('signup form', () => {
     fireEvent.submit(container.querySelector('form')!)
     await waitFor(() => expect(push).toHaveBeenCalledWith('/verify-otp'))
   })
-
-  it('tells the visitor what happens next and says the data is not sold', () => {
-    render(<SignUpPage />)
-    expect(screen.getByText(/Next you add the people in your household/)).toBeTruthy()
-    expect(screen.getByText(/financial data isn.t sold/i)).toBeTruthy()
-  })
 })
 
 describe('login form', () => {
