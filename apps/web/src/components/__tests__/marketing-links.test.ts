@@ -24,7 +24,6 @@ const PUBLIC_FILES = [
   'components/landing/SignupCard.tsx',
   'components/landing/DawnClose.tsx',
   'components/landing/Pricing.tsx',
-  'components/landing/PlusSpotlight.tsx',
   'components/landing/StickyCta.tsx',
   'app/readiness/page.tsx',
   'app/blog/page.tsx',

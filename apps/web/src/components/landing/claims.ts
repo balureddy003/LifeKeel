@@ -177,6 +177,20 @@ export const CLAIMS: Claim[] = [
     evidence: 'apps/api/src/routes/account.ts',
   },
   {
+    id: 'household-brief',
+    text: 'A computed household brief shared with the other adult, with opened confirmation',
+    status: 'live',
+    evidence: 'apps/api/src/routes/family-briefs.ts',
+    page: true,
+  },
+  {
+    id: 'household-record',
+    text: 'Unlimited briefs and a record kept current when figures change',
+    status: 'live',
+    evidence: 'apps/api/src/briefs/briefs.ts',
+    page: true,
+  },
+  {
     id: 'free-plan',
     text: 'Free to start, no credit card',
     status: 'live',

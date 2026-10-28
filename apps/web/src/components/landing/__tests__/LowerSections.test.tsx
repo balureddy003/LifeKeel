@@ -3,7 +3,6 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { Security, SECURITY } from '../Security'
-import { PlusSpotlight } from '../PlusSpotlight'
 import { Pricing, FREE_ROWS, PLUS_ROWS } from '../Pricing'
 import { Faq } from '../Faq'
 import { FAQ } from '../faq-data'
@@ -60,21 +59,6 @@ describe('Security', () => {
   it('shows three plain statements', () => {
     render(<Security />)
     expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(3)
-  })
-})
-
-describe('PlusSpotlight', () => {
-  it('labels the policy fields as a sample and links to signup with a location', () => {
-    render(<PlusSpotlight />)
-    expect(screen.getByText('Sample document')).toBeTruthy()
-    const link = screen.getByRole('link', { name: 'Start free, add Plus later' })
-    expect(link.getAttribute('href')).toMatch(/\/signup$/)
-    document.addEventListener('click', (e) => e.preventDefault(), { once: true })
-    fireEvent.click(link)
-    expect(track).toHaveBeenCalledWith('landing_cta_click', {
-      location: 'plus_spotlight',
-      method: 'signup',
-    })
   })
 })
 

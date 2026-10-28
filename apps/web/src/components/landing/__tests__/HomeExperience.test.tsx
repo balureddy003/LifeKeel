@@ -11,10 +11,10 @@ describe('homepage live content', () => {
     for (const name of [
       'Your family’s money, cover and papers. One bright place.',
       'Three steps to a clearer picture.',
-      "Four days in everyone's life, and what Keel would check.",
+      'One problem, one evening, one number.',
       'Ready before. Found during. Sorted after.',
       'When something happens, your family has somewhere to start.',
-      'Skip the retyping.',
+      'Keep the household record current.',
       'Six things Keel does not do.',
       'Free to start. One optional paid plan.',
       'Straight answers.',
@@ -25,14 +25,18 @@ describe('homepage live content', () => {
     expect(screen.queryByText(/deleted immediately|Deletion is immediate/i)).toBeNull()
   })
 
-  it('keeps the sample scenarios interactive', () => {
+  it('leads with the three brief problems, not a sample family', () => {
     render(<HomeExperience />)
-    const scenario = screen.getByRole('radio', { name: 'Income stops' })
-    fireEvent.click(scenario)
-    expect((scenario as HTMLInputElement).checked).toBe(true)
-    expect(
-      (screen.getByRole('radio', { name: 'One income drops' }) as HTMLInputElement).checked,
-    ).toBe(false)
+    for (const name of [
+      'One of us might stop earning',
+      'Someone is about to earn less',
+      'The other adult does not know',
+    ]) {
+      expect(screen.getByText(name)).toBeTruthy()
+    }
+    // The made-up sample-household picker is gone from the front door
+    // (Intent 70); a labelled mock figure elsewhere is fine.
+    expect(screen.queryByRole('radio', { name: 'Income stops' })).toBeNull()
   })
 
   it('preserves navigation and signup anchors without duplicate IDs', () => {

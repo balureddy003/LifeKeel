@@ -1,7 +1,6 @@
 'use client'
 
 import { VividHero } from './VividHero'
-import { SampleDay } from './SampleDay'
 import {
   BadDay,
   Features,
@@ -11,6 +10,7 @@ import {
   PlusBand,
   Questions,
   StatStrip,
+  ThreeProblems,
   Trust,
 } from './VividSections'
 import './vivid.css'
@@ -23,9 +23,7 @@ export function HomeExperience() {
       <StatStrip />
       <div id="how-it-works">
         <HowItWorks />
-        <div className="landing vv-sample">
-          <SampleDay />
-        </div>
+        <ThreeProblems />
       </div>
       <Features />
       <BadDay />
