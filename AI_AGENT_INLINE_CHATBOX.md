@@ -9,6 +9,15 @@
 | **Advice rule** | Informational only. Setup guidance is about configuring *LifeKeel*, never about which financial product to buy. |
 | **AI data rule** | Every model call goes through `apps/api/src/ai/task-gateway.ts` under a registered task. No provider memory, files, vector stores or training. |
 | **Date** | 2026-10-28 |
+| **Merged from** | `AI_AGENT_INLINE_CHAT_WINDOW.md` (parallel draft): same-household field privacy, bootstrap mode, identity-generation checks, `unknown` step state, route keys, real notification fields, acceptance matrix |
+
+## Decisions recorded (2026-10-28)
+
+| Question | Decision | Where it lands |
+|---|---|---|
+| Chat history retention | **30 days** for every user, fixed. The user can delete a conversation or all history sooner | §9, §10.5, Phase 4 |
+| Do view-only members see the setup guide? | **Yes.** They see the steps that apply to them (their own security and sign-in steps) plus household steps shown read-only with "your organizer can do this". Nothing they can't already see on existing pages | §10.3, Appendix A |
+| Stream replies in production? | **Yes.** Phase 0 still runs a short test to confirm the production path doesn't buffer. Streaming keeps the output guard and re-checks access before text is released | §6.9, Phase 4 |
 
 ---
 
@@ -44,6 +53,9 @@
    - SD-4 [Default settings for 2 adults + 2 kids (Tier 1 proposal)](#sd-4-default-settings-for-2-adults--2-kids-tier-1-proposal)
    - SD-5 [Open question answered with grounded tools](#sd-5-open-question-answered-with-grounded-tools)
    - SD-6 [Blocked access to another account's data](#sd-6-blocked-access-to-another-accounts-data)
+   - SD-7 [Sign-out or account switch during a streaming reply](#sd-7-sign-out-or-account-switch-during-a-streaming-reply)
+   - SD-8 [New user with no family yet (bootstrap mode)](#sd-8-new-user-with-no-family-yet-bootstrap-mode)
+   - SD-9 [Model or sensitive processing unavailable](#sd-9-model-or-sensitive-processing-unavailable)
 8. [Request flow chart](#8-request-flow-chart)
 9. [Data model (ERD)](#9-data-model-erd)
 10. [Security](#10-security)
@@ -108,6 +120,12 @@ how far the account's **setup** has got, so it can't say "you've done 4 of 11 st
 | Bottom sheet, toast, confirm sheet, command palette | `BottomSheet.tsx`, `Toast.tsx`, `ConfirmSheetProvider.tsx`, `CommandPalette.tsx` | Mobile panel, confirm UX, Ctrl/Cmd+K entry |
 | Client PII curtain + emergency pre-check | `apps/web/src/lib/api.ts` `fetchAIResponse` | Kept on the client send path |
 | Setup surfaces | `ConversationalOnboarding` (`/family-setup`), `/financial-profile?step=…`, `/documents`, `/settings`, `/family`, `/legacy` | Targets of navigation chips |
+| Other chat entry points | `CommandPalette.tsx:60` (`router.push('/assistant')`), `AppShell.tsx:55` nav item, member-scoped ask card in `app/member/[id]/MemberProfileClient.tsx` (~line 576) | All converted to open the same panel (Phase 1) |
+| Panel visibility today | `AppShell.tsx` treats `/family-setup` as an auth route and `showNav` requires a family | Panel needs its own eligibility rule so a new user without a family gets **bootstrap mode** (§6.1, SD-8) |
+| Household-wide read model | `member-twin.ts`: any family member can read any member's twin; per-member field permissions are "a later design decision" | `member_id` selects context, it does **not** prove private-field access. Keel needs a field classification (§10.3) |
+| Client drops answer metadata | `fetchAIResponse` returns `content/status/dataAsOf` only, losing verified provenance | Panel client keeps the full typed response |
+| Notification settings | `family-notifications.ts`: GET is adults only, PATCH is **organizer only**; defaults `digest_mode:false`, `heartbeat_cadence:'monthly'`, `min_urgency:'low'`, `channels:['web_push','email']`; quiet hours are integer hours with **no timezone** | The only settings presets may propose (§6.5, §6.7) |
+| Automation settings | `automation-settings.ts`: `renewal_reminders_enabled` and `auto_execute_enabled` are **Tier 3 opt-ins**, default off; PATCH is admin+ | Keel explains them and links to the screen. It **never** proposes turning them on |
 
 ---
 
@@ -233,6 +251,11 @@ flowchart TB
 | D7 | Transcripts stored **per user, not per household**, with TTL | A partner should not read the other adult's questions; less data kept | Shared household thread |
 | D8 | Streaming sends progress + deterministic cards immediately; model text is released **after** the output guard passes | Keeps the gateway's symmetric output guards meaningful | Raw token streaming that bypasses guards |
 | D9 | `/assistant` becomes the expanded view of the same thread | One chat implementation, as the `AskKeelButton` comment already insists | Second chat component |
+| D10 | **Field classification, default deny.** Every field Keel may read is tagged `own_private`, `household_shared`, `adult_only`, `youth_ok` or `excluded`; untagged = excluded | Same tenant is not the same as allowed: the other adult's private records stay private even though `member-twin.ts` is household-wide today | Trusting tenant scope alone; asking the model to leave private fields out |
+| D11 | **Route keys, not URLs.** Code emits `{ kind:'navigate', route_key }` from a finite map; model text can never create an action | Rules out open redirects and made-up pages | Server-sent `href` strings |
+| D12 | Panel eligibility is separate from `showNav`: `authenticated && !mfaPending && consumerSurface`. No family yet → **bootstrap mode** (static help + "create your family") | New users need Keel most, before a family exists | Hiding Keel until setup is done |
+| D13 | **Identity generation**: every request carries the client's identity generation; responses from a previous user/tenant/session are thrown away | Shared devices, sign-out mid-stream, account switch | Relying on abort alone (late responses still arrive) |
+| D14 | Setup completion comes **only from server-confirmed saves** and versioned predicates; a reader that fails gives `unknown`, never `done` or `not_started` | A default value is not a reviewed choice; a page visit is not completion | Inferring from defaults, page visits or chat replies |
 
 ---
 
@@ -247,6 +270,16 @@ Breakpoints follow the existing `desk:` prefix used by `NavRail`/`AppShell`.
 | ≥ 1280px ("wide") | **Docked**: panel takes 400px (resizable 360–560px) on the right. Page content shrinks by setting `--keel-panel-w` on the shell wrapper (`padding-right`) | User sees page and chat side by side; nothing is covered |
 | `desk` – 1279px | **Overlay**: panel slides over the right edge with a light scrim on the page only (not modal; page stays clickable) | Close/minimise to see full page |
 | < `desk` (phone/tablet) | **Bottom sheet** using `BottomSheet.tsx`: `peek` (64px pill: "Keel · Step 3 of 11 ▲"), `half` (50vh), `full` (92vh) | Tapping a navigation chip drops the sheet to `peek` so the target page is visible, then the user swipes it back up |
+
+**Choosing the mode by space, not just viewport.** Docked mode is used only while the remaining main area
+(viewport minus `NavRail` minus panel) is at least **640px**. Otherwise the panel switches to overlay. At 200%
+zoom or narrow widths it uses the sheet. A `ResizeObserver` on the shell wrapper decides this, so it also works
+when the rail or the browser window changes size.
+
+**Modal rules for overlay and sheet.** Focus is trapped, background is `inert`, Escape and a visible close
+button work, safe areas are respected, and `100dvh` keeps the composer above the mobile keyboard. The modal
+chrome contains its own **SOS** action: activating it closes Keel and moves focus to the existing emergency
+surface. An SOS button hidden behind an inert backdrop doesn't count. Docked mode has no focus trap.
 
 ```
 Wide desktop (docked)                                    Phone (sheet at half -> peek after nav)
@@ -278,6 +311,21 @@ Wide desktop (docked)                                    Phone (sheet at half ->
    - `disclaimer` line on finance-adjacent answers (existing `Disclaimer.tsx` copy)
 4. **Suggested prompts** (chips above the composer), from context: "What should I do next?", "What does this page do?", "Recommended settings for my family".
 5. **Composer**: textarea, send, character limit 2000 (matches `AskSchema`), client PII curtain and emergency pre-check as in `fetchAIResponse`.
+   Enter sends, Shift+Enter adds a line, IME composition never sends, sending is blocked while a request is pending.
+   The draft is kept across route changes and on errors.
+
+#### Interaction rules
+
+- Show at most **three** next steps in a reply. The full checklist sits behind "View setup".
+- Keep these apart in wording: a pending invitation vs a missing member; a provisional (entered on someone's behalf)
+  value vs a confirmed one; an unknown value vs zero.
+- Never ask the organizer to type in another adult's private details just to finish a checklist step.
+- If the current page has unsaved edits, a nav chip goes through the page's existing navigation guard (save or
+  discard first). Keel never discards a form silently.
+- Old `/assistant?context=…&prompt=…` links are untrusted hints. They may **prefill** the composer; they are never
+  auto-sent.
+- Auto-scroll only when the reader is near the bottom; otherwise show a "New response" pill.
+- Status is shown with text as well as colour ("Done", "Waiting on Sam", "Couldn't check").
 
 ### 5.3 Guided setup mode
 
@@ -316,7 +364,8 @@ stateDiagram-v2
 ### 5.5 Accessibility
 
 - Panel is `<aside role="complementary" aria-label="Keel assistant">`. In overlay/sheet mode it becomes `role="dialog" aria-modal="false"`.
-- Focus moves into the composer on open and returns to the Ask Keel button on close. `Esc` closes. `Ctrl/Cmd+J` toggles. "Ask Keel" is added to `CommandPalette`.
+- Focus moves into the composer on open and returns to the Ask Keel button on close. `Esc` closes (unless a nested popup owns Escape). `Ctrl/Cmd+J` toggles. "Ask Keel" in `CommandPalette` opens the panel instead of navigating.
+- Launcher buttons expose `aria-expanded` and `aria-controls="keel-panel"`.
 - Streaming text uses `aria-live="polite"` on a hidden region that announces only completed messages, not every chunk.
 - The skip link (`#main-content`) still jumps to page content. Add a second skip target `#keel-panel` when the panel is open.
 - Respect `prefers-reduced-motion` (Framer Motion `useReducedMotion`) for slide/spotlight animations.
@@ -378,6 +427,12 @@ interface KeelPanelState {
 }
 ```
 
+The store also holds `identityGen` (number) and `abort: AbortController | null`. `identityGen` goes up on sign-in,
+sign-out, account switch, membership loss and "New conversation". Every request records the generation it started
+under; a response (or SSE event) whose generation or `user_id`/`tenant_id` doesn't match the current one is
+dropped, even if it arrives after the abort. Sign-out in another tab bumps the generation here too (through the
+app's existing session invalidation).
+
 Only `mode`, `widthPx` and `greetedThisSession` are persisted (`zustand/middleware` `persist`, `sessionStorage`).
 **Message content is never written to browser storage.** It is wiped on sign-out with the existing
 `session-purge.ts`.
@@ -386,12 +441,18 @@ Only `mode`, `widthPx` and `greetedThisSession` are persisted (`zustand/middlewa
 
 - `AskKeelButton` toggles `useKeelPanel().open()` instead of `router.push`. Keep `context={pathname}` by
   writing it into `pageContext`.
-- Render `<KeelDock />` next to `<CommandPalette />` when `showNav` is true (same rule as the button today:
-  signed in, has family, not an auth/operator route).
+- Render `<KeelDock />` next to `<CommandPalette />` under its **own** rule (D12):
+  `isAuthenticated && !mfaPending && !isOperatorRoute && !publicOnlyRoute`. It does **not** require `family`.
+  With no family yet, the panel runs in **bootstrap mode**: static help plus the user's own "family exists?" state
+  and a link to `/family-setup`. No household reads (SD-8). Existing family redirects stay as they are.
+- Convert **every** entry point to `open()`: `AskKeelButton`, the `AppShell.tsx:55` nav item, `CommandPalette`'s
+  "Ask AI", and the member card in `MemberProfileClient.tsx` (which passes `member_id` as a context hint).
 - Wrapper gets `style={{ ['--keel-panel-w' as string]: docked ? `${widthPx}px` : '0px' }}` and
   `desk:pr-[var(--keel-panel-w)]` on the rail-gutter div, so docked mode pushes content.
 - Hide the floating Ask Keel FAB while the panel is open (avoid two entry points on screen).
 - `/assistant` page renders `<KeelThread fullPage />` against the same store, so expand/collapse doesn't lose messages.
+- `/keel/*` and `/assistant/*` responses carry `Cache-Control: private, no-store`, and the service worker bypasses them.
+  The client keeps the full typed response (answer kind, provenance, `data_as_of`), unlike today's `fetchAIResponse`.
 
 **Page context hook**
 
@@ -408,7 +469,8 @@ values from the DOM would let page content leak into prompts.
 
 **Detecting step completion (SD-3)**
 
-- `client.ts` exposes `notifyKeelDataChanged(area)`. Existing save handlers call it (financial profile save,
+- `client.ts` exposes `notifyKeelDataChanged(area)`. Existing save handlers call it **only after the server
+  confirms the save (2xx)**, never on optimistic updates (financial profile save,
   document upload complete, member invite sent, settings save). Fallback: refetch on route change and window focus.
 - The panel refetches `GET /keel/setup-state` (cheap, cached server-side for 30s, invalidated on writes) and, if a
   step flipped to `done`, appends a local `setup_checklist` delta message: "Protection is done. Next: …". No model call.
@@ -442,7 +504,8 @@ All routes sit behind the existing onRequest auth hook (not in `OPEN_ROUTE_PREFI
       "title": "Create your household",
       "status": "done",
       "evidence": { "members": 4 },
-      "href": "/family",
+      "route_key": "family",
+      "source_updated_at": "2026-10-20T08:01:00Z",
       "est_minutes": 2,
       "applies_to_role": ["organizer", "adult"]
     },
@@ -451,16 +514,27 @@ All routes sit behind the existing onRequest auth hook (not in `OPEN_ROUTE_PREFI
       "title": "Record the protection you already have",
       "status": "partial",
       "evidence": { "adults_with_cover_recorded": 1, "adults": 2 },
-      "href": "/financial-profile?step=protection",
+      "route_key": "financial-profile.protection",
       "anchor": "life-cover-partner",
       "est_minutes": 3
+    },
+    {
+      "id": "notifications_configured",
+      "title": "Choose how Keel keeps you posted",
+      "status": "unknown",
+      "reason_code": "reader_failed",
+      "route_key": "settings.notifications"
     }
   ],
-  "computed_at": "2026-10-28T10:42:00Z"
+  "catalog_version": 1,
+  "data_as_of": "2026-10-28T10:42:00Z"
 }
 ```
 
-`evidence` holds **counts and booleans only**, never amounts, names of policies or document text.
+`evidence` holds **counts and booleans only**, never amounts, names of policies or document text, and only for
+fields the viewer may already see (§10.3). Step `status` is one of `done`, `partial`, `not_started`,
+`waiting_on_other`, `blocked`, `unknown`, `not_applicable`. Unknown or unauthorized member/resource ids give a
+uniform `404`; a role-denied capability gives `403` without revealing whether a record exists.
 
 **`POST /keel/turns` request**
 
@@ -491,8 +565,10 @@ type KeelEvent =
 type KeelAnswerRoute = 'emergency' | 'quarantined' | 'setup' | 'help' | 'preset' | 'verified' | 'llm' | 'fallback'
 ```
 
-`NavCard.href` is always taken from the server's route allowlist. The client also checks that it starts with
-`/` and is not `//` before calling `router.push` (no open redirect, no `javascript:`).
+`NavCard` is `{ kind: 'navigate', route_key, member_id?, anchor? }`. Only orchestrator code creates it, never
+model text. The client maps `route_key` through a finite table in `lib/keel/routes.ts` to a real internal path;
+an unknown key renders nothing. The target page's API still authorizes `member_id` on its own. This rules out
+open redirects, `javascript:` links and invented pages.
 
 ### 6.3 Agent orchestrator LLD
 
@@ -513,6 +589,9 @@ Pipeline (same order as the flow chart in §8):
 
 1. **Emergency screen**: `detectEmergency(message)` → fixed `EMERGENCY_CONTENT`, `done(route='emergency')`. No data load.
 2. **Special-category screen**: `medical_hint || containsSpecialCategoryContent(message)` → task `assistant.answer.sensitive.v1` (fails closed while no self-hosted model, same as today) → `quarantined`.
+   The **selected context** is screened too: a non-medical question must not carry health-bearing context into an
+   ordinary task. Health detail is dropped (`withoutHealthDetail`) unless the sensitive boundary is in use. No
+   weaker processor is ever tried as a fallback.
 3. **Minor user**: if `isMinor`, route to the youth path (`assistant.youth_answer.v1`) with youth tools only. No setup/preset/proposal features.
 4. **Intent classify** (`intent.ts`, deterministic regex/keyword like `verified-answer.ts`):
    - `setup_next` ("where do I start", "what's next", "finish setup") → Setup State Service → `setup_checklist` card + nav card, then optional short model phrasing (task `keel.setup_narration.v1`) from **the checklist only**.
@@ -520,7 +599,10 @@ Pipeline (same order as the flow chart in §8):
    - `preset` ("recommended settings", "family of 4", "2 adults 2 kids") → Presets (§6.5) → proposal card.
    - `verified_fact` → existing `classifyVerifiedIntent` / `renderVerifiedAnswer` (no model).
    - `open` → grounded LLM answer: existing `loadAssistantData` context + setup summary + page help, task `keel.agent.answer.v1`.
-5. **Output**: model text passes the gateway's output guard, then `text` event; then `provenance`; then `done`.
+5. **Delivery check, then output**: before releasing model text, re-check that the session is still live and the
+   user is still an active member with the same role (membership can be removed while a model call is running).
+   If not, send `error` and drop the text. Otherwise model text passes the gateway's output guard, then `text`
+   event; then `provenance`; then `done`.
 6. **Audit**: one `keel.turn` audit event with route, tools used (names), latency, token counts. **No message text.**
 
 Fallback: any gateway error → deterministic reply built from the setup checklist ("I can't write a full answer
@@ -540,8 +622,27 @@ interface SetupStepDef {
   appliesTo: (h: HouseholdShape, ctx: KeelRequestContext) => boolean
   evaluate: (snap: SetupSnapshot, h: HouseholdShape) => { status: StepStatus; evidence: Record<string, number | boolean> }
 }
-type StepStatus = 'done' | 'partial' | 'not_started' | 'not_applicable' | 'waiting_on_other'
+type StepStatus =
+  | 'done' | 'partial' | 'not_started' | 'not_applicable'
+  | 'waiting_on_other'   // e.g. partner invite pending
+  | 'blocked'            // prerequisite missing or role can't do it
+  | 'unknown'            // a reader failed; never shown as done or not started
 ```
+
+Rules for honest progress (D14):
+
+- A reader that throws or times out gives `unknown` for its steps. "Setup complete" is never claimed while any
+  applicable step is `unknown` or `blocked`; Keel says "setup is complete for the parts I can check".
+- A **default value is not a reviewed choice**. Notification preferences that were never saved stay `not_started`.
+  Where a source record can't tell "default" from "reviewed", add a review marker (`reviewed_at`) at the existing
+  save boundary (e.g. `PATCH /family/notifications`). Old records without the marker read as "needs review".
+- Completion never comes from a chat reply, a page visit, an optimistic UI update or an analytics event.
+- Setup completion, the readiness score and open insights are different things. Keel never implies that finishing
+  setup means the family is financially ready.
+- `data_as_of` is when the response was assembled; each step also returns `source_updated_at` when known. Parallel
+  reads are not a transaction, so if a write overlaps, Keel refreshes rather than making strong claims.
+- Readers load **only the fields the viewer is allowed to see** (§10.3). They don't load everything and then filter.
+- A user's deliberate "skip for now" may be stored in `keel_preferences`; a skip never counts as done.
 
 - `loadSetupSnapshot(db, ctx)` runs **one projection query per collection** through `getTenantCollection(db, name, ctx.tenant_id)`
   and returns presence flags and counts only (e.g. `profile.household.members.length`, `documents count by category`,
@@ -551,7 +652,8 @@ type StepStatus = 'done' | 'partial' | 'not_started' | 'not_applicable' | 'waiti
 - Ordering: dependency order from Appendix A, then lowest `est_minutes` first among unblocked steps.
 - `waiting_on_other`: e.g. the partner's own income is pending their join (PRD-104/123). Keel says so instead of telling
   the organizer to enter it.
-- Unit-tested with fixtures for: empty account, 2 adults + 2 kids half done, single parent, viewer role, child user.
+- Unit-tested with fixtures for: empty account, no family yet (bootstrap), 2 adults + 2 kids half done, zero amounts,
+  pending invite, missing DOB, unreviewed upload, explicit skip, a failing reader, single parent, viewer role, child user.
 
 ### 6.5 Household presets LLD (2 adults + 2 kids)
 
@@ -571,14 +673,21 @@ presets:
                   expenses_recorded, emergency_fund_recorded, protection_on_file,
                   education_goals, documents_uploaded, notifications_configured,
                   mfa_enabled, emergency_contacts]
-    settings:                      # each maps to an existing settings endpoint field
-      notifications.digest_frequency: weekly
-      notifications.push_level: important_only
-      notifications.channel_fallback: email
-      automation.mode: prepare_only           # never auto-execute
-      family.partner_role: adult_editor
-      family.children_login: none_under_13    # roster-only members; youth twin offered at 13+
-      security.mfa_prompt_all_adults: true
+    # Proposable: ONLY real fields of PATCH /family/notifications (organizer only).
+    # Existing defaults: digest_mode=false, heartbeat_cadence=monthly, min_urgency=low.
+    proposable_settings:
+      notifications.digest_mode: true            # routine updates batched into a digest
+      notifications.heartbeat_cadence: monthly   # keeps the current default; shown so it is a reviewed choice
+      notifications.min_urgency: medium
+    # Shown as guidance only (links to the existing screen), never proposed:
+    guidance_only:
+      - channels: suggest only channels already configured and consented; never switch one on
+      - quiet_hours: ask the family's preferred hours; not proposed until the API stores a timezone
+      - partner_access: invite the other adult through the Family screen; Keel never sends invites
+      - children: roster entries with date of birth; no child sign-ins created by Keel
+      - mfa: each adult turns it on in Settings > Security
+      - automation: keep renewal reminders and auto-execute OFF unless the family chooses them on the
+        Automation screen (Tier 3 opt-ins, never proposed by Keel)
     talking_points:
       - Invite your partner so their income and cover are confirmed by them, not entered on their behalf.
       - Add each child's date of birth so age-based checks (like education goals) can run.
@@ -587,9 +696,14 @@ presets:
       - Name emergency contacts and guardians on the emergency sheet.
 ```
 
-Matching: exact match first, then the closest by `(adults, children)`, then `default`. Children's ages from the roster
-change details (e.g. offer the youth twin when a child is 13+). The **proposal** contains only keys from `settings`
-whose current value differs from the preset.
+Matching uses the **saved roster**, not the phrase the user typed ("family of four"). If the roster disagrees with
+what the user said, Keel asks rather than guesses. Exact match first, then the closest by `(adults, children)`, then
+`default`. Children's ages come from roster dates of birth (never inferred from names) and change details, e.g.
+offering the youth twin when a child is 13+. The **proposal** contains only `proposable_settings` keys whose current
+value differs from the preset, and only when the viewer is the organizer. Other roles get the same suggestions
+as read-only text with "your organizer can change these".
+
+Keel never invents a salary, savings target or expense amount in a preset or a reply.
 
 ### 6.6 Tool registry LLD
 
@@ -620,7 +734,7 @@ Phase 2–4 tools (all read-only):
 | `profile.summary` | `loadAssistantData` subset (same minimisation as `/assistant/ask`) | adults; member-scoped for non-organizers per PRD-122 |
 | `insights.open` | Open insights (family detectors) | adults |
 | `readiness.score` | `/family/readiness` logic | adults |
-| `presets.recommend` | Household shape + current settings | organizer / editor roles |
+| `presets.recommend` | Household shape + current settings | adults (suggestions); proposals for organizer only |
 | `navigation.resolve` | Route allowlist + anchors | everyone |
 
 **No write tools exist.** The proposal path (§6.7) is not a tool.
@@ -639,8 +753,12 @@ flowchart LR
   H --> I["Mark applied, audit keel.proposal.applied<br/>approvedBy = user_id"]
 ```
 
-- Only **app configuration** keys are allowed (notifications, digest, automation mode limited to `off`/`prepare_only`,
-  MFA *prompt*, child login policy). The allowlist lives in code (`PROPOSABLE_SETTINGS`) and is unit-tested.
+- Only these keys are proposable: `digest_mode`, `heartbeat_cadence`, `min_urgency` on `PATCH /family/notifications`,
+  and only for the **organizer** (the endpoint is organizer-only today). The allowlist lives in code
+  (`PROPOSABLE_SETTINGS`) and is unit-tested. Channels, quiet hours, invites, MFA, child logins and **all automation
+  settings** (`renewal_reminders_enabled`, `auto_execute_enabled` are Tier 3 opt-ins) are guidance plus a link to the
+  existing screen, never a proposal.
+- Confirm keeps the endpoint's critical-notification exemptions (`exempt_criticals`) untouched.
 - Financial-profile values, documents, members' personal data, payments and connectors are **never** proposable.
 - Confirm re-validates against the current values. If something changed since the proposal, it returns `409` and Keel offers a fresh proposal.
 - This does not call `ActionExecutor`, so `trust-tier-gate.test.ts`'s allow-list is unchanged. A test asserts that.
@@ -674,7 +792,11 @@ The system prompt for `keel.*` extends `SYSTEM_PROMPT` from `assistant.ts` with:
   heartbeat comment every 15s, hard deadline 30s (gateway `deadline_ms`).
 - Guarded release: `status` and `card` events go out at once. Model text is buffered until the gateway's output guard
   passes, then sent as one `text` event. (Sentence-level guarded streaming can come later; see §13.)
-- Client abort (`AbortController`) when the panel closes or a new message is sent; the server stops on `req.raw.on('close')`.
+- Client abort (`AbortController`) on "Stop", sign-out, account switch or a new conversation; the server stops on
+  `req.raw.on('close')`. Closing the panel only hides it; the reply keeps arriving.
+- Before the `text` event, the server runs the delivery check (§6.3 step 5); the client drops any event whose
+  identity generation is stale (SD-7).
+- Status: **decided to ship**. Phase 0.4 only confirms the production path doesn't buffer.
 
 ---
 
@@ -807,7 +929,7 @@ sequenceDiagram
   U->>PNL: "What default settings do you recommend for us?"
   PNL->>KR: POST /keel/turns
   KR->>ORC: runTurn(ctx)
-  ORC->>ORC: intent = preset; role is organizer/editor
+  ORC->>ORC: intent = preset; role is organizer (others get read-only suggestions)
   ORC->>PRS: recommend(householdShape(ctx), currentSettings(ctx))
   PRS->>DB: read settings + roster via getTenantCollection(tenant_id)
   PRS-->>ORC: preset two_adults_two_children, diff = 4 changes
@@ -894,6 +1016,81 @@ sequenceDiagram
   KR->>AU: keel.access_denied {resource:'thread', reason:'not_owner'}
 ```
 
+### SD-7 Sign-out or account switch during a streaming reply
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor U as User
+  participant PNL as KeelPanel (identityGen = 7)
+  participant KR as /keel routes
+  participant ORC as Orchestrator
+  participant AUTH as Session subsystem
+
+  U->>PNL: Send question
+  PNL->>KR: POST /keel/turns (SSE), request tagged gen 7
+  KR->>ORC: runTurn(ctx)
+  ORC-->>PNL: event status(reading_records)
+  U->>AUTH: Sign out (this tab or another tab)
+  AUTH-->>PNL: session invalidated
+  PNL->>PNL: identityGen = 8, abort(), clear messages and caches
+  ORC->>ORC: delivery check before text release: session revoked
+  ORC-->>KR: drop text, stop stream
+  KR-->>PNL: late event (if any) tagged gen 7
+  PNL->>PNL: gen 7 != 8, discard
+  Note over U,PNL: The previous user's answer never renders
+```
+
+### SD-8 New user with no family yet (bootstrap mode)
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor U as New user
+  participant PNL as KeelPanel (bootstrap)
+  participant KR as /keel routes
+  participant SSV as Setup State Service
+  participant FORM as ConversationalOnboarding
+  participant API as Existing family creation API
+
+  U->>PNL: Open Keel on /family-setup
+  PNL->>KR: GET /keel/setup-state
+  KR->>SSV: getSetupState(ctx) with no active membership
+  SSV-->>KR: bootstrap: family_exists=false, step household_created
+  KR-->>PNL: create-family guidance + help text only
+  Note over KR,SSV: No household reads; any family or member id in the request is ignored
+  U->>FORM: Confirm household details
+  FORM->>API: Create family (existing flow)
+  API-->>FORM: Family and membership saved
+  FORM->>PNL: auth refresh + notifyKeelDataChanged('family')
+  PNL->>KR: GET /keel/setup-state
+  KR->>SSV: getSetupState(ctx) with active membership
+  SSV-->>PNL: Saved roster + remaining steps
+```
+
+### SD-9 Model or sensitive processing unavailable
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor U as User
+  participant PNL as KeelPanel
+  participant ORC as Orchestrator
+  participant SSV as Setup State Service
+  participant GW as AI Task Gateway
+
+  U->>PNL: Send question
+  PNL->>ORC: POST /keel/turns
+  ORC->>ORC: screen query and selected context
+  ORC->>GW: request under the required task
+  GW-->>ORC: processor unavailable / policy denied / deadline
+  ORC->>SSV: getSetupState(ctx)
+  SSV-->>ORC: checklist
+  ORC-->>PNL: error(unavailable or quarantined) + card(setup_checklist), is_live=false
+  PNL-->>U: Honest "can't answer that right now" + next step; draft kept, retry offered
+  Note over ORC,GW: No fallback to a weaker or unapproved processor
+```
+
 ---
 
 ## 8. Request flow chart
@@ -906,7 +1103,10 @@ flowchart TD
   RL -- no --> X429[429 + friendly card]
   RL -- yes --> V{Zod valid?<br/>route in allowlist}
   V -- no --> X400[400]
-  V -- yes --> CTX[Build frozen KeelRequestContext<br/>from authContext + roster]
+  V -- yes --> FM{Active family<br/>membership?}
+  FM -- no family yet --> BS[Bootstrap: help + create-family step<br/>no household reads] --> AUD
+  FM -- membership removed --> XD[Deny, client clears state] --> AUD
+  FM -- yes --> CTX[Build frozen KeelRequestContext<br/>from authContext + roster + field classes]
   CTX --> E{detectEmergency?}
   E -- yes --> EM[Fixed safety reply<br/>route=emergency] --> AUD
   E -- no --> SC{Special-category<br/>content?}
@@ -916,7 +1116,7 @@ flowchart TD
   MN -- no --> I{Intent}
   I -- setup_next --> SU[Setup State Service<br/>checklist + nav card] --> N1[keel.setup_narration.v1]
   I -- how_to --> H[Help index by route<br/>+ nav card] --> N2[keel.help_answer.v1]
-  I -- preset --> RP{Organizer/editor role?}
+  I -- preset --> RP{Organizer?}
   RP -- no --> RO[Explain + 'ask your organizer'] --> AUD
   RP -- yes --> P[Preset diff -> keel_proposals<br/>proposal card] --> AUD
   I -- verified_fact --> VF[verified-answer.ts<br/>no model] --> AUD
@@ -924,7 +1124,9 @@ flowchart TD
   N1 --> G{Gateway ok +<br/>output guard pass?}
   N2 --> G
   N3 --> G
-  G -- yes --> OUT[text + provenance + done]
+  G -- yes --> DC{Still live member<br/>with same role?}
+  DC -- no --> XR[Drop text, error event] --> AUD
+  DC -- yes --> OUT[text + provenance + done]
   G -- no --> FB[Deterministic fallback<br/>from checklist, is_live=false]
   OUT --> AUD[Audit keel.turn<br/>metadata only]
   FB --> AUD
@@ -1023,7 +1225,7 @@ erDiagram
     string user_id PK
     string tenant_id FK
     boolean auto_greet
-    int retention_days "7|30|90"
+    string_array skipped_steps
   }
   AUDIT_EVENT {
     string id PK
@@ -1109,13 +1311,33 @@ Isolation also applies **inside** a household:
 | Who | Setup guide | Finance answers | Presets / proposals | Threads |
 |---|---|---|---|---|
 | Organizer | All steps | Household + members (PRD-122 rules) | Yes | Own only |
-| Adult (editor) | All steps except organizer-only (billing, delete household) | Household + own member twin | Yes (app settings they can already change) | Own only |
-| Viewer (invite/join-request role) | Read-only steps ("ask your organizer to…") | Read-only, as `/assistant/ask` allows today | **No** | Own only |
-| Child / minor (`isMinorMember`) | None | Youth path only (`assistant.youth_answer.v1`) | **No** | Own only, shorter retention |
+| Adult (editor) | All steps; organizer-only steps (notifications, billing, delete household) shown read-only | Household-shared fields + own private fields | Suggestions only (notifications are organizer-only) | Own only |
+| Viewer (invite/join-request role) | **Yes (decided).** Own steps (MFA, own sign-in) plus household steps read-only: "your organizer can do this" | Only fields existing pages already show a viewer | **No** | Own only |
+| Child / minor (`isMinorMember`) | None | Youth path only (`assistant.youth_answer.v1`) | **No** | Own only |
 | Operator | Not a Keel user in their operator session | — | — | No transcript access by default (§10.5) |
 
 Health detail is removed with `withoutHealthDetail` before any context is built, as on `/assistant/ask` today.
 Figures marked "profile pending" or from unreviewed documents keep their labels.
+
+#### Field classification (D10)
+
+Same household does not mean every field is shared. `member-twin.ts` today lets any member read any member's
+twin, so Keel can't rely on existing readers to keep one adult's private records from the other. Every field
+that may enter Keel's context or evidence gets one class in `apps/api/src/keel-agent/field-classes.ts`:
+
+| Class | Who may see it through Keel | Examples (to confirm in Phase 0) |
+|---|---|---|
+| `own_private` | Only the user it belongs to | A member's own sign-in/MFA state, their own dismissed nudges |
+| `household_shared` | Active adults; viewers where existing pages already show it | Roster, shared expenses, emergency fund, household readiness |
+| `adult_only` | Active adults, never viewers or minors | Notification settings (GET is adult-only today), insights |
+| `youth_ok` | Youth path | Youth curriculum, the child's own goals |
+| `excluded` | Nobody through Keel | Credentials, recovery codes, connector tokens, raw document text, any **unclassified** field |
+
+- Unclassified means excluded.
+- Readers apply the class **before** loading; nothing private is put into a prompt in the hope a guard redacts it later.
+- Keel never reveals hidden-record counts or says "another member has a private record".
+- If a shared reader exposes more than the matrix allows, fix the reader (and every endpoint using it), not just Keel.
+  Isolation is a release gate, not a prompt instruction.
 
 ### 10.4 Threat model
 
@@ -1134,11 +1356,21 @@ Figures marked "profile pending" or from unreviewed documents keep their labels.
 | T11 | Logs leak family content | Error logs include prompt | Logger redaction; audit meta only; no content in metrics | Test: audit payload schema has no free-text fields |
 | T12 | Stale proposal applied after role change | Organizer demoted mid-flow | Confirm re-checks role, status, expiry, current values | Unit |
 | T13 | Regulated advice | "Which insurer should we use?" | Output guard + SYSTEM_PROMPT rules + `advice-rule.test.ts` on presets/help copy | Eval prompts in CI |
+| T14 | Same-household private data leak | Adult B asks about adult A's private records | Field classes (D10), default deny, readers filter before load, no hidden-record counts | Integration: two adults, one household |
+| T15 | Bootstrap escalation | New user sends a known family/member id to "join" | Bootstrap reads only the user's own state; ids in the request are ignored | Integration |
+| T16 | Membership removed mid-request | Organizer removes an adult while their answer is generating | Delivery check before text release (§6.3 step 5) | Integration with a delayed model mock |
+| T17 | Shared-device bleed | User A signs out, B signs in, A's reply arrives | Identity generation (D13), memory-only transcript, cross-tab invalidation | Web test: late response discarded |
+| T18 | Cache bleed | Service worker or HTTP cache serves A's setup state to B | `private, no-store`, service-worker bypass for `/keel/*` and `/assistant/*` | Browser test alternating users |
+| T19 | Sensitive context in an ordinary task | Non-medical question whose grounding contains health detail | Screen selected context as well as the query; `withoutHealthDetail`; no weaker fallback | Inspect mocked provider payloads |
 
 ### 10.5 Data handling, retention and erasure
 
 - **Encryption**: `keel_messages.content_enc` and `keel_threads.title` use the existing envelope helpers in `apps/api/src/crypto/`. Database dumps don't expose chat text.
-- **Retention**: default 30 days (per-user setting 7/30/90 in `keel_preferences`); minors fixed at 7 days. Mongo TTL indexes enforce it. Phase 1–3 keep **no** server transcripts (ephemeral, in browser memory only).
+- **Retention (decided)**: **30 days** from last activity for every user. `expires_at` is set on write and Mongo TTL
+  indexes delete expired documents. TTL deletion runs in the background, so **every read also filters
+  `expires_at > now`**. Users can delete one conversation or all Keel history sooner. Phase 1–3 keep **no** server
+  transcripts (in browser memory only).
+- **Export**: `keel_threads`/`keel_messages` are included in the account data export for their owner only.
 - **Erasure**: `erasure.ts` / account deletion (PRD-146) adds `keel_threads`, `keel_messages`, `keel_tool_calls`, `keel_proposals`, `keel_preferences` to the per-tenant purge list. A "Delete this conversation" control calls `DELETE /keel/threads/:id`.
 - **Operator access**: no operator route reads `keel_messages`. Debugging uses metadata (`keel_tool_calls`, audit). Any future break-glass needs a recorded reason, the user's consent and an audit event. That is out of scope here.
 - **Rule 3**: transcripts are not training data, are not sent to provider memory/file stores, and are not used for cross-tenant learning. Hosted calls send task-minimised context only.
@@ -1157,6 +1389,10 @@ Figures marked "profile pending" or from unreviewed documents keep their labels.
 | `packages/engine/src/__tests__/advice-rule.test.ts` (existing, extend scope) | Scans `definitions/keel-setup-presets.yaml` and `definitions/keel-help/*.md` |
 | `apps/web/src/components/keel/__tests__/NavChip.test.tsx` | Rejects external/protocol-relative/`javascript:` hrefs |
 | `apps/api/src/keel-agent/__tests__/injection.eval.test.ts` | Poisoned document/help fixtures never produce a proposal or a foreign-data answer |
+| `apps/api/src/keel-agent/__tests__/field-classes.test.ts` | Two adults in one household can't see each other's `own_private` fields in responses, evidence or model payloads; unclassified fields never load |
+| `apps/api/src/keel-agent/__tests__/bootstrap.test.ts` | No-family user gets only bootstrap state, whatever ids are sent |
+| `apps/api/src/keel-agent/__tests__/delivery-check.test.ts` | Membership removed or session revoked mid-generation → no text released |
+| `apps/web/src/lib/keel/__tests__/identity-gen.test.ts` | Late responses from an old identity generation are discarded; sign-out clears the store |
 
 ---
 
@@ -1194,8 +1430,13 @@ web `NEXT_PUBLIC_KEEL_PANEL` (`off|internal|on`) and API `KEEL_AGENT_ENABLED`. R
 | 0.3 | Threat-model review of §10 with security owner | Architect | Signed-off threat table |
 | 0.4 | Spike: does SSE stream end-to-end through the production API path (Cloud Run + any hosting rewrite) without buffering? | Architect | Yes/no + config notes (decides Phase 4 transport) |
 | 0.5 | Confirm the `PROPOSABLE_SETTINGS` list against `/settings/automation` and notification routes | Principal | Allowlist |
+| 0.6 | List every Ask Keel entry point (button, nav item, command palette, member card, old links) | UI/UX | Inventory |
+| 0.7 | **Field classification inventory** (D10): tag every field Keel may read; untagged = excluded. Product signs off the household access matrix | Architect | `field-classes.ts` draft + matrix |
+| 0.8 | Write executable isolation fixtures: 2 tenants × (organizer, adult, viewer, child), plus a removed member | Principal | Failing-first tests |
+| 0.9 | Walk through the 2+2 household and the no-family bootstrap case with all three reviewers | All | Agreed walkthrough |
 
-**Exit**: PRD approved; plan mode sign-off per CLAUDE.md.
+**Exit**: PRD approved; plan mode sign-off per CLAUDE.md; field inventory and isolation fixtures reviewed. No new
+private context is enabled until 0.7 is signed off.
 
 ### Phase 1 — Inline panel shell on the existing endpoint (≈1 week) — *fixes the UX problem*
 
@@ -1209,6 +1450,10 @@ web `NEXT_PUBLIC_KEEL_PANEL` (`off|internal|on`) and API `KEEL_AGENT_ENABLED`. R
 | 1.6 | Clear the store on sign-out | `lib/session-purge.ts` |
 | 1.7 | A11y: roles, focus in/out, Esc, reduced motion, aria-live | `KeelDock.tsx` |
 | 1.8 | Tests: store, panel stays mounted across `router.push`, focus return, sign-out purge | `components/keel/__tests__/` |
+| 1.9 | Convert all entry points (nav item, command palette, member card); `/assistant` prefill never auto-sends | `AppShell.tsx`, `CommandPalette.tsx`, `MemberProfileClient.tsx` |
+| 1.10 | Panel eligibility separate from `showNav`; bootstrap mode on `/family-setup` | `AppShell.tsx`, `KeelDock.tsx` |
+| 1.11 | Identity generation + cross-tab sign-out; `private, no-store`; service-worker bypass | `lib/keel/store.ts`, service worker config |
+| 1.12 | Mode chosen by main-area width (≥640px docked), modal rules, SOS inside modal chrome | `KeelDock.tsx` |
 
 **Exit**: Panel opens on every signed-in page; navigating keeps it open with messages intact; `/assistant` still works;
 no API change; flag `internal` for the team.
@@ -1227,6 +1472,9 @@ no API change; flag `internal` for the team.
 | 2.8 | Help content: one markdown file per app area, indexed in process by route + keywords | `definitions/keel-help/*.md`, `keel-agent/help-index.ts` |
 | 2.9 | Web: `KeelSetupCard`, `SetupChecklistCard`, `NavChip`, `KeelSpotlight`, `useKeelPageContext`, `data-keel-anchor` on key fields | `components/keel/*`, setup pages |
 | 2.10 | Step-completion refresh via `notifyKeelDataChanged` (SD-3) | `lib/keel/client.ts`, save handlers |
+| 2.10a | Field classes (D10) applied in every reader Keel uses; fix shared readers that over-expose | `keel-agent/field-classes.ts`, affected readers |
+| 2.10b | Review markers (`reviewed_at`) at the notification save boundary; old records read as "needs review" | `family-notifications.ts` |
+| 2.10c | Delivery check before releasing model text | `keel-agent/orchestrator.ts` |
 | 2.11 | Tests: step evaluation fixtures (empty, 2+2 half done, single parent, viewer, child), tenant isolation, tool signatures, advice-rule scope extended to help copy | `keel-agent/__tests__/*` |
 
 **Exit**: "Where do I start?" returns the correct next step for real fixture accounts in < 2s without any model call;
@@ -1254,8 +1502,8 @@ the audit log shows `approvedBy`.
 | 4.2 | Thread routes (list/get/delete), owner filter, 404 on miss | `keel-agent/routes.ts` |
 | 4.3 | SSE on `/keel/turns` (per Phase 0.4 result), guarded text release, heartbeat, abort | `keel-agent/sse.ts`, `lib/keel/client.ts` |
 | 4.4 | Erasure + account deletion include `keel_*` | `erasure.ts`, `deletion/` |
-| 4.5 | Settings: retention choice, "auto-open setup guide", delete all Keel history | `app/settings/*` |
-| 4.6 | Tests: two users same tenant isolation, TTL index present, erasure purges, SSE abort | `__tests__/*` |
+| 4.5 | Settings: "auto-open setup guide", delete one / all Keel history (retention fixed at 30 days) | `app/settings/*` |
+| 4.6 | Tests: two users same tenant isolation, TTL index present, reads reject expired, erasure purges, export ownership, SSE abort, late-event discard | `__tests__/*` |
 
 **Exit**: Conversations survive reloads and devices for the same user only; deleting the account removes them.
 
@@ -1297,21 +1545,46 @@ gantt
   Phase 6 Rollout                :p6, after p5, 5d
 ```
 
+**Rollback.** Turning `NEXT_PUBLIC_KEEL_PANEL` off brings back the full-page `/assistant`. The new scoped readers,
+field classes and security fixes stay on: rolling back the panel must never widen data access. No migration in
+this plan is destructive.
+
+### Acceptance criteria (all phases)
+
+| Area | Checks |
+|---|---|
+| Main UX | Any launcher opens Keel without changing the URL or losing unsaved page state. Moving between private pages keeps the transcript and draft and updates the context label |
+| Compatibility | Direct `/assistant` links and member cards use the same controller; prefilled text is never auto-sent; no duplicate panel or request under React Strict Mode |
+| Bootstrap | A signed-in user with no family gets create-family guidance, no household data and no duplicate family |
+| Responsive / a11y | 320, 390, 768, 1024, 1440 and 1920px widths; 200% zoom; keyboard only; focus return; screen reader announcements; reduced motion; every theme; mobile keyboard, safe areas and SOS reachable |
+| Setup correctness | Empty, partial, zero amounts, pending invite, 2 adults + 2 children, no children, missing DOB, unreviewed document, explicit skip, failing reader, fully complete |
+| Freshness | Change expenses or preferences between asks: next answer and step status use the saved values; old bubbles keep their original time; failed saves don't advance progress |
+| Isolation | Cross-tenant, same-household private fields, guessed ids, forged hints, removed membership, child by role or DOB, revoked session. Forbidden data never reaches model mocks, responses, logs, caches or metadata |
+| Lifecycle | Sign-out / account switch / new conversation during a stream; multiple tabs; shared browser reuse |
+| Failure modes | Offline, 401, 403, uniform 404, 429, timeout, policy refusal, sensitive path unavailable, partial reader failure, malformed response. Draft kept, honest status |
+| AI governance | Gateway tripwire green; sensitive context can't use an ordinary task; model-made actions ignored; no direct SDK call |
+| Operations | `private, no-store`, service-worker bypass, bounded requests, metadata-only telemetry, rollback tested |
+
+Tests use synthetic data only, never production family records.
+
 ---
 
 ## 13. Risks and open questions
 
 | # | Risk / question | Mitigation / decision needed |
 |---|---|---|
-| R1 | SSE may be buffered on the production path | Phase 0.4 spike; fallback is JSON response with status polling (Phase 2 shape already works) |
+| R1 | SSE may be buffered on the production path | **Streaming decided (yes).** Phase 0.4 confirms the path; if a hop buffers, fix that hop's config. JSON response stays as the fallback |
 | R2 | Guarded release delays text until the full answer exists | Acceptable at ~10s with progress events and cards first; revisit sentence-level guarded streaming later |
 | R3 | Push layout on wide screens squeezes pages built for `app-content` width | UI/UX checks each top-level page at 1280px with the panel at 400px; overlay below that |
 | R4 | Setup step definitions drift from real pages | Steps reference routes/anchors in one file; a test checks each `href` exists in the Next app directory and each `anchor` appears in source |
 | R5 | Presets read as advice | Presets limited to app configuration; YAML in advice-rule scope; product/legal review of copy |
 | R6 | Auto-open greeting annoys returning users | Once per session, only while setup is incomplete, toggle in Settings |
 | R7 | Gateway has no tool-calling today | Phases 1–4 don't need it; Phase 5 extends the gateway under the same policy model |
-| Q1 | Retention default: 30 days OK for product and privacy? | Decide in PRD-222 |
-| Q2 | Should viewers see the setup guide at all, or only "ask your organizer"? | UX decision in Phase 0 |
+| Q1 | Retention | **Decided: 30 days** |
+| Q2 | Do viewers see the setup guide? | **Decided: yes**, own steps plus household steps read-only |
+| Q4 | Exact shared/private field matrix (D10) | Phase 0.7, product sign-off |
+| Q5 | Who owns the "notifications reviewed" marker (household-wide, organizer saves) | Phase 0, with the review-marker change in Phase 2 |
+| Q6 | Quiet hours: add a household timezone field before Keel ever suggests local-time delivery? | Out of scope until the API stores a timezone |
 | Q3 | Do we want household-shared "notes from Keel" later? | Out of scope; would need its own consent model |
 
 ---
@@ -1331,11 +1604,12 @@ Order is the default dependency order. Presets may reorder within the same depen
 | 7 | `protection_on_file` | Each adult has cover recorded (or explicitly "none") | Some adults recorded | `/financial-profile?step=protection` | adults |
 | 8 | `education_goals` | Each child has a goal or "not now" | Some children | `/financial-profile?step=goals` | adults; n/a with no children |
 | 9 | `documents_uploaded` | ≥ 1 policy/estate document reviewed | Uploaded, not reviewed | `/documents` | adults |
-| 10 | `notifications_configured` | At least one channel + digest preference | Channel only | `/settings` | each user |
-| 11 | `mfa_enabled` | This user has MFA | — | `/settings` (security) | each user |
+| 10 | `notifications_configured` | Organizer has **saved** preferences (review marker set); defaults alone don't count | — | `/settings` | organizer; adults/viewers see it read-only |
+| 11 | `mfa_enabled` | This user has MFA | — | `/settings` (security) | each user, including viewers |
 | 12 | `emergency_contacts` | Emergency sheet has contacts / guardians | Some | `/legacy` | organizer, adult |
 
-Step ids and links must be verified against the current routes during Phase 2.1. The table above names the
+Any step whose reader fails shows `unknown`; a step the viewer's role can't do shows `blocked` with "your organizer
+can do this". Step ids and links must be verified against the current routes during Phase 2.1. The table above names the
 intended target pages, not a guarantee of today's query-string steps.
 
 ## Appendix B — File map
