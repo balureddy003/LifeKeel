@@ -22,7 +22,7 @@ export const FAQ: FaqItem[] = [
   {
     claim: 'plus-price',
     q: 'How much does LifeKeel cost?',
-    a: 'LifeKeel is free to start, no credit card required. Keel Plus is £7.99/month and adds AI document reading (provider, policy number, amount, and dates pulled out for you to confirm) and a plain-language summary of financial email, on top of everything in the free plan.',
+    a: 'LifeKeel is free to start, no credit card required — including your first household brief. Keel Plus is £7.99 a month; it keeps the household record current, unlocks further briefs, and reads policy documents (provider, policy number, amount, and dates pulled out for you to confirm), on top of everything in the free plan.',
   },
   {
     claim: 'no-selling',

@@ -24,6 +24,10 @@ export const FREE_ROWS: Row[] = [
 export const PLUS_ROWS: Row[] = [
   { claim: 'free-plan', text: 'Everything in Free' },
   {
+    claim: 'household-record',
+    text: 'Unlimited household briefs and a record kept current as figures change',
+  },
+  {
     claim: 'plus-reads-policy',
     text: 'Reads provider, policy number, amount and dates from an uploaded policy, for you to confirm',
   },

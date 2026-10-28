@@ -120,6 +120,48 @@ const MOMENT_STYLE: Record<Moment, { tone: string; icon: LucideIcon }> = {
   after: { tone: 'amber', icon: MessageSquareText },
 }
 
+export function ThreeProblems() {
+  return (
+    <section className="vv-section" aria-labelledby="vv-problems-h">
+      <Heading
+        eyebrow="Start here"
+        id="vv-problems-h"
+        title="One problem, one evening, one number."
+        intro="Pick the question in front of your household. A few figures in, one answer out — send it to the other adult and you will see when they have opened it."
+      />
+      <div className="vv-plans">
+        {[
+          [
+            'One of us might stop earning',
+            'How many months could the household run on savings and any cover on file?',
+          ],
+          [
+            'Someone is about to earn less',
+            'A known drop is coming — see the savings left when it lands, and the months after.',
+          ],
+          [
+            'The other adult does not know',
+            'The runway, who to call, and where the key papers and policies live.',
+          ],
+        ].map(([t, d]) => (
+          <article className="vv-plan" key={t}>
+            <h3>{t}</h3>
+            <p>{d}</p>
+          </article>
+        ))}
+      </div>
+      <p className="vv-fine vv-center">
+        Your first brief is free. No product recommendations, ever.
+      </p>
+      <div className="vv-center">
+        <a className="vv-btn" href={appUrl('/signup')} onClick={signup('problems')}>
+          Start your first brief
+        </a>
+      </div>
+    </section>
+  )
+}
+
 export function Features() {
   return (
     <section className="vv-section" id="features" aria-labelledby="vv-features-h">
@@ -226,11 +268,12 @@ export function PlusBand() {
       <div className="vv-plus">
         <div>
           <p className="vv-eyebrow">Keel Plus</p>
-          <h2 id="vv-plus-h">Skip the retyping.</h2>
+          <h2 id="vv-plus-h">Keep the household record current.</h2>
           <p className="vv-intro">
-            Photograph an insurance policy or pension statement and Keel Plus reads out the
-            provider, policy number, amount and renewal date for you to confirm. It also sums up
-            financial email in plain language. Typing things in yourself stays free.
+            The paid plan keeps your household record and briefs current as figures change.
+            Photograph an insurance policy or pension statement and it also reads out the provider,
+            policy number, amount and renewal date for you to confirm. Typing things in yourself
+            stays free.
           </p>
           <a
             className="vv-btn vv-btn-light"
@@ -322,7 +365,7 @@ export function Plans() {
         eyebrow="Pricing"
         id="vv-pricing-h"
         title="Free to start. One optional paid plan."
-        intro="Checking what you have told Keel is free. The only paid plan adds AI document reading."
+        intro="Checking what you have told Keel is free — including your first brief. The paid plan keeps the household record current and unlocks further briefs."
       />
       <div className="vv-plans">
         <article className="vv-plan">

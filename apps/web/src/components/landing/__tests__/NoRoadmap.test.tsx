@@ -6,14 +6,9 @@ import { describe, it, expect, afterEach, beforeAll, vi } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { render, cleanup } from '@testing-library/react'
-import { StoryBoard } from '../StoryBoard'
-import { YearsTimelapse } from '../YearsTimelapse'
-import { CoverOnFile } from '../CoverOnFile'
-import { SampleDay } from '../SampleDay'
 import { CrisisSteps } from '../CrisisSteps'
 import { Promises } from '../Promises'
 import { Security } from '../Security'
-import { PlusSpotlight } from '../PlusSpotlight'
 import { Pricing } from '../Pricing'
 import { Faq } from '../Faq'
 import { FAQ } from '../faq-data'
@@ -38,14 +33,9 @@ const ROADMAP =
 
 describe('no roadmap on the public site', () => {
   it.each([
-    ['StoryBoard', StoryBoard],
-    ['YearsTimelapse', YearsTimelapse],
-    ['CoverOnFile', CoverOnFile],
-    ['SampleDay', SampleDay],
     ['CrisisSteps', CrisisSteps],
     ['Promises', Promises],
     ['Security', Security],
-    ['PlusSpotlight', PlusSpotlight],
     ['Pricing', Pricing],
     ['Faq', Faq],
   ] as const)('%s renders no Live or Planned tags and no roadmap wording', (_name, Section) => {
