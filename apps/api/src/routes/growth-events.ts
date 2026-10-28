@@ -21,6 +21,13 @@ import { getGrowthEventsCollection } from '../db.js'
 // Server-side allowlist, not client-trusted free text — keeps the collection
 // from filling up with arbitrary event names from a modified client.
 export const KNOWN_EVENTS = new Set([
+  // PRD-222 brief funnel (content-free enums; server-side writes only).
+  'brief_created',
+  'brief_share_link_generated',
+  'brief_link_fetched',
+  'brief_confirmed_open',
+  'brief_gate_hit',
+  'brief_gate_converted',
   'landing_view',
   'landing_get_started_click',
   'landing_signin_click',

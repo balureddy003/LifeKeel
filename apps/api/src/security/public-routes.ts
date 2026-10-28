@@ -54,6 +54,10 @@ const ALWAYS: PublicRoute[] = [
   { prefix: '/a/', group: 'H', note: 'GET renders only; approve needs a same-tenant session' },
   { prefix: '/why/', group: 'H' },
   { prefix: '/verify/', group: 'H' },
+  // PRD-222 shared household brief: GET fetches a stored result with
+  // Cache-Control: private, no-store; POST confirm is the explicit open
+  // action. Token is single-purpose (one brief), hashed at rest, expires.
+  { prefix: '/b/', group: 'H' },
   { prefix: '/webhooks/', group: 'I' },
   { prefix: '/inbound/', group: 'I' },
   { prefix: '/insights/cleanup-stale-all', group: 'I' },

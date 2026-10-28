@@ -41,6 +41,7 @@ describe('public route inventory', () => {
           "H /a/",
           "H /why/",
           "H /verify/",
+          "H /b/",
           "I /webhooks/",
           "I /inbound/",
           "I /insights/cleanup-stale-all",
