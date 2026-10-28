@@ -14,7 +14,7 @@
  */
 import type { Db } from 'mongodb'
 import { containsSpecialCategoryContent, detectEmergency } from '@lifekeel/platform'
-import type { KeelContext , buildKeelContext, type AuthIdentity } from './context.js'
+import { buildKeelContext, type AuthIdentity, type KeelContext } from './context.js'
 import { classifyIntent } from './intent.js'
 import { renderHelp } from './help.js'
 import {
