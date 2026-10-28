@@ -544,15 +544,15 @@
   font-weight: 600;
 }
 .lk-vivid .vv-sample .lk-opt input:checked + label {
-  border-color: transparent;
-  color: #fff;
-  background: var(--vv-grad);
-  box-shadow: 0 10px 22px -12px rgba(37, 99, 235, 0.9);
+  border-color: var(--vv-brand);
+  color: var(--vv-ink);
+  background: color-mix(in srgb, var(--vv-brand) 8%, var(--vv-surface));
+  box-shadow: inset 0 0 0 1px var(--vv-brand);
 }
 .lk-vivid .vv-sample .lk-opt input:checked + label::before {
-  background: #fff;
-  border-color: #fff;
-  box-shadow: none;
+  background: var(--vv-brand);
+  border-color: var(--vv-brand);
+  box-shadow: inset 0 0 0 3px var(--vv-surface);
 }
 .lk-vivid .vv-sample .lk-mini b {
   font: 900 48px/1 var(--vv-font);
