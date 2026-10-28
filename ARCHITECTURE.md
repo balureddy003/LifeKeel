@@ -242,7 +242,10 @@ without a product recommendation. Full rationale and market evidence:
 [`docs/reviews/brief-platform-pivot-and-scale-2026-10.md`](docs/reviews/brief-platform-pivot-and-scale-2026-10.md);
 requirements in PRD-222 through PRD-226 (Intents 70–77).
 
-The platform evolves in four stages:
+The platform evolves in four stages. **Only Stage 1 is buildable now** —
+Stages 2–4 and the GridFS cutover are gated/parked on Stage 1 product metrics
+(confirmed second-adult open rate, second-brief return rate), per
+`docs/intents/README.md` and the status header of each PRD.
 
 1. **Stage 1 — The brief (now, [PRD-222](docs/prd/222-stage-1-the-household-brief.md)):**
    Three problems only (*one of us might stop earning*; *someone is about to

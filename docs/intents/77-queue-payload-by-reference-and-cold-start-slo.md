@@ -1,5 +1,10 @@
 # Intent 77: Queue payload-by-reference contract and cold-start / brief p95 gate
 
+> **Status: PARKED — scale concern, not Stage 1.** The payload cap and cold-start
+> histogram are cheap hygiene, but nothing in the Stage 1 cut produces queue
+> payloads or traffic that justifies them ahead of the brief itself. Proceed
+> when brief volume or a concrete payload violation justifies it.
+
 **Problem** — `QueueManager.publish(queue, payload)` in `apps/api/src/queue/QueueManager.ts` currently accepts arbitrary `unknown` payloads without a size ceiling or a content ban, risking Redis memory bloat and oversized dead-letter queues (`${queue}:dead`) if a caller passes document bytes or large text blobs. Additionally, Cloud Run scale-to-zero cold start and brief hot-path p95 need an explicit measurement gate so `min-instances` stays at `0` until real traffic proves otherwise.
 
 **Done looks like**

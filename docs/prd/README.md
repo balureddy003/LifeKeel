@@ -456,38 +456,40 @@ household brief platform, plus the low-cost, high-scale infrastructure changes
 that keep marginal cost independent of stored PDF volume (from Intents 70–77):
 
 1. [222-stage-1-the-household-brief.md](222-stage-1-the-household-brief.md) —
-   **Stage 1 (now).** Three problems only (`income_stops`, `earning_less`,
-   `handover_gap`); one engine (a few inputs, one deterministic solver result,
-   send link, `opened_at`); first brief free with zero model calls; remove the
-   harbour chart, sample family, and Plus-as-OCR framing. Tier 0.
-2. [223-stage-2-problem-packs.md](223-stage-2-problem-packs.md) — **Stage 2
-   (after first briefs are finished).** Six problem packs on the same solver
-   and cleaner policy fields (job change where employer cover ends, mortgage fix
-   ending, renewal price change, childcare or school bill starting, quiet month
-   or tax bill, parent needing support). Household pays ~£59/year for the second
-   brief or keeping the record current. Tier 0.
+   **Stage 1 — BUILDABLE.** Three problems only (`income_stops`,
+   `earning_less`, `handover_gap`); one engine (a few inputs, one deterministic
+   solver result, send link, `confirmed_opened_at` — stamped only by an
+   explicit "view the numbers" action, never a scanner GET); one free brief
+   per household with zero model calls; remove the harbour chart, sample
+   family, and Plus-as-OCR framing. Tier 0.
+2. [223-stage-2-problem-packs.md](223-stage-2-problem-packs.md) — **Stage 2 —
+   GATED on Stage 1 metrics.** Six problem packs on the same solver (job change
+   where employer cover ends, mortgage fix ending, renewal price change,
+   childcare or school bill starting, quiet month or tax bill, parent needing
+   support). The second brief / record keeping is a new `lifekeel_record_annual`
+   entitlement (£59.99/yr), not a re-skin of the OCR Plus plan — existing Plus
+   subscribers keep their OCR features. Tier 0.
 3. [224-stage-3-feeds-private-accounts-employer-seats.md](224-stage-3-feeds-private-accounts-employer-seats.md) —
-   **Stage 3 (feeds into the same number).** Read-only account balances and
-   (when legally usable post-2027/28) pension pots update the brief's months;
-   one adult can mark an account `visibility: 'private'`; found pension pots
-   never start a consolidation journey; flat-fee employer seats where the
-   employer never sees household figures and pays zero fee per policy. Tier 0.
+   **Stage 3 — PARKED (design intent).** Read-only balance/pension feeds into
+   the same number; `visibility: 'private'` accounts disclosed as
+   `savings_scope: 'partial'` on shared briefs; flat-fee employer seats with a
+   hard privacy wall (seats can never mint or authenticate as household
+   grants). Tier 0.
 4. [225-stage-4-household-read-api-and-fact-find.md](225-stage-4-household-read-api-and-fact-find.md) —
-   **Stage 4 (others can read, not own).** Small read API under a revocable
+   **Stage 4 — PARKED (design intent).** Small read API under a revocable
    household grant (`runway`, `renewal_dates`, `opened_at`,
    `document_locations` — never recomputing on read, never serving raw files),
    deterministic fact-find export for an adviser the family already has, and
    partner/grant disconnection that deletes access while preserving the graph.
    Tier 0/1.
 5. [226-brief-scale-and-cost-architecture.md](226-brief-scale-and-cost-architecture.md) —
-   **What to change now (low cost, high scale).** Move vault and document bytes
-   out of MongoDB GridFS into object storage (GCS/R2) keeping only metadata,
-   hash, and pointer in Mongo; make the brief the cached hot path (`data_version`
-   + `solver_version`); switch from fixed tenant sweeps to write-time
-   change-driven invalidation; hard-cap free-tier spend across all budget
-   classes (zero model calls on the first brief); enforce ID-only 4 KB max Redis
-   queue payloads; keep Cloud Run scale-to-zero gated on measured brief p95.
-   Tier 0.
+   **Split status.** Buildable with Stage 1: brief hot path
+   (`solver_version`/`data_version` cache), change-driven invalidation, hard
+   free-tier spend cap (zero model calls on the first brief). Parked: GridFS →
+   object-storage cutover (cost optimisation for document volume, not a brief
+   requirement), queue payload cap, cold-start p95 gate.
+   `document.extract_fields` is **BLOCKED** until an approved processor exists
+   (GCP Ollama decommissioned 2026-10-24). Tier 0.
 
 
 ## Suggested build order for 138–147 and 203–206

@@ -1,5 +1,10 @@
 # PRD-222: Stage 1 — The household brief (three problems, one solver, send, opened-at)
 
+> **Status: buildable.** This is the only PRD in the 222–226 set cleared for
+> implementation. PRD-223 is gated on this PRD's kill/proceed metrics; PRDs
+> 224–225 and the GridFS cutover (PRD-226 change 1) are parked. Infra work
+> allowed alongside: PRD-226 changes 2 and 4 only.
+
 ## Problem
 
 The market is crowded with storage vaults (SafeKeep, Biscuit Tin, Capsafa,
@@ -56,22 +61,41 @@ the other adult has opened it.
      Intent 65 numeral-presence test covers the **template generator itself** —
      every numeral `template_sentence` renders must come from `result`, with no
      hard-coded figures.
-3. **Send + `opened_at` (`GET /b/:token` / `GET /family/briefs/shared/:token`):**
-   - Creating or sharing a brief returns a revocable, unguessable share link
-     (raw 24-byte hex token in the URL, SHA-256 hash stored on
-     `household_briefs.share_token_hash`, mirroring `family-join.ts`'s
-     `inviteTokenHash`).
-   - When the second adult opens the public cacheable page (`/b/[token]`), the
-     API returns the cached brief payload (`result`, `solver_version`,
-     `data_version`, `opened_at`) without recomputing and atomically stamps
-     `opened_at` on first open (`$set` when `opened_at` is null).
+3. **Send + confirmed-open (`GET /b/:token` + `POST /b/:token/confirm`):**
+   - Sharing a brief returns a revocable, unguessable share link scoped to a
+     named roster member (raw 24-byte hex token in the URL, SHA-256 hash stored
+     on `household_briefs.share_token_hash` alongside `share.for_member_id`,
+     mirroring `family-join.ts`'s `inviteTokenHash`). Token carries
+     `expires_at` (default 30 days, re-issuable).
+   - **Two timestamps, two different meanings:**
+     - `link_fetched_at` — stamped on the first GET of the result endpoint.
+       Link unfurlers (WhatsApp, iMessage) and mail scanners will set this, so
+       it is **telemetry only** and explicitly does NOT mean the other adult
+       has seen the figure. Never displayed as "opened".
+     - `confirmed_opened_at` — stamped by `POST /b/:token/confirm` only after an
+       explicit client action on the share page ("I'm {member name} — view the
+       numbers"). The product promise ("has the other adult seen it?") uses
+       this timestamp. A confirm from the creator's session is recorded but
+       excluded from the success metric.
+   - **Caching and revocation:** the `/b/[token]` page shell is a static,
+     cacheable Firebase page; the result endpoint is
+     `Cache-Control: private, no-store` — "public, cacheable" never applies to
+     the financial payload. Revoked (`POST /family/briefs/:id/revoke`) → `410
+     Gone`; expired token → `404` + an expired-link page offering to ask the
+     sender for a fresh link.
    - Both adults see the exact same runway months, and the creator sees
-     `"Opened [timestamp]"` on their brief card.
-4. **First brief free:**
-   - Every household gets their **first brief free** (compute, save, share link,
-     and `opened_at` receipt) with zero model calls and zero document uploads.
-   - Creating a second brief or unlocking Stage 2 problem packs / ongoing record
-     maintenance is gated on the annual household plan (~£59/year, PRD-223).
+     `"Opened by {member name} on [timestamp]"` sourced from
+     `confirmed_opened_at` — with honest framing ("opened the brief", never
+     "understood it").
+4. **First brief free — one brief per household, not three:**
+   - Every household gets exactly **one free brief total** (compute, save,
+     share link, and confirmed-open receipt), whichever of the three problems
+     they pick — the three problems are alternatives for the first brief, not
+     three free briefs. Zero model calls and zero document uploads.
+   - Creating any second brief is the paywall moment (`household_record`
+     annual entitlement, PRD-223) — and is the likely drop-off point of the
+     whole funnel, instrumented as `brief_gate_hit` /
+     `brief_gate_converted`.
 5. **Landing and upgrade cuts (enforced by tests):**
    - Remove the harbour chart hero (`HarbourChart.tsx`, `YearsTimelapse.tsx`,
      `"Your family's chart, kept current"`).
@@ -107,18 +131,46 @@ the first-brief path.
 `apps/api/src/routes/family-join.ts` (Intent 63 `viewed_at` pattern),
 Intent 65 (`numeral-presence-test`), Intent 70, Intent 75.
 
-## Success metrics
+## Success metrics — product hypotheses first, not delivery latency
 
 Instrumented funnel (events on `growth_events` / audit, content-free enums
-only): `brief_created` → `brief_share_link_generated` → `brief_opened`, where
-`brief_opened` counts only when `opened_at` is stamped by a **second, distinct
-roster member** (`opener_member_id != created_by` — the creator opening their
-own link is instrumented but excluded from the success definition). Both adults
-render `runway_months` from the same stored `result` payload, so "both see the
-same months" is true by construction and verified by asserting the shared page
-reads `result` verbatim. Success = `brief_opened` within 24h of `brief_created`
-on a two-adult household; zero LLM calls on the first brief path; p95 brief
-compute latency < 150 ms.
+only): `brief_created` → `brief_share_link_generated` → `brief_link_fetched`
+(telemetry only — scanners set this) → `brief_confirmed_open` (explicit
+"view the numbers" action by the intended member; the creator's own confirm is
+recorded but excluded).
+
+**The product hypotheses this PRD must measure (thresholds are hypotheses to
+set at launch, not benchmarks):**
+
+- **Confirmed-open rate:** share of created briefs with `confirmed_opened_at`
+  by the intended second adult within 7 days. Target ~40%+.
+- **Return rate:** share of households that return and create a second brief
+  (or hit the second-brief gate) within 30 days.
+- **Second-brief gate conversion:** share hitting the paywall who convert —
+  this is the likely drop-off point of the whole funnel and is the number
+  Stage 2 pricing hangs on.
+
+**Kill/proceed criteria (decide X/Y at launch, keep these semantics):**
+
+- If fewer than ~30% of created briefs are confirmed-opened by the intended
+  second adult within 7 days → fix the share flow before building anything
+  else; the "both adults saw the number" promise is the product.
+- If fewer than ~15% of opened households return for a second brief within 30
+  days → do not proceed to Stage 2 (PRD-223); the packs have no distribution.
+- Stage 3+4 stay parked until those numbers exist.
+
+Operational floor (not a product test): p95 brief compute latency < 150 ms;
+zero LLM calls on the first brief path.
+
+**Acceptance criteria additions:**
+
+- All new brief templates, pack copy, and share-page strings added to the copy
+  set in `packages/engine/src/__tests__/advice-rule.test.ts` and pass it.
+- The pre-existing `advice-rule.test.ts` failure on `HomePricing.tsx`
+  ("Scroll across to compare both plans") is resolved by this PRD's landing
+  rewrite removing that surface — not waived, fixed by deletion.
+- `confirmed_opened_at` cannot be set by a plain GET (an integration test
+  asserts a scanner-style fetch leaves it null).
 
 **Template numeral invariant:** `template_sentence` is generated only from
 fields in the solver `result` payload — no hard-coded example numbers, same

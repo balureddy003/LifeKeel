@@ -1,5 +1,11 @@
 # PRD-224: Stage 3 — Feeds into the same number, hidden accounts, and employer seats
 
+> **Status: PARKED — design intent only.** No Stage 1 metric exists yet
+> (confirmed second-adult open rate, second-brief return rate). Do not start
+> Stage 3 until those numbers prove households come back. This document keeps
+> the design decisions written so Stage 1's schema (`visibility`,
+> `savings_scope`) doesn't foreclose them.
+
 ## Problem
 
 Once households rely on their briefs (PRD-222, PRD-223), keeping the runway

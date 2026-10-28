@@ -3,6 +3,18 @@
 Date: 28 October 2026.
 Translates into Intents `70`–`77` (`docs/intents/`) and PRDs `222`–`226` (`docs/prd/`).
 
+> **Review amendment (same day, pre-merge):** Stages 2–4 and the GridFS cutover
+> are **gated/parked** — only the Stage 1 cut (intents 70, 75, 76) is buildable.
+> Two design fixes landed in spec: `opened_at` is split into `link_fetched_at`
+> (telemetry only — link unfurlers/scanners set it) and `confirmed_opened_at`
+> (explicit "view the numbers" action — the product promise), and the share
+> page's caching posture is `private, no-store` on the result endpoint with a
+> token `expires_at` and defined revocation behaviour (410 revoked / 404
+> expired). Pricing is one decision: `lifekeel_record_annual` at £59.99/yr,
+> not a re-skin of the OCR Plus SKU; existing Plus subscribers keep OCR.
+> `document.extract_fields` is **BLOCKED** until an approved processor exists
+> (GCP Ollama decommissioned 2026-10-24).
+
 ---
 
 ## 1. Market diagnosis: why the brief is the opening

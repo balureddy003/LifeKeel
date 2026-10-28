@@ -1,5 +1,11 @@
 # Intent 74: Move vault and document bytes out of MongoDB GridFS into object storage
 
+> **Status: PARKED — cost optimisation, not a brief requirement.** The brief hot
+> path never reads document bytes, so this is gated on aggregate document volume
+> crossing the stated storage-cost threshold (ARCHITECTURE.md §15.8), not on the
+> brief platform. It is also the most operationally irreversible change in this
+> set — do not run it before Stage 1 ships and proves the numbers.
+
 **Problem** — Hot MongoDB storage (GridFS `documents.files` / `documents.chunks`) is an order of magnitude more expensive per GB than object storage (GCS / Cloudflare R2) and inflates database working set, backups, and restore times. Although `apps/api/src/documents/storage.ts` already implements a dual-read seam (`DOCUMENTS_SCHEMA_VERSION = 2`), default uploads and vault writes still land in GridFS unless `DOCUMENTS_STORAGE=r2` / `VAULT_STORAGE=r2` are enabled, and existing GridFS blobs remain in Mongo. Moreover, the brief hot path never needs raw file bytes at all.
 
 **Done looks like**

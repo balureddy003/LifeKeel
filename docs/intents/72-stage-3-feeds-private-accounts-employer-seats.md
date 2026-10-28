@@ -1,5 +1,9 @@
 # Intent 72: Stage 3 — Feeds into the same number, hidden accounts, and employer seats
 
+> **Status: PARKED — design intent only.** Parked until Stage 1 (PRD-222) and
+> Stage 2 (PRD-223) metrics exist. Do not start Stage 3 until the confirmed-open
+> and second-brief return numbers prove households come back.
+
 **Problem** — Currently, `external_accounts` (from read-only Open Banking sync, PRD-133) sits in a separate table and never updates the savings figure used by the runway solver; every synced or manual account is visible to all adults in the tenant with no way for one adult to keep an account private; and employer distribution (PRD-207) has no concrete seat-grant billing layer that guarantees the employer never sees household figures and never pays per policy.
 
 **Done looks like**

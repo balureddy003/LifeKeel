@@ -1,5 +1,11 @@
 # Intent 71: Stage 2 — Problem packs and annual record-keeping (~£59/yr)
 
+> **Status: GATED — do not implement.** No evidence yet that a couple finishes a
+> Stage 1 brief. Proceed only after PRD-222's kill/proceed thresholds are met
+> (confirmed second-adult open rate and second-brief return rate). See PRD-223
+> for the single pricing decision (new `household_record` SKU, not a re-skin of
+> the OCR Plus plan).
+
 **Problem** — Once couples finish and share their first brief, upcoming household changes (changing jobs, a mortgage fix ending, an insurance renewal jump, a childcare or school bill starting, a quiet self-employed month or tax bill, or a parent needing support) each alter the household's runway months or create a named gap. Today those scenarios are scattered across generic detectors, free-text notes, or unbuilt schema fields, and Keel Plus is framed around monthly OCR credits (`£7.99/mo` for AI document reading) rather than paying for the second brief or keeping the household record current (~£59/year).
 
 **Done looks like**

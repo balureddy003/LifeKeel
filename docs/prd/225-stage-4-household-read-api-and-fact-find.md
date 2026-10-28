@@ -1,5 +1,10 @@
 # PRD-225: Stage 4 — Others can read, not own (household grant API & adviser fact-find)
 
+> **Status: PARKED — design intent only.** Parked until Stage 1–2 metrics exist
+> (confirmed second-adult opens, second-brief return rate). The grant model is
+> specified here so Stage 1's token/grant semantics stay compatible — not to be
+> built yet.
+
 ## Problem
 
 Once a household's briefs and policy/account records are kept true in LifeKeel

@@ -1,5 +1,11 @@
 # PRD-223: Stage 2 — Problem packs and annual record-keeping (~£59/year)
 
+> **Status: GATED — do not implement.** No evidence yet that a couple finishes a
+> Stage 1 brief. Proceed only if PRD-222's kill/proceed thresholds are met
+> (confirmed second-adult open rate; second-brief return rate). This document
+> exists so Stage 1 does not paint into a corner on pricing and schema — not as
+> a build order.
+
 ## Problem
 
 After a couple finishes and shares their first Stage 1 brief (PRD-222), real
@@ -61,25 +67,31 @@ household record current over the year.
        (`monthlyExpenseDeltaMinor`) plus the parent/care handover entries in
        the brief (`who_to_call`, `key_papers`), recomputing household runway
        months and updating the shared brief.
-3. **Commercial model (~£59/year) — new entitlement, not a re-skin of OCR Plus:**
-   - The first brief in a household is free (PRD-222).
-   - Creating a **second brief**, running Stage 2 problem packs, or keeping the
-     household record updated over time requires a new **`household_record`
-     annual entitlement** checked server-side by plan/entitlement, not by
-     price-id string.
-   - It may bill on the same £59.99/yr Stripe price
-     (`keel_plus_gbp_annual` in `billing/stripe-price.ts`), **but the
-     entitlement and all billing/landing copy must describe it as "second brief
-     + keeping the record current" — never "AI document reading".** Today that
-     price buys OCR extraction (`Pricing.tsx`, `PlusSpotlight.tsx`); this PRD
-     redefines what the annual plan sells. Document extraction moves to an
-     add-on or a secondary feature line; PRD-222's landing rewrite makes the
-     two consistent — shipping the new copy before the reframe lands would
-     leave `/upgrade` and `Pricing.tsx` contradicting each other, so the
-     entitlement check must not gate on the old Plus framing.
-   - Billing copy on `/upgrade` and `Pricing.tsx` states this plainly: pay for
-     the second brief and keeping the household record current — never for
-     product recommendations or commissions.
+3. **Commercial model — the one pricing decision:**
+   - **SKU:** a new `lifekeel_record_annual` entitlement — "unlimited briefs +
+     the household record kept current" — priced at **£59.99/yr**. (The ~£59
+     shorthand elsewhere in these docs means this price; the two spellings are
+     never used as if they were different offers.)
+   - **Not a silent reuse of the Plus SKU.** `keel_plus_gbp_annual` today buys
+     AI document reading (`Pricing.tsx`, `PlusSpotlight.tsx`). The record
+     entitlement gets its own Stripe price id and server-side entitlement
+     flag; nothing checks `plan === 'plus'` or a shared price id to unlock
+     briefs.
+   - **Existing Plus subscribers:** keep their paid OCR extraction unchanged —
+     grandfathered on the existing `plus` entitlement. They are **not** silently
+     migrated to `household_record`; if record-keeping is folded into Plus
+     later, that is a separate, announced migration. New subscribers see only
+     the record plan on the rewritten `/upgrade` and `Pricing.tsx`.
+   - **One free brief per household** (PRD-222): the three Stage 1 problems are
+     alternatives for the single free brief, not three free briefs. Every
+     subsequent brief — including Stage 2 packs — requires `household_record`.
+   - **The second-brief gate is the likely drop-off point** of the funnel; it
+     is instrumented (`brief_gate_hit` / `brief_gate_converted`) and the
+     pricing decision above is revisited if confirmed-open rates are strong
+     but gate conversion is near zero.
+   - **Kill/proceed:** if PRD-222's Stage 1 metrics miss the stated thresholds
+     (confirmed-open <~30% in 7 days, second-brief return <~15% in 30 days),
+     this PRD does not build — the problem is the brief, not the packs.
 
 ## Constraints
 

@@ -1,5 +1,12 @@
 # PRD-226: Low-cost, high-scale architecture for the brief platform
 
+> **Status: split.** Only the items the Stage 1 cut (PRD-222) depends on are
+> buildable now; the rest are parked until brief volume or document volume
+> justifies them — see the status table under "What 'done' looks like".
+> Nothing here is a reason to delay PRD-222, and nothing here is a reason to
+> build it either: the brief succeeds or fails on the product metrics in
+> PRD-222, not on these savings.
+
 ## Problem
 
 For LifeKeel to offer a free first brief to many households without marginal
@@ -35,6 +42,15 @@ volume).
 
 ## What "done" looks like
 
+| # | Change | Status |
+|---|---|---|
+| 1 | GridFS → object storage | **PARKED** — cost optimisation for document volume, not a brief requirement; the brief hot path never reads document bytes |
+| 2 | Brief hot path (cache + template) | **BUILDABLE** — required by PRD-222 |
+| 3 | Change-driven invalidation | **BUILDABLE** — required so shared briefs stay true |
+| 4 | Hard free-tier spend cap | **BUILDABLE** — free briefs must not generate unbounded AI/OCR cost |
+| 5 | Queue payload-by-reference (4 KB) | **PARKED** — scale hygiene, not Stage 1 |
+| 6 | Scale-to-zero + cold-start/p95 gate | **PARKED** — measure when brief traffic exists |
+
 1. **Move vault and document bytes out of MongoDB GridFS into object storage
    (GCS / R2):**
    - All document and vault uploads write ciphertext/clean bytes to object
@@ -64,11 +80,18 @@ volume).
        falls back to `template_sentence`). Cached by
        `solver_version + data_version` so a hit returns the stored sentence
        without a model call.
-     - `document.extract_fields` (`authority: candidate_for_review`, local
-       preferred via `structured-llm.ts`): returns candidate policy fields
-       (`provider`, `coverage_amount`, `deferred_period`, `renewal_date`,
-       `premium`, `policy_number`) into `extraction_candidates`. A person must
-       confirm and apply them before they affect a brief.
+     - `document.extract_fields` (`authority: candidate_for_review`):
+       **BLOCKED — do not build until an approved processor exists.** The GCP
+       Ollama service (`lifekeel-local-judge`) was decommissioned 2026-10-24
+       for cost, and policy documents cannot go to an unreviewed hosted
+       processor — "local preferred" is not an available answer while no local
+       serving path is deployed. When a processor is approved (re-deployed
+       local serving or a reviewed hosted processor on `approved_hosted_provider`
+       terms), the task returns candidate policy fields (`provider`,
+       `coverage_amount`, `deferred_period`, `renewal_date`, `premium`,
+       `policy_number`) into `extraction_candidates`, and a person must
+       confirm and apply them before they affect a brief. Not required for
+       Stage 1 — the brief is zero-model.
 3. **Switch from fixed sweeps to change-driven invalidation:**
    - Writes to `family_financial_profile`, linked `external_accounts`, or
      `family_cashflow_entries` increment the tenant's `data_version` and mark

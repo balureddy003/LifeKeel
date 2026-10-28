@@ -1,5 +1,9 @@
 # Intent 73: Stage 4 — Household read grant API and adviser fact-find export
 
+> **Status: PARKED — design intent only.** Parked until Stage 1–2 metrics exist
+> (confirmed second-adult opens, second-brief return rate). The grant API is
+> specified so Stage 1 does not paint into a corner, not to be built now.
+
 **Problem** — When a household works with an existing financial adviser, solicitor, or partner tool, they currently have to rebuild their fact-find from scratch or hand over a raw GDPR database dump (`GET /account/export`). There is no narrow, revocable read API over the computed brief, and no clean fact-find export designed for an adviser the family already uses.
 
 **Done looks like**
