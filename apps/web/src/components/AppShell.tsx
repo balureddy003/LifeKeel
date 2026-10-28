@@ -70,6 +70,7 @@ const ROUTE_TAB_OVERRIDES: Record<string, string> = {
   '/financial-profile': '/',
   '/vault': '/',
   '/cashflow': '/',
+  '/briefs': '/',
   '/assets': '/',
   '/documents': '/',
   '/upload': '/',

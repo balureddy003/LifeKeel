@@ -14,11 +14,22 @@
  *  - a profile write marks briefs stale (change-driven invalidation) and
  *    the next read recomputes once.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MongoClient, type Db } from 'mongodb'
 import { MongoMemoryServer } from 'mongodb-memory-server'
 import Fastify, { type FastifyInstance } from 'fastify'
 import { registerFamilyBriefRoutes } from '../family-briefs.js'
+
+// PRD-222's hard guarantee: the brief path performs ZERO model calls.
+// taskLlm is mocked to throw — every test in this file (create, solve,
+// share, fetch, confirm, revoke, stale recompute) must still pass, which
+// proves no route reaches the governed model layer. The narrate route is
+// the only caller and must degrade to the template, not crash.
+vi.mock('../../ai/task-gateway.js', () => ({
+  taskLlm: () => {
+    throw new Error('model layer touched on the brief path')
+  },
+}))
 import {
   briefsFor,
   markBriefsStale,
@@ -131,6 +142,21 @@ describe('POST /family/briefs', () => {
     })
     expect(res.statusCode).toBe(201)
     expect(res.json().brief.problem_type).toBe('earning_less')
+  })
+
+  it('the first-brief path performs zero model calls (PRD-222 guarantee)', async () => {
+    // taskLlm is mocked to throw (top of file): create → share fetch →
+    // confirm all succeed with the model layer dead. Any future route
+    // code that touches the gateway fails this suite loudly.
+    const res = await createBrief()
+    expect(res.statusCode).toBe(201)
+    const token = res.json().brief.share.url
+    expect((await app.inject({ method: 'GET', url: `/b/${token}` })).statusCode).toBe(200)
+    currentUser = PARTNER // the second adult opens the link
+    expect(
+      (await app.inject({ method: 'POST', url: `/b/${token}/confirm`, payload: {} })).json()
+        .confirmed,
+    ).toBe(true)
   })
 
   it('rejects bad inputs and non-editor roles', async () => {
