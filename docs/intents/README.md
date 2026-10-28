@@ -113,3 +113,24 @@ suspected bug (reproduce first); 36 is an audit before fixes.
 | `67-derivation-closure.md` | Artefact closures + minimal invalidation, measured | #291 | IMPLEMENTED |
 | `68-disclosure-join-in-engine.md` | Disclosure labels joined inside evaluate, not at the route | #292 | IMPLEMENTED |
 | `69-fab-stack-above-nav.md` | SOS/gold FABs anchored above nav, inside reserved band | — | IMPLEMENTED |
+
+## 70–77: Brief platform pivot & low-cost high-scale architecture (2026-10-28)
+
+Market positioning and architectural pivot to the **shared, computed household brief** (Stages 1–4) plus the six low-cost, high-scale infrastructure changes that keep per-household cost decoupled from stored PDF volume.
+
+| File | Concern | Becomes PRD | Status |
+|---|---|---|---|
+| `70-stage-1-household-brief.md` | Stage 1 — three problems only, one solver result, send + `confirmed_opened_at` (explicit "view the numbers" action, not a scanner-fetched GET), first brief free; remove chart, sample family, and Plus-as-OCR framing | PRD-222 | **BUILDABLE** |
+| `71-stage-2-problem-packs-and-annual-record.md` | Stage 2 — six problem packs + `lifekeel_record_annual` (£59.99/yr) entitlement for the second brief / record keeping | PRD-223 | **GATED** on Stage 1 metrics (confirmed-open ~30%, second-brief return ~15%) |
+| `72-stage-3-feeds-private-accounts-employer-seats.md` | Stage 3 — read-only balance and pension feeds into the same number, per-adult hidden accounts, and privacy-walled flat-fee employer seats | PRD-224 | **PARKED** until Stage 1–2 metrics exist |
+| `73-stage-4-household-read-grant-and-fact-find.md` | Stage 4 — small read API under a household grant (`runway`, `renewal_dates`, `opened_at`, `document_locations`), existing-adviser fact-find export, and partner revocation preserving the graph | PRD-225 | **PARKED** until Stage 1–2 metrics exist |
+| `74-object-storage-cutover-retire-gridfs.md` | Move vault and document bytes out of MongoDB GridFS into object storage (GCS/R2), keeping only metadata, hash, and pointer in Mongo | PRD-226 | **PARKED** — cost optimisation for document volume, not a brief requirement |
+| `75-brief-hot-path-and-change-driven-invalidation.md` | Make the brief the hot path (narrow projection + single solver call + `data_version` cache) and switch from fixed sweeps to write-time change-driven invalidation | PRD-222, PRD-226 | **BUILDABLE** (Stage 1 cut) |
+| `76-hard-free-tier-spend-cap-and-zero-llm-brief.md` | Hard per-tenant free-tier spend cap across all budget classes; guarantee the first brief runs with zero model calls | PRD-226 | **BUILDABLE** (Stage 1 cut) |
+| `77-queue-payload-by-reference-and-cold-start-slo.md` | Enforce ID-only Redis queue payloads with a hard max-byte budget, and keep scale-to-zero with measured cold-start / brief p95 gate | PRD-226 | **PARKED** — scale concern, not Stage 1 |
+
+**Buildable set (the Stage 1 cut): intents 70, 75, 76** — plus the
+`confirmed_opened_at` / caching-revocation design fixes specified in PRD-222.
+Everything else is gated or parked on product metrics, not on engineering
+readiness.
+
