@@ -15,7 +15,8 @@ import {
 } from '@/lib/api'
 
 const BENEFITS = [
-  'AI reads your documents and pulls out the provider, policy number, amounts, and dates automatically',
+  'Your household record kept current — run as many briefs as you need, updated as figures change',
+  'AI reads your documents and pulls out the provider, policy number, amounts, and dates for you to confirm',
   'AI-summarized inbox — financial emails read and explained in plain language',
 ]
 
@@ -211,7 +212,7 @@ export default function UpgradePage() {
         <PageHeader
           title="Keel Plus"
           backHref="/settings"
-          subtitle="AI that does the reading for you"
+          subtitle="The household record, kept current"
         />
         <GlassCard className="p-5">
           <Skeleton className="h-4 w-28 mb-3" />
@@ -235,7 +236,7 @@ export default function UpgradePage() {
       <PageHeader
         title="Keel Plus"
         backHref="/settings"
-        subtitle="AI that does the reading for you"
+        subtitle="The household record, kept current"
       />
 
       {banner === 'success' && !isPlus && (
@@ -262,7 +263,8 @@ export default function UpgradePage() {
             </div>
             <h2 className="text-lg font-bold mb-1">You're on Keel Plus</h2>
             <p className="text-sm text-ink-tertiary">
-              AI document extraction and inbox summaries are active on your account.
+              Household record, unlimited briefs, document reading, and inbox summaries are active
+              on your account.
             </p>
             {sub?.subscription?.current_period_end && (
               <p className="text-xs text-ink-tertiary mt-2">
@@ -397,8 +399,8 @@ export default function UpgradePage() {
       </GlassCard>
 
       <p className="text-xs text-ink-tertiary text-center leading-relaxed">
-        Uploading and storing documents is always free. This upgrade covers the AI reading step
-        only.
+        Your first brief and storing documents are always free. This upgrade covers the household
+        record — unlimited briefs and the AI reading step.
       </p>
     </div>
   )
