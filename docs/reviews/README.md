@@ -142,3 +142,17 @@ extraction → profile bridge) had already shipped before the pass — see
    validation gap, reversible on-device PII redaction ("Curtain Protocol"),
    on-device Art. 9 medical text quarantine, and a 4-slice build plan.
    Produced 2026-10-20.
+18. [brief-platform-pivot-and-scale-2026-10.md](brief-platform-pivot-and-scale-2026-10.md) —
+   the October 2026 platform pivot and low-cost high-scale architecture review:
+   why the market is crowded with vaults (SafeKeep, Biscuit Tin, Capsafa,
+   SuccessionKeeper, Lyfeguard, Safe4) and advice/placement platforms (Alltoogether,
+   Bippit, Perkbox) and empty of a shared, computed brief for a real household
+   problem; the 4-stage platform roadmap (Stage 1: 3-problem brief with
+   `opened_at`; Stage 2: 6 problem packs + ~£59/yr record keeping; Stage 3:
+   feeds into the same number, hidden accounts, flat-fee employer seats; Stage
+   4: household grant read API & existing-adviser fact-find export); and the 6
+   low-cost high-scale backend changes (object-storage cutover off GridFS,
+   cached brief hot path, change-driven invalidation, hard free-tier spend cap,
+   ID-only queue payload cap, scale-to-zero cold-start gate). Graduated into
+   Intents 70–77 and PRDs 222–226. Produced 2026-10-28.
+

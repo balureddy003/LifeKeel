@@ -232,6 +232,53 @@ implies competing on general chat quality. Delivery: PRD-211 through PRD-216
 (phased in `docs/prd/README.md`); the model-serving decision it rests on is
 recorded in [decision-local-interactive-closed-2026-10.md](docs/reviews/decision-local-interactive-closed-2026-10.md).
 
+### Strategic pivot (decided 2026-10-28): the household brief platform
+
+The market is crowded with storage vaults (SafeKeep, Biscuit Tin, Capsafa,
+SuccessionKeeper, Lyfeguard, Safe4) and advice/placement platforms (Alltoogether,
+Bippit, Perkbox, Origin), and empty of a **shared, computed brief for a real
+household problem** where both adults see the same runway months and leave
+without a product recommendation. Full rationale and market evidence:
+[`docs/reviews/brief-platform-pivot-and-scale-2026-10.md`](docs/reviews/brief-platform-pivot-and-scale-2026-10.md);
+requirements in PRD-222 through PRD-226 (Intents 70–77).
+
+The platform evolves in four stages:
+
+1. **Stage 1 — The brief (now, [PRD-222](docs/prd/222-stage-1-the-household-brief.md)):**
+   Three problems only (*one of us might stop earning*; *someone is about to
+   earn less*; *the other adult does not know*). One engine: a few inputs, one
+   deterministic solver result (`calculate.ts`), send link, `opened_at`. First
+   brief free with zero model calls. No harbour chart, no sample family, no Plus
+   sold as document reading.
+2. **Stage 2 — Problem packs ([PRD-223](docs/prd/223-stage-2-problem-packs.md)):**
+   Six packs on the same engine and cleaner policy fields: job change (employer
+   cover ends with the job), mortgage fix ending, renewal price change (last
+   premium vs. this premium), childcare or school bill starting, quiet month or
+   tax bill, and parent needing support. Each pack changes the months or a named
+   gap. The household pays ~£59/year for the second brief or keeping the record
+   current.
+3. **Stage 3 — Feeds into the same number ([PRD-224](docs/prd/224-stage-3-feeds-private-accounts-employer-seats.md)):**
+   Read-only account balances and (when legally usable after the 2027/28 public
+   MoneyHelper dashboard) pension pots write into the same profile fields the
+   solver already reads. One adult can hide an account (`visibility: 'private'`).
+   A found pension pot updates the retirement component and never starts a
+   consolidation journey. Employer seat: a flat fee so staff can run a brief;
+   the employer never sees household figures and there is no fee per policy.
+4. **Stage 4 — Others can read, not own ([PRD-225](docs/prd/225-stage-4-household-read-api-and-fact-find.md)):**
+   A small read API under a revocable household grant (`runway`, `renewal_dates`,
+   `opened_at`, `document_locations` — thin projection over the stored brief
+   result, never recomputing on read, never serving raw files unless exported by
+   the member), plus a deterministic fact-find export for an adviser the family
+   already has. Disconnecting a partner or grant deletes their access, not the
+   household graph.
+
+**What the platform is not:**
+- Not a vault competing with Capsafa or SafeKeep on storage price.
+- Not a benefits broker or a will-writer.
+- Not a comparison site or a model that supplies its own figures.
+- Not a private pensions dashboard before FCA rules allow it.
+
+
 ### Family and member shape
 
 ```mermaid
@@ -3138,6 +3185,52 @@ not minimizing single line items. The optimization review
 Where not to save: symmetric guards, evaluation CI, audit/receipts,
 authority-data backups, secondary transactional email, and approval
 strengthening.
+
+#### Low-cost, high-scale brief architecture (decided 2026-10-28, [PRD-226](docs/prd/226-brief-scale-and-cost-architecture.md))
+
+To offer the three Stage 1 problems to many households without marginal cost
+rising with stored PDFs or idle tenants, six concrete changes take priority over
+any service split (Intents 74–77):
+
+| Change | Why it matters for the brief platform | Effort |
+|---|---|---|
+| **Move vault and document bytes out of MongoDB GridFS into object storage (GCS / R2). Keep only metadata, hash, and a pointer in Mongo.** | Hot database storage is an order of magnitude more expensive per GB. At scale this is the largest avoidable cost. The brief does not need the file bytes on the hot path. | Medium |
+| **Make the brief the hot path. A problem pack loads only the fields it needs, calls the solver once, stores the result with a data version, and returns a share link.** | Most requests become a short read + one pure computation. No full profile, no detector sweep, no LLM. | Low |
+| **Switch from fixed sweeps to change-driven invalidation. On a write, mark the affected brief stale and recompute only that.** | As households grow, sweeping every tenant wastes compute and Mongo reads. The brief only needs to be fresh when its inputs change. | Medium |
+| **Cap free-tier spend hard. Document extraction and any hosted model call sit behind a per-tenant budget. The first brief must succeed with zero model calls.** | Free users can otherwise generate unbounded AI or OCR cost before they pay. | Low |
+| **Queue jobs carry IDs, not content. Enforce a max payload size (`4 KB`).** | Prevents Redis and dead-letter queues from growing with document bytes. | Low |
+| **Keep scale-to-zero. Measure cold start. Add a minimum instance only if the brief p95 actually breaches the target.** | Idle cost stays near zero while volume is low. | Low |
+
+**What to keep:**
+- **Modular monolith (`apps/api`).** Extract a worker or a separate service only
+  when interactive latency or release cadence forces it. The brief path and the
+  background jobs share the process until measured otherwise.
+- **Tenant-scoped Mongo collections and the existing isolation tests.** Stage 4
+  adds a thin read API over stored projections; it does not add a second data
+  store.
+- **Deterministic solver (`calculate.ts`) as the only source of numbers.** The
+  brief result is cached with `solver_version` and `data_version`; every numeral
+  on the shared page must match that payload (Intent 65).
+- **Static web on Firebase Hosting.** The share link (`/b/[token]`) is a public,
+  cacheable page that calls the API only for the stored result.
+
+**What not to do:**
+- Do not introduce a second database, a message bus, or a microservices split to
+  "prepare for scale." The current Cloud Run + Mongo + Redis shape handles the
+  brief volume once object-storage cutover and change-driven invalidation are in
+  place.
+- Do not put document bytes or model calls on the path that produces the first
+  free brief.
+- Do not introduce open tool-calling agent loops, multi-agent planner/critic/executor
+  chains, or long-lived session memory on the brief path. A brief or problem pack
+  is a fixed, code-driven sequence (`load fields → run solver → render template →
+  optional governed single-call narration → cache by solver_version + data_version`),
+  backed by two brief-platform tasks (`brief.narrate` with a server-side
+  numeral-presence output guard that falls back to the template on any
+  ungrounded numeral, and `document.extract_fields` returning human-confirmed
+  candidates including `deferred_period`).
+
+
 
 ### 15.9 Operability and observability
 

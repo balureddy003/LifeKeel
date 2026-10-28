@@ -113,3 +113,19 @@ suspected bug (reproduce first); 36 is an audit before fixes.
 | `67-derivation-closure.md` | Artefact closures + minimal invalidation, measured | #291 | IMPLEMENTED |
 | `68-disclosure-join-in-engine.md` | Disclosure labels joined inside evaluate, not at the route | #292 | IMPLEMENTED |
 | `69-fab-stack-above-nav.md` | SOS/gold FABs anchored above nav, inside reserved band | — | IMPLEMENTED |
+
+## 70–77: Brief platform pivot & low-cost high-scale architecture (2026-10-28)
+
+Market positioning and architectural pivot to the **shared, computed household brief** (Stages 1–4) plus the six low-cost, high-scale infrastructure changes that keep per-household cost decoupled from stored PDF volume.
+
+| File | Concern | Becomes PRD |
+|---|---|---|
+| `70-stage-1-household-brief.md` | Stage 1 — three problems only, one solver result, send + `opened_at`, first brief free; remove chart, sample family, and Plus-as-OCR framing | PRD-222 |
+| `71-stage-2-problem-packs-and-annual-record.md` | Stage 2 — six problem packs (job change, mortgage fix ending, renewal price change, childcare/school bill, quiet month/tax bill, parent support) + ~£59/yr second brief / record keeping | PRD-223 |
+| `72-stage-3-feeds-private-accounts-employer-seats.md` | Stage 3 — read-only balance and pension feeds into the same number, per-adult hidden accounts, and privacy-walled flat-fee employer seats | PRD-224 |
+| `73-stage-4-household-read-grant-and-fact-find.md` | Stage 4 — small read API under a household grant (`runway`, `renewal_dates`, `opened_at`, `document_locations`), existing-adviser fact-find export, and partner revocation preserving the graph | PRD-225 |
+| `74-object-storage-cutover-retire-gridfs.md` | Move vault and document bytes out of MongoDB GridFS into object storage (GCS/R2), keeping only metadata, hash, and pointer in Mongo | PRD-226 |
+| `75-brief-hot-path-and-change-driven-invalidation.md` | Make the brief the hot path (narrow projection + single solver call + `data_version` cache) and switch from fixed sweeps to write-time change-driven invalidation | PRD-222, PRD-226 |
+| `76-hard-free-tier-spend-cap-and-zero-llm-brief.md` | Hard per-tenant free-tier spend cap across all budget classes; guarantee the first brief runs with zero model calls | PRD-226 |
+| `77-queue-payload-by-reference-and-cold-start-slo.md` | Enforce ID-only Redis queue payloads with a hard max-byte budget, and keep scale-to-zero with measured cold-start / brief p95 gate | PRD-226 |
+

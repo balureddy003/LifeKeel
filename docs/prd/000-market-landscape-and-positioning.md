@@ -68,6 +68,46 @@ changing situation (a new mortgage, a new child, income change).
   mechanic than a catch-up feature — worth protecting and investing in
   deliberately, not treating as a generic "insights" screen.
 
+## October 2026 UK market update & the brief platform pivot (PRD-222–226)
+
+The market is crowded with storage and advice, and empty of a **shared, computed
+brief for a real household problem**. That is the opening for a platform:
+
+- **Document and legacy vaults (the crowded layer):** SafeKeep, Biscuit Tin,
+  Capsafa (free, launched September 2026, Executor Pack always free),
+  SuccessionKeeper (£4/month or £39/year, check-in system), Lyfeguard (free +
+  Pro £4.99 with open-finance connections), Safe4, and others. They store files
+  or a map of where things are, name a contact, and charge roughly £3–£7 a month
+  or stay free. None of them lead with *"how many months if one income stops,
+  and has the other adult opened it?"*
+- **Protection distribution:** The FCA's Pure Protection Market Study final
+  report (21 September 2026) found that 58% of adults hold no life,
+  critical-illness, or income-protection product, and 59% of that group have
+  never considered it. Competition works for people who already hold cover. The
+  gap is awareness and prompts, not a shortage of products. The FCA is not
+  adding broad new rules; it is pushing industry-led awareness and a possible
+  TechSprint in Q3 2027.
+- **Employer and benefits platforms:** Alltoogether places cover and gives
+  employees a portal. Bippit sells coaching, mortgage advice, and will-writing
+  to employers. Perkbox, Reward Gateway and others sell discounts and admin.
+  They are paid by the employer or on placement. They do not show a household
+  runway the second adult has seen, and they cannot refuse to sell without
+  breaking their model.
+- **Data feeds that will arrive later:** Moneyhub is already powering household
+  open-banking views (Know Your Dosh tracks £200m+). The public MoneyHelper
+  pensions dashboard is expected in the 2027/28 financial year; private
+  dashboards follow only after that.
+- **The gap LifeKeel takes (Stages 1–4, PRD-222–226):** A household can store a
+  PDF, name a contact, or be sold a policy. It cannot, in one evening, answer a
+  specific upcoming problem with a number both adults have seen (`opened_at`),
+  and leave without a product recommendation. LifeKeel is not a vault competing
+  with Capsafa or SafeKeep on storage price, not a benefits broker or
+  will-writer, not a comparison site or model that invents figures, and not a
+  private pensions dashboard before the rules allow it. It is the household
+  graph that keeps a growing set of computed briefs true over time, and that
+  other tools can read only when the family allows it.
+
+
 ## Reading list
 
 - [Copilot vs Monarch: Which Is Better for Your Financial Life?](https://useorigin.com/resources/blog/copilot-vs-monarch-which-is-better-for-your-financial-life)

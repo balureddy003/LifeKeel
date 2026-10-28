@@ -445,6 +445,51 @@ Not a PRD: the distribution playbook (intent 18) is a document deliverable —
 
 **Quiz retired (2026-10-20).** PRD-125, 201, 203, 204 and 205 describe the public readiness quiz and its result-save, trust-block and share extras. The quiz, its API route and share card were removed; `/readiness` now redirects to signup. Those documents stay for history and are not on the build order.
 
+## 222–226 — Brief platform pivot & low-cost high-scale architecture (decided 2026-10-28)
+
+The market is crowded with storage vaults (SafeKeep, Biscuit Tin, Capsafa,
+SuccessionKeeper, Lyfeguard, Safe4) and advice/distribution platforms, and empty
+of a **shared, computed brief for a real household problem** where both adults
+see the same runway months and leave without a product recommendation. These
+five PRDs define the four-stage pivot from a broad chart/vault/OCR pitch to the
+household brief platform, plus the low-cost, high-scale infrastructure changes
+that keep marginal cost independent of stored PDF volume (from Intents 70–77):
+
+1. [222-stage-1-the-household-brief.md](222-stage-1-the-household-brief.md) —
+   **Stage 1 (now).** Three problems only (`income_stops`, `earning_less`,
+   `handover_gap`); one engine (a few inputs, one deterministic solver result,
+   send link, `opened_at`); first brief free with zero model calls; remove the
+   harbour chart, sample family, and Plus-as-OCR framing. Tier 0.
+2. [223-stage-2-problem-packs.md](223-stage-2-problem-packs.md) — **Stage 2
+   (after first briefs are finished).** Six problem packs on the same solver
+   and cleaner policy fields (job change where employer cover ends, mortgage fix
+   ending, renewal price change, childcare or school bill starting, quiet month
+   or tax bill, parent needing support). Household pays ~£59/year for the second
+   brief or keeping the record current. Tier 0.
+3. [224-stage-3-feeds-private-accounts-employer-seats.md](224-stage-3-feeds-private-accounts-employer-seats.md) —
+   **Stage 3 (feeds into the same number).** Read-only account balances and
+   (when legally usable post-2027/28) pension pots update the brief's months;
+   one adult can mark an account `visibility: 'private'`; found pension pots
+   never start a consolidation journey; flat-fee employer seats where the
+   employer never sees household figures and pays zero fee per policy. Tier 0.
+4. [225-stage-4-household-read-api-and-fact-find.md](225-stage-4-household-read-api-and-fact-find.md) —
+   **Stage 4 (others can read, not own).** Small read API under a revocable
+   household grant (`runway`, `renewal_dates`, `opened_at`,
+   `document_locations` — never recomputing on read, never serving raw files),
+   deterministic fact-find export for an adviser the family already has, and
+   partner/grant disconnection that deletes access while preserving the graph.
+   Tier 0/1.
+5. [226-brief-scale-and-cost-architecture.md](226-brief-scale-and-cost-architecture.md) —
+   **What to change now (low cost, high scale).** Move vault and document bytes
+   out of MongoDB GridFS into object storage (GCS/R2) keeping only metadata,
+   hash, and pointer in Mongo; make the brief the cached hot path (`data_version`
+   + `solver_version`); switch from fixed tenant sweeps to write-time
+   change-driven invalidation; hard-cap free-tier spend across all budget
+   classes (zero model calls on the first brief); enforce ID-only 4 KB max Redis
+   queue payloads; keep Cloud Run scale-to-zero gated on measured brief p95.
+   Tier 0.
+
+
 ## Suggested build order for 138–147 and 203–206
 
 Dependencies are in each PRD's "Builds on"; this is the order that follows from
