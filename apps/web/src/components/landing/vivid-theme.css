@@ -132,3 +132,105 @@
   box-shadow: none;
   border-radius: 999px;
 }
+
+/*
+ * Type scale for the public frames: 14px body, 13px fine print, smaller headings. The signed-in
+ * app keeps its 16px minimums (globals.css); these rules only apply inside the public frames.
+ */
+html:has(:is(.lk-vivid, .lk-public, .lk-auth)) {
+  font-size: 16px;
+}
+:is(.lk-vivid, .lk-public, .lk-auth) {
+  font-size: 14px;
+  line-height: 1.6;
+}
+@media screen {
+  :is(.lk-vivid, .lk-public, .lk-auth) .text-sm,
+  :is(.lk-vivid, .lk-public, .lk-auth) label.text-sm {
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  :is(.lk-vivid, .lk-public, .lk-auth) :is(.text-xs, .text-footnote, label.text-xs) {
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+  :is(.lk-vivid, .lk-public, .lk-auth) :is(.text-\[10px\], .text-\[11px\]) {
+    font-size: 12px;
+  }
+  :is(.lk-vivid, .lk-public, .lk-auth) label {
+    font-size: 14px;
+  }
+}
+:is(.lk-vivid .landing, .lk-public.landing, .lk-auth.landing).landing.landing
+  :is(.lk-band, .lk-fine.lk-key) {
+  font-size: 14px;
+}
+:is(.lk-vivid .landing, .lk-public.landing, .lk-auth.landing).landing.landing
+  :is(
+    .lk-nav a,
+    .lk-signin,
+    .lk-menu a,
+    .lk-btn,
+    .lk-btn-sm,
+    .lk-textlink,
+    .lk-auth-foot a,
+    .lk-docs-side a,
+    .lk-docs-mnav nav a,
+    .lk-legal-card p,
+    .lk-legal-card > span,
+    .lk-field > label,
+    .lk-field > .lk-label,
+    .lk-cookie-table p,
+    .lk-news button,
+    .lk-foot-grid a,
+    .lk-docs-current
+  ) {
+  font-size: 14px;
+}
+:is(.lk-vivid .landing, .lk-public.landing, .lk-auth.landing).landing.landing
+  :is(.lk-fine, .lk-hint, .lk-legal, .lk-or, .lk-news .lk-fine, .lk-legalline) {
+  font-size: 13px;
+  line-height: 1.6;
+}
+:is(.lk-vivid .landing, .lk-public.landing, .lk-auth.landing).landing.landing
+  :is(.lk-intro, .lk-auth-intro > p:not(.lk-eyebrow), .lk-slide-text, .lk-auth-sub) {
+  font-size: 15px;
+  line-height: 1.65;
+}
+:is(.lk-vivid .landing, .lk-public.landing, .lk-auth.landing).landing.landing .lk-footer-intro h2 {
+  font-size: clamp(24px, 2.6vw, 30px);
+}
+:is(.lk-vivid .landing, .lk-public.landing, .lk-auth.landing).landing.landing
+  .lk-footer-subscribe
+  h3 {
+  font-size: 16px;
+}
+/* 16px stays on touch screens so iOS does not zoom into a field on focus */
+@media (hover: hover) and (pointer: fine) {
+  :is(.lk-vivid .landing, .lk-public.landing, .lk-auth.landing).landing.landing
+    :is(.lk-input, .lk-news input),
+  :is(.lk-public, .lk-auth) :is(.glass-input, input, textarea, select) {
+    font-size: 14px;
+  }
+}
+/* redesign.css pins public prose and footer text at 15-16px (specificity 0,5,1); one class higher here */
+.lk-public.landing.landing.landing .lk-public-body p.text-sm {
+  font-size: 14px;
+  line-height: 1.7;
+}
+.lk-public.landing.landing.landing .lk-public-body p.text-xs {
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+:is(.lk-vivid .landing, .lk-public.landing).landing.landing
+  :is(.lk-foot-grid .lk-foot-h, .lk-foot-bottom, .lk-cookie-table) {
+  font-size: 13px;
+}
+:is(.lk-vivid .landing, .lk-public.landing).landing.landing .lk-foot-grid nav a {
+  font-size: 14px;
+}
+/* guide articles set their prose with text-[15px] */
+:is(.lk-public, .lk-auth) .text-\[15px\] {
+  font-size: 14px;
+  line-height: 1.7;
+}

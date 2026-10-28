@@ -84,8 +84,10 @@
  * redesign.css styles these pages at .landing.landing (0,3,0). The rules below sit one class
  * higher so the bright look wins without editing that shared file.
  */
-.lk-public.landing.landing.landing h1 { font-weight: 900; letter-spacing: -0.045em; line-height: 1.04; }
-.lk-public.landing.landing.landing .lk-public-body h2:not(.uppercase) { font-weight: 800; letter-spacing: -0.025em; }
+.lk-public.landing.landing.landing h1 { font-size: clamp(30px, 3.6vw, 42px); font-weight: 900; letter-spacing: -0.04em; line-height: 1.08; }
+.lk-public.landing.landing.landing .lk-public-body h2:not(.uppercase) { font-size: 20px; line-height: 1.25; font-weight: 800; letter-spacing: -0.02em; }
+.lk-public.landing.landing.landing .lk-public-body :is(.lk-legal-card, .lk-guide-grid article) h2 { font-size: 19px; }
+.lk-public.landing.landing.landing .lk-public-body h3 { font-size: 15px; }
 .lk-public.landing.landing.landing :is(.lk-eyebrow, .lk-legal-index > .lk-eyebrow) {
   display: inline-block; width: auto; padding: 6px 14px; border-radius: 999px; font: 800 13px/1.3 var(--vv-font);
   letter-spacing: 0.08em; text-transform: uppercase; color: var(--vv-brand-text);
