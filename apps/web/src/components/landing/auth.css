@@ -1,4 +1,5 @@
 /* Account screens (login, signup, welcome...) in the landing look. */
+@import './vivid-theme.css';
 .lk-auth { --wl: 70px; position: relative; min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; background: linear-gradient(var(--sky-a), var(--sky-b) 85%); overflow: hidden; isolation: isolate; }
 .lk-auth-top { position: relative; z-index: 2; width: 100%; max-width: 1180px; margin: 0 auto; padding: 14px max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px)); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .lk-auth-card { position: relative; z-index: 2; width: calc(100% - 32px); max-width: 440px; margin: clamp(20px, 5vh, 56px) auto 0; background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); border-radius: 22px; padding: clamp(22px, 4vw, 32px); box-shadow: 0 30px 60px -34px rgba(14, 36, 51, 0.5); display: grid; gap: 14px; }
@@ -115,3 +116,41 @@ body:has(.lk-auth)::-webkit-scrollbar { display: none; }
  .landing.landing .lk-auth-card { padding: 20px; gap: 8px; }
  .landing.landing .lk-auth-foot { margin-top: 8px; padding-bottom: 8px; }
 }
+
+/*
+ * The bright public look on account screens. One class above the .landing.landing rules in
+ * redesign.css and above, so these win without rewriting the older layout rules.
+ */
+.lk-auth.landing.landing.landing {
+  background:
+    radial-gradient(620px 420px at 8% 4%, rgba(6, 182, 212, 0.2), transparent 70%),
+    radial-gradient(560px 460px at 92% 0%, rgba(99, 102, 241, 0.2), transparent 70%),
+    radial-gradient(520px 380px at 60% 100%, rgba(251, 191, 36, 0.12), transparent 70%),
+    var(--vv-bg);
+  font-family: var(--vv-font);
+}
+.lk-auth.landing.landing.landing .lk-eyebrow {
+  display: inline-block; width: auto; padding: 6px 14px; border-radius: 999px; font: 800 13px/1.3 var(--vv-font);
+  letter-spacing: 0.08em; color: var(--vv-brand-text); background: color-mix(in srgb, var(--vv-brand) 10%, var(--vv-surface));
+}
+.lk-auth.landing.landing.landing .lk-auth-intro h2 { font-weight: 900; letter-spacing: -0.045em; color: var(--vv-ink); }
+.lk-auth.landing.landing.landing .lk-auth-tiles > div {
+  background: var(--tone-bg); color: var(--vv-ink); border: 1px solid color-mix(in srgb, var(--tone-a) 18%, transparent);
+  border-radius: 22px; --tone-bg: var(--vv-cyan-bg); --tone-a: var(--vv-cyan-a); --tone-b: var(--vv-cyan-b);
+}
+.lk-auth.landing.landing.landing .lk-auth-tiles > div:nth-child(2) { --tone-bg: var(--vv-violet-bg); --tone-a: var(--vv-violet-a); --tone-b: var(--vv-violet-b); }
+.lk-auth.landing.landing.landing .lk-auth-tiles > div:nth-child(3) { --tone-bg: var(--vv-amber-bg); --tone-a: var(--vv-amber-a); --tone-b: var(--vv-amber-b); }
+.lk-auth.landing.landing.landing .lk-auth-tiles > div:nth-child(4) { --tone-bg: var(--vv-green-bg); --tone-a: var(--vv-green-a); --tone-b: var(--vv-green-b); }
+.lk-auth.landing.landing.landing .lk-auth-tiles svg {
+  box-sizing: content-box; width: 22px; height: 22px; padding: 11px; border-radius: 14px; color: #fff;
+  background: linear-gradient(135deg, var(--tone-a), var(--tone-b)); box-shadow: 0 8px 16px -8px var(--tone-a);
+}
+.lk-auth.landing.landing.landing .lk-auth-tiles span { font-weight: 750; }
+.lk-auth.landing.landing.landing .lk-auth-card {
+  background: var(--vv-surface); border: 1px solid var(--vv-line); border-radius: 28px; box-shadow: var(--vv-shadow-lg);
+}
+.lk-auth.landing.landing.landing .lk-auth-card h1 { font-family: var(--vv-font); font-weight: 900; letter-spacing: -0.04em; color: var(--vv-ink); }
+.lk-auth.landing.landing.landing .lk-input { background: var(--vv-bg); border-radius: 14px; }
+.lk-auth.landing.landing.landing .lk-btn { border-radius: 999px; }
+.lk-auth.landing.landing.landing .lk-btn-google { background: var(--vv-surface); color: var(--vv-ink); border-color: var(--vv-line); box-shadow: var(--vv-shadow); }
+.lk-auth.landing.landing.landing .lk-auth-foot a:hover { color: var(--vv-brand-text); }
