@@ -112,7 +112,22 @@ describe('checkPlanSpendBudget — plan cap at the spend gateway', () => {
     ).toBe(1)
   })
 
-  it('never hard-stops interactive tasks on platform cost', async () => {
+  it('never hard-stops interactive tasks on platform cost for paid plans', async () => {
+    await seedTenant('plus')
+    await recordSpend(db, {
+      tenant_id: 't1',
+      service: 'messaging',
+      provider: 'twilio',
+      unit: 'sms',
+      units: 200,
+      cost_microdollars: 1_500_000_000,
+    })
+    const d = await checkPlanSpendBudget(db, 't1', interactivePolicy)
+    expect(d.allowed).toBe(true)
+    expect(d.threshold_reached).toBe(true)
+  })
+
+  it('hard-stops free-tier interactive tasks once the cap is crossed (Intent 76)', async () => {
     await seedTenant('free')
     await recordSpend(db, {
       tenant_id: 't1',
@@ -122,9 +137,16 @@ describe('checkPlanSpendBudget — plan cap at the spend gateway', () => {
       units: 200,
       cost_microdollars: 1_500_000,
     })
+    // A free tenant over the cap must not be able to run an interactive
+    // model/OCR call — that is the unbounded free-tier spend Intent 76
+    // closes. The old `budget_class !== 'batch'` exemption no longer
+    // applies to plan === 'free'.
     const d = await checkPlanSpendBudget(db, 't1', interactivePolicy)
-    expect(d.allowed).toBe(true)
-    expect(d.threshold_reached).toBe(true)
+    expect(d.allowed).toBe(false)
+    expect(d.reason).toBe('plan_spend_budget_exceeded')
+    // And below the cap an interactive call is still allowed.
+    const d2 = await checkPlanSpendBudget(db, 't2-under', interactivePolicy)
+    expect(d2.allowed).toBe(true)
   })
 
   it('unlimited plan has no cap', async () => {

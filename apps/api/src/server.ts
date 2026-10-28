@@ -205,6 +205,7 @@ import { registerAssistantRoutes } from './routes/assistant.js'
 import { registerSupportRoutes } from './routes/support.js'
 import { registerFamilyReadinessRoutes } from './routes/family-readiness.js'
 import { registerFamilyScenarioRoutes } from './routes/family-scenarios.js'
+import { registerFamilyBriefRoutes } from './routes/family-briefs.js'
 import { registerFamilyFeedRoutes } from './routes/family-feed.js'
 import { registerFamilyNotificationRoutes } from './routes/family-notifications.js'
 import { runScenarioWatchlist } from './jobs/scenario-watchlist.js'
@@ -2296,6 +2297,7 @@ if (workflowDb) {
   registerTrustRoutes(app, workflowDb)
   registerFamilyChannelRoutes(app, workflowDb)
   registerFamilyScenarioRoutes(app, workflowDb)
+  registerFamilyBriefRoutes(app, workflowDb)
   registerFamilyFeedRoutes(app, workflowDb)
   registerFamilyNotificationRoutes(app, workflowDb)
   registerMemberTwinRoutes(app, workflowDb)

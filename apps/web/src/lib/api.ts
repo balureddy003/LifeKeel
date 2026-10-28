@@ -6197,3 +6197,87 @@ export async function fetchRetirementEstimate(params: {
   if (params.retirementAge !== undefined) q.set('retirement_age', String(params.retirementAge))
   return apiFetch<RetirementEstimate>(`/family/retirement/estimate?${q}`, { hasData: false })
 }
+
+// ─── PRD-222: household briefs (Stage 1) ────────────────────────────────────
+
+export interface BriefInputs {
+  monthly_income_minor?: number | undefined
+  monthly_essentials_minor?: number | undefined
+  liquid_savings_minor?: number | undefined
+  income_protection_monthly_minor?: number | undefined
+  deferred_period_months?: number | undefined
+  new_income_minor?: number | undefined
+  months_until_change?: number | undefined
+}
+
+export type BriefProblemType = 'income_stops' | 'earning_less' | 'handover_gap'
+
+export interface HouseholdBrief {
+  id: string
+  problem_type: BriefProblemType
+  inputs: BriefInputs
+  result: Record<string, unknown> | null
+  template_sentence: string
+  solver_version: string
+  data_version: string
+  stale: boolean
+  share: {
+    for_member_id: string | null
+    for_member_name: string | null
+    expires_at: string
+    revoked: boolean
+    url?: string
+  } | null
+  link_fetched_at: string | null
+  confirmed_opened_at: string | null
+  created_by: string
+  created_at: string
+}
+
+async function briefPost<T>(
+  path: string,
+  body: unknown,
+): Promise<{ ok: boolean; status: number; data?: T }> {
+  const res = await credFetch(`${getApiBase()}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${getAuthToken() ?? ''}`,
+    },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok)
+    return { ok: false, status: res.status, data: await res.json().catch(() => undefined) }
+  return { ok: true, status: res.status, data: (await res.json()) as T }
+}
+
+export function listBriefs() {
+  return apiFetch<{ briefs: HouseholdBrief[] }>('/family/briefs', { briefs: [] }).then(
+    (r) => r.briefs ?? [],
+  )
+}
+
+export function getBrief(id: string) {
+  return apiFetch<{ brief: HouseholdBrief | null }>(`/family/briefs/${id}`, { brief: null }).then(
+    (r) => r.brief,
+  )
+}
+
+/** Returns 402 data { error: 'brief_gate' } when the second-brief gate hits. */
+export function createBrief(body: {
+  problem_type: BriefProblemType
+  inputs: BriefInputs
+  for_member_id?: string | null
+}) {
+  return briefPost<{ brief: HouseholdBrief }>('/family/briefs', body)
+}
+
+export function revokeBriefShare(id: string) {
+  return briefPost<{ ok: boolean }>(`/family/briefs/${id}/revoke`, {})
+}
+
+export function reShareBrief(id: string, for_member_id?: string | null) {
+  return briefPost<{ share: { url: string; expires_at: string } }>(`/family/briefs/${id}/share`, {
+    for_member_id,
+  })
+}

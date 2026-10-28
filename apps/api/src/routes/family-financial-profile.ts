@@ -38,6 +38,7 @@ import type { FamilyGroupDoc } from './family-group.js'
 import { monthlyEquivalentMinor, type CashflowEntryDoc } from './family-cashflow.js'
 import { buildEstateSignal } from '../legacy/estate-signal.js'
 import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
+import { markBriefsStale } from '../briefs/briefs.js'
 
 const FAMILY_DETECTOR_IDS = [
   'family_protection_gap',
@@ -1428,6 +1429,11 @@ export async function registerFamilyFinancialProfileRoutes(
         }
         newVersion = 1
       }
+
+      // PRD-226 change 3: change-driven invalidation — a profile write marks
+      // this tenant's household briefs stale so they recompute once on next
+      // read instead of being swept on a schedule.
+      await markBriefsStale(db, tenant_id).catch(() => {})
 
       // The multi-step form autosaves after every step (Continue), not just
       // the final "Save & Generate Insights" — evaluating detectors on every

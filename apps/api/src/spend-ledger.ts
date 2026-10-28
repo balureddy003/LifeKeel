@@ -183,7 +183,13 @@ export async function checkPlanSpendBudget(
   }
   const limit = capUsd * 1_000_000
   const thresholdReached = spent >= limit * 0.8
-  if (spent < limit || policy?.budget_class !== 'batch') {
+  // PRD-226/Intent 76: on the free tier the cap is HARD for every budget
+  // class — interactive calls included. Free tenants must not be able to
+  // generate unbounded model/OCR cost while still paying nothing; paid
+  // plans keep the old behaviour (batch blocked, interactive allowed past
+  // cap) until a separate paid-tier policy decision.
+  const exemptFromCap = plan !== 'free' && policy?.budget_class !== 'batch'
+  if (spent < limit || exemptFromCap) {
     return {
       allowed: true,
       spent_microdollars: spent,
