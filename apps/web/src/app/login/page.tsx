@@ -116,6 +116,7 @@ export default function LoginPage() {
 
   return (
     <AuthShell
+      intro="login"
       title="Welcome back"
       sub={mfaPending ? 'Two-factor authentication' : 'Sign in to your family'}
       aside={<RegionSwitch />}

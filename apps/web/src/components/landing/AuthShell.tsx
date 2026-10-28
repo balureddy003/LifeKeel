@@ -3,6 +3,7 @@
 import type { ReactNode, Ref } from 'react'
 import Link from 'next/link'
 import { FileText, Heart, ShieldCheck, Wallet } from 'lucide-react'
+import { AuthIntro, type AuthIntroVariant } from './AuthIntro'
 import { Brand } from './Brand'
 import { Wave } from './SeaBackdrop'
 import './landing.css'
@@ -22,6 +23,7 @@ export function AuthShell({
   aside,
   wide,
   headingRef,
+  intro,
 }: {
   title: string
   sub?: string | undefined
@@ -31,6 +33,8 @@ export function AuthShell({
   wide?: boolean
   /** For screens that move focus to the heading after a step change. */
   headingRef?: Ref<HTMLHeadingElement>
+  /** Page-specific left panel; screens without one keep the general intro. */
+  intro?: AuthIntroVariant | undefined
 }) {
   return (
     <div className="landing lk-auth">
@@ -39,31 +43,35 @@ export function AuthShell({
         {aside}
       </header>
       <div className="lk-auth-layout">
-        <aside className="lk-auth-intro" aria-label="About LifeKeel">
-          <p className="lk-eyebrow">A LITTLE MORE READY FOR LIFE</p>
-          <h2>
-            Less scattered.
-            <br />
-            More together.
-          </h2>
-          <p>
-            A home for your family’s money, cover and important papers. Start with what you know,
-            and build at your own pace.
-          </p>
-          <div className="lk-auth-tiles">
-            {[
-              { Icon: Wallet, label: 'Your money' },
-              { Icon: ShieldCheck, label: 'Your cover' },
-              { Icon: FileText, label: 'Your papers' },
-              { Icon: Heart, label: 'Your people' },
-            ].map(({ Icon, label }) => (
-              <div key={label}>
-                <Icon size={28} aria-hidden="true" />
-                <span>{label}</span>
-              </div>
-            ))}
-          </div>
-        </aside>
+        {intro ? (
+          <AuthIntro variant={intro} />
+        ) : (
+          <aside className="lk-auth-intro" aria-label="About LifeKeel">
+            <p className="lk-eyebrow">A LITTLE MORE READY FOR LIFE</p>
+            <h2>
+              Less scattered.
+              <br />
+              More together.
+            </h2>
+            <p>
+              A home for your family’s money, cover and important papers. Start with what you know,
+              and build at your own pace.
+            </p>
+            <div className="lk-auth-tiles">
+              {[
+                { Icon: Wallet, label: 'Your money' },
+                { Icon: ShieldCheck, label: 'Your cover' },
+                { Icon: FileText, label: 'Your papers' },
+                { Icon: Heart, label: 'Your people' },
+              ].map(({ Icon, label }) => (
+                <div key={label}>
+                  <Icon size={28} aria-hidden="true" />
+                  <span>{label}</span>
+                </div>
+              ))}
+            </div>
+          </aside>
+        )}
         <main className={`lk-auth-card${wide ? ' wide' : ''}`}>
           <h1 ref={headingRef} tabIndex={headingRef ? -1 : undefined}>
             {title}

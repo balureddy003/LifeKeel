@@ -162,3 +162,53 @@ body:has(.lk-auth)::-webkit-scrollbar { display: none; }
 /* Keep the form card compact: fields and buttons read better at ~420px than spread across half the page. */
 .lk-auth.landing.landing.landing .lk-auth-card { max-width: 420px; justify-self: center; margin-inline: auto; }
 .lk-auth.landing.landing.landing .lk-auth-card.wide { max-width: 520px; }
+
+/* Page-specific left panels (AuthIntro): login = cyan, signup = violet, reset = amber/green. */
+.lk-auth.landing.landing.landing .lk-auth-intro[data-intro] { --tone-bg: var(--vv-cyan-bg); --tone-a: var(--vv-cyan-a); --tone-b: var(--vv-cyan-b); }
+.lk-auth.landing.landing.landing .lk-auth-intro[data-intro='signup'] { --tone-bg: var(--vv-violet-bg); --tone-a: var(--vv-violet-a); --tone-b: var(--vv-violet-b); }
+.lk-auth.landing.landing.landing .lk-auth-intro[data-intro='reset'] { --tone-bg: var(--vv-amber-bg); --tone-a: var(--vv-amber-a); --tone-b: var(--vv-amber-b); }
+.lk-auth.landing.landing.landing .lk-auth-intro[data-intro] .lk-eyebrow { color: var(--tone-a); background: var(--tone-bg); }
+:root[data-theme='dark'] .lk-auth.landing.landing.landing .lk-auth-intro[data-intro] .lk-eyebrow { color: var(--vv-ink); }
+.lk-auth.landing.landing.landing .lk-auth-intro[data-intro] h2 { margin: 18px 0 14px; max-width: 13ch; }
+.lk-auth.landing.landing.landing .lk-auth-intro[data-intro] > p:not(.lk-eyebrow) { margin: 0; line-height: 1.6; }
+.lk-auth-intro[data-intro] strong { display: block; font-size: 16px; font-weight: 750; color: var(--vv-ink); }
+.lk-auth-intro[data-intro] small { display: block; font-size: 14px; color: var(--vv-muted); line-height: 1.4; }
+
+/* login: a household snapshot card */
+.lk-intro-snapshot { margin-top: 28px; max-width: 420px; padding: 14px; border-radius: 20px; background: var(--vv-surface); border: 1px solid var(--vv-line); display: grid; gap: 8px; }
+.lk-intro-snapshot-head { display: flex; justify-content: space-between; align-items: center; font-weight: 800; color: var(--vv-ink); padding: 2px 4px 6px; }
+.lk-intro-avatars { display: flex; }
+.lk-intro-avatars i { width: 26px; height: 26px; border-radius: 99px; border: 2px solid var(--vv-surface); margin-left: -8px; background: linear-gradient(135deg, var(--vv-cyan-a), var(--vv-cyan-b)); }
+.lk-intro-avatars i:nth-child(2) { background: linear-gradient(135deg, var(--vv-violet-a), var(--vv-violet-b)); }
+.lk-intro-avatars i:nth-child(3) { background: linear-gradient(135deg, var(--vv-amber-a), var(--vv-amber-b)); }
+.lk-intro-row { display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: 14px; background: var(--tone-bg); }
+.lk-intro-row svg { box-sizing: content-box; flex: none; padding: 9px; border-radius: 12px; color: #fff; background: linear-gradient(135deg, var(--tone-a), var(--tone-b)); }
+
+/* signup: numbered path with the current step highlighted */
+.lk-intro-steps { list-style: none; margin: 28px 0 0; padding: 0; display: grid; gap: 6px; max-width: 420px; }
+.lk-intro-steps li { position: relative; display: flex; align-items: center; gap: 14px; padding: 10px 12px; border-radius: 16px; }
+.lk-intro-steps li:not(:last-child)::after { content: ''; position: absolute; left: 31px; top: 50px; height: 18px; width: 2px; background: color-mix(in srgb, var(--tone-a) 30%, transparent); }
+.lk-intro-step-icon { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; color: var(--tone-a); background: var(--vv-surface); border: 1px solid color-mix(in srgb, var(--tone-a) 25%, transparent); }
+.lk-intro-steps li[aria-current='step'] { background: var(--tone-bg); border: 1px solid color-mix(in srgb, var(--tone-a) 25%, transparent); }
+.lk-intro-steps li[aria-current='step'] .lk-intro-step-icon { color: #fff; border: 0; background: linear-gradient(135deg, var(--tone-a), var(--tone-b)); }
+
+/* reset: three reassurance tiles and a quiet note */
+.lk-intro-help { list-style: none; margin: 28px 0 0; padding: 0; display: grid; gap: 10px; max-width: 420px; }
+.lk-intro-help li { display: grid; grid-template-columns: auto 1fr; column-gap: 14px; align-items: center; padding: 12px 14px; border-radius: 16px; background: var(--vv-surface); border: 1px solid var(--vv-line); }
+.lk-intro-help svg { grid-row: span 2; box-sizing: content-box; padding: 10px; border-radius: 12px; color: #fff; background: linear-gradient(135deg, var(--tone-a), var(--tone-b)); }
+.lk-intro-help li:nth-child(3) svg { background: linear-gradient(135deg, var(--vv-green-a), var(--vv-green-b)); }
+.lk-auth.landing.landing.landing .lk-auth-intro .lk-intro-note { max-width: 420px; margin-top: 14px; border: 1px dashed color-mix(in srgb, var(--tone-a) 35%, transparent); padding: 12px 14px; border-radius: 14px; font-size: 15px; background: var(--tone-bg); color: var(--vv-ink); }
+
+@media (min-width: 861px) and (max-height: 800px) {
+  .lk-intro-snapshot, .lk-intro-steps, .lk-intro-help { margin-top: 18px; }
+  .lk-intro-steps li { padding-block: 7px; }
+  .lk-intro-steps li:not(:last-child)::after { top: 46px; height: 12px; }
+}
+:root[data-theme='dark'] .lk-intro-steps li:not([aria-current='step']) .lk-intro-step-icon { color: var(--vv-ink); }
+
+/* Desktop: size the two columns to their content and centre them, so the intro and the form sit together. */
+@media (min-width: 861px) {
+  .lk-auth.landing.landing.landing .lk-auth-layout { grid-template-columns: minmax(0, 480px) minmax(0, 420px); justify-content: center; gap: clamp(48px, 6vw, 88px); }
+  .lk-auth.landing.landing.landing .lk-auth-layout:has(.lk-auth-card.wide) { grid-template-columns: minmax(0, 480px) minmax(0, 520px); }
+}
+.lk-auth.landing.landing.landing .lk-auth-card { box-shadow: var(--vv-shadow); }

@@ -109,7 +109,7 @@ export default function SignUpPage() {
   }
 
   return (
-    <AuthShell title="Create your account" aside={<RegionSwitch />}>
+    <AuthShell intro="signup" title="Create your account" aside={<RegionSwitch />}>
       <button
         type="button"
         className="lk-btn lk-btn-google"
