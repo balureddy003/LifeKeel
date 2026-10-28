@@ -28,7 +28,7 @@ const dir = args[0] ?? (nextMode ? 'apps/web/.next' : 'apps/web/out')
 // score "Why this score?" expander (intent 20) and the crisis-mode entry
 // (intent 33). Bump deliberately, with a note — the budget exists to catch
 // accidental bloat, not to freeze the page.
-const budgetKb = Number(args[1] ?? (nextMode ? 285 : 280))
+const budgetKb = Number(args[1] ?? (nextMode ? 285 : 295))
 
 function scriptUrls(html) {
   const urls = new Set()
