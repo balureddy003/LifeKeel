@@ -73,7 +73,8 @@ export default function LoginPage() {
         return
       }
       haptic('success')
-      router.push('/')
+      const next = new URLSearchParams(window.location.search).get('next')
+      router.push(next?.startsWith('/') && !next.startsWith('//') ? next : '/')
     } catch (err) {
       haptic('warning')
       setError(err instanceof Error ? err.message : 'Sign in failed. Please try again.')
@@ -94,7 +95,8 @@ export default function LoginPage() {
       await verifyMfaCode(mfaCode.trim(), pendingToken)
       sessionStorage.removeItem('lifekeel_mfa_pending')
       haptic('success')
-      router.push('/')
+      const next = new URLSearchParams(window.location.search).get('next')
+      router.push(next?.startsWith('/') && !next.startsWith('//') ? next : '/')
     } catch (err) {
       haptic('warning')
       setError(err instanceof Error ? err.message : 'Verification failed. Please try again.')

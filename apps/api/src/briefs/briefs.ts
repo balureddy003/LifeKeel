@@ -30,6 +30,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import type { Db } from 'mongodb'
 import { getTenantCollection } from '@lifekeel/platform'
 import { calculateScenario, type ScenarioResult } from '../scenarios/calculate.js'
+import type { BriefFact } from './catalogue.js'
 
 export const BRIEF_SOLVER_VERSION = 'brief-v1'
 export const BRIEF_PROBLEM_TYPES = ['income_stops', 'earning_less', 'handover_gap'] as const
@@ -37,7 +38,7 @@ export type BriefProblemType = (typeof BRIEF_PROBLEM_TYPES)[number]
 
 export const SHARE_TOKEN_TTL_DAYS = 30
 
-export interface BriefInputs {
+export interface BriefInputs extends Record<string, unknown> {
   /** `income_stops` / `earning_less`: earner's take-home per month. */
   monthly_income_minor?: number
   /** Essential monthly spending the brief measures runway against. */
@@ -60,12 +61,14 @@ export interface BriefShare {
   for_member_name: string | null
   expires_at: Date
   revoked_at: Date | null
+  /** user_id of the roster member this link is bound to (contract v2). */
+  for_user_id?: string
 }
 
 export interface HouseholdBriefDoc extends Record<string, unknown> {
   id: string
   tenant_id: string
-  problem_type: BriefProblemType
+  problem_type: string
   inputs: BriefInputs
   result: ScenarioResult | null
   /** Rendered only from `result` + inputs — the numeral-presence invariant. */
@@ -84,6 +87,13 @@ export interface HouseholdBriefDoc extends Record<string, unknown> {
   created_by: string
   created_at: Date
   updated_at: Date
+  /** 2 = immutable catalogue snapshot with per-adult acknowledgements. */
+  contract_version?: 2
+  title?: string
+  facts?: BriefFact[]
+  result_version?: string
+  as_of_date?: string
+  acknowledgements?: Array<{ user_id: string; result_version: string; confirmed_at: Date }>
 }
 
 export const briefsFor = (db: Db, tenantId: string) =>
@@ -91,7 +101,7 @@ export const briefsFor = (db: Db, tenantId: string) =>
 
 export const tokenHash = (token: string) => createHash('sha256').update(token).digest('hex')
 
-export function briefDataVersion(problem: BriefProblemType, inputs: BriefInputs): string {
+export function briefDataVersion(problem: string, inputs: Record<string, unknown>): string {
   const canon = JSON.stringify({ problem, inputs: sortKeys(inputs) })
   return createHash('sha256').update(canon).digest('hex').slice(0, 16)
 }
@@ -294,6 +304,10 @@ export async function narrateBrief(
   brief: HouseholdBriefDoc,
   llm: LlmFn,
 ): Promise<NarrateOutcome> {
+  // Catalogue briefs are factual snapshots. Handover/health content must
+  // never leave this store through the optional narration path.
+  if (brief.contract_version === 2)
+    return { sentence: brief.template_sentence, narrated: false, from_cache: false }
   if (
     brief.narrated_sentence &&
     brief.narrated_solver_version === brief.solver_version &&

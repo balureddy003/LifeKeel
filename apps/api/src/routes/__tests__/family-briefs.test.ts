@@ -372,3 +372,188 @@ describe('brief.narrate — governed, guarded, cached', () => {
     expect(r.json().sentence).toBe(res.json().brief.template_sentence)
   })
 })
+
+// ─── Contract v2: immutable catalogue snapshots + dual confirmations ───────
+
+describe('brief contract v2', () => {
+  const CREATOR_M = {
+    id: 'm-creator',
+    name: 'Sam',
+    role: 'organizer',
+    status: 'active',
+    email: 's@x.co',
+    joined_at: '2026-01-01',
+    user_id: CREATOR,
+  }
+  const PARTNER_M = {
+    id: 'm-partner',
+    name: 'Alex',
+    role: 'adult',
+    status: 'active',
+    email: 'a@x.co',
+    joined_at: '2026-01-01',
+    user_id: PARTNER,
+  }
+
+  async function createV2(problem = 'earning_less', extraInputs = {}) {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/briefs',
+      payload: {
+        contract_version: 2,
+        problem_type: problem,
+        for_member_id: 'm-partner',
+        inputs: {
+          monthly_income_minor: 300000,
+          monthly_essentials_minor: 200000,
+          liquid_savings_minor: 600000,
+          new_income_minor: 150000,
+          new_essentials_minor: 200000,
+          change_date: '2027-01-01',
+          ...extraInputs,
+        },
+      },
+    })
+    return res
+  }
+
+  beforeEach(async () => {
+    await db.collection('family_groups').insertOne({
+      tenant_id: TENANT,
+      members: [CREATOR_M, PARTNER_M],
+      created_at: new Date(),
+    })
+    await db.collection('tenants').insertOne({ tenant_id: TENANT, plan: 'plus' })
+  })
+
+  it('rejects catalogue create with no named adult recipient', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/briefs',
+      payload: { contract_version: 2, problem_type: 'earning_less', inputs: {} },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('creates a versioned snapshot; anonymous and other-user opens are refused', async () => {
+    const res = await createV2()
+    expect(res.statusCode).toBe(201)
+    const b = res.json().brief
+    expect(b.result_version).toHaveLength(64)
+    expect(b.contract_version).toBe(2)
+    const token = b.share.url
+    currentUser = null
+    expect((await app.inject({ method: 'GET', url: `/b/${token}` })).statusCode).toBe(401)
+    currentUser = 'user-stranger'
+    expect((await app.inject({ method: 'GET', url: `/b/${token}` })).statusCode).toBe(403)
+    currentUser = PARTNER
+    expect((await app.inject({ method: 'GET', url: `/b/${token}` })).statusCode).toBe(200)
+  })
+
+  it('both adults confirm the same result_version; wrong version is refused', async () => {
+    const res = await createV2()
+    const b = res.json().brief
+    const token = b.share.url
+    currentUser = CREATOR
+    const wrong = await app.inject({
+      method: 'POST',
+      url: `/b/${token}/confirm`,
+      payload: { result_version: '0'.repeat(64) },
+    })
+    expect(wrong.statusCode).toBe(409)
+    const mine = await app.inject({
+      method: 'POST',
+      url: `/b/${token}/confirm`,
+      payload: { result_version: b.result_version },
+    })
+    expect(mine.json().confirmation.both_confirmed).toBe(false)
+    currentUser = PARTNER
+    const theirs = await app.inject({
+      method: 'POST',
+      url: `/b/${token}/confirm`,
+      payload: { result_version: b.result_version },
+    })
+    expect(theirs.json().confirmation.both_confirmed).toBe(true)
+    const doc = await db.collection('household_briefs').findOne({ id: b.id })
+    expect(doc!.acknowledgements).toHaveLength(2)
+  })
+
+  it('handover snapshot stores entered facts without touching the profile or model', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/briefs',
+      payload: {
+        contract_version: 2,
+        problem_type: 'home_emergency',
+        for_member_id: 'm-partner',
+        inputs: {
+          change_date: '2026-11-01',
+          facts: {
+            'Stopcock location': 'Under the kitchen sink',
+            'Boiler and service contact': 'PlumbRight 07000 111222',
+          },
+        },
+      },
+    })
+    expect(res.statusCode).toBe(201)
+    const b = res.json().brief
+    expect(b.result).toBeNull()
+    expect(b.facts.find((x: { label: string }) => x.label === 'Stopcock location')!.value).toBe(
+      'Under the kitchen sink',
+    )
+    // Narrate is a hard no-op for catalogue briefs — handover facts never reach a model.
+    const narr = await app.inject({ method: 'POST', url: `/family/briefs/${b.id}/narrate` })
+    expect(narr.json().narrated).toBe(false)
+  })
+
+  it('sensitive handovers refuse without explicit consent', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/briefs',
+      payload: {
+        contract_version: 2,
+        problem_type: 'medical_contacts',
+        for_member_id: 'm-partner',
+        inputs: { change_date: '2026-11-01', facts: { 'GP and contact details': 'Dr Foo' } },
+      },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('the full money catalogue computes without a model for every case', async () => {
+    for (const id of [
+      'debt_payoff',
+      'income_stops',
+      'earning_less',
+      'job_change',
+      'hours_cut',
+      'mortgage_fix',
+      'fees_start',
+      'fees_end',
+      'renewal',
+      'self_employed',
+      'supporting_relative',
+      'moving_home',
+      'child_leaving',
+      'child_returning',
+      'unpaid_leave',
+      'retiring',
+      'debt_payoff',
+      'rental_change',
+      'pregnancy',
+      'nursery',
+      'school_start',
+      'primary',
+      'secondary',
+      'college',
+      'university',
+    ]) {
+      const r = await createV2(id, id === 'debt_payoff' ? { cash_out_minor: 100000 } : {})
+      expect(r.statusCode).toBe(201)
+      const b = r.json().brief
+      expect(b.result).toBeTruthy()
+      expect(b.template_sentence.length).toBeGreaterThan(10)
+      expect(b.facts.length).toBeGreaterThan(3)
+    }
+  })
+})
