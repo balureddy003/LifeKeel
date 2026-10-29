@@ -26,6 +26,8 @@ export const KNOWN_EVENTS = new Set([
   'brief_share_link_generated',
   'brief_link_fetched',
   'brief_confirmed_open',
+  'brief_door_used',
+  'brief_form_step',
   'brief_gate_hit',
   'brief_gate_converted',
   'landing_view',

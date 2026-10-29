@@ -22,6 +22,24 @@ test('brief catalogue renders and requires a second adult', async ({ page }) => 
   // Separation stays out of the catalogue until the safeguarding review.
   await expect(page.getByText(/[Ss]eparation|[Dd]ivorce/)).toHaveCount(0)
 
+  // Intent 80 front doors + search (added after the doors landed).
+  for (const door of [
+    'A job is changing',
+    'A baby is coming',
+    'A parent needs care',
+    'A fix is ending',
+  ])
+    await expect(page.getByRole('button', { name: door })).toBeVisible()
+  await page.getByRole('button', { name: 'A baby is coming' }).click()
+  // Door filters to that moment: a baby-moment entry shows, a job one hides.
+  await expect(page.getByRole('button', { name: 'Nursery or school fees starting' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'One of us might stop earning' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'A baby is coming' }).click()
+  await page.getByRole('searchbox', { name: /search briefs/i }).fill('lump sum')
+  await expect(page.getByRole('button', { name: 'A lump sum arriving' })).toBeVisible()
+  // Reset the search so the unfiltered catalogue is back for the refusal check.
+  await page.getByRole('searchbox', { name: /search briefs/i }).fill('')
+
   await page.getByRole('button', { name: 'One of us might stop earning' }).click()
   await page.getByRole('button', { name: 'Create the brief' }).click()
   await expect(page.getByText(/Choose another active adult|Invite them from Family/i)).toBeVisible()
