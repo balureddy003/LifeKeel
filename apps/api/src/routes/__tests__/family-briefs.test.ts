@@ -18,6 +18,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { MongoClient, type Db } from 'mongodb'
 import { MongoMemoryServer } from 'mongodb-memory-server'
 import Fastify, { type FastifyInstance } from 'fastify'
+import { BRIEF_CATALOGUE } from '../../briefs/catalogue.js'
 import { registerFamilyBriefRoutes } from '../family-briefs.js'
 
 // PRD-222's hard guarantee: the brief path performs ZERO model calls.
@@ -39,6 +40,7 @@ import {
   type BriefInputs,
   type BriefProblemType,
   type HouseholdBriefDoc,
+  migrateSensitiveBriefFacts,
 } from '../../briefs/briefs.js'
 
 const TENANT = 't-briefs'
@@ -555,5 +557,184 @@ describe('brief contract v2', () => {
       expect(b.template_sentence.length).toBeGreaterThan(10)
       expect(b.facts.length).toBeGreaterThan(3)
     }
+  })
+})
+
+// ─── Review fixes: encryption, secret warnings, past dates, dated steps ────
+
+describe('catalogue review fixes', () => {
+  const M_CREATOR = {
+    id: 'm-creator',
+    name: 'Sam',
+    role: 'organizer',
+    status: 'active',
+    email: 's@x.co',
+    joined_at: '2026-01-01',
+    user_id: CREATOR,
+  }
+  const M_PARTNER = {
+    id: 'm-partner',
+    name: 'Alex',
+    role: 'adult',
+    status: 'active',
+    email: 'a@x.co',
+    joined_at: '2026-01-01',
+    user_id: PARTNER,
+  }
+  beforeEach(async () => {
+    await db.collection('family_groups').insertOne({
+      tenant_id: TENANT,
+      members: [M_CREATOR, M_PARTNER],
+      created_at: new Date(),
+    })
+    await db.collection('tenants').insertOne({ tenant_id: TENANT, plan: 'plus' })
+  })
+  const v2 = (problem_type: string, inputs: Record<string, unknown>) =>
+    app.inject({
+      method: 'POST',
+      url: '/family/briefs',
+      payload: { contract_version: 2, problem_type, for_member_id: 'm-partner', inputs },
+    })
+
+  it('sensitive handover facts are envelope-encrypted at rest and decrypted on read', async () => {
+    const res = await v2('medical_contacts', {
+      change_date: '2026-10-28',
+      sensitive_consent: true,
+      facts: { 'Allergies as recorded': 'Penicillin' },
+    })
+    expect(res.statusCode).toBe(201)
+    const id = res.json().brief.id
+    const stored = await db.collection('household_briefs').findOne({ id })
+    expect(stored!.sensitive).toBe(true)
+    expect(stored!.facts).toEqual([])
+    expect(stored!.facts_encrypted).toMatch(/^dek:/)
+    expect(stored!.facts_encrypted).not.toContain('Penicillin')
+    const got = await app.inject({ method: 'GET', url: `/family/briefs/${id}` })
+    expect(
+      got.json().brief.facts.find((f: { label: string }) => f.label === 'Allergies as recorded')
+        ?.value,
+    ).toBe('Penicillin')
+  })
+
+  it('rejects a handover fact that looks like a secret (Intent 79)', async () => {
+    const res = await v2('joint_bill', {
+      change_date: '2026-10-28',
+      facts: { 'Bill or account': 'Council tax', 'How it is paid': 'password: Hunter2!' },
+    })
+    expect(res.statusCode).toBe(400)
+    expect(res.json().error).toMatch(/password or code|record where/i)
+  })
+
+  it('records a content-free access log on each sensitive read (Intent 79)', async () => {
+    const res = await v2('medical_contacts', {
+      change_date: '2026-10-28',
+      sensitive_consent: true,
+      facts: { 'Allergies as recorded': 'Penicillin' },
+    })
+    const id = res.json().brief.id
+    await app.inject({ method: 'GET', url: `/family/briefs/${id}` })
+    const got = await app.inject({ method: 'GET', url: `/family/briefs/${id}` })
+    const access = got.json().brief.sensitive_access
+    expect(access.length).toBeGreaterThanOrEqual(1)
+    expect(access[0].user_id).toBeTruthy()
+    expect(JSON.stringify(access)).not.toContain('Penicillin')
+  })
+
+  it('purges sensitive facts once their DPIA retention expires', async () => {
+    const res = await v2('medical_contacts', {
+      change_date: '2026-10-28',
+      sensitive_consent: true,
+      facts: { 'Allergies as recorded': 'Penicillin' },
+    })
+    const id = res.json().brief.id
+    await db
+      .collection('household_briefs')
+      .updateOne({ id }, { $set: { facts_expire_at: new Date(Date.now() - 1000) } })
+    const got = await app.inject({ method: 'GET', url: `/family/briefs/${id}` })
+    expect(got.json().brief.facts).toEqual([])
+    const stored = await db.collection('household_briefs').findOne({ id })
+    expect(stored!.facts_encrypted).toBeUndefined()
+  })
+
+  it('migration encrypts plaintext facts on older sensitive briefs, idempotent', async () => {
+    const res = await v2('medical_contacts', {
+      change_date: '2026-10-28',
+      sensitive_consent: true,
+      facts: { 'Allergies as recorded': 'Penicillin' },
+    })
+    const id = res.json().brief.id
+    // Simulate a pre-encryption doc: plaintext facts, no envelope field.
+    const doc = await db.collection('household_briefs').findOne({ id })
+    const plain = JSON.parse('[]')
+    void plain
+    await db.collection('household_briefs').updateOne(
+      { id },
+      {
+        $set: {
+          facts: [{ label: 'Allergies as recorded', value: 'Penicillin' }],
+          sensitive: true,
+        },
+        $unset: { facts_encrypted: '' },
+      },
+    )
+    const first = await migrateSensitiveBriefFacts(db)
+    expect(first.migrated).toBe(1)
+    const stored = await db.collection('household_briefs').findOne({ id })
+    expect(stored!.facts).toEqual([])
+    expect(stored!.facts_encrypted).toMatch(/^dek:/)
+    const second = await migrateSensitiveBriefFacts(db)
+    expect(second.migrated).toBe(0)
+  })
+
+  it('catalogue copy passes the advice-rule scan (Intent 80)', () => {
+    const banned = [
+      /\b(recommend|should buy|you should switch|best deal|can afford)\b/i,
+      /\b(aviva|legal (&|and) general|vitality|prudential|zurich|axa|hargreaves lansdown|vanguard|fidelity|nutmeg|moneybox)\b/i,
+      /\b(guaranteed|act now|protect your family)\b/i,
+    ]
+    const strings = BRIEF_CATALOGUE.flatMap((e) => [e.title, e.trigger, ...(e.fields ?? [])])
+    for (const text of strings) for (const pattern of banned) expect(text).not.toMatch(pattern)
+    // The generated money-brief sentence carries the coverage disclaimer.
+    const money = BRIEF_CATALOGUE.find((e) => e.id === 'income_stops')!
+    expect(money.group).toBe('Money and income')
+  })
+
+  it('accepts a change date already in effect — runway still from today', async () => {
+    const res = await v2('earning_less', {
+      monthly_income_minor: 300000,
+      monthly_essentials_minor: 200000,
+      liquid_savings_minor: 600000,
+      new_income_minor: 150000,
+      new_essentials_minor: 200000,
+      change_date: '2020-01-01',
+    })
+    expect(res.statusCode).toBe(201)
+    expect(res.json().brief.template_sentence).toContain('months')
+  })
+
+  it('folds dated income_steps into the scenario timeline', async () => {
+    const res = await v2('earning_less', {
+      monthly_income_minor: 300000,
+      monthly_essentials_minor: 200000,
+      liquid_savings_minor: 600000,
+      new_income_minor: 270000,
+      new_essentials_minor: 200000,
+      change_date: '2027-01-01',
+      income_steps: [
+        { date: '2027-03-01', monthly_income_minor: 150000 },
+        { date: '2027-10-01', monthly_income_minor: 300000 },
+      ],
+    })
+    expect(res.statusCode).toBe(201)
+    expect(res.json().brief.result.timeline.length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('catalogue gains the missing use cases; separation stays out', () => {
+    const ids = BRIEF_CATALOGUE.map((e) => e.id)
+    for (const id of ['energy_council_tax', 'car_repair', 'joint_bill', 'bereavement'])
+      expect(ids).toContain(id)
+    expect(ids.some((id) => id.includes('separat'))).toBe(false)
+    expect(BRIEF_CATALOGUE.find((e) => e.id === 'hours_cut')!.title).toMatch(/illness|recovery/)
+    expect(BRIEF_CATALOGUE.find((e) => e.id === 'bereavement')!.sensitive).toBe(true)
   })
 })

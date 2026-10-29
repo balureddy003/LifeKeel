@@ -122,7 +122,8 @@ function Fields({
         {entry.sensitive && (
           <p className="text-xs text-gray-500">
             These details are sensitive. Record only what the household chooses to share with the
-            two named adults on this brief.
+            named adult — where things are, never a password or code. two named adults on this
+            brief.
           </p>
         )}
       </div>

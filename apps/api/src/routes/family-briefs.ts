@@ -16,9 +16,11 @@ import {
 } from '../family/family-permissions.js'
 import type { FamilyGroupDoc } from './family-group.js'
 import { taskLlm } from '../ai/task-gateway.js'
-import { BRIEF_CATALOGUE, solveCatalogueBrief } from '../briefs/catalogue.js'
+import { encryptForTenant, decryptEnveloped } from '../crypto/envelope.js'
+import { BRIEF_CATALOGUE, solveCatalogueBrief, type BriefFact } from '../briefs/catalogue.js'
 import {
   BRIEF_PROBLEM_TYPES,
+  SENSITIVE_FACTS_TTL_MS,
   BRIEF_SOLVER_VERSION,
   SHARE_TOKEN_TTL_DAYS,
   briefDataVersion,
@@ -62,7 +64,7 @@ function confirmation(b: HouseholdBriefDoc) {
   return { creator_at: creator, recipient_at: recipient, both_confirmed: !!creator && !!recipient }
 }
 
-function briefView(b: HouseholdBriefDoc, token?: string) {
+function briefView(b: HouseholdBriefDoc, token?: string, facts?: BriefFact[]) {
   return {
     id: b.id,
     problem_type: b.problem_type,
@@ -71,7 +73,9 @@ function briefView(b: HouseholdBriefDoc, token?: string) {
     inputs: b.inputs,
     result: b.result,
     template_sentence: b.template_sentence,
-    facts: b.facts ?? [],
+    facts: facts ?? b.facts ?? [],
+    sensitive: !!b.sensitive,
+    sensitive_access: b.sensitive_access ?? [],
     solver_version: b.solver_version,
     data_version: b.data_version,
     result_version: b.result_version,
@@ -95,6 +99,29 @@ function briefView(b: HouseholdBriefDoc, token?: string) {
 }
 
 export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
+  /**
+   * Decrypt envelope-stored facts for sensitive briefs; undefined = use stored.
+   * Intent 79: expired sensitive facts are purged on read (DPIA retention),
+   * and every successful decrypt records a content-free access entry —
+   * who opened it and when, never what.
+   */
+  async function factsFor(b: HouseholdBriefDoc, viewer?: string): Promise<BriefFact[] | undefined> {
+    if (!b.facts_encrypted) return undefined
+    if (b.facts_expire_at && b.facts_expire_at < new Date()) {
+      await briefsFor(db, b.tenant_id).updateOne(
+        { id: b.id },
+        { $unset: { facts_encrypted: '', facts: '' } },
+      )
+      return []
+    }
+    const facts = JSON.parse((await decryptEnveloped(db, b.facts_encrypted)) ?? '[]')
+    await briefsFor(db, b.tenant_id).updateOne(
+      { id: b.id },
+      { $push: { sensitive_access: { user_id: viewer ?? 'anonymous', at: new Date() } } },
+    )
+    return facts
+  }
+
   async function recipient(tenant: string, creator: string, id: string | null | undefined) {
     const group = await db
       .collection<FamilyGroupDoc>('family_groups')
@@ -205,7 +232,7 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
           .parse(inputs)
         const result = solveBrief(problem as BriefProblemType, legacy)
         if ('error' in result) throw new Error(result.error)
-        solved = { ...result, inputs: legacy, facts: [] }
+        solved = { ...result, inputs: legacy, facts: [], warnings: [] }
       }
     } catch (err) {
       return reply
@@ -224,7 +251,9 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
       })
     }
     const token = randomBytes(24).toString('hex')
-    const title = BRIEF_CATALOGUE.find((e) => e.id === problem)?.title ?? problem
+    const entry = BRIEF_CATALOGUE.find((e) => e.id === problem)
+    const sensitive = !!entry?.sensitive
+    const title = entry?.title ?? problem
     const solverVersion = contract_version === 2 ? 'brief-v2' : BRIEF_SOLVER_VERSION
     const resultVersion = createHash('sha256')
       .update(
@@ -246,7 +275,14 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
       title,
       inputs: solved.inputs as BriefInputs,
       result: solved.result,
-      facts: solved.facts,
+      ...(sensitive
+        ? {
+            facts: [] as BriefFact[],
+            sensitive: true,
+            facts_encrypted: await encryptForTenant(db, tenant_id, JSON.stringify(solved.facts)),
+            facts_expire_at: new Date(Date.now() + SENSITIVE_FACTS_TTL_MS),
+          }
+        : { facts: solved.facts }),
       template_sentence: solved.template_sentence,
       narrated_sentence: null,
       narrated_solver_version: null,
@@ -279,7 +315,7 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
     await getAuditLogger()?.fromRequest(req, 'brief.created', 'household_briefs', doc.id, {
       problem_type: problem,
     })
-    return reply.code(201).send({ brief: briefView(doc, token) })
+    return reply.code(201).send({ brief: briefView(doc, token, await factsFor(doc, ctx.user_id)) })
   })
 
   app.get('/family/briefs', async (req, reply) => {
@@ -298,7 +334,13 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
       .sort({ created_at: -1 })
       .limit(100)
       .toArray()
-    return { briefs: list.map((b: HouseholdBriefDoc) => briefView(b)) }
+    return {
+      briefs: await Promise.all(
+        list.map(async (b: HouseholdBriefDoc) =>
+          briefView(b, undefined, await factsFor(b, ctx.user_id)),
+        ),
+      ),
+    }
   })
 
   app.get<{ Params: { id: string } }>('/family/briefs/:id', async (req, reply) => {
@@ -331,7 +373,9 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
         }
       }
     }
-    return reply.header('Cache-Control', 'private, no-store').send({ brief: briefView(b) })
+    return reply
+      .header('Cache-Control', 'private, no-store')
+      .send({ brief: briefView(b, undefined, await factsFor(b, ctx.user_id)) })
   })
 
   app.post<{ Params: { id: string } }>('/family/briefs/:id/confirm', async (req, reply) => {
@@ -447,7 +491,7 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
       { $set: { link_fetched_at: new Date() } },
     )
     return {
-      ...briefView(b!),
+      ...briefView(b!, undefined, await factsFor(b!, req.authContext?.user_id ?? 'anonymous')),
       sentence: b!.template_sentence,
       for_member_name: b!.share!.for_member_name,
       // Old anonymous opens remain readable but cannot earn adult receipts.

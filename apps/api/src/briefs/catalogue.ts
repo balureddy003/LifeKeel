@@ -10,6 +10,8 @@ interface Entry {
   trigger: string
   fields?: readonly string[]
   sensitive?: boolean
+  /** Downplay in the form: tier-4 problems exist but are not the pitch. */
+  lowKey?: boolean
 }
 
 /** One catalogue drives the API allow-list and the form; no model chooses inputs. */
@@ -37,7 +39,7 @@ export const BRIEF_CATALOGUE: readonly Entry[] = [
   },
   {
     id: 'hours_cut',
-    title: 'Hours cut or role changed, including caring',
+    title: 'Hours cut, role changed, illness or recovery',
     group: 'Money and income',
     mode: 'mixed',
     trigger: 'Change date',
@@ -301,6 +303,60 @@ export const BRIEF_CATALOGUE: readonly Entry[] = [
     mode: 'cost',
     trigger: 'Term start date',
   },
+  {
+    id: 'energy_council_tax',
+    title: 'Energy or council tax rise',
+    group: 'Money and income',
+    mode: 'cost',
+    trigger: 'New amount from date',
+    lowKey: true,
+  },
+  {
+    id: 'car_repair',
+    title: 'Car or essential repair bill',
+    group: 'Money and income',
+    mode: 'cash',
+    trigger: 'Bill date',
+    lowKey: true,
+  },
+  {
+    id: 'joint_bill',
+    title: 'A bill or joint account in one name',
+    group: 'Practical handover',
+    mode: 'handover',
+    trigger: 'Recorded on',
+    fields: ['Bill or account', 'Who pays it', 'How it is paid'],
+  },
+  {
+    id: 'bereavement',
+    title: 'Bereavement — the surviving adult',
+    group: 'Practical handover',
+    mode: 'handover',
+    trigger: 'Recorded on',
+    fields: ['Accounts and policies on file', 'Key contacts', 'Where the key papers are'],
+    sensitive: true,
+  },
+  {
+    id: 'rent_rise',
+    title: 'Rent rise',
+    group: 'Money and income',
+    mode: 'cost',
+    trigger: 'New rent date',
+  },
+  {
+    id: 'tenancy_end',
+    title: 'Tenancy ending or moving home',
+    group: 'Money and income',
+    mode: 'mixed',
+    trigger: 'Move date',
+  },
+  {
+    id: 'windfall',
+    title: 'A lump sum arriving',
+    group: 'Money and income',
+    mode: 'cash',
+    trigger: 'Date it lands',
+  },
 ]
 
 const money = z.number().int().min(0).max(1_000_000_000)
@@ -318,6 +374,16 @@ export const CatalogueInputsSchema = z
     return_date: date.optional(),
     return_income_minor: money.optional(),
     return_essentials_minor: money.optional(),
+    income_steps: z
+      .array(
+        z.object({
+          date,
+          monthly_income_minor: money,
+          monthly_essentials_minor: money.optional(),
+        }),
+      )
+      .max(6)
+      .optional(),
     income_protection_monthly_minor: money.optional(),
     deferred_period_months: z.number().int().min(0).max(120).optional(),
     cover_end_date: date.optional(),
@@ -365,6 +431,7 @@ export function solveCatalogueBrief(problem: string, raw: unknown, asOf: string)
     for (const label of entry.fields ?? []) fact(label, i.facts?.[label] || 'Not entered')
     if (!Object.values(i.facts ?? {}).some((value) => value.trim()))
       throw new Error('Enter at least one handover fact')
+    rejectSecrets(facts)
     return {
       inputs: i,
       result: null,
@@ -375,7 +442,6 @@ export function solveCatalogueBrief(problem: string, raw: unknown, asOf: string)
   }
   if (i.facts && Object.keys(i.facts).length)
     throw new Error('Handover details belong in a handover brief')
-  if (i.change_date < asOf) throw new Error('The financial change date must be today or later')
   if (
     i.monthly_income_minor === undefined ||
     i.monthly_essentials_minor === undefined ||
@@ -407,7 +473,7 @@ export function solveCatalogueBrief(problem: string, raw: unknown, asOf: string)
     (i.return_income_minor !== undefined || i.return_essentials_minor !== undefined)
   )
     throw new Error('Enter the date of the later change')
-  const at = monthOffset(asOf, i.change_date)
+  const at = Math.max(0, monthOffset(asOf, i.change_date))
   const nextIncome = i.new_income_minor ?? i.monthly_income_minor
   const nextExpenses = i.new_essentials_minor ?? i.monthly_essentials_minor
   const steps: ScenarioStep[] = [
@@ -445,6 +511,29 @@ export function solveCatalogueBrief(problem: string, raw: unknown, asOf: string)
     fact('Later household income / month (excluding separate cover)', gbp(i.return_income_minor!))
     fact('Later household spending / month', gbp(i.return_essentials_minor!))
   }
+  let runIncome = nextIncome
+  let runExpenses = nextExpenses
+  if (i.return_date) {
+    runIncome = i.return_income_minor!
+    runExpenses = i.return_essentials_minor!
+  }
+  for (const step of [...(i.income_steps ?? [])].sort((a, b) => a.date.localeCompare(b.date))) {
+    if (step.date < i.change_date)
+      throw new Error('Each dated step must be on or after the change date')
+    const stepIncome = step.monthly_income_minor
+    const stepExpenses = step.monthly_essentials_minor ?? runExpenses
+    steps.push({
+      atMonth: Math.max(0, monthOffset(asOf, step.date)),
+      monthlyIncomeDeltaMinor: stepIncome - runIncome,
+      monthlyExpenseDeltaMinor: stepExpenses - runExpenses,
+    })
+    fact(`Dated step ${step.date} household income / month`, gbp(stepIncome))
+    if (step.monthly_essentials_minor !== undefined)
+      fact(`Dated step ${step.date} household spending / month`, gbp(stepExpenses))
+    runIncome = stepIncome
+    runExpenses = stepExpenses
+  }
+  steps.sort((a, b) => a.atMonth - b.atMonth)
   fact('Calculation date', asOf)
   fact('Current household income / month', gbp(i.monthly_income_minor))
   fact('Current household spending / month', gbp(i.monthly_essentials_minor))
@@ -474,5 +563,32 @@ export function solveCatalogueBrief(problem: string, raw: unknown, asOf: string)
   const cashGap = result.unfundedCashMinor
     ? ` The entered one-off payments exceed available savings by ${gbp(result.unfundedCashMinor)}.`
     : ''
-  return { inputs: i, result, facts, template_sentence: description + gap + cashGap }
+  return {
+    inputs: i,
+    result,
+    facts,
+    template_sentence: description + gap + cashGap + MONEY_DISCLAIMER,
+  }
 }
+
+/**
+ * Free-text handover fields say \"not passwords\" but accept any string — flag
+ * likely secrets so the UI can warn without blocking (people sometimes write
+ * a password anyway).
+ */
+const SECRET_FIELD = /\b(pass(?:word|code|phrase)?|pin\b|otp|token|secret|cvv|security answer)\b/i
+const TOKEN_LIKE = /(?:^|\s)[A-Za-z0-9+/=_-]{20,}(?=\s|$)/
+/** Intent 79: credential-shaped input is rejected with a plain message —
+ *  a deterministic guard rail, not a control; the field hint does the real work. */
+function rejectSecrets(facts: BriefFact[]): void {
+  const hit = facts.find((f) => SECRET_FIELD.test(f.value) || TOKEN_LIKE.test(f.value))
+  if (hit)
+    throw new Error(
+      `“${hit.label}” looks like it contains a password or code — record where the method lives, never the secret itself.`,
+    )
+}
+
+/** Intent 80: every money brief states what it does not cover and points to
+ *  free guidance — never "you can afford this". */
+const MONEY_DISCLAIMER =
+  ' Figures are the household’s own entries — tax, benefits, investment returns and price rises are not covered. Free guidance: MoneyHelper; for bigger decisions, a licensed professional.'
