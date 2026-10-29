@@ -135,3 +135,19 @@ Market positioning and architectural pivot to the **shared, computed household b
 reframe), #305 (nav entry, zero-model guarantee test). Everything else is
 gated or parked on product metrics, not on engineering readiness.
 
+## 79–82: Brief hardening, catalogue expansion, yearly refresh and trusted-person sharing (2026-10-29)
+
+Follow-ups to the shipped factual catalogue (Intent 78): close the privacy gaps
+found in review, add the family events the catalogue is missing, and give the paid
+record a recurring reason to be reopened.
+
+| File | Concern | Becomes PRD | Status |
+|---|---|---|---|
+| `79-sensitive-brief-facts-hardening.md` | Encrypt sensitive handover facts at rest, keep them out of logs and telemetry, reject password-shaped input | PRD-227 (Part A) | **PROPOSED** — fix first |
+| `80-brief-catalogue-expansion-and-multi-step.md` | Renting, windfall, planned spend, care fees, illness, bereavement, bill in one name; past change dates; ordered multi-step briefs | PRD-227 (Part B) | **PROPOSED** — size against Stage 1 completion data |
+| `81-annual-household-refresh.md` | Refresh a confirmed brief from last time's figures, household-entered review date, in-app prompt, no outbound messages | PRD-228 | **PROPOSED** — gated on Stage 1 return and gate metrics |
+| `82-trusted-person-and-months-only-share.md` | "Just me" path, trusted person confirms by one-time link, months-only share, recipient controls with no creator notification | PRD-229 | **PROPOSED** — **BLOCKED** on a recorded safeguarding review |
+
+Note: `78-factual-brief-catalogue.md` is shipped (PRs #308) but is not yet listed in
+the table above; add its row when this index is next reconciled.
+
