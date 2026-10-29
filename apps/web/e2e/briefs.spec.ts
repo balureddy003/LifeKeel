@@ -45,9 +45,9 @@ test('brief page: front doors, full catalogue, and a clear message without a sec
   await page.getByPlaceholder(/Search/).fill('rent')
   await page.getByRole('button', { name: 'Rent rise' }).click()
 
-  await page.getByRole('button', { name: 'Show me the answer' }).click()
-  // Client-side checks name each missing field beside the field itself.
-  await expect(page.getByText('Choose the date this happens')).toBeVisible()
+  // Two steps: today's figures first. Missing fields are named beside the field.
+  await expect(page.getByText('Where you are today')).toBeVisible()
+  await page.getByRole('button', { name: /Continue/ }).click()
   await expect(page.getByText(/Enter what comes in each month/)).toBeVisible()
   await expect(page.getByRole('link', { name: 'Add them in Family' })).toBeVisible()
 })

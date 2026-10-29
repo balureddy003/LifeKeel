@@ -507,7 +507,10 @@ describe('brief contract v2', () => {
     currentUser = 'user-stranger'
     expect((await app.inject({ method: 'GET', url: `/b/${token}` })).statusCode).toBe(403)
     currentUser = PARTNER
-    expect((await app.inject({ method: 'GET', url: `/b/${token}` })).statusCode).toBe(200)
+    const opened = await app.inject({ method: 'GET', url: `/b/${token}` })
+    expect(opened.statusCode).toBe(200)
+    // The recipient is told who it is from: a first name, nothing more.
+    expect(opened.json().from_name).toBe('Sam')
   })
 
   it('both adults confirm the same result_version; wrong version is refused', async () => {

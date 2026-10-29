@@ -19,6 +19,7 @@ import {
   Pencil,
   Search,
   Share2,
+  Sparkles,
 } from 'lucide-react'
 import { GlassCard, PageHeader, Skeleton } from '@/components/Glass'
 import {
@@ -36,7 +37,12 @@ import {
   type HouseholdBrief,
 } from '@/lib/api'
 import { track } from '@/lib/growth-track'
+import { haptic } from '@/lib/haptics'
+import { useConfirm } from '@/components/ConfirmSheetProvider'
+import { useToast } from '@/components/Toast'
+import { motion, useReducedMotion } from 'framer-motion'
 import { MOMENTS, type MomentKey } from './moments'
+import { CountUp } from './CountUp'
 import { RunwayChart } from './RunwayChart'
 import { WhatIf } from './WhatIf'
 import { countdownText, daysUntil } from './what-if'
@@ -44,10 +50,14 @@ import { briefHeadline, runsOutAround, splitBriefSentence } from '@/lib/brief-te
 import {
   MAX_STEPS,
   buildInputs,
+  dateChips,
   inputsToForm,
   needs,
+  remainingFields,
   stepCount,
   validate,
+  TODAY_KEYS,
+  validateStep,
   type FormValues,
 } from './brief-form'
 
@@ -247,16 +257,44 @@ function StepRows({
   )
 }
 
+function DateChips({ f, set }: { f: FormValues; set: (v: FormValues) => void }) {
+  const today = new Date().toISOString().slice(0, 10)
+  return (
+    <div role="group" aria-label="Quick dates" className="mt-2 flex flex-wrap gap-2">
+      {dateChips(today).map((c) => {
+        const on = f['change_date'] === c.value
+        return (
+          <button
+            key={c.label}
+            type="button"
+            aria-pressed={on}
+            onClick={() => set({ ...f, change_date: c.value })}
+            className={`min-h-[40px] rounded-full border px-3 text-sm transition-colors ${
+              on
+                ? 'border-family-500 bg-family-500/10 text-ink-primary'
+                : 'border-haze text-ink-secondary'
+            }`}
+          >
+            {c.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 function BriefFields({
   entry,
   f,
   set,
   errors,
+  step,
 }: {
   entry: BriefCatalogueEntry
   f: FormValues
   set: (v: FormValues) => void
   errors: Record<string, string>
+  step: 1 | 2
 }) {
   const p = { f, set, errors }
   if (entry.mode === 'handover') {
@@ -317,114 +355,130 @@ function BriefFields({
   const n = needs(entry)
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Money
-          k="income"
-          label="Money coming in each month"
-          hint="Household take-home, after tax"
-          {...p}
-        />
-        <Money
-          k="essentials"
-          label="Money going out each month"
-          hint="Bills, food, travel: what you need"
-          {...p}
-        />
-        <Money k="savings" label="Savings you could use now" hint="Cash, not investments" {...p} />
-        <DateField
-          k="change_date"
-          label={entry.trigger}
-          hint="A date that has passed is fine if this is already happening."
-          {...p}
-        />
-        {n.newIncome && (
+      {step === 1 && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Money
-            k="new_income"
-            label="Money coming in after the change"
-            hint="Total household income, including pay that continues"
+            k="income"
+            label="Money coming in each month"
+            hint="Household take-home, after tax"
             {...p}
           />
-        )}
-        {n.newEssentials && (
           <Money
-            k="new_essentials"
-            label="Money going out after the change"
-            hint="Total monthly spending from then"
+            k="essentials"
+            label="Money going out each month"
+            hint="Bills, food, travel: what you need"
             {...p}
           />
-        )}
-        {n.cash && (
-          <>
-            <Money k="cash_out" label="One-off payment from savings" {...p} />
-            <Money k="cash_in" label="One-off cash received" hint="Optional" {...p} />
-          </>
-        )}
-      </div>
-
-      <details
-        className="rounded-xl border border-haze bg-surface-1 p-4"
-        onToggle={(e) => {
-          if ((e.target as HTMLDetailsElement).open)
-            track('brief_form_step', { step: 'optional_opened', problem_type: entry.id })
-        }}
-      >
-        <summary className="cursor-pointer text-sm font-medium text-ink-primary">
-          Add more detail (optional)
-        </summary>
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {n.cover && (
-            <>
-              <Money
-                k="ip"
-                label="Cover payment each month"
-                hint="If you have any on file"
+          <Money
+            k="savings"
+            label="Savings you could use now"
+            hint="Cash, not investments"
+            {...p}
+          />
+        </div>
+      )}
+      {step === 2 && (
+        <>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <DateField
+                k="change_date"
+                label={entry.trigger}
+                hint="A date that has passed is fine if this is already happening."
                 {...p}
               />
-              <Field id="f-defer" label="Cover waiting period (months)">
+              <DateChips f={f} set={set} />
+            </div>
+            {n.newIncome && (
+              <Money
+                k="new_income"
+                label="Money coming in after the change"
+                hint="Total household income, including pay that continues"
+                {...p}
+              />
+            )}
+            {n.newEssentials && (
+              <Money
+                k="new_essentials"
+                label="Money going out after the change"
+                hint="Total monthly spending from then"
+                {...p}
+              />
+            )}
+            {n.cash && (
+              <>
+                <Money k="cash_out" label="One-off payment from savings" {...p} />
+                <Money k="cash_in" label="One-off cash received" hint="Optional" {...p} />
+              </>
+            )}
+          </div>
+
+          <details
+            className="rounded-xl border border-haze bg-surface-1 p-4"
+            onToggle={(e) => {
+              if ((e.target as HTMLDetailsElement).open)
+                track('brief_form_step', { step: 'optional_opened', problem_type: entry.id })
+            }}
+          >
+            <summary className="cursor-pointer text-sm font-medium text-ink-primary">
+              Add more detail (optional)
+            </summary>
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {n.cover && (
+                <>
+                  <Money
+                    k="ip"
+                    label="Cover payment each month"
+                    hint="If you have any on file"
+                    {...p}
+                  />
+                  <Field id="f-defer" label="Cover waiting period (months)">
+                    {({ id }) => (
+                      <input
+                        id={id}
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        value={f['defer'] ?? ''}
+                        onChange={(e) => set({ ...f, defer: e.target.value })}
+                        className={inputCls}
+                      />
+                    )}
+                  </Field>
+                  <DateField k="cover_end" label="Cover payments end" {...p} />
+                </>
+              )}
+              {n.laterChange && (
+                <>
+                  <DateField k="return_date" label="Return or end date" {...p} />
+                  {f['return_date'] && (
+                    <>
+                      <Money k="return_income" label="Money coming in from then" {...p} />
+                      <Money k="return_essentials" label="Money going out from then" {...p} />
+                    </>
+                  )}
+                </>
+              )}
+              <Field id="f-recorded_cover" label="Notes about cover or end dates">
                 {({ id }) => (
                   <input
                     id={id}
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    value={f['defer'] ?? ''}
-                    onChange={(e) => set({ ...f, defer: e.target.value })}
+                    type="text"
+                    maxLength={600}
+                    value={f['recorded_cover'] ?? ''}
+                    onChange={(e) => set({ ...f, recorded_cover: e.target.value })}
                     className={inputCls}
                   />
                 )}
               </Field>
-              <DateField k="cover_end" label="Cover payments end" {...p} />
-            </>
-          )}
-          {n.laterChange && (
-            <>
-              <DateField k="return_date" label="Return or end date" {...p} />
-              {f['return_date'] && (
-                <>
-                  <Money k="return_income" label="Money coming in from then" {...p} />
-                  <Money k="return_essentials" label="Money going out from then" {...p} />
-                </>
-              )}
-            </>
-          )}
-          <Field id="f-recorded_cover" label="Notes about cover or end dates">
-            {({ id }) => (
-              <input
-                id={id}
-                type="text"
-                maxLength={600}
-                value={f['recorded_cover'] ?? ''}
-                onChange={(e) => set({ ...f, recorded_cover: e.target.value })}
-                className={inputCls}
-              />
-            )}
-          </Field>
-          <DateField k="decision_deadline" label="A date you are working to" {...p} />
-          <div className="sm:col-span-2">
-            <StepRows {...p} />
-          </div>
-        </div>
-      </details>
+              <DateField k="decision_deadline" label="A date you are working to" {...p} />
+              <div className="sm:col-span-2">
+                <StepRows {...p} />
+              </div>
+            </div>
+          </details>
+        </>
+      )}
     </div>
   )
 }
@@ -460,6 +514,7 @@ function ResultCard({
 }) {
   const [copied, setCopied] = useState(false)
   const [copiedMsg, setCopiedMsg] = useState(false)
+  const toast = useToast()
   const [busy, setBusy] = useState(false)
   const url = brief.share?.url ? `${origin}/b/${brief.share.url}` : null
   const other = brief.share?.for_member_name ?? 'the other adult'
@@ -473,8 +528,13 @@ function ResultCard({
       await navigator.clipboard.writeText(url)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
+      haptic('success')
+      toast({ message: 'Link copied' })
     } catch {
-      window.prompt('Copy this link', url)
+      toast({
+        message: 'Could not copy. Press and hold the link above to copy it.',
+        variant: 'error',
+      })
     }
   }
 
@@ -485,8 +545,10 @@ function ResultCard({
       await navigator.clipboard.writeText(text)
       setCopiedMsg(true)
       setTimeout(() => setCopiedMsg(false), 2000)
+      haptic('success')
+      toast({ message: `Message copied. Paste it to ${other}.` })
     } catch {
-      window.prompt('Copy this message', text)
+      toast({ message: 'Could not copy the message.', variant: 'error' })
     }
   }
 
@@ -504,7 +566,9 @@ function ResultCard({
         <p className="text-sm font-medium text-ink-tertiary">{brief.title}</p>
         {typeof runway === 'number' && (
           <p className="mt-2 text-ink-primary">
-            <span className="text-5xl font-semibold tracking-tight">{runway}</span>
+            <span className="text-5xl font-semibold tracking-tight">
+              <CountUp value={runway} decimals={runway % 1 === 0 ? 0 : 1} />
+            </span>
             <span className="ml-2 text-lg text-ink-secondary">
               months of savings after the change
             </span>
@@ -678,8 +742,18 @@ function Glance({
       </p>
       <p className="mt-1 text-lg font-semibold text-ink-primary">{title}</p>
       {days !== null && (
-        <p className="mt-1 flex items-center gap-2 text-sm text-ink-secondary">
+        <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-ink-secondary">
           <CalendarClock size={16} aria-hidden="true" /> The change {countdownText(days)}
+          {days >= 0 && days <= 7 && (
+            <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+              Coming up soon
+            </span>
+          )}
+          {days < 0 && c?.both_confirmed && (
+            <span className="rounded-full bg-family-500/15 px-2.5 py-0.5 text-xs font-medium text-ink-primary">
+              Time to update?
+            </span>
+          )}
         </p>
       )}
       <p className="mt-2 text-sm text-ink-secondary">{next}</p>
@@ -721,7 +795,10 @@ export default function BriefsPage() {
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState<string | null>(null)
   const [updatingFrom, setUpdatingFrom] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [step, setStep] = useState<1 | 2>(1)
+  const reduce = useReducedMotion()
+  const confirmSheet = useConfirm()
+  const toast = useToast()
   const formRef = useRef<HTMLDivElement>(null)
   const resultRef = useRef<HTMLDivElement>(null)
 
@@ -743,12 +820,55 @@ export default function BriefsPage() {
   function choose(e: BriefCatalogueEntry, prefill?: FormValues, from?: string) {
     setEntry(e)
     setF(prefill ?? {})
+    setStep(1)
     setUpdatingFrom(from ?? null)
     setErrors({})
     setError(null)
     setGateHit(false)
     setCreated(null)
     setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
+
+  async function newLink(b: HouseholdBrief, other: string) {
+    const active = b.share && !b.share.revoked
+    if (
+      active &&
+      !(await confirmSheet({
+        title: 'Make a new link?',
+        message:
+          'The old link stops working, and you will both need to confirm again. Send the new link to ' +
+          other +
+          '.',
+        confirmLabel: 'Make a new link',
+      }))
+    )
+      return
+    const r = await reShareBrief(b.id)
+    if (r.ok && r.data?.share.url) {
+      const link = `${origin}/b/${r.data.share.url}`
+      try {
+        await navigator.clipboard.writeText(link)
+        haptic('success')
+        toast({ message: `New link copied. Send it to ${other}.` })
+      } catch {
+        toast({ message: 'The new link is ready, but it could not be copied.', variant: 'error' })
+      }
+    }
+    void refresh()
+  }
+
+  async function remove(b: HouseholdBrief) {
+    const ok = await confirmSheet({
+      title: 'Delete this brief?',
+      message: 'It will be removed for both of you. This cannot be undone.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    })
+    if (!ok) return
+    await deleteBrief(b.id)
+    haptic('warning')
+    toast({ message: 'Brief deleted' })
+    void refresh()
   }
 
   /** Start a new brief from the figures entered last time. */
@@ -817,12 +937,31 @@ export default function BriefsPage() {
     }
   }, [entry, f, canCreate])
 
+  function continueStep() {
+    if (!entry) return
+    const found = validateStep(entry, f, 1)
+    setErrors(found)
+    if (Object.keys(found).length) {
+      document.getElementById(`f-${Object.keys(found)[0]}`)?.focus()
+      return
+    }
+    haptic('light')
+    setStep(2)
+    track('brief_form_step', { step: 'change_opened', problem_type: entry.id })
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
+
   async function submit() {
     if (!entry) return
     const found = validate(entry, f)
     setErrors(found)
     if (Object.keys(found).length) {
       const first = Object.keys(found)[0]!
+      if (entry.mode !== 'handover' && (TODAY_KEYS as readonly string[]).includes(first)) {
+        setStep(1)
+        setTimeout(() => document.getElementById(`f-${first}`)?.focus(), 80)
+        return
+      }
       // Errors inside the optional section need it open to be seen.
       if (first.startsWith('step_') || first === 'return_date')
         document.querySelector('details')?.setAttribute('open', '')
@@ -914,6 +1053,26 @@ export default function BriefsPage() {
         </div>
       )}
 
+      {loaded &&
+        canCreate &&
+        recipients.length > 0 &&
+        !entry &&
+        !created &&
+        briefs.length === 0 && (
+          <GlassCard className="mt-6 flex items-start gap-3 p-5">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-family-500/10 text-family-400">
+              <Sparkles size={20} aria-hidden="true" />
+            </span>
+            <div>
+              <p className="font-medium text-ink-primary">Your first brief is free</p>
+              <p className="mt-1 text-sm text-ink-secondary">
+                It takes about 2 minutes. You will see your answer as you go, and nothing is shared
+                until you send the link.
+              </p>
+            </div>
+          </GlassCard>
+        )}
+
       {loaded && canCreate && !entry && !created && briefs[0] && (
         <Glance
           brief={briefs[0]}
@@ -935,11 +1094,11 @@ export default function BriefsPage() {
           <p className="mt-1 text-sm text-ink-secondary">
             Pick the closest one. You will answer a few questions and get a single result.
           </p>
-          <div className="mt-4 grid grid-cols-1 gap-3">
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
             {moments.map((m) => {
               const Icon = m.icon
               return (
-                <div key={m.key}>
+                <div key={m.key} className={moment === m.key ? 'md:col-span-2' : ''}>
                   <button
                     type="button"
                     aria-pressed={moment === m.key}
@@ -1069,6 +1228,65 @@ export default function BriefsPage() {
               ? `Starting from the figures you entered on ${updatingFrom}. Change only what is different.`
               : 'Use your best figures. You can make a new brief any time they change.'}
           </p>
+          {entry.mode !== 'handover' && (
+            <div className="mt-4">
+              <ol className="flex items-center gap-2 text-sm" aria-label="Progress">
+                {(['Where you are today', 'What changes'] as const).map((label, i) => {
+                  const n = (i + 1) as 1 | 2
+                  const done = step > n
+                  const current = step === n
+                  return (
+                    <li key={label} className="flex flex-1 items-center gap-2">
+                      <span
+                        aria-current={current ? 'step' : undefined}
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                          done
+                            ? 'bg-green-500/20 text-green-600'
+                            : current
+                              ? 'bg-family-500 text-white'
+                              : 'bg-surface-2 text-ink-tertiary'
+                        }`}
+                      >
+                        {done ? <Check size={14} aria-hidden="true" /> : n}
+                      </span>
+                      <span
+                        className={current ? 'font-medium text-ink-primary' : 'text-ink-tertiary'}
+                      >
+                        {label}
+                      </span>
+                    </li>
+                  )
+                })}
+              </ol>
+              <div
+                className="mt-2 h-1 overflow-hidden rounded-full bg-surface-2"
+                aria-hidden="true"
+              >
+                <div
+                  className="h-full rounded-full bg-family-500 transition-all duration-300 motion-reduce:transition-none"
+                  style={{ width: step === 1 ? '50%' : '100%' }}
+                />
+              </div>
+              <p className="mt-2 text-xs text-ink-tertiary">
+                About 2 minutes. Nothing is shared until you send the link.
+              </p>
+              {step === 2 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStep(1)
+                    setTimeout(
+                      () => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+                      50,
+                    )
+                  }}
+                  className="mt-1 inline-flex min-h-[44px] items-center gap-1 text-sm text-ink-secondary"
+                >
+                  <ArrowLeft size={16} aria-hidden="true" /> Back to today&apos;s figures
+                </button>
+              )}
+            </div>
+          )}
 
           <GlassCard className="mt-4 space-y-5 p-5">
             {recipients.length > 1 ? (
@@ -1102,37 +1320,64 @@ export default function BriefsPage() {
               </p>
             )}
 
-            <BriefFields entry={entry} f={f} set={setF} errors={errors} />
+            <motion.div
+              key={step}
+              initial={reduce ? false : { opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <BriefFields
+                entry={entry}
+                f={f}
+                set={setF}
+                errors={errors}
+                step={entry.mode === 'handover' ? 2 : step}
+              />
+            </motion.div>
           </GlassCard>
 
-          {entry.mode !== 'handover' && !entry.sensitive && preview.state !== 'idle' && (
-            <div
-              aria-live="polite"
-              className="mt-4 rounded-2xl border border-family-500/30 bg-family-500/5 p-4"
-            >
-              <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
-                Your answer so far · nothing is saved or shared yet
+          {entry.mode !== 'handover' &&
+            !entry.sensitive &&
+            step === 2 &&
+            preview.state === 'idle' &&
+            remainingFields(entry, f) > 0 && (
+              <p className="mt-4 rounded-2xl border border-dashed border-haze p-4 text-sm text-ink-secondary">
+                {remainingFields(entry, f) === 1
+                  ? '1 more thing to fill in, then your answer appears here.'
+                  : `${remainingFields(entry, f)} more things to fill in, then your answer appears here.`}
               </p>
-              {preview.state === 'loading' && !preview.data && (
-                <Skeleton className="mt-3 h-16 w-full" />
-              )}
-              {preview.state === 'error' && (
-                <p className="mt-2 text-sm text-ink-secondary">{preview.error}</p>
-              )}
-              {preview.data && preview.state !== 'error' && (
-                <div className={preview.state === 'loading' ? 'opacity-60' : ''}>
-                  <p className="mt-2 text-lg font-medium text-ink-primary">
-                    {briefHeadline(splitBriefSentence(preview.data.template_sentence).main)}
-                  </p>
-                  <RunwayChart
-                    result={preview.data.result}
-                    startSavings={Number(f['savings'] ?? 0) * 100}
-                    runsOutLabel={runsOutAround(preview.data.template_sentence)}
-                  />
-                </div>
-              )}
-            </div>
-          )}
+            )}
+          {entry.mode !== 'handover' &&
+            !entry.sensitive &&
+            step === 2 &&
+            preview.state !== 'idle' && (
+              <div
+                aria-live="polite"
+                className="mt-4 rounded-2xl border border-family-500/30 bg-family-500/5 p-4"
+              >
+                <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
+                  Your answer so far · nothing is saved or shared yet
+                </p>
+                {preview.state === 'loading' && !preview.data && (
+                  <Skeleton className="mt-3 h-16 w-full" />
+                )}
+                {preview.state === 'error' && (
+                  <p className="mt-2 text-sm text-ink-secondary">{preview.error}</p>
+                )}
+                {preview.data && preview.state !== 'error' && (
+                  <div className={preview.state === 'loading' ? 'opacity-60' : ''}>
+                    <p className="mt-2 text-lg font-medium text-ink-primary">
+                      {briefHeadline(splitBriefSentence(preview.data.template_sentence).main)}
+                    </p>
+                    <RunwayChart
+                      result={preview.data.result}
+                      startSavings={Number(f['savings'] ?? 0) * 100}
+                      runsOutLabel={runsOutAround(preview.data.template_sentence)}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
 
           {gateHit && (
             <div
@@ -1152,14 +1397,22 @@ export default function BriefsPage() {
             </p>
           )}
 
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void submit()}
-            className={`${primaryBtn} mt-5`}
-          >
-            {busy ? 'Working it out…' : 'Show me the answer'}
-          </button>
+          <div className="sticky bottom-[96px] z-10 -mx-4 mt-5 bg-gradient-to-t from-navbg via-navbg/95 to-transparent px-4 pb-2 pt-4 md:static md:mx-0 md:bg-none md:px-0 md:pb-0 md:pt-0">
+            {entry.mode !== 'handover' && step === 1 ? (
+              <button type="button" onClick={continueStep} className={primaryBtn}>
+                Continue <ChevronRight size={18} aria-hidden="true" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void submit()}
+                className={primaryBtn}
+              >
+                {busy ? 'Working it out…' : 'Show me the answer'}
+              </button>
+            )}
+          </div>
           <p className="mt-3 text-center text-xs text-ink-tertiary">
             Information only, not advice. Nothing is sent until you share the link.
           </p>
@@ -1168,14 +1421,6 @@ export default function BriefsPage() {
 
       {briefs.length > 0 && (
         <section className="mt-10" aria-labelledby="yours-heading">
-          {notice && (
-            <p
-              role="status"
-              className="mb-3 rounded-xl bg-green-500/10 p-3 text-sm text-ink-primary"
-            >
-              {notice}
-            </p>
-          )}
           <h2 id="yours-heading" className="text-lg font-semibold text-ink-primary">
             Your briefs
           </h2>
@@ -1248,7 +1493,12 @@ export default function BriefsPage() {
                         {b.share && !b.share.revoked && (
                           <button
                             type="button"
-                            onClick={() => void revokeBriefShare(b.id).then(() => refresh())}
+                            onClick={() =>
+                              void revokeBriefShare(b.id).then(() => {
+                                toast({ message: 'Link turned off' })
+                                return refresh()
+                              })
+                            }
                             className="min-h-[44px] text-ink-secondary underline"
                           >
                             Turn off the link
@@ -1256,36 +1506,14 @@ export default function BriefsPage() {
                         )}
                         <button
                           type="button"
-                          onClick={() => {
-                            const active = b.share && !b.share.revoked
-                            if (
-                              active &&
-                              !window.confirm(
-                                'Making a new link turns off the old one, and you will both need to confirm again. Continue?',
-                              )
-                            )
-                              return
-                            void reShareBrief(b.id).then((r) => {
-                              if (r.ok && r.data?.share.url) {
-                                const link = `${origin}/b/${r.data.share.url}`
-                                void navigator.clipboard.writeText(link).catch(() => {
-                                  window.prompt('Copy this link', link)
-                                })
-                                setNotice('New link copied. Send it to ' + other + '.')
-                              }
-                              void refresh()
-                            })
-                          }}
+                          onClick={() => void newLink(b, other)}
                           className="min-h-[44px] text-ink-secondary underline"
                         >
                           {b.share && !b.share.revoked ? 'Get a new link' : 'Turn the link back on'}
                         </button>
                         <button
                           type="button"
-                          onClick={() => {
-                            if (window.confirm('Delete this brief? This cannot be undone.'))
-                              void deleteBrief(b.id).then(() => refresh())
-                          }}
+                          onClick={() => void remove(b)}
                           className="min-h-[44px] text-red-500 underline"
                         >
                           Delete

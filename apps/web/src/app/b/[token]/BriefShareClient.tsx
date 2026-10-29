@@ -15,12 +15,14 @@
  * third-party cookies off, which would show a signed-in recipient "sign in".
  */
 import { useCallback, useEffect, useState } from 'react'
+import { motion, useReducedMotion } from 'framer-motion'
 import Link from 'next/link'
 import { AlertCircle, Check, Clock, Lock, Printer, ShieldCheck } from 'lucide-react'
 import { GlassCard, Skeleton } from '@/components/Glass'
 import { useRouteParam } from '@/lib/useRouteParam'
 import { getApiBase } from '@/lib/env'
 import { getAuthToken } from '@/lib/api'
+import { haptic } from '@/lib/haptics'
 import { briefHeadline, splitBriefSentence } from '@/lib/brief-text'
 
 interface Confirmation {
@@ -37,6 +39,7 @@ interface SharedBrief {
   template_sentence: string
   facts?: Array<{ label: string; value: string }>
   for_member_name: string | null
+  from_name?: string | null
   can_confirm?: boolean
   confirmation?: Confirmation
   confirmed_opened_at: string | null
@@ -90,6 +93,7 @@ export default function BriefShareClient() {
   const [brief, setBrief] = useState<SharedBrief | null>(null)
   const [status, setStatus] = useState<Status>('loading')
   const [confirming, setConfirming] = useState(false)
+  const reduce = useReducedMotion()
   const [confirmError, setConfirmError] = useState<string | null>(null)
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
 
@@ -146,6 +150,7 @@ export default function BriefShareClient() {
       if (!r.ok) return setConfirmError('We could not record your confirmation. Please try again.')
       const data = (await r.json().catch(() => ({}))) as { confirmation?: Confirmation }
       if (data.confirmation) setConfirmation(data.confirmation)
+      haptic('success')
       setStatus('open')
     } catch {
       setConfirmError('We could not reach LifeKeel. Check your connection and try again.')
@@ -220,7 +225,13 @@ export default function BriefShareClient() {
           <h1 className="text-2xl font-semibold tracking-tight text-ink-primary">
             {brief.title ?? 'A brief prepared for you'}
           </h1>
-          {name && <p className="mt-1 text-sm text-ink-tertiary">Prepared for {name}</p>}
+          {name && (
+            <p className="mt-1 text-sm text-ink-tertiary">
+              {brief.from_name
+                ? `${brief.from_name} prepared this for ${name}`
+                : `Prepared for ${name}`}
+            </p>
+          )}
           <ul className="mt-4 space-y-2 text-ink-secondary">
             <li className="flex gap-2">
               <Check size={18} className="mt-0.5 shrink-0 text-family-400" aria-hidden="true" />
@@ -299,7 +310,14 @@ export default function BriefShareClient() {
             }`}
           >
             {confirmation?.both_confirmed ? (
-              <Check className="mt-0.5 shrink-0 text-green-500" size={20} aria-hidden="true" />
+              <motion.span
+                className="mt-0.5 shrink-0"
+                initial={reduce ? false : { scale: 0.4, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 18 }}
+              >
+                <Check className="text-green-500" size={20} aria-hidden="true" />
+              </motion.span>
             ) : (
               <Clock className="mt-0.5 shrink-0 text-ink-tertiary" size={20} aria-hidden="true" />
             )}
@@ -374,6 +392,25 @@ export default function BriefShareClient() {
               )}
             </GlassCard>
           )}
+
+          <GlassCard className="p-5 print:hidden">
+            <p className="font-medium text-ink-primary">What happens next</p>
+            <ul className="mt-2 space-y-2 text-sm text-ink-secondary">
+              <li>Take a moment to talk it over together. This is information, not a decision.</li>
+              <li>
+                Figures change.{' '}
+                {brief.from_name
+                  ? `Ask ${brief.from_name} to update them when something moves.`
+                  : 'Ask the sender to update them when something moves.'}
+              </li>
+            </ul>
+            <Link
+              href="/"
+              className="mt-4 inline-flex min-h-[44px] items-center rounded-full border border-haze px-4 text-sm font-medium text-ink-secondary"
+            >
+              Open LifeKeel
+            </Link>
+          </GlassCard>
 
           <button
             type="button"

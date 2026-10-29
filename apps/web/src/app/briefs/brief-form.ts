@@ -159,3 +159,47 @@ export function inputsToForm(e: BriefCatalogueEntry, i: BriefInputs): FormValues
   if (steps.length) f['steps_n'] = String(Math.min(steps.length, MAX_STEPS))
   return f
 }
+
+/** The first of the two steps: where the household is today. */
+export const TODAY_KEYS = ['income', 'essentials', 'savings'] as const
+
+/** Money briefs are asked in two chunks; handover briefs stay on one screen. */
+export function validateStep(
+  e: BriefCatalogueEntry,
+  f: FormValues,
+  step: 1 | 2,
+): Record<string, string> {
+  const all = validate(e, f)
+  if (e.mode === 'handover' || step === 2) return all
+  return Object.fromEntries(
+    Object.entries(all).filter(([k]) => (TODAY_KEYS as readonly string[]).includes(k)),
+  )
+}
+
+/** Fields still needed before an answer can be shown, for a "2 more to go" hint. */
+export function remainingFields(e: BriefCatalogueEntry, f: FormValues): number {
+  return Object.keys(validate(e, f)).length
+}
+
+export interface DateChip {
+  label: string
+  value: string
+}
+
+const iso = (d: Date) => d.toISOString().slice(0, 10)
+
+/** Quick choices for "when does this happen", so nobody has to use a date picker. */
+export function dateChips(today: string): DateChip[] {
+  const base = new Date(`${today}T00:00:00Z`)
+  const plusMonths = (n: number) => {
+    const d = new Date(base)
+    d.setUTCMonth(d.getUTCMonth() + n)
+    return iso(d)
+  }
+  return [
+    { label: 'Already started', value: today },
+    { label: 'In 1 month', value: plusMonths(1) },
+    { label: 'In 3 months', value: plusMonths(3) },
+    { label: 'In 6 months', value: plusMonths(6) },
+  ]
+}

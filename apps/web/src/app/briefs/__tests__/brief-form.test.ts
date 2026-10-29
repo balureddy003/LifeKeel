@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { BriefCatalogueEntry } from '@/lib/api'
-import { buildInputs, inputsToForm, needs, validate } from '../brief-form'
+import {
+  buildInputs,
+  dateChips,
+  inputsToForm,
+  needs,
+  remainingFields,
+  validate,
+  validateStep,
+} from '../brief-form'
 
 const entry = (over: Partial<BriefCatalogueEntry>): BriefCatalogueEntry => ({
   id: 'earning_less',
@@ -160,5 +168,56 @@ describe('inputsToForm', () => {
         facts: { 'GP and contact details': 'Dr A' },
       }),
     ).toEqual({})
+  })
+})
+
+describe('two-step form', () => {
+  const e = entry({})
+  it('step one only asks about today', () => {
+    const errors = validateStep(e, {}, 1)
+    expect(Object.keys(errors).sort()).toEqual(['essentials', 'income', 'savings'])
+  })
+  it('step one passes once today is filled, even with the change still empty', () => {
+    expect(validateStep(e, { income: '5000', essentials: '3000', savings: '0' }, 1)).toEqual({})
+  })
+  it('step two asks about everything', () => {
+    expect(
+      Object.keys(validateStep(e, { income: '5000', essentials: '3000', savings: '0' }, 2)),
+    ).toEqual(expect.arrayContaining(['change_date', 'new_income']))
+  })
+  it('handover briefs stay on one screen', () => {
+    expect(Object.keys(validateStep(medical, {}, 1))).toEqual(
+      expect.arrayContaining(['change_date', 'facts', 'consent']),
+    )
+  })
+  it('counts what is left before an answer can be shown', () => {
+    expect(remainingFields(e, {})).toBe(5)
+    expect(
+      remainingFields(e, {
+        income: '5000',
+        essentials: '3000',
+        savings: '0',
+        new_income: '1',
+        change_date: '2026-11-01',
+      }),
+    ).toBe(0)
+  })
+})
+
+describe('dateChips', () => {
+  it('offers already started and a few months ahead', () => {
+    const chips = dateChips('2026-10-29')
+    expect(chips.map((c) => c.label)).toEqual([
+      'Already started',
+      'In 1 month',
+      'In 3 months',
+      'In 6 months',
+    ])
+    expect(chips.map((c) => c.value)).toEqual([
+      '2026-10-29',
+      '2026-11-29',
+      '2027-01-29',
+      '2027-04-29',
+    ])
   })
 })

@@ -189,6 +189,14 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
     }
   }
 
+  async function creatorFirstName(b: HouseholdBriefDoc): Promise<string | null> {
+    const group = await db
+      .collection<FamilyGroupDoc>('family_groups')
+      .findOne({ tenant_id: b.tenant_id })
+    const m = (group?.members ?? []).find((x) => memberMatchesUser(x, b.created_by))
+    return m?.name?.trim().split(/\s+/)[0] ?? null
+  }
+
   app.get('/family/brief-catalogue', async (req, reply) => {
     const { tenant_id, user_id } = req.authContext
     if (!(await isFamilyAdult(db, tenant_id, user_id)))
@@ -548,6 +556,8 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
       ...briefView(b!, undefined, await factsFor(b!, req.authContext?.user_id)),
       sentence: b!.template_sentence,
       for_member_name: b!.share!.for_member_name,
+      // First name only, so the recipient knows who this is from.
+      from_name: await creatorFirstName(b!),
       // Old anonymous opens remain readable but cannot earn adult receipts.
       can_confirm: b!.contract_version === 2,
     }
