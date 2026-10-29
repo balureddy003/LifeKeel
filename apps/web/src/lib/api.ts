@@ -6315,6 +6315,7 @@ export function getBriefCatalogue() {
     catalogue: BriefCatalogueEntry[]
     recipients: Array<{ id: string; name: string }>
     current_user_id: string
+    can_create?: boolean
   }>('/family/brief-catalogue', { catalogue: [], recipients: [], current_user_id: '' })
 }
 
@@ -6338,6 +6339,17 @@ export function createBrief(body: {
   for_member_id?: string | null
 }) {
   return briefPost<{ brief: HouseholdBrief }>('/family/briefs', body)
+}
+
+/** The answer before anything is saved or shared (money briefs only). */
+export interface BriefPreview {
+  template_sentence: string
+  result: Record<string, unknown> | null
+  facts: Array<{ label: string; value: string }>
+}
+
+export function previewBrief(body: { problem_type: BriefProblemType; inputs: BriefInputs }) {
+  return briefPost<{ preview: BriefPreview }>('/family/briefs/preview', body)
 }
 
 export function confirmBrief(id: string, result_version: string) {

@@ -8,7 +8,16 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Check, ChevronRight, Clock, Copy, Search, Share2 } from 'lucide-react'
+import {
+  ArrowLeft,
+  Check,
+  ChevronRight,
+  Clock,
+  Copy,
+  MessageSquare,
+  Search,
+  Share2,
+} from 'lucide-react'
 import { GlassCard, PageHeader, Skeleton } from '@/components/Glass'
 import {
   confirmBrief,
@@ -17,14 +26,17 @@ import {
   getBrief,
   getBriefCatalogue,
   listBriefs,
+  previewBrief,
   reShareBrief,
   revokeBriefShare,
   type BriefCatalogueEntry,
+  type BriefPreview,
   type HouseholdBrief,
 } from '@/lib/api'
 import { track } from '@/lib/growth-track'
 import { MOMENTS, type MomentKey } from './moments'
-import { splitBriefSentence } from '@/lib/brief-text'
+import { RunwayChart } from './RunwayChart'
+import { briefHeadline, runsOutAround, splitBriefSentence } from '@/lib/brief-text'
 import { MAX_STEPS, buildInputs, needs, stepCount, validate, type FormValues } from './brief-form'
 
 const inputCls =
@@ -435,6 +447,7 @@ function ResultCard({
   onChanged: () => void
 }) {
   const [copied, setCopied] = useState(false)
+  const [copiedMsg, setCopiedMsg] = useState(false)
   const [busy, setBusy] = useState(false)
   const url = brief.share?.url ? `${origin}/b/${brief.share.url}` : null
   const other = brief.share?.for_member_name ?? 'the other adult'
@@ -450,6 +463,18 @@ function ResultCard({
       setTimeout(() => setCopied(false), 2000)
     } catch {
       window.prompt('Copy this link', url)
+    }
+  }
+
+  async function copyMessage() {
+    if (!url) return
+    const text = `Hi ${other} — I've put some numbers together for us (“${brief.title ?? 'a household brief'}”). Could you have a look and confirm once you've read it? ${url}`
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedMsg(true)
+      setTimeout(() => setCopiedMsg(false), 2000)
+    } catch {
+      window.prompt('Copy this message', text)
     }
   }
 
@@ -473,16 +498,47 @@ function ResultCard({
             </span>
           </p>
         )}
-        <p className="mt-3 text-lg leading-relaxed text-ink-primary">{main}</p>
-        {note && <p className="mt-2 text-xs text-ink-tertiary">{note}</p>}
+        <p className="mt-3 text-xl font-medium leading-snug text-ink-primary">
+          {briefHeadline(main)}
+        </p>
+        <details className="mt-2">
+          <summary className="min-h-[44px] cursor-pointer py-2 text-sm font-medium text-family-400">
+            How this was worked out
+          </summary>
+          <p className="text-ink-secondary">{main}</p>
+          {note && <p className="mt-2 text-xs text-ink-tertiary">{note}</p>}
+        </details>
+        <RunwayChart
+          result={brief.result}
+          startSavings={Number(brief.inputs?.liquid_savings_minor ?? 0)}
+          runsOutLabel={runsOutAround(brief.template_sentence)}
+        />
       </div>
+
+      {brief.confirmation?.both_confirmed && (
+        <div
+          role="status"
+          className="flex items-center gap-3 rounded-2xl border border-green-500/30 bg-green-500/10 p-4"
+        >
+          <Check className="shrink-0 text-green-600" aria-hidden="true" />
+          <p className="text-sm font-medium text-ink-primary">
+            You have both seen the same numbers.
+          </p>
+        </div>
+      )}
 
       {(brief.facts ?? []).length > 0 && (
         <dl className="space-y-1 text-sm">
           {brief.facts!.map((x, i) => (
             <div key={i} className="flex justify-between gap-4 border-b border-haze pb-1">
               <dt className="text-ink-tertiary">{x.label}</dt>
-              <dd className="text-right text-ink-primary">{x.value}</dd>
+              <dd
+                className={`text-right text-ink-primary ${
+                  x.value.length <= 24 ? 'shrink-0 whitespace-nowrap' : 'min-w-0 break-words'
+                }`}
+              >
+                {x.value}
+              </dd>
             </div>
           ))}
         </dl>
@@ -490,55 +546,87 @@ function ResultCard({
 
       <div className="rounded-2xl border border-haze bg-surface-1 p-4">
         <p className="text-sm font-medium text-ink-primary">Two quick steps</p>
-        <ol className="mt-3 space-y-3 text-sm text-ink-secondary">
-          <li className="flex items-center justify-between gap-3">
-            <span>1. Read it, then confirm you have seen it</span>
-            {brief.confirmation?.creator_at ? (
-              <span className="inline-flex items-center gap-1 text-green-600">
-                <Check size={14} aria-hidden="true" /> Done
-              </span>
-            ) : (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void confirm()}
-                className="min-h-[44px] rounded-full bg-family-500 px-4 text-sm font-semibold text-white disabled:opacity-50"
-              >
-                {busy ? 'Saving…' : 'I have read this'}
-              </button>
-            )}
-          </li>
-          <li>
-            <p>
-              2. Send the link to {other}. They sign in, read it, and confirm too. The link works
-              for 30 days.
-            </p>
-            {url && (
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <code className="min-w-0 flex-1 truncate rounded-lg bg-surface-2 px-2 py-2 text-xs">
-                  {url}
-                </code>
-                <button type="button" onClick={() => void copy()} className={ghostBtn}>
-                  {copied ? <Check size={16} /> : <Copy size={16} />} {copied ? 'Copied' : 'Copy'}
+        <ol className="mt-4 space-y-5">
+          <li className="flex gap-3">
+            <span
+              aria-hidden="true"
+              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
+                brief.confirmation?.creator_at
+                  ? 'bg-green-500/20 text-green-600'
+                  : 'bg-family-500 text-white'
+              }`}
+            >
+              {brief.confirmation?.creator_at ? <Check size={16} /> : '1'}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-ink-primary">Read your answer, then confirm</p>
+              <p className="text-sm text-ink-secondary">
+                This records that you have seen this exact version.
+              </p>
+              {brief.confirmation?.creator_at ? (
+                <p className="mt-2 text-sm font-medium text-green-600">You confirmed</p>
+              ) : (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void confirm()}
+                  className="mt-3 inline-flex min-h-[48px] w-full items-center justify-center rounded-full bg-family-500 px-5 text-sm font-semibold text-white disabled:opacity-50 sm:w-auto"
+                >
+                  {busy ? 'Saving…' : 'I have read this'}
                 </button>
-                {canShare && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void navigator
-                        .share({ title: brief.title ?? 'A household brief', url })
-                        .catch(() => {})
-                    }
-                    className={ghostBtn}
-                  >
-                    <Share2 size={16} /> Share
-                  </button>
-                )}
-              </div>
-            )}
+              )}
+            </div>
+          </li>
+          <li className="flex gap-3">
+            <span
+              aria-hidden="true"
+              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
+                brief.confirmation?.recipient_at
+                  ? 'bg-green-500/20 text-green-600'
+                  : 'bg-surface-2 text-ink-secondary'
+              }`}
+            >
+              {brief.confirmation?.recipient_at ? <Check size={16} /> : '2'}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-ink-primary">Send the link to {other}</p>
+              <p className="text-sm text-ink-secondary">
+                They sign in, read it and confirm too. The link works for 30 days.
+              </p>
+              {url && (
+                <>
+                  <code className="mt-3 block truncate rounded-lg bg-surface-2 px-3 py-2 text-xs">
+                    {url}
+                  </code>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button type="button" onClick={() => void copy()} className={ghostBtn}>
+                      {copied ? <Check size={16} /> : <Copy size={16} />}{' '}
+                      {copied ? 'Copied' : 'Copy link'}
+                    </button>
+                    <button type="button" onClick={() => void copyMessage()} className={ghostBtn}>
+                      {copiedMsg ? <Check size={16} /> : <MessageSquare size={16} />}{' '}
+                      {copiedMsg ? 'Copied' : 'Copy a message'}
+                    </button>
+                    {canShare && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void navigator
+                            .share({ title: brief.title ?? 'A household brief', url })
+                            .catch(() => {})
+                        }
+                        className={ghostBtn}
+                      >
+                        <Share2 size={16} /> Share
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           </li>
         </ol>
-        <div className="mt-4">
+        <div className="mt-5">
           <Status b={brief} other={other} />
         </div>
       </div>
@@ -548,6 +636,12 @@ function ResultCard({
 
 export default function BriefsPage() {
   const [loaded, setLoaded] = useState(false)
+  const [canCreate, setCanCreate] = useState(true)
+  const [preview, setPreview] = useState<{
+    state: 'idle' | 'loading' | 'ready' | 'error'
+    data?: BriefPreview
+    error?: string
+  }>({ state: 'idle' })
   const [catalogue, setCatalogue] = useState<BriefCatalogueEntry[]>([])
   const [recipients, setRecipients] = useState<Array<{ id: string; name: string }>>([])
   const [briefs, setBriefs] = useState<HouseholdBrief[]>([])
@@ -571,6 +665,7 @@ export default function BriefsPage() {
     void getBriefCatalogue().then((c) => {
       setCatalogue(c.catalogue)
       setRecipients(c.recipients)
+      setCanCreate(c.can_create !== false)
       setForMember(c.recipients[0]?.id ?? '')
       setLoaded(true)
     })
@@ -605,6 +700,38 @@ export default function BriefsPage() {
       if (b) setCreated({ ...b, share: b.share ?? created.share })
     }
   }
+
+  // The answer as the household types: same solver, nothing saved or shared.
+  useEffect(() => {
+    if (!entry || entry.mode === 'handover' || entry.sensitive || !canCreate) {
+      setPreview({ state: 'idle' })
+      return
+    }
+    if (Object.keys(validate(entry, f)).length) {
+      setPreview({ state: 'idle' })
+      return
+    }
+    let cancelled = false
+    setPreview((p) => ({ ...p, state: 'loading' }))
+    const timer = setTimeout(async () => {
+      const res = await previewBrief({ problem_type: entry.id, inputs: buildInputs(entry, f) })
+      if (cancelled) return
+      if (res.ok) setPreview({ state: 'ready', data: res.data!.preview })
+      else
+        setPreview({
+          state: 'error',
+          // A 400 is about the figures; anything else is not the household's doing.
+          error:
+            res.status === 400
+              ? ((res.data as { error?: string } | undefined)?.error ?? 'Check the figures')
+              : 'The live answer is not available right now. You can still create the brief.',
+        })
+    }, 600)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [entry, f, canCreate])
 
   async function submit() {
     if (!entry) return
@@ -672,7 +799,17 @@ export default function BriefsPage() {
         </div>
       )}
 
-      {loaded && recipients.length === 0 && (
+      {loaded && !canCreate && (
+        <GlassCard className="mt-6 p-5">
+          <p className="font-medium text-ink-primary">You can read briefs but not create them</p>
+          <p className="mt-1 text-sm text-ink-secondary">
+            Briefs are made by an organiser or parent in the household. Ask them to make one for
+            you, and it will appear here to read and confirm.
+          </p>
+        </GlassCard>
+      )}
+
+      {loaded && canCreate && recipients.length === 0 && (
         <GlassCard className="mt-6 p-5">
           <p className="font-medium text-ink-primary">Add the other adult first</p>
           <p className="mt-1 text-sm text-ink-secondary">
@@ -693,7 +830,7 @@ export default function BriefsPage() {
         </div>
       )}
 
-      {loaded && !entry && !created && (
+      {loaded && canCreate && !entry && !created && (
         <section className="mt-6" aria-labelledby="moment-heading">
           <h2 id="moment-heading" className="text-lg font-semibold text-ink-primary">
             What is changing?
@@ -818,7 +955,7 @@ export default function BriefsPage() {
         </section>
       )}
 
-      {entry && (
+      {entry && canCreate && (
         <section ref={formRef} className="mt-6 scroll-mt-40" aria-labelledby="form-heading">
           <button
             type="button"
@@ -868,6 +1005,35 @@ export default function BriefsPage() {
 
             <BriefFields entry={entry} f={f} set={setF} errors={errors} />
           </GlassCard>
+
+          {entry.mode !== 'handover' && !entry.sensitive && preview.state !== 'idle' && (
+            <div
+              aria-live="polite"
+              className="mt-4 rounded-2xl border border-family-500/30 bg-family-500/5 p-4"
+            >
+              <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
+                Your answer so far · nothing is saved or shared yet
+              </p>
+              {preview.state === 'loading' && !preview.data && (
+                <Skeleton className="mt-3 h-16 w-full" />
+              )}
+              {preview.state === 'error' && (
+                <p className="mt-2 text-sm text-ink-secondary">{preview.error}</p>
+              )}
+              {preview.data && preview.state !== 'error' && (
+                <div className={preview.state === 'loading' ? 'opacity-60' : ''}>
+                  <p className="mt-2 text-lg font-medium text-ink-primary">
+                    {briefHeadline(splitBriefSentence(preview.data.template_sentence).main)}
+                  </p>
+                  <RunwayChart
+                    result={preview.data.result}
+                    startSavings={Number(f['savings'] ?? 0) * 100}
+                    runsOutLabel={runsOutAround(preview.data.template_sentence)}
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           {gateHit && (
             <div

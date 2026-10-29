@@ -197,11 +197,55 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
     return {
       catalogue: BRIEF_CATALOGUE,
       current_user_id: user_id,
+      // Lets the form say up front that this person cannot create briefs.
+      can_create: await isHouseholdEditor(db, tenant_id, user_id, req.authContext.roles),
       recipients: (group?.members ?? [])
         .filter((m) => m.status === 'active' && !isMinorMember(m) && !memberMatchesUser(m, user_id))
         .map((m) => ({ id: m.id, name: m.name })),
     }
   })
+
+  /**
+   * POST /family/briefs/preview — the answer as the household types, before
+   * anything is saved or shared. Same deterministic solver as create: no model,
+   * no storage, no entitlement gate (nothing is created). Money briefs only;
+   * handover entries hold no calculation and may be sensitive, so they are
+   * never previewed.
+   */
+  app.post(
+    '/family/briefs/preview',
+    { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
+    async (req, reply) => {
+      const ctx = req.authContext
+      if (!ctx) return reply.code(401).send({ error: 'Authentication required' })
+      if (!(await isHouseholdEditor(db, ctx.tenant_id, ctx.user_id, ctx.roles)))
+        return reply.code(403).send({ error: 'Only a household editor can create a brief' })
+      const parsed = z
+        .object({ problem_type: z.string().max(80), inputs: z.record(z.string(), z.unknown()) })
+        .strict()
+        .safeParse(req.body)
+      if (!parsed.success) return reply.code(400).send({ error: 'Invalid brief inputs' })
+      const entry = BRIEF_CATALOGUE.find((e) => e.id === parsed.data.problem_type)
+      if (!entry || entry.mode === 'handover')
+        return reply.code(400).send({ error: 'This kind of brief has no calculation to preview' })
+      try {
+        const solved = solveCatalogueBrief(
+          parsed.data.problem_type,
+          parsed.data.inputs,
+          new Date().toISOString().slice(0, 10),
+        )
+        return {
+          preview: {
+            template_sentence: solved.template_sentence,
+            result: solved.result,
+            facts: solved.facts,
+          },
+        }
+      } catch (err) {
+        return reply.code(400).send({ error: (err as Error).message })
+      }
+    },
+  )
 
   app.post('/family/briefs', async (req, reply) => {
     const ctx = req.authContext

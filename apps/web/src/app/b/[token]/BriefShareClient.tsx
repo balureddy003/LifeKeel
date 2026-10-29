@@ -21,7 +21,7 @@ import { GlassCard, Skeleton } from '@/components/Glass'
 import { useRouteParam } from '@/lib/useRouteParam'
 import { getApiBase } from '@/lib/env'
 import { getAuthToken } from '@/lib/api'
-import { splitBriefSentence } from '@/lib/brief-text'
+import { briefHeadline, splitBriefSentence } from '@/lib/brief-text'
 
 interface Confirmation {
   creator_at: string | null
@@ -274,8 +274,16 @@ export default function BriefShareClient() {
                 </span>
               </p>
             ) : null}
-            <p className="mt-4 text-lg leading-relaxed text-ink-primary">{sentence.main}</p>
-            {sentence.note && <p className="mt-2 text-xs text-ink-tertiary">{sentence.note}</p>}
+            <p className="mt-4 text-xl font-medium leading-snug text-ink-primary">
+              {briefHeadline(sentence.main)}
+            </p>
+            <details className="mt-2">
+              <summary className="min-h-[44px] cursor-pointer py-2 text-sm font-medium text-family-400">
+                How this was worked out
+              </summary>
+              <p className="text-ink-secondary">{sentence.main}</p>
+              {sentence.note && <p className="mt-2 text-xs text-ink-tertiary">{sentence.note}</p>}
+            </details>
             {gbp(brief.result?.['savingsAtChangeMinor']) && (
               <p className="mt-3 text-sm text-ink-tertiary">
                 Savings in the calculation: {gbp(brief.result?.['savingsAtChangeMinor'])}
@@ -311,7 +319,13 @@ export default function BriefShareClient() {
                 {brief.facts!.map((x, i) => (
                   <div key={i} className="flex justify-between gap-4 border-b border-haze pb-2">
                     <dt className="text-ink-tertiary">{x.label}</dt>
-                    <dd className="text-right text-ink-primary">{x.value}</dd>
+                    <dd
+                      className={`text-right text-ink-primary ${
+                        x.value.length <= 24 ? 'shrink-0 whitespace-nowrap' : 'min-w-0 break-words'
+                      }`}
+                    >
+                      {x.value}
+                    </dd>
                   </div>
                 ))}
               </dl>

@@ -422,8 +422,14 @@ export interface BriefFact {
 }
 const gbp = (n: number) =>
   `£${(n / 100).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-const months = (n: number | null) =>
-  n === null ? 'income covers the entered spending' : `savings last about ${n.toFixed(1)} months`
+/** Beyond this the number stops meaning anything (a 1p-a-month shortfall). */
+const MAX_MONTHS = 600
+const months = (n: number | null) => {
+  if (n === null) return 'income covers the entered spending'
+  if (n >= MAX_MONTHS) return 'savings last more than 50 years'
+  if (n < 0.05) return 'there are no savings to draw on'
+  return `savings last about ${n.toFixed(1)} months`
+}
 const monthOffset = (from: string, to: string) =>
   (Date.parse(to) - Date.parse(from)) / ((86_400_000 * 365.25) / 12)
 
@@ -594,7 +600,7 @@ export function solveCatalogueBrief(problem: string, raw: unknown, asOf: string)
     result.fundDepletedAtMonth ??
     (finalBurn < 0 ? final.atMonth + final.savingsMinor / -finalBurn : null)
   const gap =
-    depletedAt === null
+    depletedAt === null || depletedAt >= MAX_MONTHS
       ? ''
       : ` On these figures savings would run out around ${monthLabel(asOf, depletedAt)} (about month ${depletedAt.toFixed(1)} from the calculation date).`
   const cashGap = result.unfundedCashMinor
@@ -652,6 +658,8 @@ function friendlyInputError(error: z.ZodError): string {
   const label = FIELD_LABELS[key] ?? 'One of the details'
   if (issue.code === 'too_big' && key === 'income_steps') return 'You can add up to 6 later changes'
   if (key === 'change_date' && issue.code === 'invalid_type') return 'Enter the date of the change'
+  if (issue.code === 'invalid_type' && key.endsWith('_minor'))
+    return `${label} needs to be a whole number of pence`
   if (key.endsWith('_date') || key === 'change_date' || issue.path.includes('date'))
     return `${label} needs to be a real date`
   if (issue.code === 'too_big') return `${label} is too large`
@@ -665,12 +673,21 @@ function friendlyInputError(error: z.ZodError): string {
  * likely secrets so the UI can warn without blocking (people sometimes write
  * a password anyway).
  */
-const SECRET_FIELD = /\b(pass(?:word|code|phrase)?|pin\b|otp|token|secret|cvv|security answer)\b/i
-const TOKEN_LIKE = /(?:^|\s)[A-Za-z0-9+/=_-]{20,}(?=\s|$)/
+const SECRET_PATTERNS: RegExp[] = [
+  // "password: Summer2024!" / "passcode is 482913": a password-like word followed
+  // by something that looks like the secret itself (has a digit or symbol).
+  /\b(?:pass(?:word|code|phrase)|passwd|pwd)\b\s*(?:is|are|:|=)\s*(?=\S{6,})\S*[\d!@#$%^&*]\S*/i,
+  // "pin 4821", "PIN is 123456"
+  /\bpin\b\s*(?:is|number|code|:|=)?\s*\d{4,8}\b/i,
+  // a card number (13-19 digits, optional spaces or dashes)
+  /\b(?:\d[ -]?){13,19}\b/,
+  // a long mixed letter-and-digit run with no spaces, e.g. an API key or recovery code
+  /(?:^|\s)(?=[A-Za-z0-9+/=_-]*\d)(?=[A-Za-z0-9+/=_-]*[A-Za-z])[A-Za-z0-9+/=_-]{20,}(?=\s|$)/,
+]
 /** Intent 79: credential-shaped input is rejected with a plain message —
  *  a deterministic guard rail, not a control; the field hint does the real work. */
 function rejectSecrets(facts: BriefFact[]): void {
-  const hit = facts.find((f) => SECRET_FIELD.test(f.value) || TOKEN_LIKE.test(f.value))
+  const hit = facts.find((f) => SECRET_PATTERNS.some((re) => re.test(f.value)))
   if (hit)
     throw new Error(
       `“${hit.label}” looks like it contains a password or code — record where the method lives, never the secret itself.`,

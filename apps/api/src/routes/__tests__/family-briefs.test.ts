@@ -429,6 +429,63 @@ describe('brief contract v2', () => {
     await db.collection('tenants').insertOne({ tenant_id: TENANT, plan: 'plus' })
   })
 
+  describe('preview and can_create', () => {
+    const INPUTS = {
+      monthly_income_minor: 300000,
+      monthly_essentials_minor: 200000,
+      liquid_savings_minor: 600000,
+      new_income_minor: 150000,
+      new_essentials_minor: 200000,
+      change_date: '2027-01-01',
+    }
+    const preview = (problem_type: string, inputs: Record<string, unknown>) =>
+      app.inject({
+        method: 'POST',
+        url: '/family/briefs/preview',
+        payload: { problem_type, inputs },
+      })
+
+    it('returns the same answer as create without saving anything', async () => {
+      const before = await db.collection('household_briefs').countDocuments({})
+      const p = await preview('earning_less', INPUTS)
+      expect(p.statusCode).toBe(200)
+      expect(await db.collection('household_briefs').countDocuments({})).toBe(before)
+      const created = await createV2('earning_less')
+      expect(created.statusCode).toBe(201)
+      expect(p.json().preview.template_sentence).toBe(created.json().brief.template_sentence)
+    })
+
+    it('is not blocked by the first-brief gate, because nothing is created', async () => {
+      await db.collection('tenants').deleteMany({})
+      await db.collection('tenants').insertOne({ tenant_id: TENANT, plan: 'free' })
+      expect((await createV2('earning_less')).statusCode).toBe(201)
+      expect((await createV2('earning_less')).statusCode).toBe(402)
+      expect((await preview('earning_less', INPUTS)).statusCode).toBe(200)
+    })
+
+    it('names the field when inputs are wrong', async () => {
+      const r = await preview('earning_less', { ...INPUTS, monthly_income_minor: -1 })
+      expect(r.statusCode).toBe(400)
+      expect(r.json().error).toBe('Take-home income must be zero or more')
+    })
+
+    it('never previews handover or sensitive entries', async () => {
+      const r = await preview('medical_contacts', { change_date: '2027-01-01', facts: {} })
+      expect(r.statusCode).toBe(400)
+      expect(r.json().error).toMatch(/no calculation/)
+    })
+
+    it('refuses someone who cannot create briefs, and says so in the catalogue', async () => {
+      currentRoles = ['viewer']
+      expect((await preview('earning_less', INPUTS)).statusCode).toBe(403)
+      const cat = await app.inject({ method: 'GET', url: '/family/brief-catalogue' })
+      expect(cat.json().can_create).toBe(false)
+      currentRoles = ['owner']
+      const cat2 = await app.inject({ method: 'GET', url: '/family/brief-catalogue' })
+      expect(cat2.json().can_create).toBe(true)
+    })
+  })
+
   it('rejects catalogue create with no named adult recipient', async () => {
     const res = await app.inject({
       method: 'POST',
