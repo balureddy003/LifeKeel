@@ -492,6 +492,27 @@ that keep marginal cost independent of stored PDF volume (from Intents 70–77):
    (GCP Ollama decommissioned 2026-10-24). Tier 0.
 
 
+## 227–229 — Brief catalogue expansion, hardening, yearly refresh and trusted-person sharing (proposed 2026-10-29)
+
+Follow-ups to the factual catalogue (Intent 78), from a review of what shipped:
+
+1. [227-brief-catalogue-expansion-and-engine-hardening.md](227-brief-catalogue-expansion-and-engine-hardening.md) —
+   **PROPOSED.** Part A (fix first): encrypt sensitive handover facts at rest,
+   keep them out of logs and telemetry, DPIA and retention, password-shaped input hint. Part B: add
+   renting, windfall, planned spend, care fees, illness, bereavement and
+   bill-in-one-name; allow past change dates; accept ordered multi-step briefs.
+   Tier 0.
+2. [228-annual-household-refresh.md](228-annual-household-refresh.md) —
+   **PROPOSED, gated on Stage 1 metrics.** Refresh a confirmed brief from last
+   time's figures, a household-entered review date with an in-app prompt, and no
+   outbound messages. Tier 0.
+3. [229-trusted-person-and-months-only-share.md](229-trusted-person-and-months-only-share.md) —
+   **PROPOSED, BLOCKED on a safeguarding review.** A "just me" path, a trusted
+   person who confirms by one-time link without an account, a months-only share
+   with no figures in the payload, and recipient control with no creator-visible
+   "not opened" signal. Tier 0.
+
+
 ## Suggested build order for 138–147 and 203–206
 
 Dependencies are in each PRD's "Builds on"; this is the order that follows from
