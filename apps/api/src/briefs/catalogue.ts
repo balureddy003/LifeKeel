@@ -398,8 +398,10 @@ export const CatalogueInputsSchema = z
       .array(
         z.object({
           date,
-          monthly_income_minor: money,
+          // One-off savings movement at this step (lump cost or receipt).
+          monthly_income_minor: money.optional(),
           monthly_essentials_minor: money.optional(),
+          cash_delta_minor: money.optional(),
         }),
       )
       .max(6)
@@ -540,16 +542,25 @@ export function solveCatalogueBrief(problem: string, raw: unknown, asOf: string)
   for (const step of [...(i.income_steps ?? [])].sort((a, b) => a.date.localeCompare(b.date))) {
     if (step.date < i.change_date)
       throw new Error('Each dated step must be on or after the change date')
-    const stepIncome = step.monthly_income_minor
+    if (
+      step.monthly_income_minor === undefined &&
+      step.monthly_essentials_minor === undefined &&
+      step.cash_delta_minor === undefined
+    )
+      throw new Error('Each dated step needs an income, spending, or one-off amount')
+    const stepIncome = step.monthly_income_minor ?? runIncome
     const stepExpenses = step.monthly_essentials_minor ?? runExpenses
     steps.push({
       atMonth: Math.max(0, monthOffset(asOf, step.date)),
       monthlyIncomeDeltaMinor: stepIncome - runIncome,
       monthlyExpenseDeltaMinor: stepExpenses - runExpenses,
+      ...(step.cash_delta_minor !== undefined ? { savingsDeltaMinor: step.cash_delta_minor } : {}),
     })
     fact(`Dated step ${step.date} household income / month`, gbp(stepIncome))
     if (step.monthly_essentials_minor !== undefined)
       fact(`Dated step ${step.date} household spending / month`, gbp(stepExpenses))
+    if (step.cash_delta_minor !== undefined)
+      fact(`Dated step ${step.date} one-off savings movement`, gbp(step.cash_delta_minor))
     runIncome = stepIncome
     runExpenses = stepExpenses
   }

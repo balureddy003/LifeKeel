@@ -351,6 +351,23 @@ export async function narrateBrief(
 
 // ─── One-off migration: encrypt plaintext facts on sensitive briefs ─────────
 // Idempotent: skips docs already carrying facts_encrypted. Never logs content.
+/**
+ * Scheduled sensitive-facts purge (Intent 79 / DPIA): the read-path lazy
+ * purge only fires on reads — a brief nobody opens would keep ciphertext
+ * past the stated retention. This runs under the daily cron below; it
+ * deletes fact ciphertext and plaintext once facts_expire_at passes while
+ * keeping the brief row itself (history, access log, result).
+ */
+export async function purgeExpiredSensitiveFacts(db: Db): Promise<{ purged: number }> {
+  const res = await db
+    .collection<HouseholdBriefDoc>('household_briefs')
+    .updateMany(
+      { facts_expire_at: { $lt: new Date() } },
+      { $unset: { facts_encrypted: '', facts: '', facts_expire_at: '' } },
+    )
+  return { purged: res.modifiedCount }
+}
+
 export async function migrateSensitiveBriefFacts(db: Db): Promise<{
   migrated: number
   skipped: number
