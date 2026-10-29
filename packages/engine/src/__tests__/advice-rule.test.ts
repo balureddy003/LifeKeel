@@ -78,6 +78,9 @@ function webCopyFiles(): string[] {
     'apps/web/src/components/ChannelsCard.tsx',
     'apps/web/src/lib/channel-explain.ts',
     'apps/api/src/delivery/push-payload.ts',
+    // Intent 80: catalogue titles, field labels and the generated-sentence
+    // template text all pass the same banned-pattern scan.
+    'apps/api/src/briefs/catalogue.ts',
     // Keel inline agent panel: help text, presets, setup step titles and fixed replies.
     'apps/api/src/keel-agent/help.ts',
     'apps/api/src/keel-agent/presets.ts',

@@ -107,6 +107,16 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
    */
   async function factsFor(b: HouseholdBriefDoc, viewer?: string): Promise<BriefFact[] | undefined> {
     if (!b.facts_encrypted) return undefined
+    // Encrypted facts need a signed-in participant. An anonymous read gets
+    // nothing and leaves a trace of the attempt — never 'anonymous' as if it
+    // were a legitimate viewer.
+    if (!viewer) {
+      await briefsFor(db, b.tenant_id).updateOne(
+        { id: b.id },
+        { $push: { sensitive_access: { user_id: 'anonymous_denied', at: new Date() } } },
+      )
+      return []
+    }
     if (b.facts_expire_at && b.facts_expire_at < new Date()) {
       await briefsFor(db, b.tenant_id).updateOne(
         { id: b.id },
@@ -491,7 +501,7 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
       { $set: { link_fetched_at: new Date() } },
     )
     return {
-      ...briefView(b!, undefined, await factsFor(b!, req.authContext?.user_id ?? 'anonymous')),
+      ...briefView(b!, undefined, await factsFor(b!, req.authContext?.user_id)),
       sentence: b!.template_sentence,
       for_member_name: b!.share!.for_member_name,
       // Old anonymous opens remain readable but cannot earn adult receipts.

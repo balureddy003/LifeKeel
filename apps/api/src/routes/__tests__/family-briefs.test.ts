@@ -41,6 +41,7 @@ import {
   type BriefProblemType,
   type HouseholdBriefDoc,
   migrateSensitiveBriefFacts,
+  purgeExpiredSensitiveFacts,
 } from '../../briefs/briefs.js'
 
 const TENANT = 't-briefs'
@@ -684,6 +685,95 @@ describe('catalogue review fixes', () => {
     expect(stored!.facts_encrypted).toMatch(/^dek:/)
     const second = await migrateSensitiveBriefFacts(db)
     expect(second.migrated).toBe(0)
+  })
+
+  it('scheduled purge deletes expired sensitive facts independent of reads', async () => {
+    const res = await v2('medical_contacts', {
+      change_date: '2026-10-28',
+      sensitive_consent: true,
+      facts: { 'Allergies as recorded': 'Penicillin' },
+    })
+    const id = res.json().brief.id
+    await db
+      .collection('household_briefs')
+      .updateOne({ id }, { $set: { facts_expire_at: new Date(Date.now() - 1000) } })
+    const { purged } = await purgeExpiredSensitiveFacts(db)
+    expect(purged).toBeGreaterThanOrEqual(1)
+    const stored = await db.collection('household_briefs').findOne({ id })
+    expect(stored!.facts_encrypted).toBeUndefined()
+    expect(stored!.facts ?? []).toEqual([])
+  })
+
+  it('a sensitive read without a session is refused before any decrypt', async () => {
+    const res = await v2('medical_contacts', {
+      change_date: '2026-10-28',
+      sensitive_consent: true,
+      facts: { 'Allergies as recorded': 'Penicillin' },
+    })
+    currentUser = null // anonymous opener, like a scanner
+    const anon = await app.inject({
+      method: 'GET',
+      url: `/b/${res.json().brief.share.url}`,
+    })
+    expect(anon.statusCode).toBe(401)
+    expect(JSON.stringify(anon.body)).not.toContain('Penicillin')
+    currentUser = CREATOR
+    const stored = await db.collection('household_briefs').findOne({ id: res.json().brief.id })
+    // The refused read left no successful access entry.
+    expect(
+      (stored!.sensitive_access ?? []).every((a: { user_id: string }) => a.user_id !== 'anonymous'),
+    ).toBe(true)
+  })
+
+  it('accepts up to 8 dated steps including a pure one-off cash step', async () => {
+    const step = (d: string, extra: Record<string, number> = {}) => ({
+      date: d,
+      ...extra,
+    })
+    const res = await v2('mortgage_fix', {
+      change_date: '2026-11-01',
+      monthly_income_minor: 300000,
+      monthly_essentials_minor: 200000,
+      liquid_savings_minor: 900000,
+      new_essentials_minor: 240000,
+      income_steps: [
+        step('2026-12-01', { monthly_income_minor: 200000 }),
+        step('2027-01-01', { cash_delta_minor: 50000 }),
+        step('2027-02-01'), // no amounts — rejected
+      ],
+    })
+    expect(res.statusCode).toBe(400)
+
+    const ok = await v2('mortgage_fix', {
+      change_date: '2026-11-01',
+      monthly_income_minor: 300000,
+      monthly_essentials_minor: 200000,
+      liquid_savings_minor: 900000,
+      new_essentials_minor: 240000,
+      income_steps: [
+        step('2026-12-01', { monthly_income_minor: 200000 }),
+        step('2027-01-01', { cash_delta_minor: 50000 }),
+      ],
+    })
+    expect(ok.statusCode).toBe(201)
+    const facts = ok.json().brief.facts
+    expect(facts.some((f: { label: string }) => f.label.includes('one-off savings'))).toBe(true)
+  })
+
+  it('rejects a ninth dated step', async () => {
+    const steps = Array.from({ length: 9 }, (_, n) => ({
+      date: `2026-1${n + 1 > 9 ? 0 : n + 1}-15`,
+      monthly_income_minor: 200000,
+    }))
+    const res = await v2('mortgage_fix', {
+      change_date: '2026-10-01',
+      monthly_income_minor: 300000,
+      monthly_essentials_minor: 200000,
+      liquid_savings_minor: 900000,
+      new_essentials_minor: 240000,
+      income_steps: steps,
+    })
+    expect(res.statusCode).toBe(400)
   })
 
   it('catalogue copy passes the advice-rule scan (Intent 80)', () => {

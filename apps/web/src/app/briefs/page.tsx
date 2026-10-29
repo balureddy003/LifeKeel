@@ -19,8 +19,18 @@ import {
   type BriefInputs,
   type HouseholdBrief,
 } from '@/lib/api'
+import { track } from '@/lib/growth-track'
 
 const toMinor = (pounds: string) => Math.round((Number(pounds) || 0) * 100)
+
+/** Intent 80 front doors — the four moments; the rest of the catalogue is
+ *  reachable from the search box. */
+const DOORS: ReadonlyArray<{ key: 'baby' | 'job' | 'care' | 'fix'; label: string }> = [
+  { key: 'job', label: 'A job is changing' },
+  { key: 'baby', label: 'A baby is coming' },
+  { key: 'care', label: 'A parent needs care' },
+  { key: 'fix', label: 'A fix is ending' },
+]
 
 function buildInputs(e: BriefCatalogueEntry, f: Record<string, string>): BriefInputs {
   const money = (k: string) => (f[k] ? toMinor(f[k]) : undefined)
@@ -52,6 +62,23 @@ function buildInputs(e: BriefCatalogueEntry, f: Record<string, string>): BriefIn
     if (f['defer']) i.deferred_period_months = Number(f['defer'])
     if (f['cover_end']) i.cover_end_date = f['cover_end']
   }
+  const steps: Array<{
+    date: string
+    monthly_income_minor: number
+    monthly_essentials_minor?: number
+  }> = []
+  for (let n = 0; f[`step_date:${n}`]; n++) {
+    const inc = money(`step_income:${n}`)
+    if (inc === undefined) continue
+    const step: (typeof steps)[number] = {
+      date: f[`step_date:${n}`]!,
+      monthly_income_minor: inc,
+    }
+    const se = money(`step_essentials:${n}`)
+    if (se !== undefined) step.monthly_essentials_minor = se
+    steps.push(step)
+  }
+  if (steps.length) i.income_steps = steps
   if (f['decision_deadline']) i.decision_deadline = f['decision_deadline']
   if (f['recorded_cover']?.trim()) i.recorded_cover = f['recorded_cover'].trim()
   return i
@@ -122,8 +149,7 @@ function Fields({
         {entry.sensitive && (
           <p className="text-xs text-gray-500">
             These details are sensitive. Record only what the household chooses to share with the
-            named adult — where things are, never a password or code. two named adults on this
-            brief.
+            named adult — where things are, never a password or code.
           </p>
         )}
       </div>
@@ -142,32 +168,62 @@ function Fields({
     moneyFields.push(num('One-off payment from savings (£)', 'cash_out'))
     moneyFields.push(num('One-off cash received (£, optional)', 'cash_in'))
   }
+  const stepsN = Number(f['steps_n'] ?? 0)
   return (
     <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
       {moneyFields}
       {date(entry.trigger, 'change_date')}
-      {entry.mode === 'stop' && (
-        <>
-          {num('Recorded cover payment / month (£, optional)', 'ip')}
-          {num('Cover waiting period (months)', 'defer')}
-          {date('Cover payments end (optional)', 'cover_end')}
-        </>
-      )}
-      {(entry.id === 'unpaid_leave' ||
-        entry.id === 'self_employed' ||
-        entry.id === 'pregnancy') && (
-        <>
-          {date('Return / end date (optional)', 'return_date')}
-          {f['return_date'] && (
+      <details
+        className="sm:col-span-2"
+        onToggle={(e) => {
+          if ((e.target as HTMLDetailsElement).open)
+            track('brief_form_step', { step: 'optional_opened', problem_type: entry.id })
+        }}
+      >
+        <summary className="cursor-pointer text-sm font-medium text-gray-700">
+          More detail (optional — cover, later changes, dated steps)
+        </summary>
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {entry.mode === 'stop' && (
             <>
-              {num('Income from then / month (£)', 'return_income')}
-              {num('Spending from then / month (£)', 'return_essentials')}
+              {num('Recorded cover payment / month (£, optional)', 'ip')}
+              {num('Cover waiting period (months)', 'defer')}
+              {date('Cover payments end (optional)', 'cover_end')}
             </>
           )}
-        </>
-      )}
-      {text('Recorded cover or end-date notes (optional)', 'recorded_cover')}
-      {date('Household-entered deadline (optional)', 'decision_deadline')}
+          {(entry.id === 'unpaid_leave' ||
+            entry.id === 'self_employed' ||
+            entry.id === 'pregnancy') && (
+            <>
+              {date('Return / end date (optional)', 'return_date')}
+              {f['return_date'] && (
+                <>
+                  {num('Income from then / month (£)', 'return_income')}
+                  {num('Spending from then / month (£)', 'return_essentials')}
+                </>
+              )}
+            </>
+          )}
+          {text('Recorded cover or end-date notes (optional)', 'recorded_cover')}
+          {date('Household-entered deadline (optional)', 'decision_deadline')}
+          <div className="sm:col-span-2">
+            {Array.from({ length: stepsN }).map((_, n) => (
+              <div key={n} className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {date(`Step ${n + 1} date`, `step_date:${n}`)}
+                {num(`Step ${n + 1} income / month (£)`, `step_income:${n}`)}
+                {num(`Step ${n + 1} spending (£, optional)`, `step_essentials:${n}`)}
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => set({ ...f, steps_n: String(stepsN + 1) })}
+              className="mt-2 text-sm font-medium text-gray-700 underline"
+            >
+              + Add a dated step
+            </button>
+          </div>
+        </div>
+      </details>
     </div>
   )
 }
@@ -216,7 +272,14 @@ export default function BriefsPage() {
 
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
   const shareUrl = created?.share?.url ? `${origin}/b/${created.share.url}` : null
-  const groups = [...new Set(catalogue.map((e) => e.group))]
+  const [door, setDoor] = useState<'baby' | 'job' | 'care' | 'fix' | null>(null)
+  const [query, setQuery] = useState('')
+  const visible = query
+    ? catalogue.filter((e) => e.title.toLowerCase().includes(query.toLowerCase()))
+    : door
+      ? catalogue.filter((e) => e.moment === door)
+      : catalogue
+  const groups = [...new Set(visible.map((e) => e.group))]
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-10">
@@ -243,11 +306,41 @@ export default function BriefsPage() {
               ))}
             </select>
           </label>
+          <div
+            className="flex flex-wrap items-center gap-2"
+            role="group"
+            aria-label="Pick the moment"
+          >
+            {DOORS.map((d) => (
+              <button
+                key={d.key}
+                type="button"
+                onClick={() => {
+                  const next = door === d.key ? null : d.key
+                  setDoor(next)
+                  if (next) track('brief_door_used', { door: d.key })
+                }}
+                className={`rounded-full border px-3 py-1.5 text-sm ${
+                  door === d.key ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-300'
+                }`}
+              >
+                {d.label}
+              </button>
+            ))}
+            <input
+              type="search"
+              placeholder="Search all briefs…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="ml-auto rounded-lg border border-gray-300 px-3 py-1.5 text-sm"
+              aria-label="Search briefs"
+            />
+          </div>
           {groups.map((g) => (
             <section key={g}>
               <h2 className="text-sm font-medium text-gray-500">{g}</h2>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                {catalogue
+                {visible
                   .filter((e) => e.group === g)
                   .map((e) => (
                     <button
