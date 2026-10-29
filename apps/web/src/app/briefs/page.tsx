@@ -10,11 +10,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   ArrowLeft,
+  CalendarClock,
   Check,
   ChevronRight,
   Clock,
   Copy,
   MessageSquare,
+  Pencil,
   Search,
   Share2,
 } from 'lucide-react'
@@ -36,8 +38,18 @@ import {
 import { track } from '@/lib/growth-track'
 import { MOMENTS, type MomentKey } from './moments'
 import { RunwayChart } from './RunwayChart'
+import { WhatIf } from './WhatIf'
+import { countdownText, daysUntil } from './what-if'
 import { briefHeadline, runsOutAround, splitBriefSentence } from '@/lib/brief-text'
-import { MAX_STEPS, buildInputs, needs, stepCount, validate, type FormValues } from './brief-form'
+import {
+  MAX_STEPS,
+  buildInputs,
+  inputsToForm,
+  needs,
+  stepCount,
+  validate,
+  type FormValues,
+} from './brief-form'
 
 const inputCls =
   'mt-1 w-full min-h-[48px] rounded-xl border border-haze bg-surface-1 px-3 text-ink-primary placeholder:text-ink-tertiary focus:outline-none focus:ring-2 focus:ring-family-500'
@@ -544,6 +556,8 @@ function ResultCard({
         </dl>
       )}
 
+      <WhatIf brief={brief} />
+
       <div className="rounded-2xl border border-haze bg-surface-1 p-4">
         <p className="text-sm font-medium text-ink-primary">Two quick steps</p>
         <ol className="mt-4 space-y-5">
@@ -634,6 +648,55 @@ function ResultCard({
   )
 }
 
+function Glance({
+  brief,
+  title,
+  canUpdate,
+  onWhatIf,
+  onUpdate,
+}: {
+  brief: HouseholdBrief
+  title: string
+  canUpdate: boolean
+  onWhatIf: () => void
+  onUpdate: () => void
+}) {
+  const today = new Date().toISOString().slice(0, 10)
+  const date = typeof brief.inputs?.change_date === 'string' ? brief.inputs.change_date : null
+  const days = date ? daysUntil(date, today) : null
+  const other = brief.share?.for_member_name ?? 'the other adult'
+  const c = brief.confirmation
+  const next = !c?.creator_at
+    ? 'Read it and confirm, so you can both see the same numbers.'
+    : !c.recipient_at
+      ? `Waiting for ${other} to read and confirm.`
+      : 'You have both seen the same numbers. Things change, so update the figures when they do.'
+  return (
+    <GlassCard className="mt-6 p-5">
+      <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
+        Your latest brief
+      </p>
+      <p className="mt-1 text-lg font-semibold text-ink-primary">{title}</p>
+      {days !== null && (
+        <p className="mt-1 flex items-center gap-2 text-sm text-ink-secondary">
+          <CalendarClock size={16} aria-hidden="true" /> The change {countdownText(days)}
+        </p>
+      )}
+      <p className="mt-2 text-sm text-ink-secondary">{next}</p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button type="button" onClick={onWhatIf} className={ghostBtn}>
+          Try a what-if
+        </button>
+        {canUpdate && (
+          <button type="button" onClick={onUpdate} className={ghostBtn}>
+            <Pencil size={16} aria-hidden="true" /> Update the figures
+          </button>
+        )}
+      </div>
+    </GlassCard>
+  )
+}
+
 export default function BriefsPage() {
   const [loaded, setLoaded] = useState(false)
   const [canCreate, setCanCreate] = useState(true)
@@ -657,6 +720,7 @@ export default function BriefsPage() {
   const [gateHit, setGateHit] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState<string | null>(null)
+  const [updatingFrom, setUpdatingFrom] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const formRef = useRef<HTMLDivElement>(null)
   const resultRef = useRef<HTMLDivElement>(null)
@@ -676,14 +740,34 @@ export default function BriefsPage() {
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
   const recipientName = recipients.find((r) => r.id === forMember)?.name ?? 'the other adult'
 
-  function choose(e: BriefCatalogueEntry) {
+  function choose(e: BriefCatalogueEntry, prefill?: FormValues, from?: string) {
     setEntry(e)
-    setF({})
+    setF(prefill ?? {})
+    setUpdatingFrom(from ?? null)
     setErrors({})
     setError(null)
     setGateHit(false)
     setCreated(null)
     setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
+
+  /** Start a new brief from the figures entered last time. */
+  function startUpdate(b: HouseholdBrief) {
+    const e = byId.get(b.problem_type)
+    if (!e || e.mode === 'handover' || !b.inputs) return
+    track('brief_update_started', { problem_type: e.id })
+    choose(e, inputsToForm(e, b.inputs), new Date(b.created_at).toLocaleDateString('en-GB'))
+  }
+
+  function openBrief(id: string) {
+    setOpen(id)
+    setTimeout(
+      () =>
+        document
+          .getElementById(`brief-${id}`)
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+      50,
+    )
   }
 
   function back() {
@@ -830,6 +914,19 @@ export default function BriefsPage() {
         </div>
       )}
 
+      {loaded && canCreate && !entry && !created && briefs[0] && (
+        <Glance
+          brief={briefs[0]}
+          title={briefs[0].title ?? byId.get(briefs[0].problem_type)?.title ?? 'Your brief'}
+          canUpdate={
+            byId.get(briefs[0].problem_type)?.mode !== 'handover' &&
+            !!byId.get(briefs[0].problem_type)
+          }
+          onWhatIf={() => openBrief(briefs[0]!.id)}
+          onUpdate={() => startUpdate(briefs[0]!)}
+        />
+      )}
+
       {loaded && canCreate && !entry && !created && (
         <section className="mt-6" aria-labelledby="moment-heading">
           <h2 id="moment-heading" className="text-lg font-semibold text-ink-primary">
@@ -968,7 +1065,9 @@ export default function BriefsPage() {
             {entry.title}
           </h2>
           <p className="mt-1 text-sm text-ink-secondary">
-            Use your best figures. You can make a new brief any time they change.
+            {updatingFrom
+              ? `Starting from the figures you entered on ${updatingFrom}. Change only what is different.`
+              : 'Use your best figures. You can make a new brief any time they change.'}
           </p>
 
           <GlassCard className="mt-4 space-y-5 p-5">
@@ -1086,7 +1185,11 @@ export default function BriefsPage() {
               const other = b.share?.for_member_name ?? 'the other adult'
               const isOpen = open === b.id
               return (
-                <li key={b.id} className="rounded-2xl border border-haze bg-surface-1 p-4">
+                <li
+                  key={b.id}
+                  id={`brief-${b.id}`}
+                  className="scroll-mt-40 rounded-2xl border border-haze bg-surface-1 p-4"
+                >
                   <button
                     type="button"
                     aria-expanded={isOpen}
@@ -1115,9 +1218,10 @@ export default function BriefsPage() {
                   </div>
                   {isOpen && (
                     <div className="mt-4 space-y-4 border-t border-haze pt-4">
-                      <p className="text-ink-primary">
-                        {splitBriefSentence(b.template_sentence).main}
+                      <p className="text-lg font-medium text-ink-primary">
+                        {briefHeadline(splitBriefSentence(b.template_sentence).main)}
                       </p>
+                      <WhatIf brief={b} />
                       {!b.confirmation?.creator_at && b.result_version && (
                         <button
                           type="button"
@@ -1130,6 +1234,17 @@ export default function BriefsPage() {
                         </button>
                       )}
                       <div className="flex flex-wrap gap-3 text-sm">
+                        {byId.get(b.problem_type) &&
+                          byId.get(b.problem_type)!.mode !== 'handover' && (
+                            <button
+                              type="button"
+                              onClick={() => startUpdate(b)}
+                              className="inline-flex min-h-[44px] items-center gap-1 font-medium text-family-400 underline"
+                            >
+                              <Pencil size={14} aria-hidden="true" /> Update these figures
+                            </button>
+                          )}
+
                         {b.share && !b.share.revoked && (
                           <button
                             type="button"

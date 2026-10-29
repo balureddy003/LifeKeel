@@ -30,6 +30,9 @@ export const KNOWN_EVENTS = new Set([
   'brief_form_step',
   'brief_gate_hit',
   'brief_gate_converted',
+  // Engagement on a finished brief (content-free: which feature, never a figure).
+  'brief_whatif_used',
+  'brief_update_started',
   'landing_view',
   'landing_get_started_click',
   'landing_signin_click',

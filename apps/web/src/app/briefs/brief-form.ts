@@ -119,3 +119,43 @@ export function validate(e: BriefCatalogueEntry, f: FormValues): Record<string, 
     errors['return_date'] = 'Add the income and spending from that date too'
   return errors
 }
+
+/**
+ * The inverse of `buildInputs`, so a household can start a new brief from the
+ * figures they entered last time and change only what moved. Money briefs only:
+ * handover facts are never pre-filled (they may be sensitive and encrypted).
+ */
+export function inputsToForm(e: BriefCatalogueEntry, i: BriefInputs): FormValues {
+  const f: FormValues = {}
+  if (e.mode === 'handover') return f
+  const pounds = (minor: unknown) =>
+    typeof minor === 'number' ? String(Math.round(minor) / 100) : undefined
+  const put = (key: string, value: string | undefined) => {
+    if (value !== undefined && value !== '') f[key] = value
+  }
+  put('income', pounds(i.monthly_income_minor))
+  put('essentials', pounds(i.monthly_essentials_minor))
+  put('savings', pounds(i.liquid_savings_minor))
+  put('new_income', pounds(i.new_income_minor))
+  put('new_essentials', pounds(i.new_essentials_minor))
+  put('cash_out', pounds(i.cash_out_minor))
+  put('cash_in', pounds(i.cash_in_minor))
+  put('change_date', i.change_date)
+  put('return_date', i.return_date)
+  put('return_income', pounds(i.return_income_minor))
+  put('return_essentials', pounds(i.return_essentials_minor))
+  put('ip', pounds(i.income_protection_monthly_minor))
+  if (typeof i.deferred_period_months === 'number') put('defer', String(i.deferred_period_months))
+  put('cover_end', i.cover_end_date)
+  put('decision_deadline', i.decision_deadline)
+  put('recorded_cover', i.recorded_cover)
+  const steps = i.income_steps ?? []
+  steps.slice(0, MAX_STEPS).forEach((step, n) => {
+    put(`step_date:${n}`, step.date)
+    put(`step_income:${n}`, pounds(step.monthly_income_minor))
+    put(`step_essentials:${n}`, pounds(step.monthly_essentials_minor))
+    put(`step_cash:${n}`, pounds(step.cash_delta_minor))
+  })
+  if (steps.length) f['steps_n'] = String(Math.min(steps.length, MAX_STEPS))
+  return f
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BriefCatalogueEntry } from '@/lib/api'
-import { buildInputs, needs, validate } from '../brief-form'
+import { buildInputs, inputsToForm, needs, validate } from '../brief-form'
 
 const entry = (over: Partial<BriefCatalogueEntry>): BriefCatalogueEntry => ({
   id: 'earning_less',
@@ -115,5 +115,50 @@ describe('needs', () => {
     expect(needs(entry({ mode: 'cost' }))).toMatchObject({ newIncome: false, newEssentials: true })
     expect(needs(entry({ mode: 'mixed' }))).toMatchObject({ newIncome: true, newEssentials: true })
     expect(needs(entry({ mode: 'stop' })).cover).toBe(true)
+  })
+})
+
+describe('inputsToForm', () => {
+  it('round-trips a money brief so an update starts from last time', () => {
+    const e = entry({ id: 'pregnancy', mode: 'mixed' })
+    const form = {
+      income: '5000',
+      essentials: '3000.5',
+      savings: '9000',
+      new_income: '4500',
+      new_essentials: '3000',
+      change_date: '2026-11-28',
+      return_date: '2027-10-01',
+      return_income: '5000',
+      return_essentials: '3200',
+      decision_deadline: '2026-12-01',
+      steps_n: '2',
+      'step_date:0': '2027-01-28',
+      'step_income:0': '1500',
+      'step_date:1': '2027-12-28',
+      'step_income:1': '800',
+      'step_cash:1': '250',
+    }
+    const inputs = buildInputs(e, form)
+    expect(buildInputs(e, inputsToForm(e, inputs))).toEqual(inputs)
+  })
+
+  it('shows pence as pounds and skips empty values', () => {
+    const f = inputsToForm(entry({}), {
+      monthly_income_minor: 500000,
+      monthly_essentials_minor: 300050,
+      change_date: '2026-11-28',
+    })
+    expect(f['essentials']).toBe('3000.5')
+    expect(f['savings']).toBeUndefined()
+  })
+
+  it('never pre-fills handover facts', () => {
+    expect(
+      inputsToForm(medical, {
+        change_date: '2026-11-01',
+        facts: { 'GP and contact details': 'Dr A' },
+      }),
+    ).toEqual({})
   })
 })

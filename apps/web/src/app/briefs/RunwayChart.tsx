@@ -76,22 +76,29 @@ export function RunwayChart({
   result,
   startSavings,
   runsOutLabel,
+  baseline,
 }: {
   result: Record<string, unknown> | null
   startSavings: number
   runsOutLabel?: string | undefined
+  /** An earlier answer drawn as a dashed line, e.g. the original beside a what-if. */
+  baseline?: { result: Record<string, unknown> | null; startSavings: number } | undefined
 }) {
   const built = runwayPoints(result, startSavings)
   if (!built) return null
+  const base = baseline ? runwayPoints(baseline.result, baseline.startSavings) : null
   const { pts, zeroAt } = built
   const W = 320
   const H = 132
   const pad = { l: 8, r: 8, t: 12, b: 22 }
-  const maxT = Math.max(1, ...pts.map((p) => p.t))
-  const maxS = Math.max(1, ...pts.map((p) => p.s))
+  const all = [...pts, ...(base?.pts ?? [])]
+  const maxT = Math.max(1, ...all.map((p) => p.t))
+  const maxS = Math.max(1, ...all.map((p) => p.s))
   const x = (t: number) => pad.l + (t / maxT) * (W - pad.l - pad.r)
   const y = (s: number) => pad.t + (1 - s / maxS) * (H - pad.t - pad.b)
-  const line = pts.map((p) => `${x(p.t).toFixed(1)},${y(p.s).toFixed(1)}`).join(' ')
+  const toLine = (points: Pt[]) =>
+    points.map((p) => `${x(p.t).toFixed(1)},${y(p.s).toFixed(1)}`).join(' ')
+  const line = toLine(pts)
   const area = `${x(pts[0]!.t).toFixed(1)},${y(0)} ${line} ${x(pts[pts.length - 1]!.t).toFixed(1)},${y(0)}`
   const summary =
     zeroAt === null
@@ -103,10 +110,23 @@ export function RunwayChart({
       <svg
         viewBox={`0 0 ${W} ${H}`}
         role="img"
-        aria-label={summary}
+        aria-label={
+          base ? `${summary} The dashed line is the original answer, for comparison.` : summary
+        }
         className="w-full text-family-400"
       >
         <polygon points={area} fill="currentColor" opacity="0.12" />
+        {base && (
+          <polyline
+            points={toLine(base.pts)}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeDasharray="5 4"
+            opacity="0.45"
+            className="text-ink-tertiary"
+          />
+        )}
         <polyline
           points={line}
           fill="none"
@@ -144,7 +164,9 @@ export function RunwayChart({
       </svg>
       <figcaption className="mt-1 text-xs text-ink-tertiary">
         {zeroAt !== null && runsOutLabel ? `Savings reach zero ${runsOutLabel}. ` : ''}
-        Savings over time, from the figures entered.
+        {base
+          ? 'Dashed line: your original answer.'
+          : 'Savings over time, from the figures entered.'}
       </figcaption>
     </figure>
   )
