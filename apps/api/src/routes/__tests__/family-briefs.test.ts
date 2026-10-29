@@ -18,6 +18,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { MongoClient, type Db } from 'mongodb'
 import { MongoMemoryServer } from 'mongodb-memory-server'
 import Fastify, { type FastifyInstance } from 'fastify'
+import { BRIEF_CATALOGUE } from '../../briefs/catalogue.js'
 import { registerFamilyBriefRoutes } from '../family-briefs.js'
 
 // PRD-222's hard guarantee: the brief path performs ZERO model calls.
@@ -555,5 +556,110 @@ describe('brief contract v2', () => {
       expect(b.template_sentence.length).toBeGreaterThan(10)
       expect(b.facts.length).toBeGreaterThan(3)
     }
+  })
+})
+
+// ─── Review fixes: encryption, secret warnings, past dates, dated steps ────
+
+describe('catalogue review fixes', () => {
+  const M_CREATOR = {
+    id: 'm-creator',
+    name: 'Sam',
+    role: 'organizer',
+    status: 'active',
+    email: 's@x.co',
+    joined_at: '2026-01-01',
+    user_id: CREATOR,
+  }
+  const M_PARTNER = {
+    id: 'm-partner',
+    name: 'Alex',
+    role: 'adult',
+    status: 'active',
+    email: 'a@x.co',
+    joined_at: '2026-01-01',
+    user_id: PARTNER,
+  }
+  beforeEach(async () => {
+    await db.collection('family_groups').insertOne({
+      tenant_id: TENANT,
+      members: [M_CREATOR, M_PARTNER],
+      created_at: new Date(),
+    })
+    await db.collection('tenants').insertOne({ tenant_id: TENANT, plan: 'plus' })
+  })
+  const v2 = (problem_type: string, inputs: Record<string, unknown>) =>
+    app.inject({
+      method: 'POST',
+      url: '/family/briefs',
+      payload: { contract_version: 2, problem_type, for_member_id: 'm-partner', inputs },
+    })
+
+  it('sensitive handover facts are envelope-encrypted at rest and decrypted on read', async () => {
+    const res = await v2('medical_contacts', {
+      change_date: '2026-10-28',
+      sensitive_consent: true,
+      facts: { 'Allergies as recorded': 'Penicillin' },
+    })
+    expect(res.statusCode).toBe(201)
+    const id = res.json().brief.id
+    const stored = await db.collection('household_briefs').findOne({ id })
+    expect(stored!.sensitive).toBe(true)
+    expect(stored!.facts).toEqual([])
+    expect(stored!.facts_encrypted).toMatch(/^dek:/)
+    expect(stored!.facts_encrypted).not.toContain('Penicillin')
+    const got = await app.inject({ method: 'GET', url: `/family/briefs/${id}` })
+    expect(
+      got.json().brief.facts.find((f: { label: string }) => f.label === 'Allergies as recorded')
+        ?.value,
+    ).toBe('Penicillin')
+  })
+
+  it('warns (does not block) when a handover fact looks like a secret', async () => {
+    const res = await v2('joint_bill', {
+      change_date: '2026-10-28',
+      facts: { 'Bill or account': 'Council tax', 'How it is paid': 'password: Hunter2!' },
+    })
+    expect(res.statusCode).toBe(201)
+    expect(res.json().warnings.length).toBeGreaterThan(0)
+  })
+
+  it('accepts a change date already in effect — runway still from today', async () => {
+    const res = await v2('earning_less', {
+      monthly_income_minor: 300000,
+      monthly_essentials_minor: 200000,
+      liquid_savings_minor: 600000,
+      new_income_minor: 150000,
+      new_essentials_minor: 200000,
+      change_date: '2020-01-01',
+    })
+    expect(res.statusCode).toBe(201)
+    expect(res.json().brief.template_sentence).toContain('months')
+  })
+
+  it('folds dated income_steps into the scenario timeline', async () => {
+    const res = await v2('earning_less', {
+      monthly_income_minor: 300000,
+      monthly_essentials_minor: 200000,
+      liquid_savings_minor: 600000,
+      new_income_minor: 270000,
+      new_essentials_minor: 200000,
+      change_date: '2027-01-01',
+      income_steps: [
+        { date: '2027-03-01', monthly_income_minor: 150000 },
+        { date: '2027-10-01', monthly_income_minor: 300000 },
+      ],
+    })
+    expect(res.statusCode).toBe(201)
+    expect(res.json().brief.result.timeline.length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('catalogue gains the missing use cases; separation stays out', () => {
+    const ids = BRIEF_CATALOGUE.map((e) => e.id)
+    for (const id of ['energy_council_tax', 'car_repair', 'joint_bill', 'bereavement'])
+      expect(ids).toContain(id)
+    expect(ids.some((id) => id.includes('separat'))).toBe(false)
+    expect(BRIEF_CATALOGUE.find((e) => e.id === 'hours_cut')!.title).toMatch(/illness|recovery/)
+    expect(BRIEF_CATALOGUE.find((e) => e.id === 'bereavement')!.sensitive).toBe(true)
   })
 })

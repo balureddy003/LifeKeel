@@ -91,6 +91,10 @@ export interface HouseholdBriefDoc extends Record<string, unknown> {
   contract_version?: 2
   title?: string
   facts?: BriefFact[]
+  /** Health/care handover facts are envelope-encrypted at rest (UK GDPR);
+   *  facts stays empty on those docs and readers decrypt via facts_encrypted. */
+  sensitive?: boolean
+  facts_encrypted?: string
   result_version?: string
   as_of_date?: string
   acknowledgements?: Array<{ user_id: string; result_version: string; confirmed_at: Date }>
