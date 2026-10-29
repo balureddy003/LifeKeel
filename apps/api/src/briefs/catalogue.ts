@@ -12,12 +12,15 @@ interface Entry {
   sensitive?: boolean
   /** Downplay in the form: tier-4 problems exist but are not the pitch. */
   lowKey?: boolean
+  /** Front-door moment this entry belongs to (Intent 80). */
+  moment?: 'baby' | 'job' | 'care' | 'fix'
 }
 
 /** One catalogue drives the API allow-list and the form; no model chooses inputs. */
 export const BRIEF_CATALOGUE: readonly Entry[] = [
   {
     id: 'income_stops',
+    moment: 'job',
     title: 'One of us might stop earning',
     group: 'Money and income',
     mode: 'stop',
@@ -25,6 +28,7 @@ export const BRIEF_CATALOGUE: readonly Entry[] = [
   },
   {
     id: 'earning_less',
+    moment: 'job',
     title: 'Someone is about to earn less',
     group: 'Money and income',
     mode: 'income',
@@ -32,6 +36,7 @@ export const BRIEF_CATALOGUE: readonly Entry[] = [
   },
   {
     id: 'job_change',
+    moment: 'job',
     title: 'Job change or notice',
     group: 'Money and income',
     mode: 'mixed',
@@ -39,6 +44,7 @@ export const BRIEF_CATALOGUE: readonly Entry[] = [
   },
   {
     id: 'hours_cut',
+    moment: 'job',
     title: 'Hours cut, role changed, illness or recovery',
     group: 'Money and income',
     mode: 'mixed',
@@ -46,6 +52,7 @@ export const BRIEF_CATALOGUE: readonly Entry[] = [
   },
   {
     id: 'mortgage_fix',
+    moment: 'fix',
     title: 'Mortgage fix ending',
     group: 'Money and income',
     mode: 'cost',
@@ -53,6 +60,7 @@ export const BRIEF_CATALOGUE: readonly Entry[] = [
   },
   {
     id: 'fees_start',
+    moment: 'baby',
     title: 'Nursery or school fees starting',
     group: 'Money and income',
     mode: 'cost',
@@ -67,6 +75,7 @@ export const BRIEF_CATALOGUE: readonly Entry[] = [
   },
   {
     id: 'renewal',
+    moment: 'fix',
     title: 'Renewal price rise',
     group: 'Money and income',
     mode: 'cost',
@@ -74,6 +83,7 @@ export const BRIEF_CATALOGUE: readonly Entry[] = [
   },
   {
     id: 'self_employed',
+    moment: 'job',
     title: 'Self-employed quiet period or tax bill',
     group: 'Money and income',
     mode: 'mixed',
@@ -109,6 +119,7 @@ export const BRIEF_CATALOGUE: readonly Entry[] = [
   },
   {
     id: 'unpaid_leave',
+    moment: 'job',
     title: 'Sabbatical or unpaid leave',
     group: 'Money and income',
     mode: 'income',
@@ -116,6 +127,7 @@ export const BRIEF_CATALOGUE: readonly Entry[] = [
   },
   {
     id: 'retiring',
+    moment: 'job',
     title: 'One adult retiring or taking pension early',
     group: 'Money and income',
     mode: 'income',
@@ -130,6 +142,7 @@ export const BRIEF_CATALOGUE: readonly Entry[] = [
   },
   {
     id: 'rental_change',
+    moment: 'fix',
     title: 'Second property or rental change',
     group: 'Money and income',
     mode: 'mixed',
@@ -150,6 +163,7 @@ export const BRIEF_CATALOGUE: readonly Entry[] = [
   },
   {
     id: 'medical_contacts',
+    moment: 'care',
     title: 'Medical emergency contacts',
     group: 'Practical handover',
     mode: 'handover',
@@ -202,6 +216,7 @@ export const BRIEF_CATALOGUE: readonly Entry[] = [
   },
   {
     id: 'care_handover',
+    moment: 'care',
     title: 'Care for a parent or partner',
     group: 'Practical handover',
     mode: 'handover',
@@ -256,6 +271,7 @@ export const BRIEF_CATALOGUE: readonly Entry[] = [
   },
   {
     id: 'pregnancy',
+    moment: 'baby',
     title: 'Pregnancy and first year',
     group: 'Children',
     mode: 'mixed',
@@ -263,6 +279,7 @@ export const BRIEF_CATALOGUE: readonly Entry[] = [
   },
   {
     id: 'nursery',
+    moment: 'baby',
     title: 'Nursery',
     group: 'Children',
     mode: 'cost',
@@ -329,6 +346,7 @@ export const BRIEF_CATALOGUE: readonly Entry[] = [
   },
   {
     id: 'bereavement',
+    moment: 'care',
     title: 'Bereavement — the surviving adult',
     group: 'Practical handover',
     mode: 'handover',
@@ -338,6 +356,7 @@ export const BRIEF_CATALOGUE: readonly Entry[] = [
   },
   {
     id: 'rent_rise',
+    moment: 'fix',
     title: 'Rent rise',
     group: 'Money and income',
     mode: 'cost',
@@ -345,6 +364,7 @@ export const BRIEF_CATALOGUE: readonly Entry[] = [
   },
   {
     id: 'tenancy_end',
+    moment: 'fix',
     title: 'Tenancy ending or moving home',
     group: 'Money and income',
     mode: 'mixed',

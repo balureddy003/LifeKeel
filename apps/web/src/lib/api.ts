@@ -6243,6 +6243,8 @@ export interface BriefCatalogueEntry {
   trigger: string
   fields?: readonly string[]
   sensitive?: boolean
+  lowKey?: boolean
+  moment?: 'baby' | 'job' | 'care' | 'fix'
 }
 
 export interface HouseholdBrief {
