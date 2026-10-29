@@ -84,9 +84,11 @@ describe('setup state', () => {
       status: 'waiting_on_other',
       reason_code: 'invite_pending',
     })
+    // Children already on the roster: the card asks for what is missing, not to add them again.
     expect(step(s, 'children_added')).toMatchObject({
       status: 'partial',
       reason_code: 'missing_date_of_birth',
+      title: "Add your child's date of birth",
     })
     expect(step(s, 'income_recorded').status).toBe('done')
     expect(step(s, 'expenses_recorded').status).toBe('done')

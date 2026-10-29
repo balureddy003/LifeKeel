@@ -895,16 +895,20 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
     const signal = opts?.signal
     // Support tier strings: 'tier:fast' | 'tier:balanced' | 'tier:powerful'
     let resolvedModel = model ?? defaultModel
+    let tierProvider: LlmProvider | null = null
     if (resolvedModel.startsWith('tier:')) {
       const tier = resolvedModel.slice(5) as ReasoningTier
       // '' defeats model-name detection — a tier has no model of its own, so
       // the provider must come from explicit config → operator/env override
       // → first configured credential. Passing defaultModel here routes every
       // tier call to anthropic regardless of which keys are set.
-      const provider = resolveProvider(cfg, '')
-      resolvedModel = resolveTierModel(tier, provider, cfg.tierModels)
+      tierProvider = resolveProvider(cfg, '')
+      resolvedModel = resolveTierModel(tier, tierProvider, cfg.tierModels)
     }
-    const provider = resolveProvider(cfg, resolvedModel)
+    // A tier model stays on the provider that picked it: re-detecting from the
+    // name sends azure's 'gpt-4o-mini' to openai and ollama's 'llama3.2:3b' to
+    // groq, which fail when only the picked provider is configured.
+    const provider = tierProvider ?? resolveProvider(cfg, resolvedModel)
 
     try {
       switch (provider) {
