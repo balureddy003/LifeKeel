@@ -414,8 +414,7 @@ export function solveCatalogueBrief(problem: string, raw: unknown, asOf: string)
   const entry = BRIEF_CATALOGUE.find((e) => e.id === problem)
   if (!entry) throw new Error('Choose a brief from the catalogue')
   const parsed = CatalogueInputsSchema.safeParse(raw)
-  if (!parsed.success)
-    throw new Error('Check the amounts and dates; amounts must be non-negative and dates valid')
+  if (!parsed.success) throw new Error(friendlyInputError(parsed.error))
   const i = parsed.data
   const facts: BriefFact[] = []
   const fact = (label: string, value: string | undefined) => {
@@ -556,19 +555,78 @@ export function solveCatalogueBrief(problem: string, raw: unknown, asOf: string)
   const first = result.timeline![0]!
   const final = result.timeline![result.timeline!.length - 1]!
   const description = `Before the change, ${months(result.currentRunwayMonths)}. At the first change, ${months(first.runwayMonths)}. After the last entered change, ${months(final.runwayMonths)}.`
+  // The solver records depletion only between steps. After the last step the
+  // final regime runs on indefinitely, so a fund that is still draining there
+  // would otherwise never be reported.
+  const finalBurn = final.monthlyIncomeMinor - final.monthlyExpensesMinor
+  const depletedAt =
+    result.fundDepletedAtMonth ??
+    (finalBurn < 0 ? final.atMonth + final.savingsMinor / -finalBurn : null)
   const gap =
-    result.fundDepletedAtMonth === null
+    depletedAt === null
       ? ''
-      : ` Savings reach zero around month ${result.fundDepletedAtMonth.toFixed(1)} from the calculation date.`
+      : ` On these figures savings would run out around ${monthLabel(asOf, depletedAt)} (about month ${depletedAt.toFixed(1)} from the calculation date).`
   const cashGap = result.unfundedCashMinor
     ? ` The entered one-off payments exceed available savings by ${gbp(result.unfundedCashMinor)}.`
     : ''
+  const oneOff =
+    (i.cash_in_minor || i.cash_out_minor) && !result.unfundedCashMinor
+      ? ` Just after the one-off amount, savings are about ${gbp(first.savingsMinor)} (${gbp(i.liquid_savings_minor)} today).`
+      : ''
   return {
     inputs: i,
     result,
     facts,
-    template_sentence: description + gap + cashGap + MONEY_DISCLAIMER,
+    template_sentence: description + oneOff + gap + cashGap + MONEY_DISCLAIMER,
   }
+}
+
+const monthLabel = (asOf: string, monthsFrom: number) =>
+  new Date(Date.parse(asOf) + monthsFrom * 30.4375 * 86_400_000).toLocaleDateString('en-GB', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+
+const FIELD_LABELS: Record<string, string> = {
+  monthly_income_minor: 'Take-home income',
+  monthly_essentials_minor: 'Spending',
+  liquid_savings_minor: 'Liquid savings',
+  new_income_minor: 'Income after the change',
+  new_essentials_minor: 'Spending after the change',
+  change_date: 'The change date',
+  cash_out_minor: 'The one-off payment',
+  cash_in_minor: 'The one-off cash received',
+  return_date: 'The later change date',
+  return_income_minor: 'Income at the later change',
+  return_essentials_minor: 'Spending at the later change',
+  income_steps: 'Later changes',
+  income_protection_monthly_minor: 'The cover payment',
+  deferred_period_months: 'The cover waiting period',
+  cover_end_date: 'The cover end date',
+  decision_deadline: 'The deadline',
+  recorded_cover: 'The cover notes',
+  facts: 'The handover details',
+  sensitive_consent: 'Permission',
+}
+
+/** Name the field that failed instead of a generic "check the amounts" line. */
+function friendlyInputError(error: z.ZodError): string {
+  const issue = error.issues[0]
+  if (!issue) return 'Check the details and try again'
+  if (issue.code === 'unrecognized_keys')
+    return `Unexpected detail: ${issue.keys.map((k) => FIELD_LABELS[k] ?? k).join(', ')}`
+  const key = String(issue.path[0] ?? '')
+  if (key === 'sensitive_consent') return 'Permission to record and share these details is required'
+  const label = FIELD_LABELS[key] ?? 'One of the details'
+  if (issue.code === 'too_big' && key === 'income_steps') return 'You can add up to 6 later changes'
+  if (key === 'change_date' && issue.code === 'invalid_type') return 'Enter the date of the change'
+  if (key.endsWith('_date') || key === 'change_date' || issue.path.includes('date'))
+    return `${label} needs to be a real date`
+  if (issue.code === 'too_big') return `${label} is too large`
+  if (key.endsWith('_minor') || issue.path.includes('monthly_income_minor'))
+    return `${label} must be zero or more`
+  return `${label} needs checking`
 }
 
 /**

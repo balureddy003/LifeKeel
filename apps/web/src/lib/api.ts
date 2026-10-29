@@ -116,7 +116,7 @@ const FAMILY_DETECTORS = [
   'family_policy_review',
 ] as const
 
-function getAuthToken(): string | null {
+export function getAuthToken(): string | null {
   if (typeof window === 'undefined') return null
   return getSessionToken()
 }
