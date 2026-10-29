@@ -20,6 +20,7 @@ import { encryptForTenant, decryptEnveloped } from '../crypto/envelope.js'
 import { BRIEF_CATALOGUE, solveCatalogueBrief, type BriefFact } from '../briefs/catalogue.js'
 import {
   BRIEF_PROBLEM_TYPES,
+  SENSITIVE_FACTS_TTL_MS,
   BRIEF_SOLVER_VERSION,
   SHARE_TOKEN_TTL_DAYS,
   briefDataVersion,
@@ -73,6 +74,8 @@ function briefView(b: HouseholdBriefDoc, token?: string, facts?: BriefFact[]) {
     result: b.result,
     template_sentence: b.template_sentence,
     facts: facts ?? b.facts ?? [],
+    sensitive: !!b.sensitive,
+    sensitive_access: b.sensitive_access ?? [],
     solver_version: b.solver_version,
     data_version: b.data_version,
     result_version: b.result_version,
@@ -96,10 +99,27 @@ function briefView(b: HouseholdBriefDoc, token?: string, facts?: BriefFact[]) {
 }
 
 export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
-  /** Decrypt envelope-stored facts for sensitive briefs; undefined = use stored. */
-  async function factsFor(b: HouseholdBriefDoc): Promise<BriefFact[] | undefined> {
+  /**
+   * Decrypt envelope-stored facts for sensitive briefs; undefined = use stored.
+   * Intent 79: expired sensitive facts are purged on read (DPIA retention),
+   * and every successful decrypt records a content-free access entry —
+   * who opened it and when, never what.
+   */
+  async function factsFor(b: HouseholdBriefDoc, viewer?: string): Promise<BriefFact[] | undefined> {
     if (!b.facts_encrypted) return undefined
-    return JSON.parse((await decryptEnveloped(db, b.facts_encrypted)) ?? '[]')
+    if (b.facts_expire_at && b.facts_expire_at < new Date()) {
+      await briefsFor(db, b.tenant_id).updateOne(
+        { id: b.id },
+        { $unset: { facts_encrypted: '', facts: '' } },
+      )
+      return []
+    }
+    const facts = JSON.parse((await decryptEnveloped(db, b.facts_encrypted)) ?? '[]')
+    await briefsFor(db, b.tenant_id).updateOne(
+      { id: b.id },
+      { $push: { sensitive_access: { user_id: viewer ?? 'anonymous', at: new Date() } } },
+    )
+    return facts
   }
 
   async function recipient(tenant: string, creator: string, id: string | null | undefined) {
@@ -260,6 +280,7 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
             facts: [] as BriefFact[],
             sensitive: true,
             facts_encrypted: await encryptForTenant(db, tenant_id, JSON.stringify(solved.facts)),
+            facts_expire_at: new Date(Date.now() + SENSITIVE_FACTS_TTL_MS),
           }
         : { facts: solved.facts }),
       template_sentence: solved.template_sentence,
@@ -294,9 +315,7 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
     await getAuditLogger()?.fromRequest(req, 'brief.created', 'household_briefs', doc.id, {
       problem_type: problem,
     })
-    return reply
-      .code(201)
-      .send({ brief: briefView(doc, token, await factsFor(doc)), warnings: solved.warnings })
+    return reply.code(201).send({ brief: briefView(doc, token, await factsFor(doc, ctx.user_id)) })
   })
 
   app.get('/family/briefs', async (req, reply) => {
@@ -317,7 +336,9 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
       .toArray()
     return {
       briefs: await Promise.all(
-        list.map(async (b: HouseholdBriefDoc) => briefView(b, undefined, await factsFor(b))),
+        list.map(async (b: HouseholdBriefDoc) =>
+          briefView(b, undefined, await factsFor(b, ctx.user_id)),
+        ),
       ),
     }
   })
@@ -354,7 +375,7 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
     }
     return reply
       .header('Cache-Control', 'private, no-store')
-      .send({ brief: briefView(b, undefined, await factsFor(b)) })
+      .send({ brief: briefView(b, undefined, await factsFor(b, ctx.user_id)) })
   })
 
   app.post<{ Params: { id: string } }>('/family/briefs/:id/confirm', async (req, reply) => {
@@ -470,7 +491,7 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
       { $set: { link_fetched_at: new Date() } },
     )
     return {
-      ...briefView(b!, undefined, await factsFor(b!)),
+      ...briefView(b!, undefined, await factsFor(b!, req.authContext?.user_id ?? 'anonymous')),
       sentence: b!.template_sentence,
       for_member_name: b!.share!.for_member_name,
       // Old anonymous opens remain readable but cannot earn adult receipts.

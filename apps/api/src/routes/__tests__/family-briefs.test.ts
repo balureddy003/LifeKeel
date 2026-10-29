@@ -40,6 +40,7 @@ import {
   type BriefInputs,
   type BriefProblemType,
   type HouseholdBriefDoc,
+  migrateSensitiveBriefFacts,
 } from '../../briefs/briefs.js'
 
 const TENANT = 't-briefs'
@@ -615,13 +616,87 @@ describe('catalogue review fixes', () => {
     ).toBe('Penicillin')
   })
 
-  it('warns (does not block) when a handover fact looks like a secret', async () => {
+  it('rejects a handover fact that looks like a secret (Intent 79)', async () => {
     const res = await v2('joint_bill', {
       change_date: '2026-10-28',
       facts: { 'Bill or account': 'Council tax', 'How it is paid': 'password: Hunter2!' },
     })
-    expect(res.statusCode).toBe(201)
-    expect(res.json().warnings.length).toBeGreaterThan(0)
+    expect(res.statusCode).toBe(400)
+    expect(res.json().error).toMatch(/password or code|record where/i)
+  })
+
+  it('records a content-free access log on each sensitive read (Intent 79)', async () => {
+    const res = await v2('medical_contacts', {
+      change_date: '2026-10-28',
+      sensitive_consent: true,
+      facts: { 'Allergies as recorded': 'Penicillin' },
+    })
+    const id = res.json().brief.id
+    await app.inject({ method: 'GET', url: `/family/briefs/${id}` })
+    const got = await app.inject({ method: 'GET', url: `/family/briefs/${id}` })
+    const access = got.json().brief.sensitive_access
+    expect(access.length).toBeGreaterThanOrEqual(1)
+    expect(access[0].user_id).toBeTruthy()
+    expect(JSON.stringify(access)).not.toContain('Penicillin')
+  })
+
+  it('purges sensitive facts once their DPIA retention expires', async () => {
+    const res = await v2('medical_contacts', {
+      change_date: '2026-10-28',
+      sensitive_consent: true,
+      facts: { 'Allergies as recorded': 'Penicillin' },
+    })
+    const id = res.json().brief.id
+    await db
+      .collection('household_briefs')
+      .updateOne({ id }, { $set: { facts_expire_at: new Date(Date.now() - 1000) } })
+    const got = await app.inject({ method: 'GET', url: `/family/briefs/${id}` })
+    expect(got.json().brief.facts).toEqual([])
+    const stored = await db.collection('household_briefs').findOne({ id })
+    expect(stored!.facts_encrypted).toBeUndefined()
+  })
+
+  it('migration encrypts plaintext facts on older sensitive briefs, idempotent', async () => {
+    const res = await v2('medical_contacts', {
+      change_date: '2026-10-28',
+      sensitive_consent: true,
+      facts: { 'Allergies as recorded': 'Penicillin' },
+    })
+    const id = res.json().brief.id
+    // Simulate a pre-encryption doc: plaintext facts, no envelope field.
+    const doc = await db.collection('household_briefs').findOne({ id })
+    const plain = JSON.parse('[]')
+    void plain
+    await db.collection('household_briefs').updateOne(
+      { id },
+      {
+        $set: {
+          facts: [{ label: 'Allergies as recorded', value: 'Penicillin' }],
+          sensitive: true,
+        },
+        $unset: { facts_encrypted: '' },
+      },
+    )
+    const first = await migrateSensitiveBriefFacts(db)
+    expect(first.migrated).toBe(1)
+    const stored = await db.collection('household_briefs').findOne({ id })
+    expect(stored!.facts).toEqual([])
+    expect(stored!.facts_encrypted).toMatch(/^dek:/)
+    const second = await migrateSensitiveBriefFacts(db)
+    expect(second.migrated).toBe(0)
+  })
+
+  it('catalogue copy passes the advice-rule scan (Intent 80)', () => {
+    const banned = [
+      /\b(recommend|should buy|you should switch|best deal|can afford)\b/i,
+      /\b(aviva|legal (&|and) general|vitality|prudential|zurich|axa|hargreaves lansdown|vanguard|fidelity|nutmeg|moneybox)\b/i,
+      /\b(guaranteed|act now|protect your family)\b/i,
+    ]
+    const strings = BRIEF_CATALOGUE.flatMap((e) => [e.title, e.trigger, ...(e.fields ?? [])])
+    for (const text of strings) for (const pattern of banned) expect(text).not.toMatch(pattern)
+    // The generated money-brief sentence carries the coverage disclaimer.
+    const money = BRIEF_CATALOGUE.find((e) => e.id === 'income_stops')!
+    expect(money.group).toBe('Money and income')
   })
 
   it('accepts a change date already in effect — runway still from today', async () => {

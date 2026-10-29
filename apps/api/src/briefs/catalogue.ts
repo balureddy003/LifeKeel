@@ -336,6 +336,27 @@ export const BRIEF_CATALOGUE: readonly Entry[] = [
     fields: ['Accounts and policies on file', 'Key contacts', 'Where the key papers are'],
     sensitive: true,
   },
+  {
+    id: 'rent_rise',
+    title: 'Rent rise',
+    group: 'Money and income',
+    mode: 'cost',
+    trigger: 'New rent date',
+  },
+  {
+    id: 'tenancy_end',
+    title: 'Tenancy ending or moving home',
+    group: 'Money and income',
+    mode: 'mixed',
+    trigger: 'Move date',
+  },
+  {
+    id: 'windfall',
+    title: 'A lump sum arriving',
+    group: 'Money and income',
+    mode: 'cash',
+    trigger: 'Date it lands',
+  },
 ]
 
 const money = z.number().int().min(0).max(1_000_000_000)
@@ -410,11 +431,11 @@ export function solveCatalogueBrief(problem: string, raw: unknown, asOf: string)
     for (const label of entry.fields ?? []) fact(label, i.facts?.[label] || 'Not entered')
     if (!Object.values(i.facts ?? {}).some((value) => value.trim()))
       throw new Error('Enter at least one handover fact')
+    rejectSecrets(facts)
     return {
       inputs: i,
       result: null,
       facts,
-      warnings: secretWarnings(facts),
       template_sentence:
         'These are the household’s recorded facts. Missing details are marked “Not entered”.',
     }
@@ -546,8 +567,7 @@ export function solveCatalogueBrief(problem: string, raw: unknown, asOf: string)
     inputs: i,
     result,
     facts,
-    warnings: secretWarnings(facts),
-    template_sentence: description + gap + cashGap,
+    template_sentence: description + gap + cashGap + MONEY_DISCLAIMER,
   }
 }
 
@@ -557,12 +577,18 @@ export function solveCatalogueBrief(problem: string, raw: unknown, asOf: string)
  * a password anyway).
  */
 const SECRET_FIELD = /\b(pass(?:word|code|phrase)?|pin\b|otp|token|secret|cvv|security answer)\b/i
-const TOKEN_LIKE = /^[A-Za-z0-9+/=_-]{20,}$/
-function secretWarnings(facts: BriefFact[]): string[] {
-  return facts
-    .filter((f) => SECRET_FIELD.test(f.value) || TOKEN_LIKE.test(f.value.replace(/\s/g, '')))
-    .map(
-      (f) =>
-        `“${f.label}” looks like it may contain a password or code — store where the method lives, not the secret itself.`,
+const TOKEN_LIKE = /(?:^|\s)[A-Za-z0-9+/=_-]{20,}(?=\s|$)/
+/** Intent 79: credential-shaped input is rejected with a plain message —
+ *  a deterministic guard rail, not a control; the field hint does the real work. */
+function rejectSecrets(facts: BriefFact[]): void {
+  const hit = facts.find((f) => SECRET_FIELD.test(f.value) || TOKEN_LIKE.test(f.value))
+  if (hit)
+    throw new Error(
+      `“${hit.label}” looks like it contains a password or code — record where the method lives, never the secret itself.`,
     )
 }
+
+/** Intent 80: every money brief states what it does not cover and points to
+ *  free guidance — never "you can afford this". */
+const MONEY_DISCLAIMER =
+  ' Figures are the household’s own entries — tax, benefits, investment returns and price rises are not covered. Free guidance: MoneyHelper; for bigger decisions, a licensed professional.'

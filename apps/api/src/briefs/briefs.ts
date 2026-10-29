@@ -29,6 +29,7 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import type { Db } from 'mongodb'
 import { getTenantCollection } from '@lifekeel/platform'
+import { BRIEF_CATALOGUE } from './catalogue.js'
 import { calculateScenario, type ScenarioResult } from '../scenarios/calculate.js'
 import type { BriefFact } from './catalogue.js'
 
@@ -95,6 +96,10 @@ export interface HouseholdBriefDoc extends Record<string, unknown> {
    *  facts stays empty on those docs and readers decrypt via facts_encrypted. */
   sensitive?: boolean
   facts_encrypted?: string
+  /** Content-free access log: who opened sensitive facts and when (Intent 79). */
+  sensitive_access?: Array<{ user_id: string; at: Date }>
+  /** Sensitive facts hard-expire this long after creation (DPIA retention). */
+  facts_expire_at?: Date
   result_version?: string
   as_of_date?: string
   acknowledgements?: Array<{ user_id: string; result_version: string; confirmed_at: Date }>
@@ -343,3 +348,42 @@ export async function narrateBrief(
     return { sentence: brief.template_sentence, narrated: false, from_cache: false }
   }
 }
+
+// ─── One-off migration: encrypt plaintext facts on sensitive briefs ─────────
+// Idempotent: skips docs already carrying facts_encrypted. Never logs content.
+export async function migrateSensitiveBriefFacts(db: Db): Promise<{
+  migrated: number
+  skipped: number
+}> {
+  const sensitiveIds = new Set(BRIEF_CATALOGUE.filter((e) => e.sensitive).map((e) => e.id))
+  const { encryptForTenant } = await import('../crypto/envelope.js')
+  let migrated = 0
+  let skipped = 0
+  const docs = await db
+    .collection<HouseholdBriefDoc>('household_briefs')
+    .find({ facts: { $exists: true, $ne: [] } })
+    .toArray()
+  for (const doc of docs) {
+    if (!sensitiveIds.has(doc.problem_type) || doc.facts_encrypted) {
+      skipped++
+      continue
+    }
+    await db.collection<HouseholdBriefDoc>('household_briefs').updateOne(
+      { id: doc.id },
+      {
+        $set: {
+          facts: [],
+          sensitive: true,
+          facts_encrypted: await encryptForTenant(db, doc.tenant_id, JSON.stringify(doc.facts)),
+          facts_expire_at: doc.facts_expire_at ?? new Date(Date.now() + SENSITIVE_FACTS_TTL_MS),
+          updated_at: new Date(),
+        },
+      },
+    )
+    migrated++
+  }
+  return { migrated, skipped }
+}
+
+/** DPIA-set retention for sensitive handover facts (~24 months). */
+export const SENSITIVE_FACTS_TTL_MS = 24 * 30 * 24 * 60 * 60 * 1000
