@@ -105,6 +105,7 @@ import { localDecisionFromEnv } from './local-model.js'
 import { initTaskGateway, taskLlmFor, taskDecideFor, taskVision } from './ai/task-gateway.js'
 import { connectorSchemaRegistry } from '@lifekeel/workflows'
 import cron from 'node-cron'
+import { purgeExpiredSensitiveFacts } from './briefs/briefs.js'
 import { queueManager } from './queue/QueueManager.js'
 import { startWebhookWorker } from './queue/WebhookQueue.js'
 import { RetentionWorker } from './jobs/retention-worker.js'
@@ -433,6 +434,23 @@ try {
       { missedExecutionTolerance: 30_000 },
     )
     log.info({}, 'Connector health alert cron started')
+
+    // DPIA retention (Intent 79): purge expired sensitive brief facts daily.
+    // The read-path lazy purge is kept as belt-and-braces; this sweep is what
+    // actually bounds retention for briefs nobody opens again.
+    cron.schedule(
+      '23 4 * * *',
+      async () => {
+        try {
+          await withCronLock(workflowDb, 'brief-facts-retention', () =>
+            purgeExpiredSensitiveFacts(workflowDb),
+          )
+        } catch (err) {
+          log.error({ err }, 'Sensitive brief facts purge failed')
+        }
+      },
+      { missedExecutionTolerance: 30_000, noOverlap: true },
+    )
 
     // Email connector scan every 15 minutes — classifies new mail on every
     // connected mailbox (any IMAP provider) into Inbox items, and routes

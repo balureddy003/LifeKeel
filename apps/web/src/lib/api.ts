@@ -6229,6 +6229,14 @@ export interface BriefInputs extends Record<string, unknown> {
   cover_end_date?: string | undefined
   decision_deadline?: string | undefined
   recorded_cover?: string | undefined
+  income_steps?:
+    | Array<{
+        date: string
+        monthly_income_minor?: number
+        monthly_essentials_minor?: number
+        cash_delta_minor?: number
+      }>
+    | undefined
   facts?: Record<string, string> | undefined
   sensitive_consent?: true | undefined
 }
@@ -6243,6 +6251,8 @@ export interface BriefCatalogueEntry {
   trigger: string
   fields?: readonly string[]
   sensitive?: boolean
+  lowKey?: boolean
+  moment?: 'baby' | 'job' | 'care' | 'fix'
 }
 
 export interface HouseholdBrief {

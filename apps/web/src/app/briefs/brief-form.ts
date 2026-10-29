@@ -4,6 +4,10 @@ export type FormValues = Record<string, string>
 
 const toMinor = (pounds: string) => Math.round((Number(pounds) || 0) * 100)
 
+/** The API accepts at most 6 dated steps. */
+export const MAX_STEPS = 6
+export const stepCount = (f: FormValues) => Math.min(MAX_STEPS, Number(f['steps_n'] ?? 0) || 0)
+
 /** Turn the form's strings into the API's inputs. Mirrors the server's rules. */
 export function buildInputs(e: BriefCatalogueEntry, f: FormValues): BriefInputs {
   const money = (k: string) => (f[k] ? toMinor(f[k]) : undefined)
@@ -38,6 +42,18 @@ export function buildInputs(e: BriefCatalogueEntry, f: FormValues): BriefInputs 
     if (f['defer']) i.deferred_period_months = Number(f['defer'])
     if (f['cover_end']) i.cover_end_date = f['cover_end']
   }
+  const steps: NonNullable<BriefInputs['income_steps']> = []
+  for (let n = 0; n < stepCount(f); n++) {
+    const date = f[`step_date:${n}`]
+    if (!date) continue
+    const step: (typeof steps)[number] = { date }
+    if (f[`step_income:${n}`]) step.monthly_income_minor = toMinor(f[`step_income:${n}`]!)
+    if (f[`step_essentials:${n}`])
+      step.monthly_essentials_minor = toMinor(f[`step_essentials:${n}`]!)
+    if (f[`step_cash:${n}`]) step.cash_delta_minor = toMinor(f[`step_cash:${n}`]!)
+    steps.push(step)
+  }
+  if (steps.length) i.income_steps = steps
   if (f['decision_deadline']) i.decision_deadline = f['decision_deadline']
   if (f['recorded_cover']?.trim()) i.recorded_cover = f['recorded_cover'].trim()
   return i
@@ -92,6 +108,13 @@ export function validate(e: BriefCatalogueEntry, f: FormValues): Record<string, 
     'cash_in',
   ])
     if (!blank(k) && Number(f[k]) < 0) errors[k] = 'Enter zero or more'
+  for (let n = 0; n < stepCount(f); n++) {
+    const none = ['step_income', 'step_essentials', 'step_cash'].every((k) => blank(`${k}:${n}`))
+    if (blank(`step_date:${n}`)) errors[`step_date:${n}`] = 'Choose the date of this change'
+    else if (!blank('change_date') && f[`step_date:${n}`]! < f['change_date']!)
+      errors[`step_date:${n}`] = 'This needs to be on or after the first change date'
+    else if (none) errors[`step_income:${n}`] = 'Add an income, spending or one-off amount'
+  }
   if (f['return_date'] && (blank('return_income') || blank('return_essentials')))
     errors['return_date'] = 'Add the income and spending from that date too'
   return errors

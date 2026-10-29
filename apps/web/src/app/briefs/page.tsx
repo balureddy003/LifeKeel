@@ -22,9 +22,10 @@ import {
   type BriefCatalogueEntry,
   type HouseholdBrief,
 } from '@/lib/api'
-import { MOMENTS } from './moments'
+import { track } from '@/lib/growth-track'
+import { MOMENTS, type MomentKey } from './moments'
 import { splitBriefSentence } from '@/lib/brief-text'
-import { buildInputs, needs, validate, type FormValues } from './brief-form'
+import { MAX_STEPS, buildInputs, needs, stepCount, validate, type FormValues } from './brief-form'
 
 const inputCls =
   'mt-1 w-full min-h-[48px] rounded-xl border border-haze bg-surface-1 px-3 text-ink-primary placeholder:text-ink-tertiary focus:outline-none focus:ring-2 focus:ring-family-500'
@@ -152,6 +153,76 @@ function DateField({
   )
 }
 
+function StepRows({
+  f,
+  set,
+  errors,
+}: {
+  f: FormValues
+  set: (v: FormValues) => void
+  errors: Record<string, string>
+}) {
+  const n = stepCount(f)
+  const p = { f, set, errors }
+  function remove(at: number) {
+    const next: FormValues = {}
+    for (const [k, v] of Object.entries(f)) {
+      const m = k.match(/^(step_\w+):(\d+)$/)
+      if (!m) next[k] = v
+      else if (Number(m[2]) < at) next[k] = v
+      else if (Number(m[2]) > at) next[`${m[1]}:${Number(m[2]) - 1}`] = v
+    }
+    next['steps_n'] = String(n - 1)
+    set(next)
+  }
+  return (
+    <div>
+      <p className="text-sm font-medium text-ink-primary">Later changes</p>
+      <p className="text-xs text-ink-tertiary">
+        For example, pay that steps down and then back up. Each one starts on its date and carries
+        on until the next.
+      </p>
+      {Array.from({ length: n }).map((_, i) => (
+        <fieldset key={i} className="mt-3 rounded-xl border border-haze p-3">
+          <legend className="px-1 text-sm font-medium text-ink-secondary">Change {i + 1}</legend>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <DateField k={`step_date:${i}`} label="From this date" {...p} />
+            <Money
+              k={`step_income:${i}`}
+              label="Money coming in from then"
+              hint="Optional"
+              {...p}
+            />
+            <Money
+              k={`step_essentials:${i}`}
+              label="Money going out from then"
+              hint="Optional"
+              {...p}
+            />
+            <Money k={`step_cash:${i}`} label="One-off cash received" hint="Optional" {...p} />
+          </div>
+          <button
+            type="button"
+            onClick={() => remove(i)}
+            className="mt-2 min-h-[44px] text-sm text-ink-secondary underline"
+          >
+            Remove this change
+          </button>
+        </fieldset>
+      ))}
+      {n < MAX_STEPS && (
+        <button
+          type="button"
+          onClick={() => set({ ...f, steps_n: String(n + 1) })}
+          className="mt-3 inline-flex min-h-[44px] items-center rounded-full border border-haze px-4 text-sm font-medium text-ink-secondary"
+        >
+          + Add a later change
+        </button>
+      )}
+    </div>
+  )
+}
+
 function BriefFields({
   entry,
   f,
@@ -266,7 +337,13 @@ function BriefFields({
         )}
       </div>
 
-      <details className="rounded-xl border border-haze bg-surface-1 p-4">
+      <details
+        className="rounded-xl border border-haze bg-surface-1 p-4"
+        onToggle={(e) => {
+          if ((e.target as HTMLDetailsElement).open)
+            track('brief_form_step', { step: 'optional_opened', problem_type: entry.id })
+        }}
+      >
         <summary className="cursor-pointer text-sm font-medium text-ink-primary">
           Add more detail (optional)
         </summary>
@@ -319,6 +396,9 @@ function BriefFields({
             )}
           </Field>
           <DateField k="decision_deadline" label="A date you are working to" {...p} />
+          <div className="sm:col-span-2">
+            <StepRows {...p} />
+          </div>
         </div>
       </details>
     </div>
@@ -471,7 +551,7 @@ export default function BriefsPage() {
   const [catalogue, setCatalogue] = useState<BriefCatalogueEntry[]>([])
   const [recipients, setRecipients] = useState<Array<{ id: string; name: string }>>([])
   const [briefs, setBriefs] = useState<HouseholdBrief[]>([])
-  const [moment, setMoment] = useState<string | null>(null)
+  const [moment, setMoment] = useState<MomentKey | null>(null)
   const [showAll, setShowAll] = useState(false)
   const [query, setQuery] = useState('')
   const [entry, setEntry] = useState<BriefCatalogueEntry | null>(null)
@@ -532,6 +612,9 @@ export default function BriefsPage() {
     setErrors(found)
     if (Object.keys(found).length) {
       const first = Object.keys(found)[0]!
+      // Errors inside the optional section need it open to be seen.
+      if (first.startsWith('step_') || first === 'return_date')
+        document.querySelector('details')?.setAttribute('open', '')
       document
         .getElementById(first === 'facts' || first === 'consent' ? 'f-fact-0' : `f-${first}`)
         ?.focus()
@@ -565,7 +648,7 @@ export default function BriefsPage() {
 
   const moments = MOMENTS.map((m) => ({
     ...m,
-    items: m.entries.map((id) => byId.get(id)).filter((e): e is BriefCatalogueEntry => !!e),
+    items: catalogue.filter((e) => e.moment === m.key),
   }))
   const q = query.trim().toLowerCase()
   const searchHits = q
@@ -622,16 +705,18 @@ export default function BriefsPage() {
             {moments.map((m) => {
               const Icon = m.icon
               return (
-                <div key={m.id}>
+                <div key={m.key}>
                   <button
                     type="button"
-                    aria-pressed={moment === m.id}
+                    aria-pressed={moment === m.key}
                     onClick={() => {
-                      setMoment(moment === m.id ? null : m.id)
+                      const next = moment === m.key ? null : m.key
+                      setMoment(next)
                       setShowAll(false)
+                      if (next) track('brief_door_used', { door: m.key })
                     }}
                     className={`flex min-h-[88px] w-full items-start gap-3 rounded-2xl border p-4 text-left transition-colors ${
-                      moment === m.id
+                      moment === m.key
                         ? 'border-family-500 bg-family-500/10'
                         : 'border-haze bg-surface-1'
                     }`}
@@ -644,7 +729,7 @@ export default function BriefsPage() {
                       <span className="block text-sm text-ink-secondary">{m.blurb}</span>
                     </span>
                   </button>
-                  {moment === m.id && (
+                  {moment === m.key && (
                     <div className="mt-2 rounded-2xl border border-haze bg-surface-1 p-2">
                       <ul>
                         {m.items.map((e) => (
