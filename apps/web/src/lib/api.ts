@@ -6212,27 +6212,58 @@ export async function fetchRetirementEstimate(params: {
 
 // ─── PRD-222: household briefs (Stage 1) ────────────────────────────────────
 
-export interface BriefInputs {
+export interface BriefInputs extends Record<string, unknown> {
   monthly_income_minor?: number | undefined
   monthly_essentials_minor?: number | undefined
   liquid_savings_minor?: number | undefined
+  new_income_minor?: number | undefined
+  new_essentials_minor?: number | undefined
+  change_date?: string | undefined
+  cash_out_minor?: number | undefined
+  cash_in_minor?: number | undefined
+  return_date?: string | undefined
+  return_income_minor?: number | undefined
+  return_essentials_minor?: number | undefined
   income_protection_monthly_minor?: number | undefined
   deferred_period_months?: number | undefined
-  new_income_minor?: number | undefined
-  months_until_change?: number | undefined
+  cover_end_date?: string | undefined
+  decision_deadline?: string | undefined
+  recorded_cover?: string | undefined
+  facts?: Record<string, string> | undefined
+  sensitive_consent?: true | undefined
 }
 
-export type BriefProblemType = 'income_stops' | 'earning_less' | 'handover_gap'
+export type BriefProblemType = string
+
+export interface BriefCatalogueEntry {
+  id: string
+  title: string
+  group: string
+  mode: 'stop' | 'income' | 'cost' | 'mixed' | 'cash' | 'handover'
+  trigger: string
+  fields?: readonly string[]
+  sensitive?: boolean
+}
 
 export interface HouseholdBrief {
   id: string
-  problem_type: BriefProblemType
+  problem_type: string
+  contract_version?: number
+  title?: string
   inputs: BriefInputs
   result: Record<string, unknown> | null
   template_sentence: string
+  facts?: Array<{ label: string; value: string }>
   solver_version: string
   data_version: string
+  result_version?: string
+  as_of_date?: string
   stale: boolean
+  confirmation?: {
+    creator_at: string | null
+    recipient_at: string | null
+    both_confirmed: boolean
+  }
   share: {
     for_member_id: string | null
     for_member_name: string | null
@@ -6244,6 +6275,12 @@ export interface HouseholdBrief {
   confirmed_opened_at: string | null
   created_by: string
   created_at: string
+}
+
+export interface SharedBriefView extends HouseholdBrief {
+  sentence: string
+  for_member_name: string | null
+  can_confirm: boolean
 }
 
 async function briefPost<T>(
@@ -6263,6 +6300,14 @@ async function briefPost<T>(
   return { ok: true, status: res.status, data: (await res.json()) as T }
 }
 
+export function getBriefCatalogue() {
+  return apiFetch<{
+    catalogue: BriefCatalogueEntry[]
+    recipients: Array<{ id: string; name: string }>
+    current_user_id: string
+  }>('/family/brief-catalogue', { catalogue: [], recipients: [], current_user_id: '' })
+}
+
 export function listBriefs() {
   return apiFetch<{ briefs: HouseholdBrief[] }>('/family/briefs', { briefs: [] }).then(
     (r) => r.briefs ?? [],
@@ -6277,11 +6322,23 @@ export function getBrief(id: string) {
 
 /** Returns 402 data { error: 'brief_gate' } when the second-brief gate hits. */
 export function createBrief(body: {
+  contract_version?: 2
   problem_type: BriefProblemType
   inputs: BriefInputs
   for_member_id?: string | null
 }) {
   return briefPost<{ brief: HouseholdBrief }>('/family/briefs', body)
+}
+
+export function confirmBrief(id: string, result_version: string) {
+  return briefPost<{ confirmed: boolean }>(`/family/briefs/${id}/confirm`, { result_version })
+}
+
+export function deleteBrief(id: string) {
+  return credFetch(`${getApiBase()}/family/briefs/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${getAuthToken() ?? ''}` },
+  })
 }
 
 export function revokeBriefShare(id: string) {

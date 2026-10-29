@@ -74,6 +74,8 @@ export interface ScenarioStep {
   atMonth: number
   monthlyIncomeDeltaMinor?: number
   monthlyExpenseDeltaMinor?: number
+  /** One-off cash entering (+) or leaving (-) liquid savings at this boundary. */
+  savingsDeltaMinor?: number
 }
 
 /** The state of the world at one step boundary. */
@@ -133,17 +135,26 @@ export interface ScenarioResult {
    * null when the fund survives every segment.
    */
   fundDepletedAtMonth: number | null
+  /** Cash payments that the available savings could not fund. */
+  unfundedCashMinor?: number
   educationFundProjection: EducationFundProjection | null
 }
 
-function runwayMonths(incomeMinor: number, expensesMinor: number, savingsMinor: number): number | null {
+function runwayMonths(
+  incomeMinor: number,
+  expensesMinor: number,
+  savingsMinor: number,
+): number | null {
   const shortfall = expensesMinor - incomeMinor
   if (shortfall <= 0) return null
   if (savingsMinor <= 0) return 0
   return Math.round((savingsMinor / shortfall) * 10) / 10
 }
 
-export function calculateScenario(profile: ScenarioProfileInput, change: ScenarioChange): ScenarioResult {
+export function calculateScenario(
+  profile: ScenarioProfileInput,
+  change: ScenarioChange,
+): ScenarioResult {
   const extraSavings = change.monthlyExtraSavingsMinor ?? 0
   const steps = normalizeSteps(change.steps)
 
@@ -157,16 +168,22 @@ export function calculateScenario(profile: ScenarioProfileInput, change: Scenari
     let savings = profile.emergencySavingsMinor
     let prevMonth = 0
     let fundDepletedAtMonth: number | null = null
+    let unfundedCashMinor = 0
     const timeline: ScenarioTimelinePoint[] = []
 
     for (const step of steps) {
       const gap = step.atMonth - prevMonth
       const burn = income - expenses
-      if (fundDepletedAtMonth === null && burn < 0 && savings > 0 && savings + burn * gap <= 0) {
+      if (fundDepletedAtMonth === null && burn < 0 && savings + burn * gap <= 0) {
         // Month the balance crosses zero inside the segment.
-        fundDepletedAtMonth = prevMonth + Math.ceil(savings / -burn)
+        fundDepletedAtMonth = prevMonth + savings / -burn
       }
       savings = Math.max(0, savings + burn * gap)
+      const cash = step.savingsDeltaMinor ?? 0
+      if (savings + cash < 0) unfundedCashMinor += -(savings + cash)
+      if (cash < 0 && savings + cash <= 0 && fundDepletedAtMonth === null)
+        fundDepletedAtMonth = step.atMonth
+      savings = Math.max(0, savings + cash)
       income += step.monthlyIncomeDeltaMinor ?? 0
       expenses += step.monthlyExpenseDeltaMinor ?? 0
       prevMonth = step.atMonth
@@ -182,13 +199,15 @@ export function calculateScenario(profile: ScenarioProfileInput, change: Scenari
     const last = timeline[timeline.length - 1]!
     const result = buildResult(profile, change, {
       projectedMonthlyIncomeMinor: last.monthlyIncomeMinor,
-      projectedMonthlySurplusMinor: last.monthlyIncomeMinor - last.monthlyExpensesMinor - extraSavings,
+      projectedMonthlySurplusMinor:
+        last.monthlyIncomeMinor - last.monthlyExpensesMinor - extraSavings,
       savingsAtChangeMinor: last.savingsMinor,
       monthsUntilChange: last.atMonth,
       projectedRunwayMonths: last.runwayMonths,
     })
     result.timeline = timeline
     result.fundDepletedAtMonth = fundDepletedAtMonth
+    result.unfundedCashMinor = Math.round(unfundedCashMinor)
     return result
   }
 
@@ -205,11 +224,16 @@ export function calculateScenario(profile: ScenarioProfileInput, change: Scenari
   )
 
   const projectedMonthlyIncomeMinor = profile.monthlyIncomeMinor + incomeDelta
-  const projectedRunwayMonths = runwayMonths(projectedMonthlyIncomeMinor, profile.monthlyExpensesMinor, savingsAtChangeMinor)
+  const projectedRunwayMonths = runwayMonths(
+    projectedMonthlyIncomeMinor,
+    profile.monthlyExpensesMinor,
+    savingsAtChangeMinor,
+  )
 
   return buildResult(profile, change, {
     projectedMonthlyIncomeMinor,
-    projectedMonthlySurplusMinor: projectedMonthlyIncomeMinor - profile.monthlyExpensesMinor - extraSavings,
+    projectedMonthlySurplusMinor:
+      projectedMonthlyIncomeMinor - profile.monthlyExpensesMinor - extraSavings,
     savingsAtChangeMinor,
     monthsUntilChange,
     projectedRunwayMonths,
@@ -221,11 +245,14 @@ function normalizeSteps(steps: ScenarioStep[] | undefined): ScenarioStep[] {
   if (!steps || steps.length === 0) return []
   const byMonth = new Map<number, ScenarioStep>()
   for (const s of steps) {
-    const atMonth = Math.max(0, Math.floor(s.atMonth))
+    const atMonth = Math.max(0, s.atMonth)
     const existing = byMonth.get(atMonth)
     if (existing) {
-      existing.monthlyIncomeDeltaMinor = (existing.monthlyIncomeDeltaMinor ?? 0) + (s.monthlyIncomeDeltaMinor ?? 0)
-      existing.monthlyExpenseDeltaMinor = (existing.monthlyExpenseDeltaMinor ?? 0) + (s.monthlyExpenseDeltaMinor ?? 0)
+      existing.monthlyIncomeDeltaMinor =
+        (existing.monthlyIncomeDeltaMinor ?? 0) + (s.monthlyIncomeDeltaMinor ?? 0)
+      existing.monthlyExpenseDeltaMinor =
+        (existing.monthlyExpenseDeltaMinor ?? 0) + (s.monthlyExpenseDeltaMinor ?? 0)
+      existing.savingsDeltaMinor = (existing.savingsDeltaMinor ?? 0) + (s.savingsDeltaMinor ?? 0)
     } else {
       byMonth.set(atMonth, { ...s, atMonth })
     }
@@ -247,7 +274,11 @@ function buildResult(
   const extraSavings = change.monthlyExtraSavingsMinor ?? 0
   const currentMonthlyIncomeMinor = profile.monthlyIncomeMinor
   const currentMonthlySurplusMinor = currentMonthlyIncomeMinor - profile.monthlyExpensesMinor
-  const currentRunwayMonths = runwayMonths(currentMonthlyIncomeMinor, profile.monthlyExpensesMinor, profile.emergencySavingsMinor)
+  const currentRunwayMonths = runwayMonths(
+    currentMonthlyIncomeMinor,
+    profile.monthlyExpensesMinor,
+    profile.emergencySavingsMinor,
+  )
 
   let educationFundProjection: EducationFundProjection | null = null
   if (change.targetChildName) {
@@ -256,14 +287,20 @@ function buildResult(
     )
     if (fund) {
       const remainingMinor = fund.targetSavingsMinor - fund.currentSavingsMinor
-      const projectedMonthsToTarget = extraSavings > 0
-        ? (remainingMinor <= 0 ? 0 : Math.ceil(remainingMinor / extraSavings))
-        : null
+      const projectedMonthsToTarget =
+        extraSavings > 0
+          ? remainingMinor <= 0
+            ? 0
+            : Math.ceil(remainingMinor / extraSavings)
+          : null
       educationFundProjection = {
         childName: fund.childName,
         yearsRemaining: fund.yearsRemaining,
         projectedMonthsToTarget,
-        onTrack: projectedMonthsToTarget === null ? null : projectedMonthsToTarget <= fund.yearsRemaining * 12,
+        onTrack:
+          projectedMonthsToTarget === null
+            ? null
+            : projectedMonthsToTarget <= fund.yearsRemaining * 12,
       }
     }
   }
