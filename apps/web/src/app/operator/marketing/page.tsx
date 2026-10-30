@@ -161,7 +161,7 @@ export default function MarketingPage() {
   const [editSchedule, setEditSchedule] = useState('')
   const [campaignFilter, setCampaignFilter] = useState<string | null>(null)
   const [showLinkBuilder, setShowLinkBuilder] = useState(false)
-  /** Per-post "paste the tweet URL" input on awaiting_manual cards. */
+  /** Per-post "paste the post URL" input on awaiting_manual cards. */
   const [postedUrls, setPostedUrls] = useState<Record<string, string>>({})
 
   useEffect(() => {
@@ -1030,8 +1030,9 @@ export default function MarketingPage() {
                   {post.state === 'awaiting_manual' && (
                     <div className="mt-3 rounded-xl border border-family-500/20 bg-family-500/5 p-3 space-y-2.5">
                       <p className="text-xs text-ink-secondary leading-relaxed">
-                        Approved — nothing was sent yet. Open the prefilled X composer and post it
-                        yourself, then confirm here.
+                        Approved — nothing was sent yet. Open the prefilled{' '}
+                        {channelLabel(post.channel)} composer and post it yourself, then confirm
+                        here.
                       </p>
                       <div className="flex gap-2">
                         {post.manual_url && (
@@ -1041,7 +1042,7 @@ export default function MarketingPage() {
                             rel="noopener noreferrer"
                             className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-semibold bg-family-500/15 border border-family-500/25 text-family-400"
                           >
-                            <ExternalLink size={15} /> Open X composer
+                            <ExternalLink size={15} /> Open {channelLabel(post.channel)} composer
                           </a>
                         )}
                         <button
@@ -1069,7 +1070,11 @@ export default function MarketingPage() {
                           onChange={(e) =>
                             setPostedUrls((m) => ({ ...m, [post.id]: e.target.value }))
                           }
-                          placeholder="tweet URL (optional — enables metrics)"
+                          placeholder={
+                            post.channel === 'x'
+                              ? 'tweet URL (optional — enables metrics)'
+                              : 'post URL (optional)'
+                          }
                           className="glass-input flex-1 min-w-0 rounded-xl px-3 py-2 text-xs text-ink-primary placeholder:text-ink-tertiary outline-none"
                         />
                         <button
