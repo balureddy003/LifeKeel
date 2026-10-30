@@ -42,6 +42,12 @@
  * Bluesky today; env still covers X/LinkedIn). DbSocialPublisher resolves a
  * tenant's stored connection first and falls back to the env handler for
  * the same channel.
+ *
+ * Manual handoff: an `x:manual` integration id needs no credential at all —
+ * dispatch returns a web-intent URL (X's own composer, prefilled) instead
+ * of calling the API, and the caller parks the post 'awaiting_manual'
+ * until the operator confirms they posted it. This exists because X moved
+ * to pay-per-use API pricing; it is a real publish path, just human-carried.
  */
 
 export interface ChannelInfo {
@@ -49,7 +55,7 @@ export interface ChannelInfo {
   name: string
   identifier: string
   disabled: boolean
-  source?: 'env' | 'connection'
+  source?: 'env' | 'connection' | 'manual'
   /** The account that would publish — handle, page name, member URN.
    *  Shown in previews and recorded on the post so "which account did this
    *  go out as" is never ambiguous (§14.7). */
@@ -61,13 +67,16 @@ export interface ChannelInfo {
 export interface PublisherIdentity {
   integration_id: string
   channel: string
-  source: 'env' | 'connection'
+  source: 'env' | 'connection' | 'manual'
   account: string
 }
 
 export interface PublishResult {
   external_id?: string
   url?: string
+  /** Set for manual handoff — nothing was dispatched; the operator finishes
+   *  the post at this URL. Callers must not mark the post 'published'. */
+  manual?: { intent_url: string }
   publisher: PublisherIdentity
 }
 
@@ -484,25 +493,67 @@ function mastodonHandler(instanceUrl: string, token: string): ChannelHandler {
  */
 export function parseIntegrationId(integrationId: string): {
   channel: string | null
-  source: 'env' | 'connection' | 'any'
+  source: 'env' | 'connection' | 'manual' | 'any'
 } {
   const idx = integrationId.lastIndexOf(':')
   if (idx === -1) return { channel: null, source: 'any' }
   const source = integrationId.slice(idx + 1)
   if (source === 'connection') return { channel: integrationId.slice(0, idx), source: 'connection' }
+  if (source === 'manual') return { channel: integrationId.slice(0, idx), source: 'manual' }
   if (source === 'env' || source === 'default')
     return { channel: integrationId.slice(0, idx), source: 'env' }
   return { channel: null, source: 'any' }
+}
+
+// ---------------------------------------------------------------------------
+// Manual handoff — web-intent URLs, no API and no credential. twitter.com's
+// intent/tweet is the mobile universal-link handoff into the X app (falls
+// back to the web composer); the same flow as x.com/intent/post on desktop.
+// ---------------------------------------------------------------------------
+
+export function xIntentUrl(content: string): string {
+  return `https://twitter.com/intent/tweet?text=${encodeURIComponent(content)}`
+}
+
+/** Channels with a manual post path — the intent-URL builder per channel. */
+const MANUAL_INTENT: Record<string, (content: string) => string> = {
+  x: xIntentUrl,
+}
+
+/** Always available — needs no credential, so it lists even when nothing
+ *  else is configured. */
+export const MANUAL_X_CHANNEL: ChannelInfo = {
+  id: 'x:manual',
+  name: 'X (manual post)',
+  identifier: 'x',
+  disabled: false,
+  source: 'manual',
+  account: 'your logged-in X account',
+}
+
+function manualDispatch(args: CreatePostArgs): PublishResult {
+  const intent = MANUAL_INTENT[args.channel]
+  if (!intent) throw new Error(`channel_not_configured:${args.channel}`)
+  return {
+    manual: { intent_url: intent(args.content) },
+    publisher: {
+      integration_id: `${args.channel}:manual`,
+      channel: args.channel,
+      source: 'manual',
+      account: MANUAL_X_CHANNEL.account ?? 'manual',
+    },
+  }
 }
 
 export class EnvSocialPublisher implements SocialPublisher {
   constructor(private readonly handlers: ReadonlyMap<string, ChannelHandler>) {}
 
   listIntegrations(): Promise<ChannelInfo[]> {
-    return Promise.resolve([...this.handlers.values()].map((h) => h.info))
+    return Promise.resolve([...this.handlers.values()].map((h) => h.info).concat(MANUAL_X_CHANNEL))
   }
 
   async createPost(args: CreatePostArgs): Promise<PublishResult> {
+    if (parseIntegrationId(args.integrationId).source === 'manual') return manualDispatch(args)
     const handler = this.handlers.get(args.channel)
     if (!handler) throw new Error(`channel_not_configured:${args.channel}`)
     const out = await handler.publish(args.content, {
@@ -714,8 +765,10 @@ export class DbSocialPublisher implements SocialPublisher {
     return [
       ...connList,
       // A stored connection shadows the env channel for this tenant — the
-      // composer would otherwise show the same channel twice.
-      ...envList.filter((i) => !connChannels.has(i.identifier)),
+      // composer would otherwise show the same channel twice. Env already
+      // lists the manual channel, so drop its copy before appending ours.
+      ...envList.filter((i) => !connChannels.has(i.identifier) && i.id !== MANUAL_X_CHANNEL.id),
+      MANUAL_X_CHANNEL,
     ]
   }
 
@@ -880,6 +933,10 @@ export class DbSocialPublisher implements SocialPublisher {
     if (wanted.channel && wanted.channel !== args.channel) {
       throw new Error(`channel_not_configured:${args.channel}`)
     }
+    // Manual dispatch never touches a credential — handle it before any
+    // connector/connection/env lookup so 'x:manual' can never fall through
+    // to a stored API token.
+    if (wanted.source === 'manual') return manualDispatch(args)
     const ctx = { ...(args.idempotencyKey ? { idempotencyKey: args.idempotencyKey } : {}) }
 
     if (wanted.source !== 'env') {
