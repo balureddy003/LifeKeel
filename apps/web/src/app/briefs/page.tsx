@@ -29,6 +29,7 @@ import {
   getBrief,
   getBriefCatalogue,
   listBriefs,
+  listEmployerCover,
   previewBrief,
   reShareBrief,
   revokeBriefShare,
@@ -62,6 +63,11 @@ import {
   type FormValues,
 } from './brief-form'
 import { firstNumberMeta, formStartedMeta } from './friction'
+import {
+  anyEndsWithEmployment,
+  composeRecordedCover,
+  takesEmployerCover,
+} from '../cover/cover-form'
 
 const inputCls =
   'mt-1 w-full min-h-[48px] rounded-xl border border-haze bg-surface-1 px-3 text-ink-primary placeholder:text-ink-tertiary focus:outline-none focus:ring-2 focus:ring-family-500'
@@ -1038,6 +1044,27 @@ export default function BriefsPage() {
       firstNumberMeta(entry, f, step, formStartedAtRef.current, Date.now()),
     )
   }, [entry, step, preview.data, f])
+
+  // PRD-232: cover facts on file pre-fill recorded_cover on job-change family
+  // briefs — the household reviews the line; it is never silently injected.
+  useEffect(() => {
+    if (!entry || !takesEmployerCover(entry.mode) || f['recorded_cover']) return
+    let dead = false
+    void listEmployerCover().then((facts) => {
+      if (dead || !facts.length) return
+      const line = composeRecordedCover(facts)
+      if (!line) return
+      setF((prev) => ({
+        ...prev,
+        ...(prev['recorded_cover'] ? {} : { recorded_cover: line }),
+        ...(anyEndsWithEmployment(facts) ? { cover_ends_flag: 'yes' } : {}),
+      }))
+    })
+    return () => {
+      dead = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entry?.id])
 
   function continueStep() {
     if (!entry) return

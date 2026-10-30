@@ -77,6 +77,8 @@ function webCopyFiles(): string[] {
     'apps/web/src/app/packet/page.tsx',
     // PRD-231: the obligations map states who is named and what is due.
     'apps/web/src/app/map/page.tsx',
+    // PRD-232: cover facts state what is on file and when it may end.
+    'apps/web/src/app/cover/page.tsx',
     'apps/web/src/lib/ai-disclosure-copy.ts',
     'apps/web/src/app/ai-processing/page.tsx',
     'apps/web/src/components/ChannelsCard.tsx',

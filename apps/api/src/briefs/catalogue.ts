@@ -36,6 +36,7 @@ export const CatalogueInputsSchema = z
     cover_end_date: date.optional(),
     decision_deadline: date.optional(),
     recorded_cover: z.string().trim().max(600).optional(),
+    cover_may_end_with_employment: z.literal(true).optional(),
     facts: z.record(z.string().max(100), z.string().trim().max(2000)).optional(),
     sensitive_consent: z.literal(true).optional(),
   })
@@ -228,6 +229,9 @@ export function solveCatalogueBrief(problem: string, raw: unknown, asOf: string)
     depletedAt === null || depletedAt >= MAX_MONTHS
       ? ''
       : ` On these figures savings would run out around ${monthLabel(asOf, depletedAt)} (about month ${depletedAt.toFixed(1)} from the calculation date).`
+  const coverNote = i.cover_may_end_with_employment
+    ? ` Cover on file may end with the employment${i.cover_end_date ? ` (${i.cover_end_date})` : ''}.`
+    : ''
   const cashGap = result.unfundedCashMinor
     ? ` The entered one-off payments exceed available savings by ${gbp(result.unfundedCashMinor)}.`
     : ''
@@ -239,7 +243,7 @@ export function solveCatalogueBrief(problem: string, raw: unknown, asOf: string)
     inputs: i,
     result,
     facts,
-    template_sentence: description + oneOff + gap + cashGap + MONEY_DISCLAIMER,
+    template_sentence: description + oneOff + gap + cashGap + coverNote + MONEY_DISCLAIMER,
   }
 }
 

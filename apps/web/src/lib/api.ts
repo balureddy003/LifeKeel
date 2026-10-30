@@ -6400,6 +6400,39 @@ export interface ClaimPacket {
 
 export function assembleClaimPacket(index: number) {
   return briefPost<{ packet: ClaimPacket }>(`/family/policies/${index}/claim-packet`, {})
+// ─── Employer cover facts (PRD-232) ──────────────────────────────────────────
+
+export interface EmployerCoverFact {
+  id: string
+  member_label: string
+  type: string
+  name_as_printed: string
+  source: string | null
+  last_seen_at: string | null
+  ends_with_employment: boolean
+  confirmed: boolean
+}
+
+export interface EmployerCoverInput {
+  member_label: string
+  type: string
+  name_as_printed: string
+  source?: string
+  last_seen_at?: string
+  ends_with_employment?: boolean
+  confirmed?: boolean
+}
+
+export function listEmployerCover() {
+  return apiFetch<{ facts: EmployerCoverFact[] }>('/family/employer-cover', { facts: [] }).then(
+    (r) => r.facts ?? [],
+  )
+}
+export function createEmployerCover(body: EmployerCoverInput) {
+  return briefPost<{ fact: EmployerCoverFact }>('/family/employer-cover', body)
+}
+export function deleteEmployerCover(id: string) {
+  return briefPost<{ ok: boolean }>(`/family/employer-cover/${id}`, {}, 'DELETE')
 }
 
 export function confirmBrief(id: string, result_version: string) {
