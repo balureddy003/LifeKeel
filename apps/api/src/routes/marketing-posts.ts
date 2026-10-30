@@ -1368,29 +1368,37 @@ export function registerMarketingPostRoutes(
     const channelByConnector = new Map(
       Object.entries(CONNECTOR_CHANNELS).map(([channel, connector]) => [connector, channel]),
     )
+    // X is stored in both places (the OAuth registry plus a publish mirror),
+    // so skip an OAuth row whose channel already has a stored connection.
+    const storedChannels = new Set(conns.map((c) => c.channel as string))
     return {
       connections: [
         ...conns.map(({ credentials: _credentials, ...rest }) => rest),
-        ...creds.map((cred) => {
-          const channel =
-            channelByConnector.get(cred['connector_id'] as string) ?? cred['connector_id']
-          const extra = cred['extra'] as Record<string, string> | undefined
-          const needsReauth = cred['needs_reauth'] === true
-          return {
-            tenant_id: tenantId,
-            channel,
-            handle:
-              extra?.['username'] ??
-              extra?.['page_name'] ??
-              extra?.['name'] ??
-              extra?.['ig_username'] ??
-              '',
-            status: needsReauth ? 'error' : 'active',
-            last_error: needsReauth ? `${channel} token expired — reconnect` : null,
-            connected_by: 'oauth',
-            updated_at: cred['updated_at'],
-          }
-        }),
+        ...creds
+          .filter((cred) => {
+            const channel = channelByConnector.get(cred['connector_id'] as string)
+            return !(channel && storedChannels.has(channel))
+          })
+          .map((cred) => {
+            const channel =
+              channelByConnector.get(cred['connector_id'] as string) ?? cred['connector_id']
+            const extra = cred['extra'] as Record<string, string> | undefined
+            const needsReauth = cred['needs_reauth'] === true
+            return {
+              tenant_id: tenantId,
+              channel,
+              handle:
+                extra?.['username'] ??
+                extra?.['page_name'] ??
+                extra?.['name'] ??
+                extra?.['ig_username'] ??
+                '',
+              status: needsReauth ? 'error' : 'active',
+              last_error: needsReauth ? `${channel} token expired — reconnect` : null,
+              connected_by: 'oauth',
+              updated_at: cred['updated_at'],
+            }
+          }),
       ],
     }
   })

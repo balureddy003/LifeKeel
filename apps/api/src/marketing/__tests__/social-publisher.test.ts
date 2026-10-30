@@ -590,6 +590,15 @@ describe('DbSocialPublisher', () => {
     extra,
   })
 
+  it('lists X once when it is stored in both social_connections and connector_credentials', async () => {
+    // X connect mirrors its token onto social_connections, so both stores hold it.
+    const { db } = makeDb([conn({ channel: 'x', handle: 'lifekeel' })], [xCred()])
+    const pub = new DbSocialPublisher(db, null)
+    const ids = (await pub.listIntegrations('t1')).map((i) => i.id)
+    expect(ids.filter((id) => id === 'x:connection')).toHaveLength(1)
+    expect(ids).toContain('x:manual')
+  })
+
   it('publishes a Facebook page post via the page token + stored page_id', async () => {
     const { db } = makeDb(
       [],

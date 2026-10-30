@@ -747,11 +747,15 @@ export class DbSocialPublisher implements SocialPublisher {
       source: 'connection' as const,
       account: `@${c.handle}`,
     }))
+    // X's connect also mirrors its token onto social_connections, so a channel
+    // can appear in both stores. List it once, from the stored connection.
+    const listed = new Set(connChannels)
     for (const cred of creds) {
       const channel = Object.entries(CONNECTOR_CHANNELS).find(
         ([, c]) => c === cred.connector_id,
       )?.[0]
-      if (!channel) continue
+      if (!channel || listed.has(channel)) continue
+      listed.add(channel)
       connChannels.add(channel)
       connList.push({
         id: `${channel}:connection`,
