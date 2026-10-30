@@ -913,8 +913,34 @@ export async function evaluateProfileAndGenerateInsights(
       return pct > 5 ? [{ policy: p, prev_minor: prev.amount_minor, pct: Math.round(pct) }] : []
     })
     {
+      // PRD-233 (Intent 88): a premium can stop silently — cancelled direct
+      // debit, expired card — and the family finds out at claim time. The
+      // register cannot see the policy itself, only that the last dated
+      // payment record is older than the ~40-day expected interval. Never
+      // says "lapsed": the record on file cannot show that.
+      const stalePayments = profile.policies.flatMap((p) => {
+        const last = p.premium_history?.[p.premium_history.length - 1]
+        if (!last) return []
+        const ms = new Date(last.effective_from).getTime()
+        if (Number.isNaN(ms)) return []
+        const days = Math.floor((Date.now() - ms) / 86_400_000)
+        return days > 40 ? [{ policy: p, since: last.effective_from, days }] : []
+      })
       const eventId = crypto.randomUUID()
       const data = {
+        stale_payment_count: stalePayments.length,
+        stale_payment_since_date: stalePayments.map((s) => s.since).sort()[0] ?? '',
+        stale_payment_descriptions: stalePayments
+          .map(
+            (s) =>
+              `${s.policy.type} policy with ${s.policy.provider} held by ${holderLabel(s.policy)}: last payment on file ${s.since} (${s.days} days ago)`,
+          )
+          .slice(0, 4)
+          .join('; '),
+        stale_payment_monthly_premium_minor: stalePayments.reduce(
+          (s, r) => s + r.policy.monthly_premium_minor,
+          0,
+        ),
         stale_renewal_count: staleRenewals.length,
         stale_renewal_descriptions: staleRenewals
           .map(
