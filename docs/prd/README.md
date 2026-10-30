@@ -528,6 +528,15 @@ Follow-ups to the factual catalogue (Intent 78), from a review of what shipped:
    depends on one person. Household-entered, no connection. Tier 0.
 
 
+## 233 — Lapse and change detection (proposed 2026-10-30)
+
+1. [233-lapse-and-change-detection.md](233-lapse-and-change-detection.md) —
+   **PROPOSED.** When an expected premium or renewal has no record by its date,
+   an in-app signal says "no payment on file since <date>; check with your
+   provider that cover is in force" — never "lapsed". Extends the existing
+   premium-increase rule. Tier 0.
+
+
 ## Suggested build order for 138–147 and 203–206
 
 Dependencies are in each PRD's "Builds on"; this is the order that follows from

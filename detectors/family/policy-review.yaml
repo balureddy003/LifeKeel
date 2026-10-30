@@ -90,3 +90,24 @@ rules:
       - If the premium rose at renewal, comparing quotes from multiple insurers is a reasonable next step
       - Update the recorded premium and renewal date if the register is out of date
       - A licensed insurance professional can advise on your cover
+
+  - id: premium_possibly_stopped
+    name: No Payment Recorded On File
+    # Intent 88 / PRD-233: a premium can stop silently — a cancelled direct
+    # debit or expired card — and the family finds out at claim time. The
+    # register sees only that the last dated payment record is older than
+    # the expected interval; it cannot know the policy's real status, so it
+    # never says "lapsed" and never mentions a grace period (unconfirmed).
+    condition: 'data.stale_payment_count > 0'
+    confidence: 0.8
+    impact_low: 0
+    impact_high: 'data.stale_payment_monthly_premium_minor * 12'
+    reasoning_template: >
+      {{data.stale_payment_count}} policies on file have no payment recorded
+      since {{data.stale_payment_since_date}}: {{data.stale_payment_descriptions}}.
+      Check with your provider that cover is in force — the record on file
+      cannot show whether it is. This is informational only.
+    actions:
+      - Check with your provider that each named policy is in force
+      - If the payment record is simply out of date, update the premium history on file
+      - If you are unsure whether the cover is still active, ask your insurer or a licensed insurance professional
