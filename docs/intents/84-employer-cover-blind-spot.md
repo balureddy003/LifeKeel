@@ -47,4 +47,4 @@ No current survey was found for 2025–2026; the claim is directional.
 nomination, comparing cover, any statement about continuation terms not in a read source,
 and health-insurance claims.
 
-**Becomes** — PRD number once accepted: docs/prd/NNN-employer-cover-blind-spot.md
+**Becomes** — [PRD-232](../prd/232-employer-cover-blind-spot.md)

@@ -544,6 +544,14 @@ Follow-ups to the factual catalogue (Intent 78), from a review of what shipped:
    prepare-only — no ActionExecutor, nothing sent. Tier gate recorded.
 
 
+## 232 — Employer cover blind spot (proposed 2026-10-30)
+
+1. [232-employer-cover-blind-spot.md](232-employer-cover-blind-spot.md) —
+   **PROPOSED.** Employer-provided cover recorded on file (type, name as printed,
+   source, last seen) feeding the job-change brief's recorded-cover field;
+   extraction stays `candidate_for_review`. Depth, never front door. Tier 0.
+
+
 ## Suggested build order for 138–147 and 203–206
 
 Dependencies are in each PRD's "Builds on"; this is the order that follows from
