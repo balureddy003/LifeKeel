@@ -2174,6 +2174,19 @@ export async function resolveOAuthReturnParams(): Promise<URLSearchParams> {
   const connectorId = current.get('connect')
   if (!grant || !connectorId) return current
 
+  // A grant is single-use, so a repeat call (React runs a mount effect twice in
+  // dev, and a remount re-runs it) must reuse the first result. Without this
+  // the second claim 404s and the page reports a failed connect that worked.
+  const pending = claimedGrants.get(grant)
+  if (pending) return new URLSearchParams(await pending)
+  const claim = claimOAuthGrant(connectorId, grant).then((p) => p.toString())
+  claimedGrants.set(grant, claim)
+  return new URLSearchParams(await claim)
+}
+
+const claimedGrants = new Map<string, Promise<string>>()
+
+async function claimOAuthGrant(connectorId: string, grant: string): Promise<URLSearchParams> {
   const base = getApiBase()
   const token = getAuthToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
