@@ -142,6 +142,7 @@ function Money({
           name={k}
           type="number"
           inputMode="decimal"
+          enterKeyHint="next"
           min={0}
           step="0.01"
           value={f[k] ?? ''}
@@ -828,7 +829,7 @@ function Glance({
       {nextEntry && c?.recipient_at && (
         <div className="mt-4 rounded-2xl border border-family-500/30 bg-family-500/5 p-4">
           <p className="text-sm font-medium text-ink-primary">
-            {other} has read it. Next: {nextEntry.title.toLowerCase()}?
+            {other} has read it. Next up: “{nextEntry.title}”
           </p>
           <p className="mt-1 text-sm text-ink-secondary">
             We will start from the figures you already entered.
@@ -898,7 +899,12 @@ export default function BriefsPage() {
     setError(null)
     setGateHit(false)
     setCreated(null)
-    setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+    setTimeout(() => {
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      // Land on the first empty field so the number pad is one tap away.
+      if (e.mode !== 'handover' && !prefill?.['income'])
+        document.getElementById('f-income')?.focus()
+    }, 50)
   }
 
   async function newLink(b: HouseholdBrief, other: string) {
@@ -1430,6 +1436,19 @@ export default function BriefsPage() {
 
             <motion.div
               key={step}
+              onKeyDown={(ev: React.KeyboardEvent<HTMLElement>) => {
+                const t = ev.target as HTMLElement
+                if (ev.key !== 'Enter' || t.tagName !== 'INPUT') return
+                const inputs = [
+                  ...ev.currentTarget.querySelectorAll<HTMLInputElement>('input'),
+                ].filter((i) => i.type === 'number' || i.type === 'date')
+                const at = inputs.indexOf(t as HTMLInputElement)
+                if (at < 0) return
+                ev.preventDefault()
+                const next = inputs[at + 1]
+                if (next) next.focus()
+                else if (entry.mode !== 'handover' && step === 1) continueStep()
+              }}
               initial={reduce ? false : { opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2 }}
