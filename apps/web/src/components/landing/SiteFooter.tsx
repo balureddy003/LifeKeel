@@ -5,10 +5,43 @@ import Link from 'next/link'
 import { captureLead } from '@/lib/api'
 import { Turnstile, useTurnstile } from '@/components/security/Turnstile'
 import { Brand } from './Brand'
-import { Facebook, Instagram, Linkedin } from 'lucide-react'
+import { Facebook, Instagram, Linkedin, MessageCircle, type LucideIcon } from 'lucide-react'
+import { socialLinks, type SocialName } from '@/lib/social-links'
 import './landing.css'
 import './hero.css'
 import './bands.css'
+
+// Next inlines NEXT_PUBLIC_* only for literal `process.env.X` reads, so each
+// one is named here rather than passing process.env whole.
+const LIVE_LINKS = new Map(
+  socialLinks({
+    NEXT_PUBLIC_SOCIAL_INSTAGRAM_URL: process.env.NEXT_PUBLIC_SOCIAL_INSTAGRAM_URL,
+    NEXT_PUBLIC_SOCIAL_FACEBOOK_URL: process.env.NEXT_PUBLIC_SOCIAL_FACEBOOK_URL,
+    NEXT_PUBLIC_SOCIAL_LINKEDIN_URL: process.env.NEXT_PUBLIC_SOCIAL_LINKEDIN_URL,
+    NEXT_PUBLIC_SOCIAL_X_URL: process.env.NEXT_PUBLIC_SOCIAL_X_URL,
+    NEXT_PUBLIC_WHATSAPP_NUMBER: process.env.NEXT_PUBLIC_WHATSAPP_NUMBER,
+  }).map((l) => [l.name, l.href] as const),
+)
+
+// lucide has no X logo, so this draws the mark at the same size as its icons.
+type IconProps = { size?: number; 'aria-hidden'?: boolean | 'true' | 'false' }
+
+function XIcon({ size = 19 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+    </svg>
+  )
+}
+
+const SOCIALS: Array<{ name: SocialName; Icon: LucideIcon | typeof XIcon }> = [
+  { name: 'Instagram', Icon: Instagram },
+  { name: 'Facebook', Icon: Facebook },
+  { name: 'LinkedIn', Icon: Linkedin },
+  { name: 'X', Icon: XIcon },
+  // Shown only once a number is set: a disabled WhatsApp placeholder says nothing useful.
+  ...(LIVE_LINKS.has('WhatsApp') ? [{ name: 'WhatsApp' as const, Icon: MessageCircle }] : []),
+]
 
 function Newsletter() {
   const [email, setEmail] = useState('')
@@ -132,23 +165,34 @@ export function SiteFooter({ home = true }: { home?: boolean }) {
               Your family&rsquo;s chart, kept current. Know what is on file, and where to start if
               something happens.
             </p>
-            <div className="lk-socials" role="group" aria-label="Social media — links coming soon">
-              {[
-                { name: 'Instagram', Icon: Instagram },
-                { name: 'Facebook', Icon: Facebook },
-                { name: 'LinkedIn', Icon: Linkedin },
-              ].map(({ name, Icon }) => (
-                <button
-                  key={name}
-                  type="button"
-                  className="lk-social-icon"
-                  disabled
-                  title={`${name} — link coming soon`}
-                  aria-label={`${name} — link coming soon`}
-                >
-                  <Icon size={19} aria-hidden="true" />
-                </button>
-              ))}
+            <div className="lk-socials" role="group" aria-label="Social media">
+              {SOCIALS.map(({ name, Icon }) => {
+                const href = LIVE_LINKS.get(name)
+                return href ? (
+                  <a
+                    key={name}
+                    className="lk-social-icon"
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer me"
+                    title={name}
+                    aria-label={`${name} (opens in a new tab)`}
+                  >
+                    <Icon size={19} aria-hidden="true" />
+                  </a>
+                ) : (
+                  <button
+                    key={name}
+                    type="button"
+                    className="lk-social-icon"
+                    disabled
+                    title={`${name} — link coming soon`}
+                    aria-label={`${name} — link coming soon`}
+                  >
+                    <Icon size={19} aria-hidden="true" />
+                  </button>
+                )
+              })}
             </div>
           </div>
           <nav aria-label="Product">
