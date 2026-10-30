@@ -148,6 +148,12 @@ record a recurring reason to be reopened.
 | `81-annual-household-refresh.md` | Refresh a confirmed brief from last time's figures, household-entered review date, in-app prompt, no outbound messages | PRD-228 | **PROPOSED** — gated on Stage 1 return and gate metrics |
 | `82-trusted-person-and-months-only-share.md` | "Just me" path, trusted person confirms by one-time link, months-only share, recipient controls with no creator notification | PRD-229 | **PROPOSED** — **BLOCKED** on a recorded safeguarding review |
 
+## 83: Friction budget (2026-10-30)
+
+| File | Concern | Becomes PRD | Status |
+|---|---|---|---|
+| `83-friction-budget-and-zero-connection-first-value.md` | Measure friction on the first-value path, keep first value connection-free, brief link as front door for every channel, second adult reads first and joins later | PRD-230 | **PROPOSED** — baseline the targets before enforcing. Ranked use cases and channels: [review](../reviews/channels-and-use-cases-frictionless-2026-10.md) |
+
 Note: `78-factual-brief-catalogue.md` is shipped (PRs #308) but is not yet listed in
 the table above; add its row when this index is next reconciled.
 

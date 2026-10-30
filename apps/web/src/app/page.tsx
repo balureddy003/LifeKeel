@@ -37,6 +37,7 @@ import { ReadinessSparkline } from '@/components/ReadinessSparkline'
 import { ReadinessFeed } from '@/components/ReadinessFeed'
 import { PerceivedProtectionCard } from '@/components/PerceivedProtectionCard'
 import { InvitePartnerPrompt } from '@/components/InvitePartnerPrompt'
+import { BriefWaitingCard } from '@/components/BriefWaitingCard'
 import CrisisMode, { CRISIS_EVENT_KEY } from '@/components/CrisisMode'
 import { useMode } from '@/lib/mode-context'
 import { useFamilyReadinessScore, useFamilyTimeline, useFamilyInsights } from '@/lib/useFamilyData'
@@ -1126,6 +1127,7 @@ export default function HomePage() {
           daily checks found, straight below the score it explains. */}
       {/* PRD-141: one optional question per quarter; renders nothing unless due. */}
       <PerceivedProtectionCard />
+      <BriefWaitingCard />
       <InvitePartnerPrompt />
 
       {hasLiveData && (

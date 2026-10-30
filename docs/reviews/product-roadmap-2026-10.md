@@ -95,6 +95,30 @@ Gated on Wave 0's billing verification being green.
 | Legacy map | PRD-137 (proposed) | Estate depth beyond vault booleans; includes the checklist/solicitor-pointer idea (generic pointers only). |
 | Partner/adviser channel | PRD-207 (proposed) | Counsel first; zero-commission constraint recorded. |
 
+## Wave 6 — frictionless gate (added 2026-10-30)
+
+The direction is a frictionless, high-value platform. This wave is a gate on the
+others, not a feature list: no later wave ships a first-value step that needs a
+connection, and each is judged on the numbers below.
+
+| Item | Source | Notes |
+|---|---|---|
+| Friction budget measured on the first-value path | intent 83 → PRD-230 | Time to first number, fields, connections needed. Baseline first, then enforce. |
+| Partial answers for every money brief | PRD-230 item 3 | Shipped for the existing catalogue; required for any new brief type. |
+| Brief link as front door for advisers and employers | intent 83 → PRD-230 | Pilot is a link that opens a real result. Counsel review of adviser wording first (PRD-207); zero-commission constraint stays. |
+| Second adult reads first, joins after | intent 83 → PRD-230 | Builds on intents 23 and 82; no creator-visible "not opened" state. |
+| Value ledger: found vs confirmed saved | PRD-141, PRD-230 item 8 | Only the household's confirmation moves a figure to saved. |
+
+Depth use cases (employer cover found, single-point-of-failure map, claim packet,
+beneficiary check, change detection) and the channel set are ranked in
+[channels-and-use-cases-frictionless-2026-10.md](channels-and-use-cases-frictionless-2026-10.md).
+Each needs its own intent before build; staged emergency access stays parked.
+
+**Gate:** median time to first useful number, share of first-value paths needing a
+connection (target zero), and second-adult confirmation within 7 days are tracked
+before Stage 2 packs or Stage 3 feeds are promoted. Targets are set after the
+first cohort.
+
 ## Explicitly not on this roadmap
 
 - Free-tier AI extraction (founder decision; intent 39 carries the proposed

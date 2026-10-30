@@ -27,6 +27,14 @@ The product rests on three pillars:
 - **Proactive intelligence:** continuous detector evaluation, readiness changes,
   scenario watchlists, nudges, reminders, and a family heartbeat.
 
+The product is built to be **frictionless and high-value**: a household gets a
+useful, sourced number before it connects, uploads or signs up for anything, and
+every later feature adds to that same number rather than gating it. Friction is
+measured, not assumed ([PRD-230](docs/prd/230-friction-budget-and-zero-connection-first-value.md));
+value is shown in a number the household can see, with "found" kept apart from
+"confirmed saved". This is a product principle, not a fourth safety rule: it never
+relaxes the three below.
+
 Three rules constrain every layer:
 
 1. **No irreversible financial, legal, medical, or similarly consequential
