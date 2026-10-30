@@ -484,6 +484,24 @@ describe('brief contract v2', () => {
       const cat2 = await app.inject({ method: 'GET', url: '/family/brief-catalogue' })
       expect(cat2.json().can_create).toBe(true)
     })
+
+    it('produces the first number with the model layer dead (PRD-230)', async () => {
+      // taskLlm is mocked to throw for this whole file: catalogue → preview →
+      // create → share fetch is the first-value path end to end, and it must
+      // never reach the governed model layer.
+      expect((await app.inject({ method: 'GET', url: '/family/brief-catalogue' })).statusCode).toBe(
+        200,
+      )
+      expect((await preview('earning_less', INPUTS)).statusCode).toBe(200)
+      const created = await createV2('earning_less')
+      expect(created.statusCode).toBe(201)
+      currentUser = PARTNER
+      expect(
+        (await app.inject({ method: 'GET', url: `/b/${created.json().brief.share.url}` }))
+          .statusCode,
+      ).toBe(200)
+      currentUser = CREATOR
+    })
   })
 
   it('rejects catalogue create with no named adult recipient', async () => {

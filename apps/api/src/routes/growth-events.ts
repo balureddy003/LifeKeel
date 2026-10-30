@@ -17,6 +17,7 @@
 import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { getGrowthEventsCollection } from '../db.js'
+import { BRIEF_CATALOGUE } from '../briefs/catalogue-entries.js'
 
 // Server-side allowlist, not client-trusted free text — keeps the collection
 // from filling up with arbitrary event names from a modified client.
@@ -32,7 +33,12 @@ export const KNOWN_EVENTS = new Set([
   'brief_gate_converted',
   // Engagement on a finished brief (content-free: which feature, never a figure).
   'brief_whatif_used',
+  'brief_next_started',
   'brief_update_started',
+  // PRD-230 friction budget on the first-value path: counts and timings only.
+  // Meta is property-validated below — no figure or free text can ride along.
+  'brief_form_started',
+  'brief_first_number_shown',
   'landing_view',
   'landing_get_started_click',
   'landing_signin_click',
@@ -84,6 +90,45 @@ const INSTALL_PLATFORMS = new Set(['prompt', 'ios', 'ios_in_app'])
 
 const DIGEST_VARIANTS = new Set(['all_clear', 'note', 'missed'])
 
+const BRIEF_PROBLEM_IDS = new Set(BRIEF_CATALOGUE.map((e) => e.id))
+
+/** Events whose meta is counts and timings only (PRD-230). */
+const FRICTION_EVENTS = new Set(['brief_form_started', 'brief_first_number_shown'])
+
+/** The only properties a friction event may carry — an enum, counts, timings, booleans. */
+const FRICTION_META_KEYS = new Set([
+  'problem_type',
+  'ms_since_form_start',
+  'fields_entered',
+  'steps_seen',
+  'needed_account',
+  'needed_connection',
+  'needed_upload',
+])
+
+/**
+ * Reject any friction-event meta that could carry a figure or free text:
+ * an unknown property name, a string anywhere but the problem_type enum, a
+ * problem_type outside the catalogue, a non-boolean needed_* flag, a
+ * non-number count/timing, or a nested value. Rejected outright — never
+ * silently stripped — so a client bug surfaces instead of persisting a leak.
+ */
+function frictionMetaError(meta: unknown): string | null {
+  if (meta === undefined || meta === null) return null
+  if (typeof meta !== 'object' || Array.isArray(meta)) return 'meta must be an object'
+  for (const [k, v] of Object.entries(meta as Record<string, unknown>)) {
+    if (!FRICTION_META_KEYS.has(k)) return `Unexpected property: ${k}`
+    if (k === 'problem_type') {
+      if (typeof v !== 'string' || !BRIEF_PROBLEM_IDS.has(v)) return 'Unknown problem_type'
+    } else if (k.startsWith('needed_')) {
+      if (typeof v !== 'boolean') return `${k} must be a boolean`
+    } else if (typeof v !== 'number' || !Number.isFinite(v)) {
+      return `${k} must be a number`
+    }
+  }
+  return null
+}
+
 /** digest_click keeps only a known variant; every other event keeps its meta as before. */
 function eventMeta(event: string, meta: unknown): Record<string, unknown> | null {
   if (event === 'alert_click') return null
@@ -120,6 +165,10 @@ export async function registerGrowthEventRoutes(app: FastifyInstance, db: Db): P
     const event = typeof body?.event === 'string' ? body.event : ''
     if (!KNOWN_EVENTS.has(event)) {
       return reply.status(400).send({ error: 'Unknown event' })
+    }
+    if (FRICTION_EVENTS.has(event)) {
+      const err = frictionMetaError(body.meta)
+      if (err) return reply.status(400).send({ error: err })
     }
 
     const col = getGrowthEventsCollection(db)

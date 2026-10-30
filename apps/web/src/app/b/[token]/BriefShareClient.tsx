@@ -232,20 +232,10 @@ export default function BriefShareClient() {
                 : `Prepared for ${name}`}
             </p>
           )}
-          <ul className="mt-4 space-y-2 text-ink-secondary">
-            <li className="flex gap-2">
-              <Check size={18} className="mt-0.5 shrink-0 text-family-400" aria-hidden="true" />
-              It answers one household question using the facts the household entered.
-            </li>
-            <li className="flex gap-2">
-              <Check size={18} className="mt-0.5 shrink-0 text-family-400" aria-hidden="true" />
-              Nothing here is a recommendation or a product suggestion.
-            </li>
-            <li className="flex gap-2">
-              <Check size={18} className="mt-0.5 shrink-0 text-family-400" aria-hidden="true" />
-              Tapping the button records that you have seen this exact version.
-            </li>
-          </ul>
+          <p className="mt-4 text-ink-secondary">
+            The months and the date are on the next screen. Tapping records that you have seen this
+            exact version.
+          </p>
           {brief.can_confirm ? (
             <button
               type="button"
@@ -302,6 +292,49 @@ export default function BriefShareClient() {
             )}
           </GlassCard>
 
+          {brief.sections && (
+            <GlassCard className="space-y-6 p-6">
+              {!!brief.sections.adults?.length && (
+                <div>
+                  <h2 className="font-medium text-ink-primary">Who to call</h2>
+                  <ul className="mt-2 list-disc pl-5 text-ink-secondary">
+                    {brief.sections.adults.map((a, i) => (
+                      <li key={i}>
+                        {a.name ?? 'Household member'}
+                        {a.role ? ` — ${a.role}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {!!brief.sections.key_papers?.length && (
+                <div>
+                  <h2 className="font-medium text-ink-primary">Key papers</h2>
+                  <ul className="mt-2 list-disc pl-5 text-ink-secondary">
+                    {brief.sections.key_papers.map((p, i) => (
+                      <li key={i}>
+                        {p.title} <span className="text-ink-tertiary">— {p.location}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {!!brief.sections.policies?.length && (
+                <div>
+                  <h2 className="font-medium text-ink-primary">Policies on file</h2>
+                  <ul className="mt-2 list-disc pl-5 text-ink-secondary">
+                    {brief.sections.policies.map((p, i) => (
+                      <li key={i}>
+                        {String(p.provider ?? p.type ?? 'Policy')}
+                        {p.renewal_date ? ` — renews ${String(p.renewal_date)}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </GlassCard>
+          )}
+
           <div
             className={`flex items-start gap-3 rounded-2xl border p-4 ${
               confirmation?.both_confirmed
@@ -347,49 +380,6 @@ export default function BriefShareClient() {
                   </div>
                 ))}
               </dl>
-            </GlassCard>
-          )}
-
-          {brief.sections && (
-            <GlassCard className="space-y-6 p-6">
-              {!!brief.sections.adults?.length && (
-                <div>
-                  <h2 className="font-medium text-ink-primary">Who to call</h2>
-                  <ul className="mt-2 list-disc pl-5 text-ink-secondary">
-                    {brief.sections.adults.map((a, i) => (
-                      <li key={i}>
-                        {a.name ?? 'Household member'}
-                        {a.role ? ` — ${a.role}` : ''}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {!!brief.sections.key_papers?.length && (
-                <div>
-                  <h2 className="font-medium text-ink-primary">Key papers</h2>
-                  <ul className="mt-2 list-disc pl-5 text-ink-secondary">
-                    {brief.sections.key_papers.map((p, i) => (
-                      <li key={i}>
-                        {p.title} <span className="text-ink-tertiary">— {p.location}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {!!brief.sections.policies?.length && (
-                <div>
-                  <h2 className="font-medium text-ink-primary">Policies on file</h2>
-                  <ul className="mt-2 list-disc pl-5 text-ink-secondary">
-                    {brief.sections.policies.map((p, i) => (
-                      <li key={i}>
-                        {String(p.provider ?? p.type ?? 'Policy')}
-                        {p.renewal_date ? ` — renews ${String(p.renewal_date)}` : ''}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
             </GlassCard>
           )}
 

@@ -15,6 +15,21 @@ Translates into Intents `70`–`77` (`docs/intents/`) and PRDs `222`–`226` (`d
 > `document.extract_fields` is **BLOCKED** until an approved processor exists
 > (GCP Ollama decommissioned 2026-10-24).
 
+> **Direction amendment (2026-10-30): frictionless, high value.** The platform's
+> test is how little a household must do before it sees a number it can use.
+> Consequences, detailed in [Intent 83](../intents/83-friction-budget-and-zero-connection-first-value.md)
+> and [PRD-230](../prd/230-friction-budget-and-zero-connection-first-value.md):
+> - First value never needs a connection. Stage 3 feeds improve the same number;
+>   they are not a step before it.
+> - The brief link is the front door for every channel: households, advisers and
+>   employers send a link that opens a real result with no sign-up.
+> - The second adult reads first and joins after. One reminder, copied by the
+>   creator; LifeKeel sends none.
+> - Stage gates are measured in time to first number and second-adult
+>   confirmation, not "finished setup".
+> - Channels stay inside the advice line: factual numbers only, no product or
+>   provider named, no payment per placement or switch.
+
 ---
 
 ## 1. Market diagnosis: why the brief is the opening

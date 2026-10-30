@@ -512,6 +512,14 @@ Follow-ups to the factual catalogue (Intent 78), from a review of what shipped:
    with no figures in the payload, and recipient control with no creator-visible
    "not opened" signal. Tier 0.
 
+## 230 — Friction budget (proposed 2026-10-30)
+
+1. [230-friction-budget-and-zero-connection-first-value.md](230-friction-budget-and-zero-connection-first-value.md) —
+   **PROPOSED, targets to be baselined.** Measure time, fields and connections on the
+   first-value path; first value never needs a connection; the brief link is the front
+   door for households, advisers and employers; the second adult reads first and joins
+   later. Tier 0.
+
 
 ## Suggested build order for 138–147 and 203–206
 

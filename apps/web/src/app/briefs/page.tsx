@@ -54,12 +54,14 @@ import {
   inputsToForm,
   needs,
   remainingFields,
+  previewForm,
   stepCount,
   validate,
   TODAY_KEYS,
   validateStep,
   type FormValues,
 } from './brief-form'
+import { firstNumberMeta, formStartedMeta } from './friction'
 
 const inputCls =
   'mt-1 w-full min-h-[48px] rounded-xl border border-haze bg-surface-1 px-3 text-ink-primary placeholder:text-ink-tertiary focus:outline-none focus:ring-2 focus:ring-family-500'
@@ -141,6 +143,7 @@ function Money({
           name={k}
           type="number"
           inputMode="decimal"
+          enterKeyHint="next"
           min={0}
           step="0.01"
           value={f[k] ?? ''}
@@ -712,19 +715,46 @@ function ResultCard({
   )
 }
 
+const NUDGE_KEY = 'lifekeel_brief_nudged_v1'
+
+/** One reminder per brief, ever. Local only; if storage is locked, allow it once per visit. */
+function wasNudged(id: string): boolean {
+  try {
+    return !!(JSON.parse(localStorage.getItem(NUDGE_KEY) ?? '{}') as Record<string, boolean>)[id]
+  } catch {
+    return false
+  }
+}
+function markNudged(id: string) {
+  try {
+    const all = JSON.parse(localStorage.getItem(NUDGE_KEY) ?? '{}') as Record<string, boolean>
+    localStorage.setItem(NUDGE_KEY, JSON.stringify({ ...all, [id]: true }))
+  } catch {
+    /* storage unavailable: the in-memory flag still stops a second tap */
+  }
+}
+
 function Glance({
   brief,
   title,
   canUpdate,
+  next: nextEntry,
+  origin,
   onWhatIf,
   onUpdate,
+  onNext,
 }: {
   brief: HouseholdBrief
   title: string
   canUpdate: boolean
+  next?: BriefCatalogueEntry | undefined
+  origin: string
   onWhatIf: () => void
   onUpdate: () => void
+  onNext: (e: BriefCatalogueEntry) => void
 }) {
+  const toast = useToast()
+  const [nudged, setNudged] = useState(() => wasNudged(brief.id))
   const today = new Date().toISOString().slice(0, 10)
   const date = typeof brief.inputs?.change_date === 'string' ? brief.inputs.change_date : null
   const days = date ? daysUntil(date, today) : null
@@ -757,6 +787,36 @@ function Glance({
         </p>
       )}
       <p className="mt-2 text-sm text-ink-secondary">{next}</p>
+      {c?.creator_at && !c.recipient_at && brief.share && !brief.share.revoked && (
+        <div className="mt-3">
+          {nudged ? (
+            <p className="text-sm text-ink-tertiary">
+              Reminder copied. We will not nudge again, so it is up to you from here.
+            </p>
+          ) : (
+            <button
+              type="button"
+              className={ghostBtn}
+              onClick={async () => {
+                const url = `${origin}/b/${brief.share!.url}`
+                try {
+                  await navigator.clipboard.writeText(
+                    `Hi ${other} — a quick nudge about the numbers I shared (“${title}”). It takes a minute to read: ${url}`,
+                  )
+                  markNudged(brief.id)
+                  setNudged(true)
+                  haptic('success')
+                  toast({ message: `Reminder copied. Paste it to ${other}.` })
+                } catch {
+                  toast({ message: 'Could not copy the reminder.', variant: 'error' })
+                }
+              }}
+            >
+              <MessageSquare size={16} aria-hidden="true" /> Copy a reminder for {other}
+            </button>
+          )}
+        </div>
+      )}
       <div className="mt-4 flex flex-wrap gap-2">
         <button type="button" onClick={onWhatIf} className={ghostBtn}>
           Try a what-if
@@ -767,6 +827,19 @@ function Glance({
           </button>
         )}
       </div>
+      {nextEntry && c?.recipient_at && (
+        <div className="mt-4 rounded-2xl border border-family-500/30 bg-family-500/5 p-4">
+          <p className="text-sm font-medium text-ink-primary">
+            {other} has read it. Next up: “{nextEntry.title}”
+          </p>
+          <p className="mt-1 text-sm text-ink-secondary">
+            We will start from the figures you already entered.
+          </p>
+          <button type="button" onClick={() => onNext(nextEntry)} className={`${ghostBtn} mt-3`}>
+            Start it <ChevronRight size={16} aria-hidden="true" />
+          </button>
+        </div>
+      )}
     </GlassCard>
   )
 }
@@ -778,6 +851,7 @@ export default function BriefsPage() {
     state: 'idle' | 'loading' | 'ready' | 'error'
     data?: BriefPreview
     error?: string
+    assumed?: string[]
   }>({ state: 'idle' })
   const [catalogue, setCatalogue] = useState<BriefCatalogueEntry[]>([])
   const [recipients, setRecipients] = useState<Array<{ id: string; name: string }>>([])
@@ -801,6 +875,10 @@ export default function BriefsPage() {
   const toast = useToast()
   const formRef = useRef<HTMLDivElement>(null)
   const resultRef = useRef<HTMLDivElement>(null)
+  // PRD-230 friction budget: first field focus → first number on screen.
+  // Refs, not state — they never paint.
+  const formStartedAtRef = useRef<number | null>(null)
+  const firstNumberSentRef = useRef(false)
 
   useEffect(() => {
     void getBriefCatalogue().then((c) => {
@@ -820,13 +898,20 @@ export default function BriefsPage() {
   function choose(e: BriefCatalogueEntry, prefill?: FormValues, from?: string) {
     setEntry(e)
     setF(prefill ?? {})
+    formStartedAtRef.current = null
+    firstNumberSentRef.current = false
     setStep(1)
     setUpdatingFrom(from ?? null)
     setErrors({})
     setError(null)
     setGateHit(false)
     setCreated(null)
-    setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+    setTimeout(() => {
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      // Land on the first empty field so the number pad is one tap away.
+      if (e.mode !== 'handover' && !prefill?.['income'])
+        document.getElementById('f-income')?.focus()
+    }, 50)
   }
 
   async function newLink(b: HouseholdBrief, other: string) {
@@ -911,16 +996,20 @@ export default function BriefsPage() {
       setPreview({ state: 'idle' })
       return
     }
-    if (Object.keys(validate(entry, f)).length) {
+    const partial = previewForm(entry, f)
+    if (!partial) {
       setPreview({ state: 'idle' })
       return
     }
     let cancelled = false
-    setPreview((p) => ({ ...p, state: 'loading' }))
+    setPreview((p) => ({ ...p, state: 'loading', assumed: partial.assumed }))
     const timer = setTimeout(async () => {
-      const res = await previewBrief({ problem_type: entry.id, inputs: buildInputs(entry, f) })
+      const res = await previewBrief({
+        problem_type: entry.id,
+        inputs: buildInputs(entry, partial.form),
+      })
       if (cancelled) return
-      if (res.ok) setPreview({ state: 'ready', data: res.data!.preview })
+      if (res.ok) setPreview({ state: 'ready', data: res.data!.preview, assumed: partial.assumed })
       else
         setPreview({
           state: 'error',
@@ -936,6 +1025,19 @@ export default function BriefsPage() {
       clearTimeout(timer)
     }
   }, [entry, f, canCreate])
+
+  // PRD-230: the moment the first useful number is on screen — the card only
+  // renders on step 2, so data arriving while step 1 is showing does not
+  // count until the household reaches it. Counts and timings only.
+  useEffect(() => {
+    if (!entry || entry.mode === 'handover' || entry.sensitive) return
+    if (step !== 2 || !preview.data || firstNumberSentRef.current) return
+    firstNumberSentRef.current = true
+    track(
+      'brief_first_number_shown',
+      firstNumberMeta(entry, f, step, formStartedAtRef.current, Date.now()),
+    )
+  }, [entry, step, preview.data, f])
 
   function continueStep() {
     if (!entry) return
@@ -995,6 +1097,21 @@ export default function BriefsPage() {
     setBriefs(await listBriefs())
     setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
   }
+
+  // One suggestion, and only once the other adult has actually read the first brief.
+  const latest = briefs[0]
+  const latestEntry = latest ? byId.get(latest.problem_type) : undefined
+  const nextProblem =
+    latest?.confirmation?.recipient_at && latestEntry?.moment
+      ? catalogue.find(
+          (e) =>
+            e.moment === latestEntry.moment &&
+            e.id !== latestEntry.id &&
+            e.mode !== 'handover' &&
+            !e.sensitive &&
+            !briefs.some((b) => b.problem_type === e.id),
+        )
+      : undefined
 
   const moments = MOMENTS.map((m) => ({
     ...m,
@@ -1081,8 +1198,22 @@ export default function BriefsPage() {
             byId.get(briefs[0].problem_type)?.mode !== 'handover' &&
             !!byId.get(briefs[0].problem_type)
           }
+          origin={origin}
+          next={nextProblem}
           onWhatIf={() => openBrief(briefs[0]!.id)}
           onUpdate={() => startUpdate(briefs[0]!)}
+          onNext={(e) => {
+            const b = briefs[0]!
+            track('brief_next_started', { problem_type: e.id })
+            // Only where they stand today carries over; "after the change" is a new question.
+            const all = b.inputs ? inputsToForm(e, b.inputs) : {}
+            choose(
+              e,
+              Object.fromEntries(
+                TODAY_KEYS.filter((k) => all[k] !== undefined).map((k) => [k, all[k]!]),
+              ),
+            )
+          }}
         />
       )}
 
@@ -1230,6 +1361,9 @@ export default function BriefsPage() {
           </p>
           {entry.mode !== 'handover' && (
             <div className="mt-4">
+              <p className="sr-only" role="status">
+                Step {step} of 2
+              </p>
               <ol className="flex items-center gap-2 text-sm" aria-label="Progress">
                 {(['Where you are today', 'What changes'] as const).map((label, i) => {
                   const n = (i + 1) as 1 | 2
@@ -1322,6 +1456,24 @@ export default function BriefsPage() {
 
             <motion.div
               key={step}
+              onKeyDown={(ev: React.KeyboardEvent<HTMLElement>) => {
+                const t = ev.target as HTMLElement
+                if (ev.key !== 'Enter' || t.tagName !== 'INPUT') return
+                const inputs = [
+                  ...ev.currentTarget.querySelectorAll<HTMLInputElement>('input'),
+                ].filter((i) => i.type === 'number' || i.type === 'date')
+                const at = inputs.indexOf(t as HTMLInputElement)
+                if (at < 0) return
+                ev.preventDefault()
+                const next = inputs[at + 1]
+                if (next) next.focus()
+                else if (entry.mode !== 'handover' && step === 1) continueStep()
+              }}
+              onFocusCapture={() => {
+                if (!entry || formStartedAtRef.current !== null) return
+                formStartedAtRef.current = Date.now()
+                track('brief_form_started', formStartedMeta(entry, f))
+              }}
               initial={reduce ? false : { opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2 }}
@@ -1358,6 +1510,12 @@ export default function BriefsPage() {
                 <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
                   Your answer so far · nothing is saved or shared yet
                 </p>
+                {!!preview.assumed?.length && (
+                  <p className="mt-1 text-sm text-ink-secondary">
+                    This assumes nothing else changes. Add the {preview.assumed.join(' and the ')}{' '}
+                    below for the real answer.
+                  </p>
+                )}
                 {preview.state === 'loading' && !preview.data && (
                   <Skeleton className="mt-3 h-16 w-full" />
                 )}
