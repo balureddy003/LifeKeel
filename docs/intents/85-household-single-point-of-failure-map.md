@@ -35,4 +35,4 @@ stores, not this question. Confirm in a teardown before claiming a gap in public
 **Out of scope** — Joint-account visibility, bank or card feeds, changing who pays,
 reminders sent by LifeKeel, and any inference about a person's behaviour.
 
-**Becomes** — PRD number once accepted: docs/prd/NNN-household-single-point-of-failure-map.md
+**Becomes** — [PRD-231](../prd/231-household-single-point-of-failure-map.md)

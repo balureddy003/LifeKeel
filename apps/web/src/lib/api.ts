@@ -6325,9 +6325,10 @@ export interface SharedBriefView extends HouseholdBrief {
 async function briefPost<T>(
   path: string,
   body: unknown,
+  method = 'POST',
 ): Promise<{ ok: boolean; status: number; data?: T }> {
   const res = await credFetch(`${getApiBase()}${path}`, {
-    method: 'POST',
+    method,
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${getAuthToken() ?? ''}`,
@@ -6383,6 +6384,63 @@ export function previewBrief(body: { problem_type: BriefProblemType; inputs: Bri
 
 export function confirmBrief(id: string, result_version: string) {
   return briefPost<{ confirmed: boolean }>(`/family/briefs/${id}/confirm`, { result_version })
+}
+
+// ─── Obligations map (PRD-231) ───────────────────────────────────────────────
+
+export interface Obligation {
+  id: string
+  label: string
+  category: string | null
+  named_person: string
+  pays_from: string | null
+  notices_to: string | null
+  next_due_date: string
+  recurrence: string | null
+  if_unavailable: string | null
+  pending_confirmation: boolean
+  confirmed_by: string | null
+  created_by: string
+}
+
+export interface ObligationsMap {
+  obligations: Obligation[]
+  summary: {
+    dependent_count: number
+    earliest_due_date: string | null
+    earliest_due_label: string | null
+  }
+}
+
+export interface ObligationInput {
+  label: string
+  category?: string
+  named_person: string
+  pays_from?: string
+  notices_to?: string
+  next_due_date: string
+  recurrence?: string
+  if_unavailable?: string
+}
+
+export function getObligationsMap() {
+  return apiFetch<ObligationsMap>('/family/obligations/map', {
+    obligations: [],
+    summary: { dependent_count: 0, earliest_due_date: null, earliest_due_label: null },
+  })
+}
+
+export function createObligation(body: ObligationInput) {
+  return briefPost<{ obligation: Obligation }>('/family/obligations', body)
+}
+export function updateObligation(id: string, body: Partial<ObligationInput>) {
+  return briefPost<{ obligation: Obligation }>(`/family/obligations/${id}`, body, 'PUT')
+}
+export function deleteObligation(id: string) {
+  return briefPost<{ ok: boolean }>(`/family/obligations/${id}`, {}, 'DELETE')
+}
+export function confirmObligation(id: string) {
+  return briefPost<{ obligation: Obligation }>(`/family/obligations/${id}/confirm`, {})
 }
 
 export function deleteBrief(id: string) {

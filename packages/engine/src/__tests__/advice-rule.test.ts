@@ -73,6 +73,8 @@ function webCopyFiles(): string[] {
     'apps/web/src/components/ExtractionReview.tsx',
     'apps/web/src/lib/deletion-receipt-copy.ts',
     'apps/web/src/components/DeletionReceiptCard.tsx',
+    // PRD-231: the obligations map states who is named and what is due.
+    'apps/web/src/app/map/page.tsx',
     'apps/web/src/lib/ai-disclosure-copy.ts',
     'apps/web/src/app/ai-processing/page.tsx',
     'apps/web/src/components/ChannelsCard.tsx',
