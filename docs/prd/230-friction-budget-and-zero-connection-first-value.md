@@ -47,7 +47,19 @@ without asking them to set up an account first.
    first-value path, with the budget numbers attached for changes that touch it.
 8. **Value ledger.** Where a feature claims money found, "found" and "confirmed saved"
    are separate numbers, and only the household's confirmation moves a figure to saved.
-9. **Roadmap and gates.** `docs/reviews/product-roadmap-2026-10.md` Wave 6 and the
+9. **Depth never gates the front door.** Use cases that need a feed (employer cover
+   found, single-point-of-failure map, claim packet, beneficiary check, change
+   detection) are added to the same number as depth. A test or review check confirms a
+   brief still produces its first number with no connection present. Each such use case
+   gets its own intent, with its own trust tier and advice-line check, before build;
+   the ranking and friction cost of each is in
+   [channels-and-use-cases-frictionless-2026-10.md](../reviews/channels-and-use-cases-frictionless-2026-10.md).
+10. **Channels use the same budget.** Adviser, employer, UK-India-family and invite or
+    gift channels each have a front-door version (a brief link, or a shared brief read
+    before joining) and report the same first-value numbers. An adviser pilot is
+    measured on time to first number and second-adult confirmation, not setup
+    completion, and its wording is cleared with counsel first (PRD-207).
+11. **Roadmap and gates.** `docs/reviews/product-roadmap-2026-10.md` Wave 6 and the
    pivot document gate the next stage on these numbers, not on "finished setup".
 
 ## Constraints
@@ -64,7 +76,9 @@ without asking them to set up an account first.
 
 ## Out of scope
 
-Account-free storage of the household record; inbox, bank or pension feeds (Stage 3);
+Building any depth use case (each needs its own intent); staged emergency access
+(parked: it touches irreversible action, so it needs an approval gate and counsel);
+account-free storage of the household record; inbox, bank or pension feeds (Stage 3);
 pricing; a partner or adviser portal; any feature in which an adviser reads a client's
 figures (Stage 4, by household grant only).
 

@@ -28,6 +28,17 @@ come back.
   number, share of households whose second adult confirms, and a value ledger that keeps
   "found" apart from "confirmed saved".
 
+- **Two layers, one number.** The brief link is the front door; feed-based use cases
+  (employer cover found, the household single-point-of-failure map, the claim packet,
+  beneficiary check, change detection) are the depth layer. They improve the same
+  number and are never a prerequisite for it. Their ranking, friction cost and cheapest
+  first tests are in
+  [channels-and-use-cases-frictionless-2026-10.md](../reviews/channels-and-use-cases-frictionless-2026-10.md).
+- **Channels are measured on the same budget:** advisers, employers, UK-India families
+  and invites and gifts each get a front-door version and a friction measure, in place
+  of "finished setup".
+- **Staged emergency access stays parked** until counsel and an approval gate exist.
+
 **Constraints**
 - Trust tier touched (0–3, see ARCHITECTURE.md): **Tier 0**; nothing is sent or done on
   the household's behalf. Approval gate: none needed.

@@ -152,7 +152,7 @@ record a recurring reason to be reopened.
 
 | File | Concern | Becomes PRD | Status |
 |---|---|---|---|
-| `83-friction-budget-and-zero-connection-first-value.md` | Measure friction on the first-value path, keep first value connection-free, brief link as front door for every channel, second adult reads first and joins later | PRD-230 | **PROPOSED** — baseline the targets before enforcing |
+| `83-friction-budget-and-zero-connection-first-value.md` | Measure friction on the first-value path, keep first value connection-free, brief link as front door for every channel, second adult reads first and joins later | PRD-230 | **PROPOSED** — baseline the targets before enforcing. Ranked use cases and channels: [review](../reviews/channels-and-use-cases-frictionless-2026-10.md) |
 
 Note: `78-factual-brief-catalogue.md` is shipped (PRs #308) but is not yet listed in
 the table above; add its row when this index is next reconciled.

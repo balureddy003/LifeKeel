@@ -109,6 +109,11 @@ connection, and each is judged on the numbers below.
 | Second adult reads first, joins after | intent 83 → PRD-230 | Builds on intents 23 and 82; no creator-visible "not opened" state. |
 | Value ledger: found vs confirmed saved | PRD-141, PRD-230 item 8 | Only the household's confirmation moves a figure to saved. |
 
+Depth use cases (employer cover found, single-point-of-failure map, claim packet,
+beneficiary check, change detection) and the channel set are ranked in
+[channels-and-use-cases-frictionless-2026-10.md](channels-and-use-cases-frictionless-2026-10.md).
+Each needs its own intent before build; staged emergency access stays parked.
+
 **Gate:** median time to first useful number, share of first-value paths needing a
 connection (target zero), and second-adult confirmation within 7 days are tracked
 before Stage 2 packs or Stage 3 feeds are promoted. Targets are set after the
