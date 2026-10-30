@@ -869,14 +869,14 @@ describe('/marketing/connections', () => {
     const { DbSocialPublisher } = await import('../../marketing/social-publisher.js')
     const pub = new DbSocialPublisher(db, null)
     const integrations = await pub.listIntegrations(TENANT)
-    expect(integrations).toEqual([
+    expect(integrations.filter((i) => i.source !== 'manual')).toEqual([
       expect.objectContaining({ identifier: 'bluesky', source: 'connection' }),
-      expect.objectContaining({ id: 'x:manual', source: 'manual' }),
     ])
-    // Another tenant sees only the always-on manual channel.
-    expect(await pub.listIntegrations('other-tenant')).toEqual([
-      expect.objectContaining({ id: 'x:manual', source: 'manual' }),
-    ])
+    expect(integrations.find((i) => i.id === 'x:manual')).toMatchObject({ source: 'manual' })
+    // Another tenant sees only the always-on manual channels.
+    const other = await pub.listIntegrations('other-tenant')
+    expect(other.length).toBeGreaterThan(0)
+    expect(other.every((i) => i.source === 'manual')).toBe(true)
   })
 })
 

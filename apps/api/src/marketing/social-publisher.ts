@@ -515,32 +515,52 @@ export function xIntentUrl(content: string): string {
   return `https://twitter.com/intent/tweet?text=${encodeURIComponent(content)}`
 }
 
-/** Channels with a manual post path — the intent-URL builder per channel. */
-const MANUAL_INTENT: Record<string, (content: string) => string> = {
-  x: xIntentUrl,
+/**
+ * Channels with a manual post path: the network's own composer, opened with the
+ * text prefilled. Only networks whose composer link accepts text are here.
+ * Facebook and Instagram have no such link, so they stay API-only.
+ */
+const MANUAL_INTENT: Record<string, { label: string; url: (content: string) => string }> = {
+  x: { label: 'X', url: xIntentUrl },
+  bluesky: {
+    label: 'Bluesky',
+    url: (c) => `https://bsky.app/intent/compose?text=${encodeURIComponent(c)}`,
+  },
+  linkedin: {
+    label: 'LinkedIn',
+    url: (c) => `https://www.linkedin.com/feed/?shareActive=true&text=${encodeURIComponent(c)}`,
+  },
+  threads: {
+    label: 'Threads',
+    url: (c) => `https://www.threads.net/intent/post?text=${encodeURIComponent(c)}`,
+  },
 }
 
-/** Always available — needs no credential, so it lists even when nothing
- *  else is configured. */
-export const MANUAL_X_CHANNEL: ChannelInfo = {
-  id: 'x:manual',
-  name: 'X (manual post)',
-  identifier: 'x',
+const manualChannel = (channel: string): ChannelInfo => ({
+  id: `${channel}:manual`,
+  name: `${MANUAL_INTENT[channel]?.label ?? channel} (manual post)`,
+  identifier: channel,
   disabled: false,
   source: 'manual',
-  account: 'your logged-in X account',
-}
+  account: `your logged-in ${MANUAL_INTENT[channel]?.label ?? channel} account`,
+})
+
+/** Always available — need no credential, so they list even when nothing else
+ *  is configured. */
+export const MANUAL_CHANNELS: ChannelInfo[] = Object.keys(MANUAL_INTENT).map(manualChannel)
+export const MANUAL_X_CHANNEL: ChannelInfo = manualChannel('x')
+const MANUAL_IDS = new Set(MANUAL_CHANNELS.map((c) => c.id))
 
 function manualDispatch(args: CreatePostArgs): PublishResult {
   const intent = MANUAL_INTENT[args.channel]
   if (!intent) throw new Error(`channel_not_configured:${args.channel}`)
   return {
-    manual: { intent_url: intent(args.content) },
+    manual: { intent_url: intent.url(args.content) },
     publisher: {
       integration_id: `${args.channel}:manual`,
       channel: args.channel,
       source: 'manual',
-      account: MANUAL_X_CHANNEL.account ?? 'manual',
+      account: manualChannel(args.channel).account ?? 'manual',
     },
   }
 }
@@ -549,7 +569,7 @@ export class EnvSocialPublisher implements SocialPublisher {
   constructor(private readonly handlers: ReadonlyMap<string, ChannelHandler>) {}
 
   listIntegrations(): Promise<ChannelInfo[]> {
-    return Promise.resolve([...this.handlers.values()].map((h) => h.info).concat(MANUAL_X_CHANNEL))
+    return Promise.resolve([...this.handlers.values()].map((h) => h.info).concat(MANUAL_CHANNELS))
   }
 
   async createPost(args: CreatePostArgs): Promise<PublishResult> {
@@ -770,9 +790,9 @@ export class DbSocialPublisher implements SocialPublisher {
       ...connList,
       // A stored connection shadows the env channel for this tenant — the
       // composer would otherwise show the same channel twice. Env already
-      // lists the manual channel, so drop its copy before appending ours.
-      ...envList.filter((i) => !connChannels.has(i.identifier) && i.id !== MANUAL_X_CHANNEL.id),
-      MANUAL_X_CHANNEL,
+      // lists the manual channels, so drop its copies before appending ours.
+      ...envList.filter((i) => !connChannels.has(i.identifier) && !MANUAL_IDS.has(i.id)),
+      ...MANUAL_CHANNELS,
     ]
   }
 
