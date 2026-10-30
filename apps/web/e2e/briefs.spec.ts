@@ -3,48 +3,53 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 /**
- * Household briefs catalogue — the signed-in page renders the grouped
- * catalogue and, with no second adult on the seeded family, refuses
- * creation with a useful message rather than failing silently.
+ * Household briefs — the signed-in page leads with what is changing (four
+ * front doors), keeps every catalogue entry reachable under "see every
+ * situation", and, with no second adult on the seeded family, explains what
+ * to do rather than failing silently.
  */
-test('brief catalogue renders and requires a second adult', async ({ page }) => {
+test('brief page: front doors, full catalogue, and a clear message without a second adult', async ({
+  page,
+}) => {
   await page.goto('/briefs')
   await expect(page.getByRole('heading', { name: 'Household briefs' })).toBeVisible()
-  await expect(page.getByText('Money and income')).toBeVisible()
-  await expect(page.getByText('Practical handover')).toBeVisible()
-  await expect(page.getByText('Children')).toBeVisible()
-  await expect(page.getByText('One of us might stop earning')).toBeVisible()
-  await expect(page.getByText('Home emergency')).toBeVisible()
-  // Review-gap entries — illness/recovery retitle + the added use cases.
-  await expect(page.getByText('Hours cut, role changed, illness or recovery')).toBeVisible()
-  await expect(page.getByText('A bill or joint account in one name')).toBeVisible()
-  await expect(page.getByText(/Bereavement/)).toBeVisible()
-  await expect(page.getByText('Energy or council tax rise')).toBeVisible()
-  await expect(page.getByText('Car or essential repair bill')).toBeVisible()
-  // Separation stays out of the catalogue until the safeguarding review.
-  await expect(page.getByText(/[Ss]eparation|[Dd]ivorce/)).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'What is changing?' })).toBeVisible()
+  await expect(page.getByText('Add the other adult first')).toBeVisible()
 
-  // Intent 80 front doors + search (added after the doors landed).
   for (const door of [
     'A job is changing',
     'A baby is coming',
     'A parent needs care',
     'A fix is ending',
   ])
-    await expect(page.getByRole('button', { name: door })).toBeVisible()
-  await page.getByRole('button', { name: 'A baby is coming' }).click()
-  // Door filters to that moment: a baby-moment entry shows, a job one hides.
+    await expect(page.getByRole('button', { name: new RegExp(door) })).toBeVisible()
+
+  // A door opens its entries right under it (server-side `moment`).
+  await page.getByRole('button', { name: /A baby is coming/ }).click()
   await expect(page.getByRole('button', { name: 'Nursery or school fees starting' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'One of us might stop earning' })).toHaveCount(0)
-  await page.getByRole('button', { name: 'A baby is coming' }).click()
-  await page.getByRole('searchbox', { name: /search briefs/i }).fill('lump sum')
-  await expect(page.getByRole('button', { name: 'A lump sum arriving' })).toBeVisible()
-  // Reset the search so the unfiltered catalogue is back for the refusal check.
-  await page.getByRole('searchbox', { name: /search briefs/i }).fill('')
 
-  await page.getByRole('button', { name: 'One of us might stop earning' }).click()
-  await page.getByRole('button', { name: 'Create the brief' }).click()
-  await expect(page.getByText(/Choose another active adult|Invite them from Family/i)).toBeVisible()
+  await page.getByRole('button', { name: /See every situation/ }).click()
+  await expect(page.getByText('Money and income')).toBeVisible()
+  await expect(page.getByText('Practical handover')).toBeVisible()
+  await expect(page.getByText('Children')).toBeVisible()
+  await expect(page.getByText('Hours cut, role changed, illness or recovery')).toBeVisible()
+  await expect(page.getByText('A bill or joint account in one name')).toBeVisible()
+  await expect(page.getByText(/Bereavement/)).toBeVisible()
+  // Separation stays out of the catalogue until the safeguarding review.
+  await expect(page.getByText(/[Ss]eparation|[Dd]ivorce/)).toHaveCount(0)
+
+  await page.getByPlaceholder(/Search/).fill('lump sum')
+  await expect(page.getByRole('button', { name: 'A lump sum arriving' })).toBeVisible()
+  await expect(page.getByText('Pet care')).toHaveCount(0)
+  await page.getByPlaceholder(/Search/).fill('rent')
+  await page.getByRole('button', { name: 'Rent rise' }).click()
+
+  // Two steps: today's figures first. Missing fields are named beside the field.
+  await expect(page.getByText('Where you are today')).toBeVisible()
+  await page.getByRole('button', { name: /Continue/ }).click()
+  await expect(page.getByText(/Enter what comes in each month/)).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Add them in Family' })).toBeVisible()
 })
 
 /**
@@ -52,11 +57,11 @@ test('brief catalogue renders and requires a second adult', async ({ page }) => 
  * signs in, taps "I'm Alex — view the numbers", and both confirmations
  * land on the brief. A plain link fetch (scanners, unfurlers) never counts.
  */
-// FLAW: the confirm-click step is flaky — some runs reach 'ready' and the
-// button, others stall at 'signin' (cookie timing) or stay 'ready' after the
-// click (confirm POST never observed). Journey through join→approve→cookie
-// auth→ready is verified working; the last click/assert needs a stable fix.
-// Skip rather than block the suite; un-skip when the confirm step is stable.
+// FLAW (original note): the confirm click was flaky — some runs stalled at
+// 'signin'. Likely cause: the share page sent only the session cookie, which
+// is dropped cross-site. The page now also sends the Bearer token and
+// distinguishes the signed-in states. Still skipped here because this spec
+// has not been re-run against it; un-skip after a green local run.
 test.skip('partner signs in and confirms the shared brief end-to-end', async ({
   page,
   browser,
@@ -119,7 +124,7 @@ test.skip('partner signs in and confirms the shared brief end-to-end', async ({
     body: JSON.stringify({ email, password: 'partner-e2e-pass-1' }),
   })
   const setCookie = login.headers.get('set-cookie') ?? ''
-  const [pair] = setCookie.split(';')
+  const pair = setCookie.split(';')[0] ?? ''
   const eq = pair.indexOf('=')
   const partnerCtx = await browser.newContext()
   await partnerCtx.addCookies([{ name: pair.slice(0, eq), value: pair.slice(eq + 1), url: API }])

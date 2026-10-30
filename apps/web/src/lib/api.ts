@@ -116,7 +116,7 @@ const FAMILY_DETECTORS = [
   'family_policy_review',
 ] as const
 
-function getAuthToken(): string | null {
+export function getAuthToken(): string | null {
   if (typeof window === 'undefined') return null
   return getSessionToken()
 }
@@ -6229,6 +6229,14 @@ export interface BriefInputs extends Record<string, unknown> {
   cover_end_date?: string | undefined
   decision_deadline?: string | undefined
   recorded_cover?: string | undefined
+  income_steps?:
+    | Array<{
+        date: string
+        monthly_income_minor?: number
+        monthly_essentials_minor?: number
+        cash_delta_minor?: number
+      }>
+    | undefined
   facts?: Record<string, string> | undefined
   sensitive_consent?: true | undefined
 }
@@ -6307,6 +6315,7 @@ export function getBriefCatalogue() {
     catalogue: BriefCatalogueEntry[]
     recipients: Array<{ id: string; name: string }>
     current_user_id: string
+    can_create?: boolean
   }>('/family/brief-catalogue', { catalogue: [], recipients: [], current_user_id: '' })
 }
 
@@ -6330,6 +6339,17 @@ export function createBrief(body: {
   for_member_id?: string | null
 }) {
   return briefPost<{ brief: HouseholdBrief }>('/family/briefs', body)
+}
+
+/** The answer before anything is saved or shared (money briefs only). */
+export interface BriefPreview {
+  template_sentence: string
+  result: Record<string, unknown> | null
+  facts: Array<{ label: string; value: string }>
+}
+
+export function previewBrief(body: { problem_type: BriefProblemType; inputs: BriefInputs }) {
+  return briefPost<{ preview: BriefPreview }>('/family/briefs/preview', body)
 }
 
 export function confirmBrief(id: string, result_version: string) {
