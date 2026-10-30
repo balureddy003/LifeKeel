@@ -535,6 +535,13 @@ Follow-ups to the factual catalogue (Intent 78), from a review of what shipped:
    an in-app signal says "no payment on file since <date>; check with your
    provider that cover is in force" — never "lapsed". Extends the existing
    premium-increase rule. Tier 0.
+## 235 — Claim packet (proposed 2026-10-30)
+
+1. [235-claim-packet.md](235-claim-packet.md) — **PROPOSED.** For one policy
+   type first (life): assembles the insurer's claims contact as printed, the
+   policy number, and a checklist of papers on file or not located, plus a
+   fixed-template draft notification the household reviews and sends. Tier 1
+   prepare-only — no ActionExecutor, nothing sent. Tier gate recorded.
 
 
 ## Suggested build order for 138–147 and 203–206
