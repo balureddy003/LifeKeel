@@ -8,7 +8,7 @@ import type { FormValues } from './brief-form'
  * property outside this shape (growth-events.ts), and the allow-list test
  * in __tests__/ keeps the two sides from drifting.
  */
-export interface BriefFrictionMeta {
+export interface BriefFrictionMeta extends Record<string, unknown> {
   problem_type: string
   ms_since_form_start?: number
   fields_entered?: number

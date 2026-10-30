@@ -61,6 +61,7 @@ import {
   validateStep,
   type FormValues,
 } from './brief-form'
+import { firstNumberMeta, formStartedMeta } from './friction'
 
 const inputCls =
   'mt-1 w-full min-h-[48px] rounded-xl border border-haze bg-surface-1 px-3 text-ink-primary placeholder:text-ink-tertiary focus:outline-none focus:ring-2 focus:ring-family-500'
@@ -874,6 +875,10 @@ export default function BriefsPage() {
   const toast = useToast()
   const formRef = useRef<HTMLDivElement>(null)
   const resultRef = useRef<HTMLDivElement>(null)
+  // PRD-230 friction budget: first field focus → first number on screen.
+  // Refs, not state — they never paint.
+  const formStartedAtRef = useRef<number | null>(null)
+  const firstNumberSentRef = useRef(false)
 
   useEffect(() => {
     void getBriefCatalogue().then((c) => {
@@ -893,6 +898,8 @@ export default function BriefsPage() {
   function choose(e: BriefCatalogueEntry, prefill?: FormValues, from?: string) {
     setEntry(e)
     setF(prefill ?? {})
+    formStartedAtRef.current = null
+    firstNumberSentRef.current = false
     setStep(1)
     setUpdatingFrom(from ?? null)
     setErrors({})
@@ -1018,6 +1025,19 @@ export default function BriefsPage() {
       clearTimeout(timer)
     }
   }, [entry, f, canCreate])
+
+  // PRD-230: the moment the first useful number is on screen — the card only
+  // renders on step 2, so data arriving while step 1 is showing does not
+  // count until the household reaches it. Counts and timings only.
+  useEffect(() => {
+    if (!entry || entry.mode === 'handover' || entry.sensitive) return
+    if (step !== 2 || !preview.data || firstNumberSentRef.current) return
+    firstNumberSentRef.current = true
+    track(
+      'brief_first_number_shown',
+      firstNumberMeta(entry, f, step, formStartedAtRef.current, Date.now()),
+    )
+  }, [entry, step, preview.data, f])
 
   function continueStep() {
     if (!entry) return
@@ -1448,6 +1468,11 @@ export default function BriefsPage() {
                 const next = inputs[at + 1]
                 if (next) next.focus()
                 else if (entry.mode !== 'handover' && step === 1) continueStep()
+              }}
+              onFocusCapture={() => {
+                if (!entry || formStartedAtRef.current !== null) return
+                formStartedAtRef.current = Date.now()
+                track('brief_form_started', formStartedMeta(entry, f))
               }}
               initial={reduce ? false : { opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
