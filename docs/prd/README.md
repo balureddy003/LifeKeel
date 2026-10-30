@@ -520,6 +520,13 @@ Follow-ups to the factual catalogue (Intent 78), from a review of what shipped:
    door for households, advisers and employers; the second adult reads first and joins
    later. Tier 0.
 
+## 231 — Household single-point-of-failure map (proposed 2026-10-30)
+
+1. [231-household-single-point-of-failure-map.md](231-household-single-point-of-failure-map.md) —
+   **PROPOSED.** One row per recurring obligation: who is named, who pays, whose
+   phone gets the notices, the next due date — and a one-line summary of how much
+   depends on one person. Household-entered, no connection. Tier 0.
+
 
 ## Suggested build order for 138–147 and 203–206
 
