@@ -17,6 +17,7 @@
         { "source": "/health/**", "destination": "/health/placeholder/index.html" },
         { "source": "/blog/**", "destination": "/blog/placeholder/index.html" },
         { "source": "/invite/**", "destination": "/invite/placeholder/index.html" },
+        { "source": "/b/**", "destination": "/b/placeholder/index.html" },
         { "source": "/operator/users/**", "destination": "/operator/users/placeholder/index.html" }
       ],
       "headers": [
@@ -44,6 +45,10 @@
         {
           "source": "/_next/static/**",
           "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+        },
+        {
+          "source": "/b/**",
+          "headers": [{ "key": "Referrer-Policy", "value": "no-referrer" }]
         }
       ]
     },
