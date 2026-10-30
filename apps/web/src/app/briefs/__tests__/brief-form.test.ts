@@ -5,6 +5,7 @@ import {
   dateChips,
   inputsToForm,
   needs,
+  previewForm,
   remainingFields,
   validate,
   validateStep,
@@ -219,5 +220,34 @@ describe('dateChips', () => {
       '2027-01-29',
       '2027-04-29',
     ])
+  })
+})
+
+describe('previewForm (a partial answer is allowed, a blocked one is not)', () => {
+  const today = { income: '5000', essentials: '3000', savings: '9000', change_date: '2026-11-28' }
+
+  it('shows an answer from today figures alone, assuming nothing else changes', () => {
+    const p = previewForm(entry({}), today)
+    expect(p?.assumed).toEqual(['income after the change'])
+    expect(p?.form['new_income']).toBe('5000')
+  })
+
+  it('needs no assumption once everything is in', () => {
+    const p = previewForm(entry({}), { ...today, new_income: '2000' })
+    expect(p?.assumed).toEqual([])
+    expect(p?.form['new_income']).toBe('2000')
+  })
+
+  it('stays quiet while today figures or the date are missing', () => {
+    expect(previewForm(entry({}), { income: '5000' })).toBeNull()
+    expect(previewForm(entry({}), { ...today, change_date: '' })).toBeNull()
+  })
+
+  it('does not invent a one-off amount', () => {
+    expect(previewForm(entry({ id: 'windfall', mode: 'cash' }), today)).toBeNull()
+  })
+
+  it('never previews handover or sensitive briefs', () => {
+    expect(previewForm(medical, { change_date: '2026-11-01' })).toBeNull()
   })
 })

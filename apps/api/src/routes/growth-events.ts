@@ -32,6 +32,7 @@ export const KNOWN_EVENTS = new Set([
   'brief_gate_converted',
   // Engagement on a finished brief (content-free: which feature, never a figure).
   'brief_whatif_used',
+  'brief_next_started',
   'brief_update_started',
   'landing_view',
   'landing_get_started_click',

@@ -181,6 +181,35 @@ export function remainingFields(e: BriefCatalogueEntry, f: FormValues): number {
   return Object.keys(validate(e, f)).length
 }
 
+/**
+ * A partial answer is better than a blocked screen. Once today's figures and the
+ * date are in, a missing "after the change" amount is assumed unchanged so the
+ * household sees a months figure straight away, and is told what to add for the
+ * real one. Returns null while even that minimum is missing, or when the gap is
+ * something no sensible default exists for (a one-off amount, a dated step).
+ */
+export function previewForm(
+  e: BriefCatalogueEntry,
+  f: FormValues,
+): { form: FormValues; assumed: string[] } | null {
+  if (e.mode === 'handover' || e.sensitive) return null
+  const errors = validate(e, f)
+  const keys = Object.keys(errors)
+  if (keys.length === 0) return { form: f, assumed: [] }
+  const fillable: Record<string, { from: string; label: string }> = {
+    new_income: { from: 'income', label: 'income after the change' },
+    new_essentials: { from: 'essentials', label: 'spending after the change' },
+  }
+  if (!keys.every((k) => k in fillable)) return null
+  const form = { ...f }
+  const assumed: string[] = []
+  for (const k of keys) {
+    form[k] = f[fillable[k]!.from]!
+    assumed.push(fillable[k]!.label)
+  }
+  return { form, assumed }
+}
+
 export interface DateChip {
   label: string
   value: string
