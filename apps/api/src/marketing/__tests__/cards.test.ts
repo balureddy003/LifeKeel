@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
+  cardUrl,
   cardSpecHash,
   cardSvg,
   renderCardPng,
@@ -37,5 +38,40 @@ describe('social cards (PRD-219)', () => {
     expect(lines.every((l) => l.length <= 24)).toBe(true)
     expect(() => wrapText('word '.repeat(500).trim(), 24, 4)).toThrow(/overflow/)
     expect(() => cardSvg({ ...spec, headline: 'long '.repeat(200) }, 'facebook')).toThrow()
+  })
+})
+
+describe('card URL base', () => {
+  const saved = { pub: process.env['API_PUBLIC_URL'], base: process.env['API_BASE_URL'] }
+  afterEach(() => {
+    for (const [k, v] of [
+      ['API_PUBLIC_URL', saved.pub],
+      ['API_BASE_URL', saved.base],
+    ] as const) {
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
+    }
+  })
+
+  it('uses the deployed API_BASE_URL when API_PUBLIC_URL is not set', () => {
+    delete process.env['API_PUBLIC_URL']
+    process.env['API_BASE_URL'] = 'https://api.example.com/'
+    expect(cardUrl('p1', spec)).toMatch(
+      /^https:\/\/api\.example\.com\/public\/social-card\/p1\.png\?s=/,
+    )
+  })
+
+  it('prefers API_PUBLIC_URL when both are set', () => {
+    process.env['API_PUBLIC_URL'] = 'https://cdn.example.com'
+    process.env['API_BASE_URL'] = 'https://api.example.com'
+    expect(cardUrl('p1', spec)).toMatch(/^https:\/\/cdn\.example\.com\//)
+  })
+
+  it('gives no URL for a local or plain-http base, since Meta cannot fetch it', () => {
+    delete process.env['API_PUBLIC_URL']
+    process.env['API_BASE_URL'] = 'http://localhost:3001'
+    expect(cardUrl('p1', spec)).toBe('')
+    process.env['API_BASE_URL'] = 'http://api.example.com'
+    expect(cardUrl('p1', spec)).toBe('')
   })
 })
