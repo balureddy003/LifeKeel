@@ -296,7 +296,7 @@ export function entryBlock(entry: BankEntryDoc, channel: string, now: Date): str
   return null
 }
 
-const POST_STATES = ['approved', 'publishing', 'published'] as const
+const POST_STATES = ['approved', 'publishing', 'awaiting_manual', 'published'] as const
 
 export async function scheduleStanding(
   db: Db,

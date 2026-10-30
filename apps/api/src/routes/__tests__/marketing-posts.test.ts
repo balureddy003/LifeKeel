@@ -639,6 +639,80 @@ describe('/marketing/posts', () => {
     expect(posts[0]!['external_url']).toBe('https://bsky.app/profile/keel/post/3k1')
   })
 
+  it('approving a manual-handoff post parks it awaiting_manual with the intent URL — never published', async () => {
+    const pub = fakePostiz({
+      createPost: vi.fn(async () => ({
+        manual: { intent_url: 'https://twitter.com/intent/tweet?text=hello' },
+        publisher: { integration_id: 'x:manual', channel: 'x', source: 'manual', account: 'you' },
+      })),
+    })
+    const { app, posts } = await buildApp({ postiz: pub })
+    await app.inject({
+      method: 'POST',
+      url: '/marketing/posts',
+      payload: { integration_id: 'x:manual', channel: 'x', content: 'manual post' },
+    })
+    const res = await app.inject({
+      method: 'POST',
+      url: `/marketing/posts/${posts[0]!['id']}/approve`,
+    })
+    expect(res.json().post.state).toBe('awaiting_manual')
+    expect(posts[0]!['manual_url']).toBe('https://twitter.com/intent/tweet?text=hello')
+    expect(posts[0]!['published_at']).toBeUndefined()
+    expect(posts[0]!['published_via']).toBeUndefined()
+  })
+
+  it('mark-posted confirms a manual post, and the tweet URL joins it to external metrics', async () => {
+    const pub = fakePostiz({
+      createPost: vi.fn(async () => ({
+        manual: { intent_url: 'https://twitter.com/intent/tweet?text=hello' },
+        publisher: { integration_id: 'x:manual', channel: 'x', source: 'manual', account: 'you' },
+      })),
+    })
+    const { app, posts } = await buildApp({ postiz: pub })
+    await app.inject({
+      method: 'POST',
+      url: '/marketing/posts',
+      payload: { integration_id: 'x:manual', channel: 'x', content: 'manual post' },
+    })
+    const id = posts[0]!['id'] as string
+    await app.inject({ method: 'POST', url: `/marketing/posts/${id}/approve` })
+    const res = await app.inject({
+      method: 'POST',
+      url: `/marketing/posts/${id}/mark-posted`,
+      payload: { external_url: 'https://x.com/lifekeel/status/12345' },
+    })
+    const post = res.json().post
+    expect(post.state).toBe('published')
+    expect(post.external_url).toBe('https://x.com/lifekeel/status/12345')
+    expect(posts[0]!['external_id']).toBe('12345')
+    expect(posts[0]!['manual_posted_by']).toBe(USER)
+    expect(posts[0]!['published_via']).toMatchObject({ channel: 'x', source: 'manual' })
+    // A second confirm is refused — no ambiguous "did it post?" state.
+    expect(
+      (await app.inject({ method: 'POST', url: `/marketing/posts/${id}/mark-posted` })).statusCode,
+    ).toBe(404)
+  })
+
+  it('an awaiting_manual post can still be cancelled via reject', async () => {
+    const pub = fakePostiz({
+      createPost: vi.fn(async () => ({
+        manual: { intent_url: 'https://twitter.com/intent/tweet?text=hello' },
+        publisher: { integration_id: 'x:manual', channel: 'x', source: 'manual', account: 'you' },
+      })),
+    })
+    const { app, posts } = await buildApp({ postiz: pub })
+    await app.inject({
+      method: 'POST',
+      url: '/marketing/posts',
+      payload: { integration_id: 'x:manual', channel: 'x', content: 'manual post' },
+    })
+    const id = posts[0]!['id'] as string
+    await app.inject({ method: 'POST', url: `/marketing/posts/${id}/approve` })
+    const res = await app.inject({ method: 'POST', url: `/marketing/posts/${id}/reject` })
+    expect(res.json().post.state).toBe('rejected')
+  })
+
   it('dry_run_mode flips state without a Postiz call; the human review still earns trust', async () => {
     const postiz = fakePostiz()
     const { app, posts, settingsDocs } = await buildApp({
@@ -797,9 +871,12 @@ describe('/marketing/connections', () => {
     const integrations = await pub.listIntegrations(TENANT)
     expect(integrations).toEqual([
       expect.objectContaining({ identifier: 'bluesky', source: 'connection' }),
+      expect.objectContaining({ id: 'x:manual', source: 'manual' }),
     ])
-    // Another tenant sees nothing.
-    expect(await pub.listIntegrations('other-tenant')).toEqual([])
+    // Another tenant sees only the always-on manual channel.
+    expect(await pub.listIntegrations('other-tenant')).toEqual([
+      expect.objectContaining({ id: 'x:manual', source: 'manual' }),
+    ])
   })
 })
 

@@ -13,6 +13,7 @@ import type { MarketingPost } from '@/lib/api'
 const DOT: Record<MarketingPost['state'], string> = {
   draft: 'bg-warning',
   approved: 'bg-family-400',
+  awaiting_manual: 'bg-family-400',
   published: 'bg-success',
   publish_failed: 'bg-danger',
   rejected: 'bg-tint/20',
@@ -77,7 +78,9 @@ export function PostCalendar({ posts }: { posts: MarketingPost[] }) {
         </div>
         <div className="grid grid-cols-7 gap-1 text-center">
           {WEEKDAYS.map((d) => (
-            <div key={d} className="text-caption text-ink-tertiary py-1">{d}</div>
+            <div key={d} className="text-caption text-ink-tertiary py-1">
+              {d}
+            </div>
           ))}
           {cells.map((key, i) =>
             key === null ? (
@@ -87,10 +90,14 @@ export function PostCalendar({ posts }: { posts: MarketingPost[] }) {
                 key={key}
                 onClick={() => setSelected(selected === key ? null : key)}
                 className={`rounded-lg py-1.5 flex flex-col items-center gap-0.5 border ${
-                  selected === key ? 'border-family-500/40 bg-family-500/10' : 'border-transparent hover:bg-tint/[0.04]'
+                  selected === key
+                    ? 'border-family-500/40 bg-family-500/10'
+                    : 'border-transparent hover:bg-tint/[0.04]'
                 }`}
               >
-                <span className={`text-xs ${key === dayKey(new Date()) ? 'font-bold text-family-400' : 'text-ink-secondary'}`}>
+                <span
+                  className={`text-xs ${key === dayKey(new Date()) ? 'font-bold text-family-400' : 'text-ink-secondary'}`}
+                >
                   {Number(key.slice(8))}
                 </span>
                 <span className="flex gap-0.5 h-1.5">
@@ -108,17 +115,24 @@ export function PostCalendar({ posts }: { posts: MarketingPost[] }) {
         <div className="mt-3 space-y-2">
           {selectedPosts.length === 0 && (
             <GlassCard className="p-4">
-              <p className="text-sm text-ink-tertiary">Nothing scheduled or published on {new Date(`${selected}T12:00`).toLocaleDateString()}.</p>
+              <p className="text-sm text-ink-tertiary">
+                Nothing scheduled or published on{' '}
+                {new Date(`${selected}T12:00`).toLocaleDateString()}.
+              </p>
             </GlassCard>
           )}
           {selectedPosts.map((p) => (
             <GlassCard key={p.id} className="p-3">
               <div className="flex items-center gap-2 mb-1">
                 <span className={`w-2 h-2 rounded-full ${DOT[p.state]}`} />
-                <span className="text-caption font-semibold text-ink-secondary uppercase">{p.state.replace('_', ' ')}</span>
+                <span className="text-caption font-semibold text-ink-secondary uppercase">
+                  {p.state.replace('_', ' ')}
+                </span>
                 <span className="text-caption text-ink-tertiary">{p.channel}</span>
                 <span className="text-caption text-ink-tertiary ml-auto">
-                  {new Date((p.state === 'published' ? p.published_at : p.scheduled_at)!).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+                  {new Date(
+                    (p.state === 'published' ? p.published_at : p.scheduled_at)!,
+                  ).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
                 </span>
               </div>
               <p className="text-xs text-ink-secondary leading-relaxed line-clamp-2">{p.content}</p>

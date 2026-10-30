@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
-import { Send, Check, X, Loader2, Pencil, Sparkles, Link2 } from 'lucide-react'
+import { Send, Check, X, Loader2, Pencil, Sparkles, Link2, Copy, ExternalLink } from 'lucide-react'
 import { GlassCard, GlassButton } from '@/components/Glass'
 import { useToast } from '@/components/Toast'
 import { haptic } from '@/lib/haptics'
@@ -21,6 +21,7 @@ import {
   createMarketingPost,
   approveMarketingPost,
   rejectMarketingPost,
+  markMarketingPostPosted,
   fetchAutomationSettings,
   fetchSocialConnections,
   startConnectorConnect,
@@ -62,6 +63,7 @@ import { ReasonAction } from '../_components/ReasonAction'
 const STATE_STYLE: Record<MarketingPost['state'], string> = {
   draft: 'text-warning bg-warning/10 border-warning/25',
   approved: 'text-family-400 bg-family-500/10 border-family-500/20',
+  awaiting_manual: 'text-family-400 bg-family-500/10 border-family-500/20',
   published: 'text-success bg-success/10 border-success/25',
   publish_failed: 'text-danger bg-danger/10 border-danger/25',
   rejected: 'text-ink-tertiary bg-tint/[0.04] border-tint/[0.08]',
@@ -70,6 +72,7 @@ const STATE_STYLE: Record<MarketingPost['state'], string> = {
 const STATE_LABEL: Record<MarketingPost['state'], string> = {
   draft: 'draft',
   approved: 'scheduled',
+  awaiting_manual: 'post manually',
   published: 'published',
   publish_failed: 'failed',
   rejected: 'rejected',
@@ -158,6 +161,8 @@ export default function MarketingPage() {
   const [editSchedule, setEditSchedule] = useState('')
   const [campaignFilter, setCampaignFilter] = useState<string | null>(null)
   const [showLinkBuilder, setShowLinkBuilder] = useState(false)
+  /** Per-post "paste the tweet URL" input on awaiting_manual cards. */
+  const [postedUrls, setPostedUrls] = useState<Record<string, string>>({})
 
   useEffect(() => {
     Promise.all([
@@ -272,6 +277,25 @@ export default function MarketingPage() {
     }
   }
 
+  /** Manual handoff — the operator posted it themselves in the channel's
+   *  composer; confirm (optionally with the resulting post URL). */
+  async function confirmPosted(id: string) {
+    haptic('light')
+    setBusy(id)
+    try {
+      const post = await markMarketingPostPosted(id, postedUrls[id]?.trim() || undefined)
+      setPosts((p) => p.map((x) => (x.id === id ? post : x)))
+      toast({ message: 'Marked as posted' })
+    } catch (err) {
+      toast({
+        message: err instanceof Error ? err.message : "Couldn't confirm — try again",
+        variant: 'error',
+      })
+    } finally {
+      setBusy(null)
+    }
+  }
+
   async function openGenerator() {
     const next = !showGenerate
     setShowGenerate(next)
@@ -313,7 +337,7 @@ export default function MarketingPage() {
   const mediaMode = channelMedia(channel)
   const mediaMissing = mediaMode === 'required' && !mediaUrl.trim()
   const pendingCount = posts.filter(
-    (p) => p.state === 'draft' || p.state === 'publish_failed',
+    (p) => p.state === 'draft' || p.state === 'publish_failed' || p.state === 'awaiting_manual',
   ).length
 
   const knownCampaigns = useMemo(() => {
@@ -371,7 +395,14 @@ export default function MarketingPage() {
       const post =
         action === 'approve' ? await approveMarketingPost(id) : await rejectMarketingPost(id)
       setPosts((p) => p.map((x) => (x.id === id ? post : x)))
-      toast({ message: action === 'approve' ? 'Published' : 'Draft rejected' })
+      toast({
+        message:
+          action === 'reject'
+            ? 'Draft rejected'
+            : post.state === 'awaiting_manual'
+              ? 'Approved — open X and post it'
+              : 'Published',
+      })
     } catch (err) {
       toast({
         message: err instanceof Error ? err.message : 'That did not work — try again',
@@ -459,6 +490,9 @@ export default function MarketingPage() {
                             {i.source === 'env' && (
                               <span className="text-ink-tertiary"> · server env</span>
                             )}
+                            {i.source === 'manual' && (
+                              <span className="text-ink-tertiary"> · you post it yourself</span>
+                            )}
                           </p>
                           {!ok && conn?.last_error && (
                             <p className="text-xs text-danger truncate">{conn.last_error}</p>
@@ -484,7 +518,10 @@ export default function MarketingPage() {
                 {/* OAuth channels — each appears until connected */}
                 <div className="flex flex-wrap gap-2">
                   {OAUTH_CHANNELS.filter(
-                    (o) => !(integrations ?? []).some((i) => i.identifier === o.channel),
+                    (o) =>
+                      !(integrations ?? []).some(
+                        (i) => i.identifier === o.channel && i.source !== 'manual',
+                      ),
                   ).map((o) => (
                     <button
                       key={o.connector}
@@ -496,7 +533,9 @@ export default function MarketingPage() {
                     </button>
                   ))}
                   {OAUTH_CHANNELS.every((o) =>
-                    (integrations ?? []).some((i) => i.identifier === o.channel),
+                    (integrations ?? []).some(
+                      (i) => i.identifier === o.channel && i.source !== 'manual',
+                    ),
                   ) && <p className="text-xs text-ink-tertiary">All OAuth channels connected.</p>}
                 </div>
                 <div>
@@ -956,7 +995,11 @@ export default function MarketingPage() {
                           ) : (
                             <Send size={15} />
                           )}
-                          {post.state === 'publish_failed' ? 'Retry publish' : 'Approve & publish'}
+                          {post.state === 'publish_failed'
+                            ? 'Retry publish'
+                            : post.integration_id.endsWith(':manual')
+                              ? 'Approve'
+                              : 'Approve & publish'}
                         </button>
                         <button
                           onClick={() => decide(post.id, 'reject')}
@@ -982,6 +1025,61 @@ export default function MarketingPage() {
                       >
                         Cancel
                       </button>
+                    </div>
+                  )}
+                  {post.state === 'awaiting_manual' && (
+                    <div className="mt-3 rounded-xl border border-family-500/20 bg-family-500/5 p-3 space-y-2.5">
+                      <p className="text-xs text-ink-secondary leading-relaxed">
+                        Approved — nothing was sent yet. Open the prefilled X composer and post it
+                        yourself, then confirm here.
+                      </p>
+                      <div className="flex gap-2">
+                        {post.manual_url && (
+                          <a
+                            href={post.manual_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-semibold bg-family-500/15 border border-family-500/25 text-family-400"
+                          >
+                            <ExternalLink size={15} /> Open X composer
+                          </a>
+                        )}
+                        <button
+                          onClick={() => {
+                            void navigator.clipboard?.writeText(post.content)
+                            toast({ message: 'Copied to clipboard' })
+                          }}
+                          className="w-11 flex items-center justify-center rounded-xl bg-tint/[0.04] border border-tint/[0.08] text-ink-secondary"
+                          aria-label="Copy post text"
+                        >
+                          <Copy size={15} />
+                        </button>
+                        <button
+                          onClick={() => decide(post.id, 'reject')}
+                          disabled={busy === post.id}
+                          className="w-11 flex items-center justify-center rounded-xl bg-tint/[0.04] border border-tint/[0.08] text-ink-secondary disabled:opacity-40"
+                          aria-label="Cancel manual post"
+                        >
+                          <X size={15} />
+                        </button>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          value={postedUrls[post.id] ?? ''}
+                          onChange={(e) =>
+                            setPostedUrls((m) => ({ ...m, [post.id]: e.target.value }))
+                          }
+                          placeholder="tweet URL (optional — enables metrics)"
+                          className="glass-input flex-1 min-w-0 rounded-xl px-3 py-2 text-xs text-ink-primary placeholder:text-ink-tertiary outline-none"
+                        />
+                        <button
+                          onClick={() => confirmPosted(post.id)}
+                          disabled={busy === post.id}
+                          className="shrink-0 rounded-xl px-3.5 py-2 text-xs font-semibold bg-tint/[0.04] border border-tint/[0.08] text-ink-secondary disabled:opacity-40"
+                        >
+                          {busy === post.id ? '…' : 'Mark as posted'}
+                        </button>
+                      </div>
                     </div>
                   )}
                   {post.state === 'published' && (
