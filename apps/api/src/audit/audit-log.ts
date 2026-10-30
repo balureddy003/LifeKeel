@@ -102,6 +102,7 @@ export type AuditAction =
   | 'scope_contract.collapse'
   | 'scope_contract.suspend'
   | 'marketing.post_approve'
+  | 'marketing.post_marked_posted'
   | 'marketing.post_reject'
   | 'marketing.post_auto_publish'
   | 'marketing.connection_connect'

@@ -3850,7 +3850,7 @@ export interface MarketingIntegration {
   name: string
   identifier?: string
   disabled: boolean
-  source?: 'env' | 'connection'
+  source?: 'env' | 'connection' | 'manual'
   /** The account that would publish — handle, page name or URN. */
   account?: string
 }
@@ -3866,7 +3866,8 @@ export interface SocialConnection {
   updated_at?: string
 }
 
-export type MarketingPostState = 'draft' | 'approved' | 'published' | 'publish_failed' | 'rejected'
+export type MarketingPostState =
+  'draft' | 'approved' | 'published' | 'publish_failed' | 'rejected' | 'awaiting_manual'
 
 export interface MarketingPost {
   id: string
@@ -3884,6 +3885,8 @@ export interface MarketingPost {
   published_at?: string
   publish_error?: string
   external_url?: string
+  /** Manual handoff: prefilled composer URL the operator opens to post. */
+  manual_url?: string
   media_url?: string
   /** Marketing copy guard result (PRD-210); a failing post cannot be approved. */
   copy_check?: { ok: boolean; violations: { rule: string; match: string }[] }
@@ -3958,6 +3961,19 @@ export async function rejectMarketingPost(id: string): Promise<MarketingPost> {
   const data = await marketingRequest<{ post: MarketingPost }>(
     `/marketing/posts/${id}/reject`,
     'POST',
+  )
+  return data.post
+}
+
+/** Confirm a manual-handoff post was completed in the channel's composer. */
+export async function markMarketingPostPosted(
+  id: string,
+  external_url?: string,
+): Promise<MarketingPost> {
+  const data = await marketingRequest<{ post: MarketingPost }>(
+    `/marketing/posts/${id}/mark-posted`,
+    'POST',
+    external_url ? { external_url } : {},
   )
   return data.post
 }

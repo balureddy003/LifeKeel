@@ -41,15 +41,17 @@ describe('socialPublisherFromEnv', () => {
   it('enables exactly the configured channels', async () => {
     vi.stubEnv('X_ACCESS_TOKEN', 'xtok')
     vi.stubEnv('LINKEDIN_ACCESS_TOKEN', 'litok')
-    // LinkedIn also needs the author URN — half-configured stays off.
+    // LinkedIn also needs the author URN — half-configured stays off. The
+    // manual X integration is always listed (needs no credential).
     const partial = socialPublisherFromEnv()
-    expect((await partial!.listIntegrations()).map((i) => i.identifier)).toEqual(['x'])
+    expect((await partial!.listIntegrations()).map((i) => i.id)).toEqual(['x:env', 'x:manual'])
 
     vi.stubEnv('LINKEDIN_AUTHOR_URN', 'urn:li:person:abc')
     const both = socialPublisherFromEnv()
-    expect((await both!.listIntegrations()).map((i) => i.identifier).sort()).toEqual([
-      'linkedin',
-      'x',
+    expect((await both!.listIntegrations()).map((i) => i.id).sort()).toEqual([
+      'linkedin:env',
+      'x:env',
+      'x:manual',
     ])
   })
 })
@@ -93,6 +95,25 @@ describe('EnvSocialPublisher.createPost', () => {
     expect(JSON.parse(String(init.body))).toEqual({ text: 'hello keel' })
     expect(res.external_id).toBe('tw-1')
     expect(res.url).toBe('https://x.com/i/web/status/tw-1')
+  })
+
+  it('serves x:manual as an intent URL without calling X or needing credentials', async () => {
+    vi.stubEnv('X_ACCESS_TOKEN', 'xtok')
+    const fetchMock = vi.fn(async () => jsonRes({ data: { id: 'tw-1' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    const pub = socialPublisherFromEnv()!
+    const res = (await pub.createPost({
+      integrationId: 'x:manual',
+      content: 'manual post & a link',
+      channel: 'x',
+      type: 'now',
+      date: new Date(),
+    })) as { manual?: { intent_url: string } }
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(res.manual!.intent_url).toContain('https://twitter.com/intent/tweet?text=')
+    expect(decodeURIComponent(res.manual!.intent_url.split('text=')[1]!)).toBe(
+      'manual post & a link',
+    )
   })
 
   it('posts to LinkedIn with the author URN and protocol headers', async () => {
@@ -549,10 +570,15 @@ describe('DbSocialPublisher', () => {
     const { db } = makeDb([], [xCred()])
     const pub = new DbSocialPublisher(db, socialPublisherFromEnv())
     const integrations = await pub.listIntegrations('t1')
+    // Two X entries: the connected account shadows the env token, and the
+    // always-on manual handoff sits alongside as a credential-free option.
     const x = integrations.filter((i) => i.identifier === 'x')
-    expect(x).toHaveLength(1)
-    expect(x[0]!.source).toBe('connection')
-    expect(x[0]!.name).toContain('@lifekeel')
+    expect(x).toHaveLength(2)
+    const conn = x.find((i) => i.id === 'x:connection')!
+    expect(conn.source).toBe('connection')
+    expect(conn.name).toContain('@lifekeel')
+    expect(x.find((i) => i.id === 'x:manual')!.source).toBe('manual')
+    expect(integrations.find((i) => i.id === 'x:env')).toBeUndefined()
   })
 
   const oauthCred = (connectorId: string, extra: Record<string, string>) => ({
@@ -745,6 +771,71 @@ describe('DbSocialPublisher', () => {
         tenantId: 't1',
       }),
     ).rejects.toThrow('reconnect')
+  })
+
+  it('lists the manual X channel even with no credentials at all', async () => {
+    const { db } = makeDb([])
+    const pub = new DbSocialPublisher(db, null)
+    const integrations = await pub.listIntegrations('t1')
+    const manual = integrations.find((i) => i.id === 'x:manual')
+    expect(manual).toBeDefined()
+    expect(manual!.source).toBe('manual')
+    expect(manual!.disabled).toBe(false)
+  })
+
+  it('manual dispatch returns the intent URL and never touches fetch or stored credentials', async () => {
+    const fetchMock = vi.fn(async () => jsonRes({ data: { id: 'tw-x1' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { db } = makeDb([], [xCred()])
+    const pub = new DbSocialPublisher(db, null)
+    const res = (await pub.createPost({
+      integrationId: 'x:manual',
+      content: 'hi manual',
+      channel: 'x',
+      type: 'now',
+      date: new Date(),
+      tenantId: 't1',
+    })) as {
+      manual?: { intent_url: string }
+      publisher: { source: string; integration_id: string }
+    }
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(res.manual!.intent_url).toContain('https://twitter.com/intent/tweet?text=')
+    expect(res.publisher.source).toBe('manual')
+    expect(res.publisher.integration_id).toBe('x:manual')
+  })
+
+  it('x:manual never falls through to the env credential', async () => {
+    vi.stubEnv('X_ACCESS_TOKEN', 'xtok')
+    const fetchMock = vi.fn(async () => jsonRes({ data: { id: 'tw-wrong' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { db } = makeDb([])
+    const pub = new DbSocialPublisher(db, socialPublisherFromEnv())
+    const res = (await pub.createPost({
+      integrationId: 'x:manual',
+      content: 'hi',
+      channel: 'x',
+      type: 'now',
+      date: new Date(),
+      tenantId: 't1',
+    })) as { manual?: { intent_url: string } }
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(res.manual).toBeDefined()
+  })
+
+  it('manual dispatch rejects channels without an intent path', async () => {
+    const { db } = makeDb([])
+    const pub = new DbSocialPublisher(db, null)
+    await expect(
+      pub.createPost({
+        integrationId: 'bluesky:manual',
+        content: 'hi',
+        channel: 'bluesky',
+        type: 'now',
+        date: new Date(),
+        tenantId: 't1',
+      }),
+    ).rejects.toThrow('channel_not_configured:bluesky')
   })
 })
 
