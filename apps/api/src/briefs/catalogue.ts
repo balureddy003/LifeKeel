@@ -298,7 +298,7 @@ function friendlyInputError(error: z.ZodError): string {
  * likely secrets so the UI can warn without blocking (people sometimes write
  * a password anyway).
  */
-const SECRET_PATTERNS: RegExp[] = [
+export const SECRET_PATTERNS: RegExp[] = [
   // "password: Summer2024!" / "passcode is 482913": a password-like word followed
   // by something that looks like the secret itself (has a digit or symbol).
   /\b(?:pass(?:word|code|phrase)|passwd|pwd)\b\s*(?:is|are|:|=)\s*(?=\S{6,})\S*[\d!@#$%^&*]\S*/i,
