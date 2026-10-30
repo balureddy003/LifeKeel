@@ -77,8 +77,6 @@ cases:
 
   - id: premium-possibly-stopped
     description: No payment on file for 62 days — the household should check the policy is in force
-  - id: nomination-none-on-file
-    description: A pension policy with no nomination recorded — flag fires
     event_type: family.policy_review
     data:
       overlap_count: 0
@@ -89,12 +87,37 @@ cases:
       stale_payment_since_date: '2026-08-14'
       stale_payment_descriptions: 'life policy with Acme held by Priya: last payment on file 2026-08-14 (62 days ago)'
       stale_payment_monthly_premium_minor: 4500
+      no_nomination_count: 0
+      new_child_after_nomination_count: 0
     expected_insights:
       - rule_id: premium_possibly_stopped
         min_or_score: 0.7
 
   - id: premium-payments-current
     description: Payment records are recent — the stopped-payment rule stays quiet
+    event_type: family.policy_review
+    data:
+      overlap_count: 0
+      orphaned_policy_count: 0
+      stale_renewal_count: 0
+      premium_increase_count: 0
+      stale_payment_count: 0
+      stale_payment_since_date: ''
+      stale_payment_descriptions: ''
+      stale_payment_monthly_premium_minor: 0
+      no_nomination_count: 0
+      new_child_after_nomination_count: 0
+    expected_insights: []
+
+  - id: nomination-none-on-file
+    description: A life policy with no nomination recorded — flag fires
+    event_type: family.policy_review
+    data:
+      overlap_count: 0
+      orphaned_policy_count: 0
+      stale_renewal_count: 0
+      premium_increase_count: 0
+      stale_payment_count: 0
       no_nomination_count: 1
       no_nomination_descriptions: 'life policy with Acme held by Priya'
       new_child_after_nomination_count: 0
@@ -111,9 +134,6 @@ cases:
       stale_renewal_count: 0
       premium_increase_count: 0
       stale_payment_count: 0
-      stale_payment_since_date: ''
-      stale_payment_descriptions: ''
-      stale_payment_monthly_premium_minor: 0
       no_nomination_count: 0
       new_child_after_nomination_count: 1
       new_child_after_nomination_descriptions: 'life policy with Acme held by Priya: nomination dated 2023-05-01, 1 child on the family record joined after'
@@ -140,6 +160,7 @@ cases:
       orphaned_policy_count: 0
       stale_renewal_count: 0
       premium_increase_count: 0
+      stale_payment_count: 0
       no_nomination_count: 0
       new_child_after_nomination_count: 0
       ex_partner_nomination_count: 0
