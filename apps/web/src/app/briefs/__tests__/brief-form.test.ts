@@ -243,8 +243,11 @@ describe('previewForm (a partial answer is allowed, a blocked one is not)', () =
     expect(previewForm(entry({}), { ...today, change_date: '' })).toBeNull()
   })
 
-  it('does not invent a one-off amount', () => {
-    expect(previewForm(entry({ id: 'windfall', mode: 'cash' }), today)).toBeNull()
+  it('shows the baseline for a one-off brief, assuming no amount yet', () => {
+    const p = previewForm(entry({ id: 'windfall', mode: 'cash' }), today)
+    expect(p).not.toBeNull()
+    expect(p?.form['cash_out']).toBe('0')
+    expect(p?.assumed).toEqual(['spending after the change', 'one-off amount'])
   })
 
   it('never previews handover or sensitive briefs', () => {
