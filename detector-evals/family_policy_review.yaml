@@ -77,6 +77,8 @@ cases:
 
   - id: premium-possibly-stopped
     description: No payment on file for 62 days — the household should check the policy is in force
+  - id: nomination-none-on-file
+    description: A pension policy with no nomination recorded — flag fires
     event_type: family.policy_review
     data:
       overlap_count: 0
@@ -93,6 +95,15 @@ cases:
 
   - id: premium-payments-current
     description: Payment records are recent — the stopped-payment rule stays quiet
+      no_nomination_count: 1
+      no_nomination_descriptions: 'life policy with Acme held by Priya'
+      new_child_after_nomination_count: 0
+    expected_insights:
+      - rule_id: nomination_none_on_file
+        min_or_score: 0.7
+
+  - id: nomination-predates-child
+    description: A child joined the family after the recorded nomination date
     event_type: family.policy_review
     data:
       overlap_count: 0
@@ -103,4 +114,33 @@ cases:
       stale_payment_since_date: ''
       stale_payment_descriptions: ''
       stale_payment_monthly_premium_minor: 0
+      no_nomination_count: 0
+      new_child_after_nomination_count: 1
+      new_child_after_nomination_descriptions: 'life policy with Acme held by Priya: nomination dated 2023-05-01, 1 child on the family record joined after'
+    expected_insights:
+      - rule_id: nomination_predates_new_child
+        min_or_score: 0.7
+
+  - id: nomination-ex-partner
+    description: The nomination names a person recorded as an ex-partner — member-scoped event
+    event_type: family.policy_review
+    data:
+      member_id: 'm_priya'
+      ex_partner_nomination_count: 1
+      ex_partner_nomination_descriptions: 'life policy with Acme: the nomination on file dated 2021-03-02 names a person recorded as an ex-partner'
+    expected_insights:
+      - rule_id: nomination_names_ex_partner
+        min_or_score: 0.7
+
+  - id: nomination-current
+    description: Nomination on file and current — all three flags stay quiet
+    event_type: family.policy_review
+    data:
+      overlap_count: 0
+      orphaned_policy_count: 0
+      stale_renewal_count: 0
+      premium_increase_count: 0
+      no_nomination_count: 0
+      new_child_after_nomination_count: 0
+      ex_partner_nomination_count: 0
     expected_insights: []

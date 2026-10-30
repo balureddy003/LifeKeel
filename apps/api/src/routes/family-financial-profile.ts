@@ -197,6 +197,18 @@ export const FinancialProfileSchema = z.object({
         // Optional and never guessed — attribution only comes from an
         // explicit user pick, same posture as member_id.
         beneficiary_member_id: z.string().min(1).optional(),
+        // PRD-234 (Intent 87): death/beneficiary nomination as printed on
+        // the pension or policy — household-entered, never guessed. The
+        // flag facts compare it factually with the roster; LifeKeel never
+        // says who should be named.
+        nomination: z
+          .object({
+            nominated_label: z.string().trim().max(120),
+            nomination_date: z.string().optional(),
+            is_ex_partner: z.boolean().optional(),
+            provider_form_url: z.string().max(500).optional(),
+          })
+          .optional(),
         // The number/address a life-event playbook's "contact" steps can
         // actually put in front of the family instead of "find the number
         // and call" — only ever what a document or a scanned email stated
@@ -890,6 +902,30 @@ export async function evaluateProfileAndGenerateInsights(
       generatedInsights.push(...result.insights)
     }
 
+    // PRD-234 (Intent 87): recorded nominations vs the current roster —
+    // factual differences only; the flags never say who should be named.
+    // A pension/life policy with no nomination is itself a flag.
+    const nominationPolicies = profile.policies.filter(
+      (p) => p.type === 'life' || p.type === 'income_protection',
+    )
+    const noNomination = nominationPolicies.filter((p) => !p.nomination)
+    const rosterChildren = (roster?.members ?? []).filter(
+      (m) => m.role === 'child' || (m.relationship_label ?? '').endsWith('child'),
+    )
+    const newChildFlags = nominationPolicies.flatMap((p) => {
+      const n = p.nomination
+      if (!n?.nomination_date) return []
+      const newer = rosterChildren.filter((c) => (c.joined_at ?? '') > (n.nomination_date ?? ''))
+      return newer.length ? [{ policy: p, n, newer }] : []
+    })
+    // Ex-partner flags do NOT ride the household event — they are scoped
+    // to the nominating adult via a member_id event below (Intent 82).
+    const exPartnerByMember = new Map<string, typeof nominationPolicies>()
+    for (const pol of nominationPolicies) {
+      if (pol.nomination?.is_ex_partner && pol.member_id)
+        exPartnerByMember.set(pol.member_id, [...(exPartnerByMember.get(pol.member_id) ?? []), pol])
+    }
+
     // Stale renewal dates (PRD-213): soonestPolicyRenewal skips past-due
     // dates entirely, so without this a policy whose recorded renewal has
     // passed is invisible — the record may just be stale, or the cover may
@@ -941,6 +977,19 @@ export async function evaluateProfileAndGenerateInsights(
           (s, r) => s + r.policy.monthly_premium_minor,
           0,
         ),
+        no_nomination_count: noNomination.length,
+        no_nomination_descriptions: noNomination
+          .map((p) => `${p.type} policy with ${p.provider} held by ${holderLabel(p)}`)
+          .slice(0, 4)
+          .join('; '),
+        new_child_after_nomination_count: newChildFlags.length,
+        new_child_after_nomination_descriptions: newChildFlags
+          .map(
+            (f) =>
+              `${f.policy.type} policy with ${f.policy.provider} held by ${holderLabel(f.policy)}: nomination dated ${f.n.nomination_date}, ${f.newer.length} child${f.newer.length === 1 ? '' : 'ren'} on the family record joined after`,
+          )
+          .slice(0, 4)
+          .join('; '),
         stale_renewal_count: staleRenewals.length,
         stale_renewal_descriptions: staleRenewals
           .map(
@@ -981,6 +1030,39 @@ export async function evaluateProfileAndGenerateInsights(
         derived_from_signals: [signalId],
       })
       generatedInsights.push(...result.insights)
+
+      // Intent 82 / PRD-234: one member-scoped event per adult whose
+      // nomination names an ex-partner. member_id lands in the feature
+      // snapshot → entity_key → the ?member_id= insight filter, so the
+      // flag is visible only to the nominating adult.
+      for (const [memberId, policies] of exPartnerByMember) {
+        const memberEventId = crypto.randomUUID()
+        const memberData = {
+          ex_partner_nomination_count: policies.length,
+          ex_partner_nomination_descriptions: policies
+            .map(
+              (pol) =>
+                `${pol.type} policy with ${pol.provider}: the nomination on file${pol.nomination?.nomination_date ? ` dated ${pol.nomination.nomination_date}` : ''} names a person recorded as an ex-partner`,
+            )
+            .join('; '),
+          member_id: memberId,
+        }
+        const memberSignalId = await persistSignal({
+          tenant_id: tenantId,
+          signal_type: 'family.policy_review',
+          source: 'manual-entry',
+          external_id: memberEventId,
+          data: memberData,
+        })
+        const memberResult = await engine.evaluate({
+          event_type: 'family.policy_review',
+          tenant_id: tenantId,
+          event_id: memberEventId,
+          data: memberData,
+          derived_from_signals: [memberSignalId],
+        })
+        generatedInsights.push(...memberResult.insights)
+      }
     }
   }
 

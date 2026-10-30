@@ -108,6 +108,12 @@ interface PolicyForm {
   // from memberId (the holder): e.g. the organizer's life policy naming a
   // partner as beneficiary. '' = not recorded.
   beneficiaryMemberId: string
+  // PRD-234: death/beneficiary nomination as printed on the policy —
+  // household-entered, never guessed.
+  nominationLabel: string
+  nominationDate: string
+  nominationIsExPartner: boolean
+  providerFormUrl: string
   // Claims/24-7-assistance line — display and tel:/mailto: only in the
   // crisis playbooks later, never dialed or sent automatically.
   contactPhone: string
@@ -123,6 +129,10 @@ const EMPTY_POLICY: PolicyForm = {
   policyNumber: '',
   memberId: '',
   beneficiaryMemberId: '',
+  nominationLabel: '',
+  nominationDate: '',
+  nominationIsExPartner: false,
+  providerFormUrl: '',
   contactPhone: '',
   contactEmail: '',
 }
@@ -249,6 +259,10 @@ function fromProfile(profile: FinancialProfile): {
       policyNumber: p.policy_number ?? '',
       memberId: p.member_id ?? '',
       beneficiaryMemberId: p.beneficiary_member_id ?? '',
+      nominationLabel: p.nomination?.nominated_label ?? '',
+      nominationDate: p.nomination?.nomination_date ?? '',
+      nominationIsExPartner: p.nomination?.is_ex_partner ?? false,
+      providerFormUrl: p.nomination?.provider_form_url ?? '',
       contactPhone: p.contact_phone ?? '',
       contactEmail: p.contact_email ?? '',
       ...(p.premium_history ? { premiumHistory: p.premium_history } : {}),
@@ -285,6 +299,16 @@ function toPayload(
       ...(PERSON_SCOPED_POLICY_TYPES.has(p.type) && p.memberId ? { member_id: p.memberId } : {}),
       ...(PERSON_SCOPED_POLICY_TYPES.has(p.type) && p.beneficiaryMemberId
         ? { beneficiary_member_id: p.beneficiaryMemberId }
+        : {}),
+      ...(PERSON_SCOPED_POLICY_TYPES.has(p.type) && p.nominationLabel.trim()
+        ? {
+            nomination: {
+              nominated_label: p.nominationLabel.trim(),
+              ...(p.nominationDate ? { nomination_date: p.nominationDate } : {}),
+              ...(p.nominationIsExPartner ? { is_ex_partner: true } : {}),
+              ...(p.providerFormUrl.trim() ? { provider_form_url: p.providerFormUrl.trim() } : {}),
+            },
+          }
         : {}),
       ...(p.contactPhone.trim() ? { contact_phone: p.contactPhone.trim() } : {}),
       ...(p.contactEmail.trim() ? { contact_email: p.contactEmail.trim() } : {}),
@@ -1503,6 +1527,59 @@ export default function FinancialProfilePage() {
                           </select>
                         </label>
                       )}
+                    {PERSON_SCOPED_POLICY_TYPES.has(p.type) && (
+                      <div className="rounded-xl border border-haze p-3 space-y-3">
+                        <div className="text-xs font-medium text-ink-tertiary">
+                          Nomination on file (optional) — as printed on the policy
+                        </div>
+                        <label className="block">
+                          <div className="text-xs text-ink-tertiary mb-1.5">Who is nominated</div>
+                          <input
+                            type="text"
+                            value={p.nominationLabel}
+                            onChange={(e) => updatePolicy(i, { nominationLabel: e.target.value })}
+                            placeholder="e.g. Sam, or leave blank if none on file"
+                            className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+                          />
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <label className="block">
+                            <div className="text-xs text-ink-tertiary mb-1.5">
+                              Nomination date (if known)
+                            </div>
+                            <input
+                              type="date"
+                              value={p.nominationDate}
+                              onChange={(e) => updatePolicy(i, { nominationDate: e.target.value })}
+                              className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+                            />
+                          </label>
+                          <label className="block">
+                            <div className="text-xs text-ink-tertiary mb-1.5">
+                              Provider's form or page (if on file)
+                            </div>
+                            <input
+                              type="url"
+                              value={p.providerFormUrl}
+                              onChange={(e) => updatePolicy(i, { providerFormUrl: e.target.value })}
+                              placeholder="https://…"
+                              className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+                            />
+                          </label>
+                        </div>
+                        <label className="flex items-center gap-2 text-sm text-ink-primary">
+                          <input
+                            type="checkbox"
+                            checked={p.nominationIsExPartner}
+                            onChange={(e) =>
+                              updatePolicy(i, { nominationIsExPartner: e.target.checked })
+                            }
+                            className="h-5 w-5"
+                          />
+                          The named person is an ex-partner
+                        </label>
+                      </div>
+                    )}
                     <label className="block">
                       <div className="text-xs text-ink-tertiary mb-1.5">Provider</div>
                       <input
