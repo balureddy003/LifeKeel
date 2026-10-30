@@ -37,4 +37,4 @@ a payment that stopped, needs continuous data.
 **Out of scope** — Contacting the provider, reinstating cover, payment initiation (a
 second regulated activity), and any claim-outcome statement.
 
-**Becomes** — PRD number once accepted: docs/prd/NNN-lapse-and-change-detection.md
+**Becomes** — [PRD-233](../prd/233-lapse-and-change-detection.md)
