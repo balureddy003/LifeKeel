@@ -170,7 +170,8 @@ await scenario(
 await scenario(
   'solo: a single-adult household can still get its own brief (no recipient needed)',
   async () => {
-    const c = await call('POST', '/family/briefs', solo.tokenA, {
+    const fresh = await household({ second: false }) // its own free first brief
+    const c = await call('POST', '/family/briefs', fresh.tokenA, {
       problem_type: 'income_stops',
       contract_version: 2,
       inputs: inputsFor('stop', future(60)),
