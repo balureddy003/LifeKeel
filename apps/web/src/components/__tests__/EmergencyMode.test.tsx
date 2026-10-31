@@ -7,6 +7,7 @@ const push = vi.fn()
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }))
 vi.mock('@/lib/haptics', () => ({ haptic: vi.fn() }))
 vi.mock('../AppHeroHeader', () => ({ AppHeroHeader: () => null }))
+vi.mock('../LifeSafetyNotice', () => ({ LifeSafetyNotice: () => null }))
 
 afterEach(() => {
   cleanup()
