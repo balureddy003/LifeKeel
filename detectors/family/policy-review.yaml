@@ -95,9 +95,10 @@ rules:
     name: No Payment Recorded On File
     # Intent 88 / PRD-233: a premium can stop silently — a cancelled direct
     # debit or expired card — and the family finds out at claim time. The
-    # register sees only that the last dated payment record is older than
-    # the expected interval; it cannot know the policy's real status, so it
-    # never says "lapsed" and never mentions a grace period (unconfirmed).
+    # flag baseline is the household-entered last_payment_date, never
+    # premium_history (which logs premium changes, not payments). The
+    # register cannot know the policy's real status, so it never says
+    # "lapsed" and never mentions a grace period (unconfirmed).
     condition: 'data.stale_payment_count > 0'
     confidence: 0.8
     impact_low: 0

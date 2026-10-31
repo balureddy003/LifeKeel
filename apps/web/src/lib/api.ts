@@ -3171,6 +3171,7 @@ export interface FinancialProfilePolicy {
   coverage_amount_minor: number
   monthly_premium_minor: number
   renewal_date?: string
+  last_payment_date?: string
   policy_number?: string
   // PRD-110: optional roster-member attribution — person-scoped policies
   // (life, income protection, health, critical illness) can name whose

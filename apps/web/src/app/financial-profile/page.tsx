@@ -97,6 +97,7 @@ interface PolicyForm {
   coverageAmount: string
   monthlyPremium: string
   renewalDate: string
+  lastPaymentDate: string
   policyNumber: string
   // PRD-110: roster member this policy belongs to — '' means unset
   // (household-wide; the only option for car/home).
@@ -120,6 +121,7 @@ const EMPTY_POLICY: PolicyForm = {
   coverageAmount: '',
   monthlyPremium: '',
   renewalDate: '',
+  lastPaymentDate: '',
   policyNumber: '',
   memberId: '',
   beneficiaryMemberId: '',
@@ -246,6 +248,7 @@ function fromProfile(profile: FinancialProfile): {
       coverageAmount: toWhole(p.coverage_amount_minor),
       monthlyPremium: toWhole(p.monthly_premium_minor),
       renewalDate: p.renewal_date ?? '',
+      lastPaymentDate: p.last_payment_date ?? '',
       policyNumber: p.policy_number ?? '',
       memberId: p.member_id ?? '',
       beneficiaryMemberId: p.beneficiary_member_id ?? '',
@@ -280,6 +283,7 @@ function toPayload(
       coverage_amount_minor: toMinor(p.coverageAmount),
       monthly_premium_minor: toMinor(p.monthlyPremium),
       ...(p.renewalDate ? { renewal_date: p.renewalDate } : {}),
+      ...(p.lastPaymentDate ? { last_payment_date: p.lastPaymentDate } : {}),
       ...(p.policyNumber.trim() ? { policy_number: p.policyNumber.trim() } : {}),
       ...(p.premiumHistory ? { premium_history: p.premiumHistory } : {}),
       ...(PERSON_SCOPED_POLICY_TYPES.has(p.type) && p.memberId ? { member_id: p.memberId } : {}),
