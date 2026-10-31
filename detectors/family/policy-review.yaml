@@ -111,3 +111,53 @@ rules:
       - Check with your provider that each named policy is in force
       - If the payment record is simply out of date, update the premium history on file
       - If you are unsure whether the cover is still active, ask your insurer or a licensed insurance professional
+  - id: nomination_none_on_file
+    name: No Nomination On File
+    # Intent 87 / PRD-234: a pension or life policy with no recorded
+    # nomination is a factual gap in the household's own record — the flag
+    # states what is missing, never who should be named.
+    condition: 'data.no_nomination_count > 0'
+    confidence: 0.8
+    impact_low: 0
+    impact_high: 0
+    reasoning_template: >
+      {{data.no_nomination_count}} life or income-protection policies on file have no
+      nomination recorded: {{data.no_nomination_descriptions}}. Trustees or the
+      scheme decide — check the scheme's rules; the provider's own form or page
+      is where a nomination is recorded. This is informational only.
+    actions:
+      - Check the provider's own form or page for how nominations are recorded
+      - Update the record on file once you know what the nomination says
+      - A licensed insurance professional can explain what a nomination does
+
+  - id: nomination_predates_new_child
+    name: Nomination Recorded Before A Child Joined
+    condition: 'data.new_child_after_nomination_count > 0'
+    confidence: 0.75
+    impact_low: 0
+    impact_high: 0
+    reasoning_template: >
+      {{data.new_child_after_nomination_count}} nominations on file predate a
+      child on the family record: {{data.new_child_after_nomination_descriptions}}.
+      This states the dates on file — not what the nomination should say.
+      Trustees or the scheme decide — check the scheme's rules.
+    actions:
+      - Check the provider's own form or page for the nomination on file
+      - Update the record on file if the nomination has changed
+
+  - id: nomination_names_ex_partner
+    name: Nomination Names A Person Recorded As An Ex-Partner
+    # Scoped to the nominating adult via member_id on the event — the flag
+    # never reaches the other adult's view (Intent 82).
+    condition: 'data.ex_partner_nomination_count > 0'
+    confidence: 0.8
+    impact_low: 0
+    impact_high: 0
+    reasoning_template: >
+      {{data.ex_partner_nomination_count}} nominations on file name a person
+      recorded as an ex-partner: {{data.ex_partner_nomination_descriptions}}.
+      This states what the record says — not what it should say. Trustees or
+      the scheme decide — check the scheme's rules.
+    actions:
+      - Check the provider's own form or page for the nomination on file
+      - Update the record on file if the nomination has changed

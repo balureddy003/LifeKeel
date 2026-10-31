@@ -40,4 +40,4 @@ trustees decide, though schemes differ, and some must pay the named person
 **Out of scope** — Wills, trusts, inheritance tax, pension transfers, and choosing
 beneficiaries.
 
-**Becomes** — PRD number once accepted: docs/prd/NNN-beneficiary-check.md
+**Becomes** — [PRD-234](../prd/234-beneficiary-check.md)

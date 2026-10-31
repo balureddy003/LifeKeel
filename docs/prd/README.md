@@ -542,6 +542,13 @@ Follow-ups to the factual catalogue (Intent 78), from a review of what shipped:
    policy number, and a checklist of papers on file or not located, plus a
    fixed-template draft notification the household reviews and sends. Tier 1
    prepare-only — no ActionExecutor, nothing sent. Tier gate recorded.
+## 234 — Beneficiary check (proposed 2026-10-30)
+
+1. [234-beneficiary-check.md](234-beneficiary-check.md) — **PROPOSED.**
+   Flags factual differences between recorded pension/policy nominations and
+   the current family (ex-partner, child added after the nomination date, no
+   nomination on file). Advice-line pass recorded in the PRD; ex-partner flags
+   scoped to the nominating adult only. Tier 0.
 
 
 ## 232 — Employer cover blind spot (proposed 2026-10-30)
