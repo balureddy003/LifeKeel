@@ -385,6 +385,20 @@ export const migrations: Migration[] = [
       await ensureKeelIndexes(db)
     },
   },
+  {
+    // PRD-231 / PRD-232: both collections are read by tenant_id and edited by
+    // id on every map or cover view, and had no index. Non-unique, so safe on
+    // existing data.
+    id: '20261031000000-obligations-and-cover-indexes',
+    up: async (db) => {
+      await Promise.all([
+        db.collection('household_obligations').createIndex({ tenant_id: 1, created_at: 1 }),
+        db.collection('household_obligations').createIndex({ id: 1 }),
+        db.collection('employer_cover_facts').createIndex({ tenant_id: 1, created_at: 1 }),
+        db.collection('employer_cover_facts').createIndex({ id: 1 }),
+      ])
+    },
+  },
 ]
 
 export interface MigrationResult {
