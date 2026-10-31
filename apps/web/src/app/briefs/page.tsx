@@ -583,19 +583,19 @@ function ResultCard({
     <GlassCard className="space-y-5 p-6">
       <div>
         <p className="text-sm font-medium text-ink-tertiary">{brief.title}</p>
+        <p className="mt-2 text-2xl font-semibold leading-snug text-ink-primary">
+          {briefHeadline(main)}
+        </p>
         {typeof runway === 'number' && (
           <p className="mt-2 text-ink-primary">
-            <span className="text-5xl font-semibold tracking-tight">
+            <span className="text-3xl font-semibold tracking-tight">
               <CountUp value={runway} decimals={runway % 1 === 0 ? 0 : 1} />
             </span>
-            <span className="ml-2 text-lg text-ink-secondary">
+            <span className="ml-2 text-base text-ink-secondary">
               months of savings after the change
             </span>
           </p>
         )}
-        <p className="mt-3 text-xl font-medium leading-snug text-ink-primary">
-          {briefHeadline(main)}
-        </p>
         <details className="mt-2">
           <summary className="min-h-[44px] cursor-pointer py-2 text-sm font-medium text-family-400">
             How this was worked out

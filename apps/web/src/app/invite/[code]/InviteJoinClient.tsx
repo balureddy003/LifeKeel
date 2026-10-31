@@ -21,6 +21,13 @@ import { Turnstile, useTurnstile } from '@/components/security/Turnstile'
 //     specific pending roster member; accepting creates/links their login
 //     and flips that roster entry to active immediately (the organizer's
 //     approval already happened at invite-send time).
+/** The sender's first name from `?from=`, if it looks like a name; otherwise undefined. */
+export function inviterFirstName(search: string): string | undefined {
+  const raw = new URLSearchParams(search).get('from')?.trim()
+  if (!raw || raw.length > 30 || !/^[\p{L}][\p{L} '’-]*$/u.test(raw)) return undefined
+  return raw
+}
+
 const isMemberInviteToken = (code: string) => /^[0-9a-f]{48}$/i.test(code)
 
 export default function InviteJoinClient() {
@@ -164,6 +171,9 @@ function AcceptMemberInvite({ token }: { token: string }) {
 // it only creates a pending request the family's organizer has to explicitly
 // approve. See docs/prd/110-family-sharing-secondary-user-access.md.
 function RequestJoin({ code }: { code: string }) {
+  // Read after mount: the page is statically exported, so there is no query at build time.
+  const [from, setFrom] = useState<string | undefined>(undefined)
+  useEffect(() => setFrom(inviterFirstName(window.location.search)), [])
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -219,9 +229,13 @@ function RequestJoin({ code }: { code: string }) {
         <div className="w-16 h-16 rounded-3xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-3 mx-auto">
           <Users size={32} className="text-family-400" />
         </div>
-        <h1 className="text-2xl font-bold">Join your family on Keel</h1>
+        <h1 className="text-2xl font-bold">
+          {from ? `${from} invited you to see your family's plan` : 'Join your family on Keel'}
+        </h1>
         <p className="text-sm text-ink-tertiary mt-1">
-          The organizer will need to approve your request before you can sign in.
+          {from
+            ? `${from} has to approve you first. Until then you won't see anything.`
+            : 'The organizer will need to approve your request before you can sign in.'}
         </p>
       </div>
 

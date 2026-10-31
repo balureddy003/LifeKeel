@@ -1295,6 +1295,10 @@ export default function FinancialProfilePage() {
             </span>
           </div>
         )}
+        <p className="mt-2 text-xs text-ink-tertiary">
+          Kept with your family&apos;s account and never sold. You can delete it any time in
+          Settings.
+        </p>
       </div>
 
       <AnimatePresence mode="wait">
