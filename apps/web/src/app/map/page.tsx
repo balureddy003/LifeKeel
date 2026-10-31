@@ -96,23 +96,36 @@ export default function ObligationsMapPage() {
 
   async function confirm(o: Obligation) {
     const res = await confirmObligation(o.id)
-    if (res.ok) {
-      haptic('success')
-      toast({ message: 'Confirmed' })
-      setData(await getObligationsMap())
+    if (!res.ok) {
+      toast({
+        message:
+          (res.data as { error?: string } | undefined)?.error ?? 'Could not confirm. Try again.',
+        variant: 'error',
+      })
+      return
     }
+    haptic('success')
+    toast({ message: 'Confirmed' })
+    setData(await getObligationsMap())
   }
 
   async function remove(o: Obligation) {
     const res = await deleteObligation(o.id)
-    if (res.ok) {
-      haptic('warning')
-      setData(await getObligationsMap())
+    if (!res.ok) {
+      toast({
+        message:
+          (res.data as { error?: string } | undefined)?.error ?? 'Could not remove. Try again.',
+        variant: 'error',
+      })
+      return
     }
+    haptic('warning')
+    setData(await getObligationsMap())
   }
 
   const groups = data ? groupByPerson(data.obligations) : new Map<string, Obligation[]>()
   const s = data?.summary
+  const canEdit = data?.can_edit !== false
 
   return (
     <main className="mx-auto max-w-2xl px-4 pb-16">
@@ -133,12 +146,15 @@ export default function ObligationsMapPage() {
           <GlassCard className="mt-6 p-5">
             {s!.dependent_count === 0 ? (
               <p className="text-ink-secondary">
-                Nothing entered yet. Add the first recurring bill, policy or account below.
+                {canEdit
+                  ? 'Nothing entered yet. Add the first recurring bill, policy or account below.'
+                  : 'Nothing entered yet. A household editor can add the first recurring bill, policy or account.'}
               </p>
             ) : (
               <p className="text-lg font-medium text-ink-primary">
-                {s!.dependent_count} {s!.dependent_count === 1 ? 'thing depends' : 'things depend'}{' '}
-                on one named person
+                {s!.top_person && s!.top_person_count
+                  ? `${s!.top_person_count} ${s!.top_person_count === 1 ? 'thing depends' : 'things depend'} on ${s!.top_person}`
+                  : `${s!.dependent_count} ${s!.dependent_count === 1 ? 'thing depends' : 'things depend'} on one named person`}
                 {s!.earliest_due_date &&
                   ` — the next one, “${s!.earliest_due_label}”, is due ${due(s!.earliest_due_date)}.`}
               </p>
@@ -181,22 +197,26 @@ export default function ObligationsMapPage() {
                         )}
                       </div>
                       <div className="flex shrink-0 gap-2">
-                        {o.pending_confirmation && (
+                        {o.can_confirm && (
                           <button type="button" onClick={() => confirm(o)} className={ghostBtn}>
                             Confirm
                           </button>
                         )}
-                        <button type="button" onClick={() => startEdit(o)} className={ghostBtn}>
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => remove(o)}
-                          aria-label={`Remove ${o.label}`}
-                          className={ghostBtn}
-                        >
-                          <Trash2 size={16} aria-hidden="true" />
-                        </button>
+                        {canEdit && (
+                          <button type="button" onClick={() => startEdit(o)} className={ghostBtn}>
+                            Edit
+                          </button>
+                        )}
+                        {canEdit && (
+                          <button
+                            type="button"
+                            onClick={() => remove(o)}
+                            aria-label={`Remove ${o.label}`}
+                            className={ghostBtn}
+                          >
+                            <Trash2 size={16} aria-hidden="true" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </GlassCard>
@@ -205,7 +225,7 @@ export default function ObligationsMapPage() {
             </section>
           ))}
 
-          {!formOpen ? (
+          {!canEdit ? null : !formOpen ? (
             <button
               type="button"
               onClick={() => {
