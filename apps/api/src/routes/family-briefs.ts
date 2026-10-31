@@ -141,6 +141,14 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
         m.id === id && m.status === 'active' && !isMinorMember(m) && !memberMatchesUser(m, creator),
     )
   }
+  async function hasOtherActiveAdult(tenant: string, creator: string) {
+    const group = await db
+      .collection<FamilyGroupDoc>('family_groups')
+      .findOne({ tenant_id: tenant })
+    return (group?.members ?? []).some(
+      (m) => m.status === 'active' && !isMinorMember(m) && !memberMatchesUser(m, creator),
+    )
+  }
   async function participant(b: HouseholdBriefDoc, ctx?: { tenant_id: string; user_id: string }) {
     return (
       !!ctx &&
@@ -268,7 +276,13 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
     const asOf = now.toISOString().slice(0, 10)
     const member =
       contract_version === 2 ? await recipient(tenant_id, user_id, parsed.data.for_member_id) : null
-    if (contract_version === 2 && !member)
+    // A household with no other active adult can still keep its own brief: it is
+    // saved with no share, and the creator shares it once someone joins.
+    const solo =
+      contract_version === 2 &&
+      !parsed.data.for_member_id &&
+      !(await hasOtherActiveAdult(tenant_id, user_id))
+    if (contract_version === 2 && !member && !solo)
       return reply.code(400).send({
         error: 'Choose another active adult in your household. Invite them from Family if needed.',
       })
@@ -356,14 +370,16 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
       acknowledgements: [],
       ...(contract_version ? { contract_version } : {}),
       stale: false,
-      share: {
-        token_hash: tokenHash(token),
-        for_member_id: member?.id ?? parsed.data.for_member_id ?? null,
-        for_member_name: member?.name ?? null,
-        ...(member ? { for_user_id: member.user_id ?? member.id } : {}),
-        expires_at: new Date(now.getTime() + SHARE_TOKEN_TTL_DAYS * 86_400_000),
-        revoked_at: null,
-      },
+      share: solo
+        ? null
+        : {
+            token_hash: tokenHash(token),
+            for_member_id: member?.id ?? parsed.data.for_member_id ?? null,
+            for_member_name: member?.name ?? null,
+            ...(member ? { for_user_id: member.user_id ?? member.id } : {}),
+            expires_at: new Date(now.getTime() + SHARE_TOKEN_TTL_DAYS * 86_400_000),
+            revoked_at: null,
+          },
       link_fetched_at: null,
       confirmed_opened_at: null,
       confirmed_by: null,
@@ -373,11 +389,14 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
     }
     await briefsFor(db, tenant_id).insertOne(doc)
     await emitBriefEvent(db, tenant_id, 'brief_created', { problem_type: problem })
-    await emitBriefEvent(db, tenant_id, 'brief_share_link_generated', { problem_type: problem })
+    if (!solo)
+      await emitBriefEvent(db, tenant_id, 'brief_share_link_generated', { problem_type: problem })
     await getAuditLogger()?.fromRequest(req, 'brief.created', 'household_briefs', doc.id, {
       problem_type: problem,
     })
-    return reply.code(201).send({ brief: briefView(doc, token, await factsFor(doc, ctx.user_id)) })
+    return reply
+      .code(201)
+      .send({ brief: briefView(doc, solo ? undefined : token, await factsFor(doc, ctx.user_id)) })
   })
 
   app.get('/family/briefs', async (req, reply) => {
