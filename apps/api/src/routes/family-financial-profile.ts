@@ -833,6 +833,18 @@ export async function evaluateProfileAndGenerateInsights(
     const rosterName = new Map((roster?.members ?? []).map((m) => [m.id, m.name]))
 
     const holderKey = (p: FinancialProfile['policies'][number]) => p.member_id ?? 'household'
+    // Dates read as "14 Aug 2026" in sentences; stored values stay ISO.
+    const plainDate = (iso: string) => {
+      const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`)
+      return Number.isNaN(d.getTime())
+        ? iso
+        : d.toLocaleDateString('en-GB', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+            timeZone: 'UTC',
+          })
+    }
     const holderLabel = (p: FinancialProfile['policies'][number]) =>
       p.member_id ? (rosterName.get(p.member_id) ?? 'a former member') : 'the household'
 
@@ -978,11 +990,11 @@ export async function evaluateProfileAndGenerateInsights(
       const eventId = crypto.randomUUID()
       const data = {
         stale_payment_count: stalePayments.length,
-        stale_payment_since_date: stalePayments.map((s) => s.since).sort()[0] ?? '',
+        stale_payment_since_date: plainDate(stalePayments.map((s) => s.since).sort()[0] ?? ''),
         stale_payment_descriptions: stalePayments
           .map(
             (s) =>
-              `${s.policy.type} policy with ${s.policy.provider} held by ${holderLabel(s.policy)}: last payment on file ${s.since} (${s.days} days ago)`,
+              `${s.policy.type} policy with ${s.policy.provider} held by ${holderLabel(s.policy)}: last payment on file ${plainDate(s.since)} (${s.days} days ago)`,
           )
           .slice(0, 4)
           .join('; '),
@@ -999,7 +1011,7 @@ export async function evaluateProfileAndGenerateInsights(
         new_child_after_nomination_descriptions: newChildFlags
           .map(
             (f) =>
-              `${f.policy.type} policy with ${f.policy.provider} held by ${holderLabel(f.policy)}: nomination dated ${f.n.nomination_date}, ${f.newer.length} child${f.newer.length === 1 ? '' : 'ren'} on the family record joined after`,
+              `${f.policy.type} policy with ${f.policy.provider} held by ${holderLabel(f.policy)}: nomination dated ${plainDate(f.n.nomination_date ?? '')}, ${f.newer.length} child${f.newer.length === 1 ? '' : 'ren'} on the family record joined after`,
           )
           .slice(0, 4)
           .join('; '),
@@ -1055,7 +1067,7 @@ export async function evaluateProfileAndGenerateInsights(
           ex_partner_nomination_descriptions: policies
             .map(
               (pol) =>
-                `${pol.type} policy with ${pol.provider}: the nomination on file${pol.nomination?.nomination_date ? ` dated ${pol.nomination.nomination_date}` : ''} names a person recorded as an ex-partner`,
+                `${pol.type} policy with ${pol.provider}: the nomination on file${pol.nomination?.nomination_date ? ` dated ${plainDate(pol.nomination.nomination_date)}` : ''} names a person recorded as an ex-partner`,
             )
             .join('; '),
           member_id: memberId,

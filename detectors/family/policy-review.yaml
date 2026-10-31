@@ -39,8 +39,8 @@ rules:
     impact_low: 0
     impact_high: 0
     reasoning_template: >
-      {{data.orphaned_policy_count}} policies on file are still attributed to a family member who is no
-      longer on the roster: {{data.orphaned_policy_descriptions}}.
+      Policies on file still attributed to a family member who is no longer on the roster
+      ({{data.orphaned_policy_count}}): {{data.orphaned_policy_descriptions}}.
       The cover may still be real — only the attribution is stale — but member-level readiness and
       per-member insights can't see it until it's re-attributed.
     actions:
@@ -58,7 +58,7 @@ rules:
     impact_low: 0
     impact_high: 'data.stale_renewal_monthly_premium_minor * 12'
     reasoning_template: >
-      {{data.stale_renewal_count}} policies on file have a renewal date that has already passed:
+      Policies on file with a renewal date that has already passed ({{data.stale_renewal_count}}):
       {{data.stale_renewal_descriptions}}. The cover may have renewed without the record being updated,
       or the policy may have ended — the record on file cannot show which. This is informational only:
       your insurer or a licensed insurance professional can confirm the policy's current status.
@@ -104,8 +104,8 @@ rules:
     impact_low: 0
     impact_high: 'data.stale_payment_monthly_premium_minor * 12'
     reasoning_template: >
-      {{data.stale_payment_count}} policies on file have no payment recorded
-      since {{data.stale_payment_since_date}}: {{data.stale_payment_descriptions}}.
+      Policies on file with no payment recorded since {{data.stale_payment_since_date}}
+      ({{data.stale_payment_count}}): {{data.stale_payment_descriptions}}.
       Check with your provider that cover is in force — the record on file
       cannot show whether it is. This is informational only.
     actions:
@@ -122,8 +122,8 @@ rules:
     impact_low: 0
     impact_high: 0
     reasoning_template: >
-      {{data.no_nomination_count}} life policies on file have no
-      nomination recorded: {{data.no_nomination_descriptions}}. Trustees or the
+      Life policies on file with no nomination recorded ({{data.no_nomination_count}}):
+      {{data.no_nomination_descriptions}}. Trustees or the
       scheme decide — check the scheme's rules; the provider's own form or page
       is where a nomination is recorded. This is informational only.
     actions:
