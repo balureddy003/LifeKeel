@@ -7,6 +7,7 @@ import { GoogleIcon } from '@/components/GoogleIcon'
 import { PasswordInput } from '@/components/PasswordInput'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
+import { safeNext, stashReturnTo } from '@/lib/return-to'
 import { RegionSwitch } from '@/components/RegionSwitch'
 import { AuthShell } from '@/components/landing/AuthShell'
 import { Turnstile, useTurnstile } from '@/components/security/Turnstile'
@@ -110,10 +111,14 @@ export default function LoginPage() {
 
   const handleGoogle = async () => {
     setError(null)
+    // Google leaves the app and comes back to /auth/callback, so the ?next= in this
+    // URL is parked for the callback to read (a brief link must land on the brief).
+    const next = safeNext(new URLSearchParams(window.location.search).get('next'))
+    stashReturnTo(next)
     try {
       await signInWithProvider('google')
       haptic('medium')
-      router.push('/')
+      router.push(next ?? '/')
     } catch (err) {
       haptic('warning')
       setError(err instanceof Error ? err.message : 'Google sign-in failed.')
