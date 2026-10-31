@@ -181,8 +181,9 @@ export default function BriefShareClient() {
       {status === 'signin' && (
         <Notice icon={<Lock size={20} />} title="Sign in to see this brief">
           <p>
-            This brief was shared with one named adult. Sign in with that account, then come back to
-            this link.
+            This brief was shared with one named adult in a household. Sign in as that adult and you
+            will come straight back here. If you have not set up your account yet, use the invite
+            email from the person who sent this.
           </p>
           <Link href={`/login?next=${encodeURIComponent(`/b/${token}`)}`} className={primaryBtn}>
             Sign in

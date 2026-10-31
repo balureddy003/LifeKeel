@@ -58,7 +58,11 @@ export default function LoginPage() {
     setLoading(true)
     setError(null)
     try {
-      const result = await signIn(email, password, { turnstileToken: captcha.consume() })
+      const nextParam = new URLSearchParams(window.location.search).get('next')
+      const result = await signIn(email, password, {
+        turnstileToken: captcha.consume(),
+        ...(nextParam?.startsWith('/') && !nextParam.startsWith('//') ? { next: nextParam } : {}),
+      })
       if (result.otpRequired) {
         // Emailed code is the second step (CLOUDFLARE_INTEGRATION.md §6.5).
         haptic('light')

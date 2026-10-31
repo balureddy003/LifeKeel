@@ -4,8 +4,8 @@
 £1,000 a month; about 1,250 make £10,000). Reach should come through people who already
 hold the client: protection advisers, mortgage brokers, will-writers, accountants, and
 employers. The first pilot design measured "how many finish setup", which is an effort
-measure. The brief link already opens a real result with no sign-up, so the pilot can
-measure the better thing.
+measure. The brief link opens a real result after one sign-in as the named adult
+(PRD-230 item 4, decided 2026-10-31), so the pilot can measure the better thing.
 
 The regulatory line matters more than the growth idea. The FCA's rules for introducer
 appointed representatives exclude arranging deals in investments, and commentary treats
@@ -16,8 +16,9 @@ firms about introducers drifting into advice. Nothing was found specific to refe
 in software; **take regulatory advice before approaching advisers** (open decision 6).
 
 **Done looks like**
-- A professional can send a household a brief link. The household sees a real result with
-  no sign-up. The link carries LifeKeel's factual numbers only.
+- A professional can send a household a brief link. The household sees a real result
+  after one sign-in as the named adult; a no-sign-up months-only view is a later option.
+  The link carries LifeKeel's factual numbers only.
 - **No revenue from placement, switch or commission**, and no product named anywhere in
   the link, page or message. Pricing to the professional, if any, is a flat seat or client
   fee, set only after counsel's view.

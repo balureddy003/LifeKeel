@@ -33,9 +33,14 @@ without asking them to set up an account first.
 3. **Partial answers are the rule.** Every money brief shows a number once the minimum
    is in, says what is assumed, and names the one thing to add for the real answer. A
    new brief type does not ship without this.
-4. **Brief link as front door.** A brief link opens a real result with no sign-up. A
-   household member, an adviser or an employer contact can create one. Joining or
-   saving comes after the result is seen, never before.
+4. **Brief link as front door.** A brief link opens a real result after one sign-in as
+   the adult it was shared with (decided 2026-10-31: the privacy rule in Intent 82 and
+   PRD-229 outranks a no-sign-up promise, because the result holds a household's
+   income and savings). The link goes straight to a plain sign-in screen that returns
+   the person to the brief afterwards; nothing else is asked first. A household member
+   can create one; adviser and employer links stay gated (Intent 91). **Later option:**
+   a months-only view with no sign-in, after PRD-229's safeguarding review is recorded.
+   Joining or saving comes after the result is seen, never before.
 5. **Second adult reads first.** The recipient confirms the exact version with one named
    action, then is offered to join. The creator can send **one** reminder, copied by
    them; LifeKeel sends none. Intent 82's rules stand: no creator-visible "not opened"
