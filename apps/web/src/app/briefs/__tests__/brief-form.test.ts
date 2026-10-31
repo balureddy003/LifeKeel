@@ -9,6 +9,7 @@ import {
   remainingFields,
   validate,
   validateStep,
+  withStepTwoDefaults,
 } from '../brief-form'
 
 const entry = (over: Partial<BriefCatalogueEntry>): BriefCatalogueEntry => ({
@@ -258,5 +259,20 @@ describe('previewForm (a partial answer is allowed, a blocked one is not)', () =
 
   it('never previews handover or sensitive briefs', () => {
     expect(previewForm(medical, { change_date: '2026-11-01' })).toBeNull()
+  })
+})
+
+describe('withStepTwoDefaults', () => {
+  const stop = entry({ id: 'income_stops', mode: 'stop' })
+  it('fills the income after the change with 0 when income stops', () => {
+    expect(withStepTwoDefaults(stop, { income: '4000' })).toEqual({
+      income: '4000',
+      new_income: '0',
+    })
+    expect(withStepTwoDefaults(stop, { new_income: '  ' }).new_income).toBe('0')
+  })
+  it('never overwrites a typed value, and leaves other briefs alone', () => {
+    expect(withStepTwoDefaults(stop, { new_income: '1200' }).new_income).toBe('1200')
+    expect(withStepTwoDefaults(entry({}), {})).toEqual({})
   })
 })

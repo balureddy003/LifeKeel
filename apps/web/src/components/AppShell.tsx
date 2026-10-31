@@ -536,6 +536,24 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/operator') ||
     pathname.startsWith('/invite')
 
+  // A new account heads straight for its first brief. The household behind it
+  // is created quietly (same as "Skip for now") instead of stopping the person
+  // at a set-up screen first; if that fails, the normal set-up screen shows.
+  const [autoFamilyFailed, setAutoFamilyFailed] = useState(false)
+  const autoFamilyStarted = useRef(false)
+  const wantsAutoFamily =
+    isAuthenticated &&
+    !isLoading &&
+    !family &&
+    !familyLoadFailed &&
+    !autoFamilyFailed &&
+    pathname.startsWith('/briefs')
+  useEffect(() => {
+    if (!wantsAutoFamily || autoFamilyStarted.current) return
+    autoFamilyStarted.current = true
+    createFamily(`${user?.name ?? 'My'}'s Family`).catch(() => setAutoFamilyFailed(true))
+  }, [wantsAutoFamily, createFamily, user?.name])
+
   if (isLoading && pathname === '/' && !sessionHint) {
     return (
       <div className="lk-landing-gate">
@@ -634,6 +652,18 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         >
           {retryingFamily ? 'Checking…' : 'Try again'}
         </button>
+      </div>
+    )
+  }
+
+  if (wantsAutoFamily) {
+    return (
+      <div
+        role="status"
+        aria-busy="true"
+        className="flex min-h-[65dvh] items-center justify-center px-4 text-ink-tertiary"
+      >
+        Getting your brief ready…
       </div>
     )
   }

@@ -71,6 +71,16 @@ export function needs(e: BriefCatalogueEntry) {
   }
 }
 
+/**
+ * Answers that follow from the question itself, so nobody types them. When
+ * income stops, the household income after the change is 0 by definition
+ * (separate cover is asked about on its own); a typed value always wins.
+ */
+export function withStepTwoDefaults(e: BriefCatalogueEntry, f: FormValues): FormValues {
+  if (e.mode === 'stop' && (f['new_income'] ?? '').trim() === '') return { ...f, new_income: '0' }
+  return f
+}
+
 /** Client-side checks so people see the problem beside the field, before a round trip. */
 export function validate(e: BriefCatalogueEntry, f: FormValues): Record<string, string> {
   const errors: Record<string, string> = {}

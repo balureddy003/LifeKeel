@@ -60,7 +60,7 @@ describe('signup form', () => {
     })
     fireEvent.submit(container.querySelector('form')!)
     await waitFor(() => expect(signUp).toHaveBeenCalled())
-    expect(push).toHaveBeenCalledWith('/family-setup')
+    expect(push).toHaveBeenCalledWith('/briefs')
   })
 
   it('goes to the email-code step when the API asks for one (CLOUDFLARE_INTEGRATION.md §6.4)', async () => {
