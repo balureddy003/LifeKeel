@@ -174,14 +174,20 @@ describe('inputsToForm', () => {
 
 describe('two-step form', () => {
   const e = entry({})
-  it('step one only asks about today', () => {
+  it('step one asks for three money fields and the date, nothing else (PRD-230)', () => {
     const errors = validateStep(e, {}, 1)
-    expect(Object.keys(errors).sort()).toEqual(['essentials', 'income', 'savings'])
+    expect(Object.keys(errors).sort()).toEqual(['change_date', 'essentials', 'income', 'savings'])
   })
-  it('step one passes once today is filled, even with the change still empty', () => {
-    expect(validateStep(e, { income: '5000', essentials: '3000', savings: '0' }, 1)).toEqual({})
+  it('step one passes once today and the date are filled, with the change still empty', () => {
+    const first = { income: '5000', essentials: '3000', savings: '0', change_date: '2027-01-01' }
+    expect(validateStep(e, first, 1)).toEqual({})
   })
-  it('step two asks about everything', () => {
+  it('step one alone is enough for a first number, for every money mode', () => {
+    const first = { income: '5000', essentials: '3000', savings: '0', change_date: '2027-01-01' }
+    for (const mode of ['stop', 'income', 'cost', 'mixed', 'cash'] as const)
+      expect(previewForm(entry({ mode }), first)).not.toBeNull()
+  })
+  it('step two asks about the change', () => {
     expect(
       Object.keys(validateStep(e, { income: '5000', essentials: '3000', savings: '0' }, 2)),
     ).toEqual(expect.arrayContaining(['change_date', 'new_income']))

@@ -384,20 +384,20 @@ function BriefFields({
             hint="Cash, not investments"
             {...p}
           />
+          <div>
+            <DateField
+              k="change_date"
+              label={entry.trigger}
+              hint="A date that has passed is fine if this is already happening."
+              {...p}
+            />
+            <DateChips f={f} set={set} />
+          </div>
         </div>
       )}
       {step === 2 && (
         <>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <DateField
-                k="change_date"
-                label={entry.trigger}
-                hint="A date that has passed is fine if this is already happening."
-                {...p}
-              />
-              <DateChips f={f} set={set} />
-            </div>
             {n.newIncome && (
               <Money
                 k="new_income"
@@ -1056,12 +1056,11 @@ export default function BriefsPage() {
     }
   }, [entry, f, canCreate])
 
-  // PRD-230: the moment the first useful number is on screen — the card only
-  // renders on step 2, so data arriving while step 1 is showing does not
-  // count until the household reaches it. Counts and timings only.
+  // PRD-230: the moment the first useful number is on screen — step 1 already
+  // shows it once three money fields and the date are in. Counts and timings only.
   useEffect(() => {
     if (!entry || entry.mode === 'handover' || entry.sensitive) return
-    if (step !== 2 || !preview.data || firstNumberSentRef.current) return
+    if (!preview.data || firstNumberSentRef.current) return
     firstNumberSentRef.current = true
     track(
       'brief_first_number_shown',
@@ -1412,7 +1411,7 @@ export default function BriefsPage() {
                 Step {step} of 2
               </p>
               <ol className="flex items-center gap-2 text-sm" aria-label="Progress">
-                {(['Where you are today', 'What changes'] as const).map((label, i) => {
+                {(['Today and when', 'What changes'] as const).map((label, i) => {
                   const n = (i + 1) as 1 | 2
                   const done = step > n
                   const current = step === n
@@ -1463,7 +1462,7 @@ export default function BriefsPage() {
                   }}
                   className="mt-1 inline-flex min-h-[44px] items-center gap-1 text-sm text-ink-secondary"
                 >
-                  <ArrowLeft size={16} aria-hidden="true" /> Back to today&apos;s figures
+                  <ArrowLeft size={16} aria-hidden="true" /> Back to today and when
                 </button>
               )}
             </div>
@@ -1537,7 +1536,6 @@ export default function BriefsPage() {
 
           {entry.mode !== 'handover' &&
             !entry.sensitive &&
-            step === 2 &&
             preview.state === 'idle' &&
             remainingFields(entry, f) > 0 && (
               <p className="mt-4 rounded-2xl border border-dashed border-haze p-4 text-sm text-ink-secondary">
@@ -1546,43 +1544,40 @@ export default function BriefsPage() {
                   : `${remainingFields(entry, f)} more things to fill in, then your answer appears here.`}
               </p>
             )}
-          {entry.mode !== 'handover' &&
-            !entry.sensitive &&
-            step === 2 &&
-            preview.state !== 'idle' && (
-              <div
-                aria-live="polite"
-                className="mt-4 rounded-2xl border border-family-500/30 bg-family-500/5 p-4"
-              >
-                <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
-                  Your answer so far · nothing is saved or shared yet
+          {entry.mode !== 'handover' && !entry.sensitive && preview.state !== 'idle' && (
+            <div
+              aria-live="polite"
+              className="mt-4 rounded-2xl border border-family-500/30 bg-family-500/5 p-4"
+            >
+              <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
+                Your answer so far · nothing is saved or shared yet
+              </p>
+              {!!preview.assumed?.length && (
+                <p className="mt-1 text-sm text-ink-secondary">
+                  This assumes nothing else changes. Add the {preview.assumed.join(' and the ')}{' '}
+                  {step === 1 ? 'on the next step' : 'below'} for the real answer.
                 </p>
-                {!!preview.assumed?.length && (
-                  <p className="mt-1 text-sm text-ink-secondary">
-                    This assumes nothing else changes. Add the {preview.assumed.join(' and the ')}{' '}
-                    below for the real answer.
+              )}
+              {preview.state === 'loading' && !preview.data && (
+                <Skeleton className="mt-3 h-16 w-full" />
+              )}
+              {preview.state === 'error' && (
+                <p className="mt-2 text-sm text-ink-secondary">{preview.error}</p>
+              )}
+              {preview.data && preview.state !== 'error' && (
+                <div className={preview.state === 'loading' ? 'opacity-60' : ''}>
+                  <p className="mt-2 text-lg font-medium text-ink-primary">
+                    {briefHeadline(splitBriefSentence(preview.data.template_sentence).main)}
                   </p>
-                )}
-                {preview.state === 'loading' && !preview.data && (
-                  <Skeleton className="mt-3 h-16 w-full" />
-                )}
-                {preview.state === 'error' && (
-                  <p className="mt-2 text-sm text-ink-secondary">{preview.error}</p>
-                )}
-                {preview.data && preview.state !== 'error' && (
-                  <div className={preview.state === 'loading' ? 'opacity-60' : ''}>
-                    <p className="mt-2 text-lg font-medium text-ink-primary">
-                      {briefHeadline(splitBriefSentence(preview.data.template_sentence).main)}
-                    </p>
-                    <RunwayChart
-                      result={preview.data.result}
-                      startSavings={Number(f['savings'] ?? 0) * 100}
-                      runsOutLabel={runsOutAround(preview.data.template_sentence)}
-                    />
-                  </div>
-                )}
-              </div>
-            )}
+                  <RunwayChart
+                    result={preview.data.result}
+                    startSavings={Number(f['savings'] ?? 0) * 100}
+                    runsOutLabel={runsOutAround(preview.data.template_sentence)}
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           {gateHit && (
             <div
@@ -1605,7 +1600,7 @@ export default function BriefsPage() {
           <div className="sticky bottom-[96px] z-10 -mx-4 mt-5 bg-gradient-to-t from-navbg via-navbg/95 to-transparent px-4 pb-2 pt-4 md:static md:mx-0 md:bg-none md:px-0 md:pb-0 md:pt-0">
             {entry.mode !== 'handover' && step === 1 ? (
               <button type="button" onClick={continueStep} className={primaryBtn}>
-                Continue <ChevronRight size={18} aria-hidden="true" />
+                Add what changes <ChevronRight size={18} aria-hidden="true" />
               </button>
             ) : (
               <button
