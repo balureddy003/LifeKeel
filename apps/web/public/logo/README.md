@@ -1,6 +1,6 @@
 # Logo assets
 
-The app icon (`apps/web/public/icon.svg`) is unchanged and is the source of truth for the mark itself — these
+The app icon (`apps/web/public/icon.svg`) is the source of truth for the mark itself — these
 files extend it into a lockup system, they don't replace it.
 
 - `logo-horizontal.svg` — icon + wordmark, for headers and navigation
@@ -18,7 +18,7 @@ no such dependency; they're pure geometry and safe to use anywhere as-is.
 
 ## Minimum size
 
-16px is the floor — below that the lattice starts to fuzz into a blob. Keep the corner radius proportional
+16px is the floor — below that the waterline dash starts to fuzz. Keep the corner radius proportional
 (~22% of width) at every size.
 
 See the full system, on-light/on-dark previews, and the size/spacing rules at the published review artifact
