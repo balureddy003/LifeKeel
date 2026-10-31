@@ -30,6 +30,15 @@ are in this folder. The seeded household is the one from `apps/api/e2e/seed-ui.m
 | 18 | Brief link, signed out | 18-share-link-sign-in | Clear; returns the reader to the brief after sign-in |
 | 19 | Brief link, recipient | 19-share-link-recipient | Clear; dates were raw ISO |
 
+## Third walk: the owner's own account on `main` (read-only)
+
+Walked home, map, cover, packet, family, briefs and financial profile with real data on screen. Nothing was saved.
+
+- Fixed: the claim packet empty state said "Record one in the financial profile" as plain text; it is now a link.
+- Fixed: Briefs told a household with an invite-pending partner "You are the only adult here"; it now says the other adult has not joined yet.
+- Found, not fixed: home shows "AI Memory" cards labelled Sample ("a new vehicle in your transactions", "we found a pension statement") with action buttons on a real account; the Health card shows an overall score of 85 while Protection and Wealth both show a dash; the home page is seven stacked sections long.
+- The in-app browser showed `localhost:3002` unstyled until a stale service worker was cleared (browser pane only).
+
 ## Fixed in this change
 - Invite: the home prompt went to Family, which has no invite control. It now opens Add Member directly, and Settings has a one-tap "Copy link" for the invite link (before, only a six-character code to read aloud).
 - Organizer never learned a partner had asked to join unless they opened Settings. Home now shows "asked to join your family" with a Review link that scrolls to the request; approving shows a note and refreshes the roster.

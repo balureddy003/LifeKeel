@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
@@ -89,6 +89,12 @@ export default function LifeEventsPage() {
   // de-dupe check. A double-tap in a crisis shouldn't silently create a
   // second record of the same event.
   const [existingSameType, setExistingSameType] = useState<LifeEvent | null>(null)
+  // ?now=1 (from Emergency Mode): no form, one tap goes straight to the steps.
+  // `checked` flips once the "already reported?" lookup has answered, so the
+  // quick path never races it.
+  const [quick, setQuick] = useState(false)
+  const [checked, setChecked] = useState(false)
+  const quickStarted = useRef(false)
 
   const otherMembers = (family?.members ?? []).filter((m) => m.role !== 'child')
 
@@ -100,12 +106,14 @@ export default function LifeEventsPage() {
     const type = new URLSearchParams(window.location.search).get('type')
     if (type && EVENT_TYPES.some((e) => e.id === type)) {
       setSelectedType(type as LifeEventType)
+      if (new URLSearchParams(window.location.search).get('now') === '1') setQuick(true)
     }
   }, [])
 
   useEffect(() => {
     if (!selectedType) {
       setExistingSameType(null)
+      setChecked(false)
       return
     }
     let cancelled = false
@@ -113,14 +121,34 @@ export default function LifeEventsPage() {
       if (cancelled) return
       // API returns most recent first — first match is the latest report.
       setExistingSameType(events.find((e) => e.event_type === selectedType) ?? null)
+      setChecked(true)
     })
     return () => {
       cancelled = true
     }
   }, [selectedType])
 
-  const handleSubmit = async () => {
-    if (!selectedType) return
+  // The quick path: report with no details and open the steps. A same-type
+  // event reported in the last day is opened instead of duplicated, so a
+  // second tap in a crisis lands on the same plan. If anything fails the form
+  // below shows, with the reason.
+  useEffect(() => {
+    if (!quick || !checked || !selectedType || quickStarted.current) return
+    quickStarted.current = true
+    const recent =
+      existingSameType && Date.now() - new Date(existingSameType.reported_at).getTime() < 86_400_000
+    if (recent && existingSameType) {
+      router.replace(`/life-events/${existingSameType.id}`)
+      return
+    }
+    void handleSubmit().then((ok) => {
+      if (!ok) setQuick(false)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quick, checked, selectedType, existingSameType])
+
+  const handleSubmit = async (): Promise<boolean> => {
+    if (!selectedType) return false
     haptic('light')
     setSubmitting(true)
     setError(null)
@@ -134,9 +162,10 @@ export default function LifeEventsPage() {
       setError(
         "That didn't go through — nothing was recorded. You can try again whenever you're ready.",
       )
-      return
+      return false
     }
     router.push(`/life-events/${event.id}`)
+    return true
   }
 
   return (
@@ -146,7 +175,18 @@ export default function LifeEventsPage() {
         subtitle="Tell Keel what's actually happening and get a plan based on your real data"
       />
 
-      {!selectedType ? (
+      {quick ? (
+        <div role="status" aria-live="polite" className="space-y-4 py-6">
+          {selectedType && URGENT_TYPES.has(selectedType) && <LifeSafetyNotice compact />}
+          <p className="text-lg font-semibold text-ink-primary">
+            We&apos;ll take this one step at a time.
+          </p>
+          <p className="flex items-center gap-2 text-ink-secondary">
+            <Loader2 size={18} className="animate-spin" aria-hidden="true" /> Getting your first
+            steps…
+          </p>
+        </div>
+      ) : !selectedType ? (
         <div className="space-y-3">
           {EVENT_TYPES.map((event, i) => (
             <motion.div
@@ -266,7 +306,7 @@ export default function LifeEventsPage() {
               </p>
             </div>
 
-            <GlassButton onClick={handleSubmit} disabled={submitting}>
+            <GlassButton onClick={() => void handleSubmit()} disabled={submitting}>
               {submitting ? <Loader2 size={18} className="animate-spin" /> : null}
               <span>
                 {submitting
