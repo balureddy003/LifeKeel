@@ -998,7 +998,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         // picked type carried through — they used to land on the
         // hypothetical /events simulator, and car/property/travel had no
         // real flow at all. ?type= preselects on the confirm screen.
-        onSelectEvent={(eventId) => router.push(`/life-events?type=${eventId}`)}
+        onSelectEvent={(eventId) => router.push(`/life-events?type=${eventId}&now=1`)}
       />
       <CommandPalette />
       <PwaInit />
