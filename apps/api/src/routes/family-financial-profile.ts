@@ -1517,7 +1517,10 @@ export async function registerFamilyFinancialProfileRoutes(
             q.provider === p.provider &&
             (q.policy_number ?? '') === (p.policy_number ?? ''),
         )
-        if (!prior || prior.monthly_premium_minor === p.monthly_premium_minor) return p
+        // PRD-235: a policy keeps one stable id for life. A client that omits it
+        // (older web builds, imports) gets the id already on file, else a new one.
+        const withId = p.id ? p : { ...p, id: prior?.id ?? `pol_${crypto.randomUUID()}` }
+        if (!prior || prior.monthly_premium_minor === p.monthly_premium_minor) return withId
         const history = [
           ...(prior.premium_history ?? []),
           {
@@ -1525,7 +1528,7 @@ export async function registerFamilyFinancialProfileRoutes(
             effective_from: previousDoc!.updated_at?.toISOString?.() ?? new Date().toISOString(),
           },
         ]
-        return { ...p, premium_history: history }
+        return { ...withId, premium_history: history }
       })
 
       const fields = {

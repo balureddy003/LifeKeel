@@ -104,14 +104,20 @@ export function solveCatalogueBrief(problem: string, raw: unknown, asOf: string)
       'Enter current household income, spending and liquid savings, including zero where applicable',
     )
   if (i.monthly_essentials_minor <= 0) throw new Error('Monthly spending must be greater than zero')
+  // Friction budget (PRD-230): three money fields and a date are enough for a
+  // first number. Anything about the change that is not entered yet is held at
+  // today's figure, and the result says so rather than guessing a value.
+  const assumed: [string, string][] = []
   if (['stop', 'income', 'mixed'].includes(entry.mode) && i.new_income_minor === undefined)
-    throw new Error(
-      'Enter total household income after the change, including any continuing income',
-    )
+    assumed.push(['Assumed: income after the change', 'Not entered, shown the same as today'])
   if (['cost', 'mixed', 'cash'].includes(entry.mode) && i.new_essentials_minor === undefined)
-    throw new Error('Enter total monthly spending after the change')
+    assumed.push(['Assumed: spending after the change', 'Not entered, shown the same as today'])
   if (entry.mode === 'cash' && !(i.cash_out_minor || i.cash_in_minor))
-    throw new Error('Enter the one-off cash payment')
+    assumed.push(['Assumed: one-off amount', 'Not entered, so savings are shown before it'])
+  for (const [label, value] of assumed) fact(label, value)
+  const assumedNote = assumed.length
+    ? ' This is a partial answer: the figures for the change itself have not been entered yet, so add them for the full picture.'
+    : ''
   if (
     i.return_date &&
     (i.return_date <= i.change_date ||
@@ -243,7 +249,8 @@ export function solveCatalogueBrief(problem: string, raw: unknown, asOf: string)
     inputs: i,
     result,
     facts,
-    template_sentence: description + oneOff + gap + cashGap + coverNote + MONEY_DISCLAIMER,
+    template_sentence:
+      description + oneOff + gap + cashGap + coverNote + assumedNote + MONEY_DISCLAIMER,
   }
 }
 

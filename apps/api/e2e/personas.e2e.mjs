@@ -30,6 +30,7 @@ const couple = await persona('couple', {})
 const solo = await persona('solo', { second: false })
 const cat = (await must('cat', call('GET', '/family/brief-catalogue', couple.tokenA))).catalogue
 const fieldCounts = {}
+const firstStepCounts = {}
 
 // 1. Every brief type solves, for a couple and a solo parent, with timing.
 for (const [pname, h] of [
@@ -51,6 +52,32 @@ for (const [pname, h] of [
       expect(ms < 500, `slow preview ${ms}ms`)
     })
   }
+}
+
+// 1b. PRD-230 budget: the first step alone (3 money fields + the date) must
+// produce a number for every money type. Cap is asserted, not just printed.
+const FIRST_STEP_MONEY_MAX = 3
+for (const e of cat.filter((x) => x.mode !== 'handover')) {
+  await scenario(`brief ${e.id} gives a first number from the first step alone`, async () => {
+    const { change_date, ...money } = inputsFor(e.mode, future(60))
+    const first = {
+      change_date,
+      ...Object.fromEntries(Object.entries(money).filter(([k]) => Object.keys(base).includes(k))),
+    }
+    firstStepCounts[e.id] = moneyFieldCount(first)
+    expect(
+      firstStepCounts[e.id] <= FIRST_STEP_MONEY_MAX,
+      `${e.id}: ${firstStepCounts[e.id]} money fields`,
+    )
+    const t0 = Date.now()
+    const r = await call('POST', '/family/briefs/preview', couple.tokenA, {
+      problem_type: e.id,
+      inputs: first,
+    })
+    expect(r.status === 200, `status ${r.status} ${JSON.stringify(r.body).slice(0, 160)}`)
+    expect(Date.now() - t0 < 500, 'slow preview')
+    expect(r.body.preview.template_sentence.length > 10, 'empty sentence')
+  })
 }
 
 // 2. Friction: how many money fields before the first number, per brief.

@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
-import dynamic from 'next/dynamic'
 import { usePathname, useRouter } from 'next/navigation'
+import dynamic from 'next/dynamic'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Home,
@@ -37,9 +37,8 @@ import { useToast } from './Toast'
 import { AuthShell } from '@/components/landing/AuthShell'
 import { MarketingLanding } from './MarketingLanding'
 import { NavRail } from './NavRail'
-import { PANEL_ID } from './keel/panel-id'
 import { isKeelPanelEnabled } from '@/lib/keel/client'
-import { useKeelPanel } from '@/lib/keel/store'
+import { PANEL_ID, useKeelPanel } from '@/lib/keel/store'
 import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
 import { isNativeShell, biometricLockEnabled, verifyBiometric } from '@/lib/native'
@@ -55,9 +54,9 @@ const CommandPalette = dynamic(() => import('./CommandPalette').then((m) => m.Co
 const InstallHint = dynamic(() => import('@/components/InstallHint').then((m) => m.InstallHint), {
   ssr: false,
 })
-const KeelDock = dynamic(() => import('./keel/KeelDock').then((m) => m.KeelDock), {
-  ssr: false,
-})
+// The dock pulls in the whole panel tree incl. react-markdown; keep it out
+// of the landing's first-load JS (scripts/check-landing-size.mjs budget).
+const KeelDock = dynamic(() => import('./keel/KeelDock').then((m) => m.KeelDock), { ssr: false })
 
 // Intent 35: five items at 390px, not six — the multi-device review's own
 // list (Home, Events, Ask Keel, Family, Settings). Inbox and Finances drop
@@ -953,7 +952,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {showAskKeel && !keelOpen && <AskKeelButton context={pathname} />}
         </div>
       )}
-      {isKeelPanelEnabled() && (
+      {isKeelPanelEnabled() && keelEligible && (
         <KeelDock
           eligible={keelEligible}
           onEmergency={() => {

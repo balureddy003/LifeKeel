@@ -338,7 +338,40 @@ describe('PRD-102: policies[] and the new protection-domain rules', () => {
 
     const get = await app.inject({ method: 'GET', url: '/family/financial-profile' })
     expect(get.statusCode).toBe(200)
-    expect(get.json().profile.policies).toEqual(policies)
+    expect(get.json().profile.policies).toEqual([
+      { ...policies[0], id: expect.stringMatching(/^pol_/) },
+    ])
+  })
+
+  it('PRD-235: a policy saved without an id gets one, keeps it on later saves, and a client id wins', async () => {
+    const { app } = await buildApp(engine)
+    const life = {
+      type: 'life',
+      provider: 'Acme Insurance',
+      coverage_amount_minor: 10_000_000,
+      monthly_premium_minor: 2000,
+    }
+    const save = (policies: unknown[]) =>
+      app.inject({
+        method: 'POST',
+        url: '/family/financial-profile',
+        payload: { ...BASE_PROFILE, policies },
+      })
+    const read = async () =>
+      (await app.inject({ method: 'GET', url: '/family/financial-profile' })).json().profile
+        .policies
+
+    await save([life])
+    const first = (await read())[0].id
+    expect(first).toMatch(/^pol_/)
+
+    // Re-saved without an id (and a changed premium): same policy, same id.
+    await save([{ ...life, monthly_premium_minor: 2500 }])
+    expect((await read())[0].id).toBe(first)
+
+    // A client-supplied id is kept as given.
+    await save([{ ...life, id: 'pol_client' }])
+    expect((await read())[0].id).toBe('pol_client')
   })
 
   it('intent 38: a changed premium appends the old amount to premium_history; an unchanged save does not', async () => {
@@ -698,7 +731,9 @@ describe('PRD-105: car/home policy types, and gating life_insurance_below_househ
     expect(post.statusCode).toBe(200)
 
     const get = await app.inject({ method: 'GET', url: '/family/financial-profile' })
-    expect(get.json().profile.policies).toEqual(policies)
+    expect(get.json().profile.policies).toEqual(
+      policies.map((p) => ({ ...p, id: expect.stringMatching(/^pol_/) })),
+    )
   })
 
   it('does not fire life_insurance_below_household_needs for a household with no dependents and no mortgage, even with £0 cover', async () => {
