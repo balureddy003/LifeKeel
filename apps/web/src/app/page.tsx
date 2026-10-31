@@ -37,6 +37,7 @@ import { ReadinessSparkline } from '@/components/ReadinessSparkline'
 import { ReadinessFeed } from '@/components/ReadinessFeed'
 import { PerceivedProtectionCard } from '@/components/PerceivedProtectionCard'
 import { TodayCard } from '@/components/TodayCard'
+import { MoreOnHome } from '@/components/MoreOnHome'
 import { PartnerCard } from '@/components/InvitePartnerPrompt'
 import { BriefWaitingCard } from '@/components/BriefWaitingCard'
 import CrisisMode, { CRISIS_EVENT_KEY } from '@/components/CrisisMode'
@@ -1160,129 +1161,133 @@ export default function HomePage() {
         </motion.div>
       )}
 
-      <IfAdvanced>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-        >
-          <div className="flex items-center gap-2 text-sm font-semibold text-ink-secondary mb-3 px-1">
-            <Network size={16} className="text-family-400" />
-            Family
-          </div>
-          <FamilyRoster />
-        </motion.div>
-      </IfAdvanced>
-
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.15 }}
-      >
-        <div className="flex items-center gap-2 text-sm font-semibold text-ink-secondary mb-3 px-1">
-          <Activity size={16} className="text-family-400" />
-          Health
-        </div>
-        <HealthSummary />
-      </motion.div>
-
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-      >
-        {hasTimelineData ? (
-          <LifeTimeline events={timelineEvents} />
-        ) : (
-          <GlassCard className="p-5">
-            <div className="flex items-center gap-2 text-sm font-semibold text-ink-secondary mb-3">
-              <CalendarClock size={16} className="text-family-400" />
-              Life Timeline
-            </div>
-            <p className="text-sm text-ink-tertiary leading-relaxed">
-              {hasChildren
-                ? 'Add a birthday to see education milestones here.'
-                : 'Add children to your family profile to see education milestones and future planning events on your timeline.'}
-            </p>
-            {hasChildren ? (
-              <ChildDobPrompt />
-            ) : (
-              <Link
-                href="/family"
-                className="text-sm text-family-400 font-semibold flex items-center gap-1 mt-2"
-              >
-                Set up family <ChevronRight size={14} />
-              </Link>
-            )}
-          </GlassCard>
-        )}
-      </motion.div>
-
-      <IfAdvanced>
-        {/* lg+ two-column pair — same pairing rule as the score/life-event
-            grid above (both always render together inside IfAdvanced). */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* The ladder repeats the steps in the getting-started card, so it waits until that is gone. */}
-          {hasLiveData && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.25 }}
-            >
-              <TrustLadder />
-            </motion.div>
-          )}
-
+      <MoreOnHome fold={hasLiveData}>
+        <IfAdvanced>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
+            transition={{ delay: 0.1 }}
           >
-            <MemoryPrompts />
+            <div className="flex items-center gap-2 text-sm font-semibold text-ink-secondary mb-3 px-1">
+              <Network size={16} className="text-family-400" />
+              Family
+            </div>
+            <FamilyRoster />
           </motion.div>
-        </div>
-      </IfAdvanced>
+        </IfAdvanced>
 
-      {!retirementSuppressed && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
+          transition={{ delay: 0.15 }}
         >
-          <GlassCard className="p-5 border-family-500/20">
-            <div className="flex items-center gap-2 mb-2">
-              <Lightbulb size={18} className="text-family-400" />
-              <span className="text-sm font-semibold text-family-400">One option to consider</span>
-            </div>
-            {hasLiveData && retirementInsight ? (
-              <>
-                <p className="text-sm text-ink-secondary leading-relaxed mb-3">
-                  {retirementInsight.reasoning || retirementInsight.hypothesis}
-                </p>
-                <Link
-                  href="/events/retirement"
-                  className="text-sm text-family-400 font-semibold flex items-center gap-1"
-                >
-                  See retirement plan <ChevronRight size={14} />
-                </Link>
-                <p className="text-xs text-ink-tertiary mt-3 leading-relaxed">
-                  Keel earns no commission from any insurer or provider — this is information from
-                  your own data, not a recommendation to buy anything.
-                </p>
-              </>
-            ) : hasLiveData ? (
-              <p className="text-sm text-ink-tertiary leading-relaxed">
-                No retirement gap found in your data — your plan looks on track so far.
-              </p>
-            ) : (
-              <p className="text-sm text-ink-tertiary leading-relaxed">
-                Connect your accounts and upload documents to receive personalized financial
-                insights and projections.
-              </p>
-            )}
-          </GlassCard>
+          <div className="flex items-center gap-2 text-sm font-semibold text-ink-secondary mb-3 px-1">
+            <Activity size={16} className="text-family-400" />
+            Health
+          </div>
+          <HealthSummary />
         </motion.div>
-      )}
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          {hasTimelineData ? (
+            <LifeTimeline events={timelineEvents} />
+          ) : (
+            <GlassCard className="p-5">
+              <div className="flex items-center gap-2 text-sm font-semibold text-ink-secondary mb-3">
+                <CalendarClock size={16} className="text-family-400" />
+                Life Timeline
+              </div>
+              <p className="text-sm text-ink-tertiary leading-relaxed">
+                {hasChildren
+                  ? 'Add a birthday to see education milestones here.'
+                  : 'Add children to your family profile to see education milestones and future planning events on your timeline.'}
+              </p>
+              {hasChildren ? (
+                <ChildDobPrompt />
+              ) : (
+                <Link
+                  href="/family"
+                  className="text-sm text-family-400 font-semibold flex items-center gap-1 mt-2"
+                >
+                  Set up family <ChevronRight size={14} />
+                </Link>
+              )}
+            </GlassCard>
+          )}
+        </motion.div>
+
+        <IfAdvanced>
+          {/* lg+ two-column pair — same pairing rule as the score/life-event
+            grid above (both always render together inside IfAdvanced). */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* The ladder repeats the steps in the getting-started card, so it waits until that is gone. */}
+            {hasLiveData && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.25 }}
+              >
+                <TrustLadder />
+              </motion.div>
+            )}
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+            >
+              <MemoryPrompts />
+            </motion.div>
+          </div>
+        </IfAdvanced>
+
+        {!retirementSuppressed && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+          >
+            <GlassCard className="p-5 border-family-500/20">
+              <div className="flex items-center gap-2 mb-2">
+                <Lightbulb size={18} className="text-family-400" />
+                <span className="text-sm font-semibold text-family-400">
+                  One option to consider
+                </span>
+              </div>
+              {hasLiveData && retirementInsight ? (
+                <>
+                  <p className="text-sm text-ink-secondary leading-relaxed mb-3">
+                    {retirementInsight.reasoning || retirementInsight.hypothesis}
+                  </p>
+                  <Link
+                    href="/events/retirement"
+                    className="text-sm text-family-400 font-semibold flex items-center gap-1"
+                  >
+                    See retirement plan <ChevronRight size={14} />
+                  </Link>
+                  <p className="text-xs text-ink-tertiary mt-3 leading-relaxed">
+                    Keel earns no commission from any insurer or provider — this is information from
+                    your own data, not a recommendation to buy anything.
+                  </p>
+                </>
+              ) : hasLiveData ? (
+                <p className="text-sm text-ink-tertiary leading-relaxed">
+                  No retirement gap found in your data — your plan looks on track so far.
+                </p>
+              ) : (
+                <p className="text-sm text-ink-tertiary leading-relaxed">
+                  Connect your accounts and upload documents to receive personalized financial
+                  insights and projections.
+                </p>
+              )}
+            </GlassCard>
+          </motion.div>
+        )}
+      </MoreOnHome>
 
       {/* Crisis reporting lives at the bottom of the daily dashboard, not
           beside the score — top-of-page placement made the calm overview
