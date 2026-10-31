@@ -162,6 +162,9 @@ export const FinancialProfileSchema = z.object({
         // both the wizard's picker and this endpoint rejected them. No new
         // coverage-adequacy detector for either type yet (see PRD-105's own
         // "Out of scope") — recordable today, reasoned-about later.
+        // PRD-235: stable id so a claim packet always addresses the same
+        // policy — array index moves when another adult edits the list.
+        id: z.string().max(60).optional(),
         type: z.enum([
           'life',
           'income_protection',
