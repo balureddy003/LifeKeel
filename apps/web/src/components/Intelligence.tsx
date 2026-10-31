@@ -334,29 +334,6 @@ interface MemoryPrompt {
   route: string
 }
 
-// Illustrative preview shown only when the family has no real, actionable
-// document yet — clearly labeled "Sample" so it never reads as a real signal.
-const SAMPLE_PROMPTS: MemoryPrompt[] = [
-  {
-    id: 'sample-car',
-    icon: Car,
-    title: 'I noticed something new',
-    message:
-      'I see a new vehicle in your transactions. Upload your insurance and registration so I can track it properly.',
-    action: 'Add vehicle',
-    route: '/upload',
-  },
-  {
-    id: 'sample-pension',
-    icon: Landmark,
-    title: 'We found a pension statement',
-    message:
-      'I found a pension document in your uploads. Should I add it to your retirement planning?',
-    action: 'Review',
-    route: '/upload?category=pension',
-  },
-]
-
 const CATEGORY_PROMPT_META: Record<string, { icon: typeof Car; title: string; what: string }> = {
   pension: {
     icon: Landmark,
@@ -436,15 +413,13 @@ export function MemoryPrompts() {
     })
   }
 
-  // Still resolving — render nothing rather than flash the sample content
-  // and then swap it for real cards.
+  // Still resolving — render nothing rather than flash and then swap.
   if (realPrompts === null) return null
 
-  const realVisible = realPrompts.filter((p) => !dismissed.has(p.id))
-  // Real prompts the user already dismissed must not fall back to the
-  // sample — that would present canned content as if it replaced them.
-  const isSample = realPrompts.length === 0
-  const prompts = isSample ? SAMPLE_PROMPTS.filter((p) => !dismissed.has(p.id)) : realVisible
+  // Only what Keel actually found in this family's own documents. Canned
+  // examples used to fill the gap; on a real account they read as findings
+  // about the person, so with nothing real to show the card shows nothing.
+  const prompts = realPrompts.filter((p) => !dismissed.has(p.id))
 
   if (prompts.length === 0) return null
 
@@ -453,16 +428,9 @@ export function MemoryPrompts() {
       <div className="flex items-center gap-2 text-sm font-semibold text-ink-secondary mb-1 px-1">
         <Sparkles size={16} className="text-family-400" />
         AI Memory
-        {isSample && (
-          <span className="text-caption text-warning font-semibold px-1.5 py-0.5 rounded-full bg-warning/10">
-            Sample
-          </span>
-        )}
       </div>
       <p className="text-xs text-ink-tertiary mb-2 px-1">
-        {isSample
-          ? 'Examples of what Keel surfaces once your documents and accounts are connected.'
-          : 'Found in documents you uploaded — nothing changes until you review and approve it.'}
+        Found in documents you uploaded — nothing changes until you review and approve it.
       </p>
       {prompts.map((p, i) => {
         const Icon = p.icon
