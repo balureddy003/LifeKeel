@@ -19,13 +19,10 @@ import {
 } from 'lucide-react'
 import { useNetworkStatus } from '@/lib/useNetworkStatus'
 import { useAuth } from '@/lib/auth-context'
-import { InstallHint } from '@/components/InstallHint'
 import { useMode } from '@/lib/mode-context'
 import { useAppStore } from '@/lib/store'
 import { MeshGradient, Skeleton, SkeletonCard } from './Glass'
-import { EmergencyMode } from './EmergencyMode'
 import { AppHeroHeader } from './AppHeroHeader'
-import { CommandPalette } from './CommandPalette'
 import { DisclaimerFooter } from './Disclaimer'
 import {
   fetchInboxItems,
@@ -46,6 +43,17 @@ import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
 import { isNativeShell, biometricLockEnabled, verifyBiometric } from '@/lib/native'
 
+// Signed-in extras load after the first paint, so the first-time visitor's landing
+// download stays inside its budget (PRD-209). None render on the signed-out landing.
+const EmergencyMode = dynamic(() => import('./EmergencyMode').then((m) => m.EmergencyMode), {
+  ssr: false,
+})
+const CommandPalette = dynamic(() => import('./CommandPalette').then((m) => m.CommandPalette), {
+  ssr: false,
+})
+const InstallHint = dynamic(() => import('@/components/InstallHint').then((m) => m.InstallHint), {
+  ssr: false,
+})
 // The dock pulls in the whole panel tree incl. react-markdown; keep it out
 // of the landing's first-load JS (scripts/check-landing-size.mjs budget).
 const KeelDock = dynamic(() => import('./keel/KeelDock').then((m) => m.KeelDock), { ssr: false })
