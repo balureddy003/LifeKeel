@@ -56,6 +56,7 @@ export function buildInputs(e: BriefCatalogueEntry, f: FormValues): BriefInputs 
   if (steps.length) i.income_steps = steps
   if (f['decision_deadline']) i.decision_deadline = f['decision_deadline']
   if (f['recorded_cover']?.trim()) i.recorded_cover = f['recorded_cover'].trim()
+  if (f['cover_ends_flag'] === 'yes') i.cover_may_end_with_employment = true
   return i
 }
 
