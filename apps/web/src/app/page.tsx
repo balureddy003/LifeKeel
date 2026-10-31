@@ -46,6 +46,7 @@ import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
 import {
   fetchDocuments,
+  listBriefs,
   fetchConnectorStatuses,
   fetchFinancialProfile,
   fetchLifeChangeNudge,
@@ -738,8 +739,12 @@ function GettingStarted() {
   // reset finished steps to "not done".
   const [serverDocs, setServerDocs] = useState(0)
   const [serverConnectors, setServerConnectors] = useState(0)
+  const [briefCount, setBriefCount] = useState(0)
   useEffect(() => {
     let cancelled = false
+    listBriefs().then((b) => {
+      if (!cancelled) setBriefCount(b.length)
+    })
     fetchDocuments().then((d) => {
       if (!cancelled) setServerDocs(d.documents.length)
     })
@@ -754,6 +759,13 @@ function GettingStarted() {
   const connectorCount = Math.max(connectorsLocal.length, serverConnectors)
 
   const steps = [
+    {
+      label: 'Get your first answer',
+      description: 'A few figures, about two minutes. No upload or account to connect',
+      href: '/briefs',
+      icon: Sparkles,
+      done: briefCount > 0,
+    },
     {
       label: 'Upload a document',
       description: 'Insurance policy, will, or bank statement',
