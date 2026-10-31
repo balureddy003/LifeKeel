@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <!-- roof chevron (shelter / sail) above, keel chevron below, one steady point between -->
+  <defs><linearGradient id="g" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse"><stop stop-color="#0b3b5c"/><stop offset="1" stop-color="#0e7490"/></linearGradient></defs>
+  <rect width="120" height="120" rx="27" fill="url(#g)"/>
+  <path d="M26 54L60 24L94 54" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M26 66L60 96L94 66" stroke="#7dd3fc" stroke-opacity=".6" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <circle cx="60" cy="60" r="6" fill="#fde68a"/>
+</svg>
