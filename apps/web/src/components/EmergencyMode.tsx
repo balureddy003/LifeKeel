@@ -88,7 +88,8 @@ export function EmergencyMode({
                 What happened?
               </motion.h1>
               <p className="text-center text-ink-tertiary mt-2 text-lg">
-                Tap one and I&apos;ll guide you through it
+                We&apos;ll take this one step at a time. Tap what happened. You can add details
+                later.
               </p>
             </div>
 
@@ -139,7 +140,7 @@ export function EmergencyMode({
                 className="w-full py-4 rounded-2xl font-semibold text-base text-danger border border-danger/30"
                 style={{ background: 'rgba(255,175,163,0.08)' }}
               >
-                Something else — see all event types
+                Job loss, disability or something else
               </motion.button>
             </div>
 
