@@ -9,7 +9,7 @@ import {
   useReducedMotion,
 } from 'framer-motion'
 import { useRef, ReactNode } from 'react'
-import { ChevronRight, ArrowLeft, Bot, type LucideIcon } from 'lucide-react'
+import { ChevronRight, ArrowLeft, type LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 import { haptic } from '@/lib/haptics'
 import { useMode } from '@/lib/mode-context'
@@ -311,18 +311,8 @@ export function PageHeader({
   backHref?: string
   action?: ReactNode
 }) {
-  const assistantAction =
-    title !== 'Keel' ? (
-      <Link
-        href="/assistant"
-        onClick={() => haptic('light')}
-        className="w-10 h-10 rounded-full bg-family-500/10 border border-family-500/20 flex items-center justify-center active:opacity-70 transition-opacity"
-        aria-label="Assistant"
-      >
-        <Bot size={20} className="text-family-400" />
-      </Link>
-    ) : null
-
+  // Ask Keel is already one tap away in the shell (floating button and tab bar),
+  // so the page header does not add a third way in.
   return (
     <header className="sticky top-[var(--app-header-height,0px)] z-sticky safe-area-top bg-navbg/95 backdrop-blur-xl -mx-5 px-5 py-2">
       {backHref && (
@@ -366,7 +356,7 @@ export function PageHeader({
           </h1>
           {subtitle && <p className="text-sm text-ink-tertiary pb-1">{subtitle}</p>}
         </div>
-        <div className="flex items-center shrink-0">{action ?? assistantAction}</div>
+        {action && <div className="flex items-center shrink-0">{action}</div>}
       </div>
     </header>
   )

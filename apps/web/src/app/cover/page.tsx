@@ -1,5 +1,6 @@
 'use client'
 
+import { plainDates } from '@/lib/brief-text'
 import { useEffect, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { GlassCard, PageHeader, Skeleton } from '@/components/Glass'
@@ -98,7 +99,7 @@ export default function EmployerCoverPage() {
                       <p className="mt-1 text-sm text-ink-secondary">
                         {c.member_label} · {TYPE_LABELS[c.type] ?? c.type}
                         {c.source ? ` · ${c.source}` : ''}
-                        {c.last_seen_at ? ` · seen ${c.last_seen_at}` : ''}
+                        {c.last_seen_at ? ` · seen ${plainDates(c.last_seen_at)}` : ''}
                       </p>
                       <p className="mt-1 text-xs text-ink-tertiary">
                         {c.ends_with_employment
