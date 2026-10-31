@@ -117,11 +117,31 @@ export function registerHouseholdObligationRoutes(app: FastifyInstance, db: Db) 
     // "Depends on one person" = the named person resolves to a single roster
     // member — 'joint', 'household' or unmatched labels do not concentrate.
     const dependent = rows.filter((r) => namedMember(group, r.named_person) !== undefined)
+    // The summary names the person the most rows lean on, so it never adds
+    // two different people's rows together as "one named person".
+    const perPerson = new Map<string, number>()
+    for (const r of dependent) {
+      const name = namedMember(group, r.named_person)!.name!.trim()
+      perPerson.set(name, (perPerson.get(name) ?? 0) + 1)
+    }
+    const top = [...perPerson.entries()].sort((a, b) => b[1] - a[1])[0]
+    const me = (group?.members ?? []).find((m) => memberMatchesUser(m, ctx.user_id))
     const earliest = rows[0] ?? null
     return {
-      obligations: rows.map(view),
+      can_edit: await isHouseholdEditor(db, ctx.tenant_id, ctx.user_id, req.authContext?.roles),
+      // Only the adult a row names can confirm it, so only they are offered the button.
+      obligations: rows.map((r) => ({
+        ...view(r),
+        can_confirm:
+          r.entered_by_creator &&
+          r.confirmed_by === null &&
+          me !== undefined &&
+          namedMember(group, r.named_person) === me,
+      })),
       summary: {
         dependent_count: dependent.length,
+        top_person: top?.[0] ?? null,
+        top_person_count: top?.[1] ?? 0,
         total_count: rows.length,
         earliest_due_date: earliest?.next_due_date ?? null,
         earliest_due_label: earliest?.label ?? null,

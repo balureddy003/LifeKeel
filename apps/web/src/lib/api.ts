@@ -6461,14 +6461,20 @@ export interface Obligation {
   recurrence: string | null
   if_unavailable: string | null
   pending_confirmation: boolean
+  /** True only for the adult the row names, while it is still unconfirmed. */
+  can_confirm?: boolean
   confirmed_by: string | null
   created_by: string
 }
 
 export interface ObligationsMap {
   obligations: Obligation[]
+  /** Editors may add, change and remove rows; other adults read and confirm. */
+  can_edit?: boolean
   summary: {
     dependent_count: number
+    top_person?: string | null
+    top_person_count?: number
     earliest_due_date: string | null
     earliest_due_label: string | null
   }
@@ -6489,6 +6495,7 @@ export function getObligationsMap() {
   return apiFetch<ObligationsMap>('/family/obligations/map', {
     obligations: [],
     summary: { dependent_count: 0, earliest_due_date: null, earliest_due_label: null },
+    can_edit: false,
   })
 }
 

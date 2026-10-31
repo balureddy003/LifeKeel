@@ -17,9 +17,10 @@ come back.
 - **First value never depends on a connection.** A brief gives a useful number from
   today's figures and a date alone (partial answers already ship); inbox, bank and
   document features add to the same number and are never a prerequisite for it.
-- **The brief link is the front door for every channel.** An adviser, an employer or a
-  household member can send a link that opens a real result with no sign-up. Joining
-  comes after seeing the result.
+- **The brief link is the front door for every channel.** A household member sends a link
+  that opens a real result after one sign-in as the named adult, with a return to the
+  brief straight afterwards. A no-sign-up months-only view is a later option, after
+  PRD-229's safeguarding review (decided 2026-10-31).
 - **The second adult reads first, joins later.** The recipient sees the exact version,
   confirms in one named action, and is asked to join only afterwards.
 - **Every screen asks for one thing,** and no screen asks for something the household

@@ -507,7 +507,8 @@ function Status({ b, other }: { b: HouseholdBrief; other: string }) {
   return (
     <div className="flex flex-wrap gap-2">
       {chip(!!c?.creator_at, c?.creator_at ? 'You confirmed' : 'You have not confirmed')}
-      {chip(!!c?.recipient_at, c?.recipient_at ? `${other} confirmed` : `Waiting for ${other}`)}
+      {b.share &&
+        chip(!!c?.recipient_at, c?.recipient_at ? `${other} confirmed` : `Waiting for ${other}`)}
     </div>
   )
 }
@@ -676,10 +677,28 @@ function ResultCard({
               {brief.confirmation?.recipient_at ? <Check size={16} /> : '2'}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-ink-primary">Send the link to {other}</p>
-              <p className="text-sm text-ink-secondary">
-                They sign in, read it and confirm too. The link works for 30 days.
-              </p>
+              {brief.share ? (
+                <>
+                  <p className="text-sm font-medium text-ink-primary">Send the link to {other}</p>
+                  <p className="text-sm text-ink-secondary">
+                    They sign in, read it and confirm too. The link works for 30 days.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium text-ink-primary">
+                    Share it when someone joins
+                  </p>
+                  <p className="text-sm text-ink-secondary">
+                    You are the only adult here, so this brief is saved for you. Add another adult
+                    in{' '}
+                    <Link href="/family" className="font-medium text-family-400 underline">
+                      Family
+                    </Link>{' '}
+                    and choose “Share this brief” in your list below.
+                  </p>
+                </>
+              )}
               {url && (
                 <>
                   <code className="mt-3 block truncate rounded-lg bg-surface-2 px-3 py-2 text-xs">
@@ -767,10 +786,14 @@ function Glance({
   const other = brief.share?.for_member_name ?? 'the other adult'
   const c = brief.confirmation
   const next = !c?.creator_at
-    ? 'Read it and confirm, so you can both see the same numbers.'
-    : !c.recipient_at
-      ? `Waiting for ${other} to read and confirm.`
-      : 'You have both seen the same numbers. Things change, so update the figures when they do.'
+    ? brief.share
+      ? 'Read it and confirm, so you can both see the same numbers.'
+      : 'Read it and confirm, so it is on record that you have seen these numbers.'
+    : !brief.share
+      ? 'Saved for you. Add another adult in Family when you want to share it.'
+      : !c.recipient_at
+        ? `Waiting for ${other} to read and confirm.`
+        : 'You have both seen the same numbers. Things change, so update the figures when they do.'
   return (
     <GlassCard className="mt-6 p-5">
       <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">
@@ -934,7 +957,8 @@ export default function BriefsPage() {
       }))
     )
       return
-    const r = await reShareBrief(b.id)
+    // A brief saved while you were the only adult has no recipient yet.
+    const r = await reShareBrief(b.id, b.share ? undefined : recipients[0]?.id)
     if (r.ok && r.data?.share.url) {
       const link = `${origin}/b/${r.data.share.url}`
       try {
@@ -1099,7 +1123,7 @@ export default function BriefsPage() {
         ?.focus()
       return
     }
-    if (!forMember) {
+    if (!forMember && recipients.length > 0) {
       setError('Choose the other adult to share this with.')
       return
     }
@@ -1110,7 +1134,7 @@ export default function BriefsPage() {
       contract_version: 2,
       problem_type: entry.id,
       inputs: buildInputs(entry, f),
-      for_member_id: forMember,
+      ...(forMember ? { for_member_id: forMember } : {}),
     })
     setBusy(false)
     if (!res.ok) {
@@ -1178,9 +1202,10 @@ export default function BriefsPage() {
 
       {loaded && canCreate && recipients.length === 0 && (
         <GlassCard className="mt-6 p-5">
-          <p className="font-medium text-ink-primary">Add the other adult first</p>
+          <p className="font-medium text-ink-primary">This one is just for you</p>
           <p className="mt-1 text-sm text-ink-secondary">
-            A brief is shared with one other adult in your household, and you each confirm it.
+            You are the only adult here, so your brief is saved for you. Add another adult in Family
+            when you want to share it and confirm it together.
           </p>
           <Link href="/family" className={`${ghostBtn} mt-4`}>
             Go to Family <ChevronRight size={16} aria-hidden="true" />
@@ -1197,25 +1222,20 @@ export default function BriefsPage() {
         </div>
       )}
 
-      {loaded &&
-        canCreate &&
-        recipients.length > 0 &&
-        !entry &&
-        !created &&
-        briefs.length === 0 && (
-          <GlassCard className="mt-6 flex items-start gap-3 p-5">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-family-500/10 text-family-400">
-              <Sparkles size={20} aria-hidden="true" />
-            </span>
-            <div>
-              <p className="font-medium text-ink-primary">Your first brief is free</p>
-              <p className="mt-1 text-sm text-ink-secondary">
-                It takes about 2 minutes. You will see your answer as you go, and nothing is shared
-                until you send the link.
-              </p>
-            </div>
-          </GlassCard>
-        )}
+      {loaded && canCreate && !entry && !created && briefs.length === 0 && (
+        <GlassCard className="mt-6 flex items-start gap-3 p-5">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-family-500/10 text-family-400">
+            <Sparkles size={20} aria-hidden="true" />
+          </span>
+          <div>
+            <p className="font-medium text-ink-primary">Your first brief is free</p>
+            <p className="mt-1 text-sm text-ink-secondary">
+              It takes about 2 minutes. You will see your answer as you go, and nothing is shared
+              until you send the link.
+            </p>
+          </div>
+        </GlassCard>
+      )}
 
       {loaded && canCreate && !entry && !created && briefs[0] && (
         <Glance
@@ -1473,11 +1493,11 @@ export default function BriefsPage() {
               </p>
             ) : (
               <p className="text-sm text-ink-secondary">
-                A brief is shared with one other adult.{' '}
+                This brief is just for you for now.{' '}
                 <Link href="/family" className="font-medium text-family-400 underline">
-                  Add them in Family
+                  Add another adult in Family
                 </Link>{' '}
-                first.
+                when you want to share it.
               </p>
             )}
 
@@ -1689,13 +1709,19 @@ export default function BriefsPage() {
                             Turn off the link
                           </button>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => void newLink(b, other)}
-                          className="min-h-[44px] text-ink-secondary underline"
-                        >
-                          {b.share && !b.share.revoked ? 'Get a new link' : 'Turn the link back on'}
-                        </button>
+                        {(b.share || recipients.length > 0) && (
+                          <button
+                            type="button"
+                            onClick={() => void newLink(b, other)}
+                            className="min-h-[44px] text-ink-secondary underline"
+                          >
+                            {b.share && !b.share.revoked
+                              ? 'Get a new link'
+                              : b.share
+                                ? 'Turn the link back on'
+                                : 'Share this brief'}
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => void remove(b)}

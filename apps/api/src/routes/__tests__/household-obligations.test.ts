@@ -128,10 +128,41 @@ describe('the map and summary', () => {
     const { summary } = (await map()).json()
     expect(summary).toEqual({
       dependent_count: 0,
+      top_person: null,
+      top_person_count: 0,
       total_count: 0,
       earliest_due_date: null,
       earliest_due_label: null,
     })
+  })
+})
+
+describe('what each adult is offered', () => {
+  it('the summary names the person most rows lean on, never two people as one', async () => {
+    await create()
+    await create({ ...ROW, label: 'Council tax', named_person: 'Alex' })
+    await create({ ...ROW, label: 'Car insurance', named_person: 'Sam' })
+    const { summary } = (await map()).json()
+    expect(summary.top_person).toBe('Sam')
+    expect(summary.top_person_count).toBe(2)
+  })
+
+  it('only the named adult is offered Confirm; the creator is not', async () => {
+    const row = (await create({ ...ROW, named_person: 'Alex' })).json().obligation
+    const mine = (await map()).json().obligations.find((o: { id: string }) => o.id === row.id)
+    expect(mine.pending_confirmation).toBe(true)
+    expect(mine.can_confirm).toBe(false)
+    currentUser = PARTNER
+    const theirs = (await map()).json().obligations.find((o: { id: string }) => o.id === row.id)
+    expect(theirs.can_confirm).toBe(true)
+  })
+
+  it('tells the page whether this adult may edit', async () => {
+    expect((await map()).json().can_edit).toBe(true)
+    await addViewer()
+    currentUser = 'user-viewer'
+    currentRoles = ['viewer']
+    expect((await map()).json().can_edit).toBe(false)
   })
 })
 

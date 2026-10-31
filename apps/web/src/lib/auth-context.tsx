@@ -66,7 +66,7 @@ interface AuthContextValue {
   signIn: (
     email: string,
     password: string,
-    opts?: { turnstileToken?: string | null; rememberMe?: boolean },
+    opts?: { turnstileToken?: string | null; rememberMe?: boolean; next?: string },
   ) => Promise<SignInResult>
   /** Email OTP: exchanges the pending challenge plus the code for a session. */
   verifyEmailOtp: (code: string) => Promise<PendingOtp>
@@ -421,7 +421,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = async (
     email: string,
     password: string,
-    opts: { turnstileToken?: string | null; rememberMe?: boolean } = {},
+    opts: { turnstileToken?: string | null; rememberMe?: boolean; next?: string } = {},
   ): Promise<SignInResult> => {
     const data = await apiAuthRequest(
       '/auth/login',
@@ -431,7 +431,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (isOtpChallenge(data)) {
       // A pending signup that signs in finishes its email check, so the
       // purpose comes from the server's chain, not from this page.
-      savePendingOtp({ ...data, purpose: 'login' })
+      savePendingOtp({ ...data, purpose: 'login', ...(opts.next ? { next: opts.next } : {}) })
       return { otpRequired: true }
     }
     const { token, user: apiUser, mfa_required, mfa_token } = data
