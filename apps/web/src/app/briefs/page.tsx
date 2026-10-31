@@ -6,6 +6,7 @@
  * New briefs are addressed to a named adult; the creator and that adult each
  * confirm the same stored result.
  */
+import { useAuth } from '@/lib/auth-context'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
@@ -942,6 +943,10 @@ export default function BriefsPage() {
 
   // ?start=<id>: the question picked on the landing page opens straight into
   // its form, once, instead of asking the person to pick again.
+  const { family } = useAuth()
+  const waitingAdult = (family?.members ?? []).some(
+    (m) => m.role !== 'child' && (m as { status?: string }).status === 'pending',
+  )
   const startedRef = useRef(false)
   useEffect(() => {
     if (startedRef.current || !loaded || !canCreate) return
@@ -1232,8 +1237,9 @@ export default function BriefsPage() {
         <GlassCard className="mt-6 p-5">
           <p className="font-medium text-ink-primary">This one is just for you</p>
           <p className="mt-1 text-sm text-ink-secondary">
-            You are the only adult here, so your brief is saved for you. Add another adult in Family
-            when you want to share it and confirm it together.
+            {waitingAdult
+              ? 'The other adult has not joined yet, so your brief is saved for you. It can be shared and confirmed together once they have.'
+              : 'You are the only adult here, so your brief is saved for you. Add another adult in Family when you want to share it and confirm it together.'}
           </p>
           <Link href="/family" className={`${ghostBtn} mt-4`}>
             Go to Family <ChevronRight size={16} aria-hidden="true" />
