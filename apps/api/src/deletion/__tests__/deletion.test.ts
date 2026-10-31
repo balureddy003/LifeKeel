@@ -197,7 +197,7 @@ describe('POST /account/delete', () => {
       azure: /abuse monitoring/,
       vertex: /abuse monitoring/,
       groq: /abuse monitoring/, // limited_abuse_log until ZDR is enabled
-      xai: /keeps no copy/, // zero_data_retention — DPA requires ZDR
+      xai: /abuse monitoring/, // limited_abuse_log — testing-phase exception, ZDR unavailable on team tier
       anthropic: /Not confirmed/,
       openai: /Not confirmed/,
     }
