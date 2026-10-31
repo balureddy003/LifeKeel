@@ -19,6 +19,7 @@ import { isFamilyAdult } from '../family/family-permissions.js'
 import type { FamilyGroupDoc } from './family-group.js'
 
 interface PolicyRecord {
+  id?: string
   type: string
   provider: string
   policy_number?: string
@@ -28,17 +29,22 @@ interface PolicyRecord {
   nomination?: { provider_form_url?: string; nominated_label?: string }
 }
 
+/**
+ * Strict matching: a false "on file" for a bereaved household is worse than
+ * a pessimistic "not located". The policy document only counts when the
+ * name ties to this policy's provider or reads like a life-policy doc; the
+ * claim form only counts when it says claim *form/pack*.
+ */
 const CHECKLIST: ReadonlyArray<{ item: string; match: RegExp }> = [
-  { item: 'The policy document', match: /policy|life|insur/i },
   { item: 'Death certificate (original or certified copy)', match: /death certificate/i },
-  { item: "The insurer's own claim form", match: /claim/i },
+  { item: "The insurer's own claim form or claim pack", match: /claim[ _-]?(form|pack)/i },
   {
     item: 'Proof of identity for the claimant (passport or driving licence)',
-    match: /passport|driving licen|identity/i,
+    match: /passport|driving licen/i,
   },
   {
     item: 'Grant of probate or letters of administration (often needed when the policy is not in trust — the insurer decides)',
-    match: /probate|letters of administration|grant of/i,
+    match: /probate|letters of administration|grant of probate/i,
   },
 ]
 
@@ -64,14 +70,15 @@ export function registerClaimPacketRoutes(app: FastifyInstance, db: Db) {
       const ctx = req.authContext
       if (!ctx || !(await isFamilyAdult(db, ctx.tenant_id, ctx.user_id)))
         return reply.code(401).send({ error: 'Adults only' })
-      const idx = Number.parseInt(req.params.index, 10)
-      if (!Number.isInteger(idx) || idx < 0)
-        return reply.code(400).send({ error: 'Invalid policy' })
+      const ref = req.params.index
       const profile = await db
         .collection('family_financial_profile')
         .findOne({ tenant_id: ctx.tenant_id })
       const policies = (profile?.['policies'] as PolicyRecord[] | undefined) ?? []
-      const p = policies[idx]
+      // Stable id preferred; numeric index kept for records without one.
+      const p = ref.startsWith('pol_')
+        ? policies.find((x) => x.id === ref)
+        : policies[Number.parseInt(ref, 10)]
       if (!p) return reply.code(404).send({ error: 'Policy not found' })
       if (p.type !== 'life')
         return reply.code(400).send({ error: 'Claim packets are available for life policies' })
@@ -89,12 +96,18 @@ export function registerClaimPacketRoutes(app: FastifyInstance, db: Db) {
         .toArray()
       const docName = (d: Record<string, unknown>) =>
         String(d['title'] ?? d['name'] ?? d['filename'] ?? '')
-      const checklist = CHECKLIST.map(({ item, match }) => {
-        const hit = docs.find((d) => match.test(docName(d)))
-        return hit
-          ? { item, on_file: true, located: `In LifeKeel documents — ${docName(hit)}` }
-          : { item, on_file: false, located: null }
-      })
+      const providerRe = new RegExp(
+        `${p.provider.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*(polic|life|cover)|(polic|life|cover).*${p.provider.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`,
+        'i',
+      )
+      const checklist = [{ item: 'The policy document', match: providerRe }, ...CHECKLIST].map(
+        ({ item, match }) => {
+          const hit = docs.find((d) => match.test(docName(d)))
+          return hit
+            ? { item, on_file: true, located: `In LifeKeel documents — ${docName(hit)}` }
+            : { item, on_file: false, located: null }
+        },
+      )
 
       const gaps: string[] = []
       if (!p.policy_number) gaps.push('Policy number not on file')
@@ -105,7 +118,7 @@ export function registerClaimPacketRoutes(app: FastifyInstance, db: Db) {
         req,
         'claim_packet.assembled',
         'family_financial_profile',
-        `policy_${idx}`,
+        `policy_${ref}`,
         {},
       )
       return {
