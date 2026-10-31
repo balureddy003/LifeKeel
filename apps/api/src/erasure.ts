@@ -42,6 +42,8 @@ export const DELETABLE_COLLECTIONS = [
   'family_cashflow_entries',
   'family_scenarios',
   'household_briefs', // PRD-222
+  'household_obligations', // PRD-231 — entered obligations map rows
+  'employer_cover_facts', // PRD-232 — household-entered cover facts
   'family_continuity_state',
   'rehearsal_records', // PRD-214 M3 — dated continuity rehearsals
   'life_change_calibration', // PRD-213 M4 — shadow-only drift-sentinel rows
