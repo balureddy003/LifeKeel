@@ -6382,6 +6382,26 @@ export function previewBrief(body: { problem_type: BriefProblemType; inputs: Bri
   return briefPost<{ preview: BriefPreview }>('/family/briefs/preview', body)
 }
 
+// ─── Claim packet (PRD-235) ───────────────────────────────────────────────────
+
+export interface ClaimPacket {
+  provider: string
+  type: string
+  holder: string
+  contact: { phone: string | null; email: string | null }
+  policy_number: string | null
+  nomination: string | null
+  provider_form_url: string | null
+  checklist: Array<{ item: string; on_file: boolean; located: string | null }>
+  gaps: string[]
+  authority_note: string
+  draft_notification: string
+}
+
+export function assembleClaimPacket(index: number) {
+  return briefPost<{ packet: ClaimPacket }>(`/family/policies/${index}/claim-packet`, {})
+}
+
 export function confirmBrief(id: string, result_version: string) {
   return briefPost<{ confirmed: boolean }>(`/family/briefs/${id}/confirm`, { result_version })
 }

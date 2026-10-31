@@ -41,4 +41,4 @@ checklist and a draft, not a claim.
 **Out of scope** — Submitting claims, chasing insurers, legal or probate steps, medical
 evidence, and any claim-outcome prediction.
 
-**Becomes** — PRD number once accepted: docs/prd/NNN-claim-packet.md
+**Becomes** — [PRD-235](../prd/235-claim-packet.md)
