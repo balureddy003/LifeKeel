@@ -14,7 +14,9 @@ import { NavChip } from './KeelCards'
 import { KeelComposer } from './KeelComposer'
 import { KeelThread } from './KeelThread'
 
-export const PANEL_ID = 'keel-panel'
+import { PANEL_ID } from './panel-id'
+
+export { PANEL_ID }
 
 /** The setup summary that stays above the conversation. */
 function SetupSummary({ onNavigate }: { onNavigate?: () => void }) {

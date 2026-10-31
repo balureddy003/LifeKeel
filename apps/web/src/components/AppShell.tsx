@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
 import { usePathname, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -18,13 +19,10 @@ import {
 } from 'lucide-react'
 import { useNetworkStatus } from '@/lib/useNetworkStatus'
 import { useAuth } from '@/lib/auth-context'
-import { InstallHint } from '@/components/InstallHint'
 import { useMode } from '@/lib/mode-context'
 import { useAppStore } from '@/lib/store'
 import { MeshGradient, Skeleton, SkeletonCard } from './Glass'
-import { EmergencyMode } from './EmergencyMode'
 import { AppHeroHeader } from './AppHeroHeader'
-import { CommandPalette } from './CommandPalette'
 import { DisclaimerFooter } from './Disclaimer'
 import {
   fetchInboxItems,
@@ -39,12 +37,27 @@ import { useToast } from './Toast'
 import { AuthShell } from '@/components/landing/AuthShell'
 import { MarketingLanding } from './MarketingLanding'
 import { NavRail } from './NavRail'
-import { KeelDock, PANEL_ID } from './keel/KeelDock'
+import { PANEL_ID } from './keel/panel-id'
 import { isKeelPanelEnabled } from '@/lib/keel/client'
 import { useKeelPanel } from '@/lib/keel/store'
 import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
 import { isNativeShell, biometricLockEnabled, verifyBiometric } from '@/lib/native'
+
+// Signed-in extras load after the first paint, so the first-time visitor's landing
+// download stays inside its budget (PRD-209). None render on the signed-out landing.
+const EmergencyMode = dynamic(() => import('./EmergencyMode').then((m) => m.EmergencyMode), {
+  ssr: false,
+})
+const CommandPalette = dynamic(() => import('./CommandPalette').then((m) => m.CommandPalette), {
+  ssr: false,
+})
+const InstallHint = dynamic(() => import('@/components/InstallHint').then((m) => m.InstallHint), {
+  ssr: false,
+})
+const KeelDock = dynamic(() => import('./keel/KeelDock').then((m) => m.KeelDock), {
+  ssr: false,
+})
 
 // Intent 35: five items at 390px, not six — the multi-device review's own
 // list (Home, Events, Ask Keel, Family, Settings). Inbox and Finances drop
