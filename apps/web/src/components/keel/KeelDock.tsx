@@ -8,13 +8,11 @@ import { useAuth } from '@/lib/auth-context'
 import { isKeelPanelEnabled, onKeelDataChanged } from '@/lib/keel/client'
 import { usePresentation, type Presentation } from '@/lib/keel/presentation'
 import { collectAnchors } from '@/lib/keel/spotlight'
-import { MAX_WIDTH, MIN_WIDTH, useKeelPanel } from '@/lib/keel/store'
+import { MAX_WIDTH, MIN_WIDTH, PANEL_ID, useKeelPanel } from '@/lib/keel/store'
 import { useFocusTrap } from '@/lib/useFocusTrap'
 import { NavChip } from './KeelCards'
 import { KeelComposer } from './KeelComposer'
 import { KeelThread } from './KeelThread'
-
-export const PANEL_ID = 'keel-panel'
 
 /** The setup summary that stays above the conversation. */
 function SetupSummary({ onNavigate }: { onNavigate?: () => void }) {

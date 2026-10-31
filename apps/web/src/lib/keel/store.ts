@@ -7,6 +7,7 @@ import type { KeelCard, KeelEvent, KeelMessage, PageContext, SetupState } from '
 export const MIN_WIDTH = 360
 export const MAX_WIDTH = 560
 export const DEFAULT_WIDTH = 400
+export const PANEL_ID = 'keel-panel'
 
 export const clampWidth = (w: number) => Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(w)))
 
