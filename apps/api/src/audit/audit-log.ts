@@ -90,6 +90,7 @@ export type AuditAction =
   | 'obligation.created'
   | 'obligation.updated'
   | 'obligation.deleted'
+  | 'obligation.confirmed'
   | 'claim_packet.assembled'
   | 'life_event.nudge_shown'
   | 'life_event.nudge_dismissed'

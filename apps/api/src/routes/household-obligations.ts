@@ -86,11 +86,8 @@ function rejectSecrets(fields: Record<string, string | undefined>): string | nul
 /** Does this free-label resolve to a roster member? Exact name or first name. */
 function namedMember(group: FamilyGroupDoc | null, name: string) {
   const n = name.trim().toLowerCase()
-  const first = n.split(/\s+/)[0]
-  return (group?.members ?? []).find((m) => {
-    const mn = m.name?.trim().toLowerCase()
-    return mn === n || mn?.split(/\s+/)[0] === first
-  })
+  // Full-name match only — two adults can share a first name.
+  return (group?.members ?? []).find((m) => m.name?.trim().toLowerCase() === n)
 }
 
 export function registerHouseholdObligationRoutes(app: FastifyInstance, db: Db) {
@@ -114,12 +111,18 @@ export function registerHouseholdObligationRoutes(app: FastifyInstance, db: Db) 
     const ctx = await adultsOnly(req)
     if (!ctx) return reply.code(401).send({ error: 'Adults only' })
     const rows = await obligationsFor(db, ctx.tenant_id).sort({ next_due_date: 1 }).toArray()
-    const dependent = rows.filter((r) => r.named_person.trim() !== '')
+    const group = await db
+      .collection<FamilyGroupDoc>('family_groups')
+      .findOne({ tenant_id: ctx.tenant_id })
+    // "Depends on one person" = the named person resolves to a single roster
+    // member — 'joint', 'household' or unmatched labels do not concentrate.
+    const dependent = rows.filter((r) => namedMember(group, r.named_person) !== undefined)
     const earliest = rows[0] ?? null
     return {
       obligations: rows.map(view),
       summary: {
         dependent_count: dependent.length,
+        total_count: rows.length,
         earliest_due_date: earliest?.next_due_date ?? null,
         earliest_due_label: earliest?.label ?? null,
       },
@@ -264,6 +267,17 @@ export function registerHouseholdObligationRoutes(app: FastifyInstance, db: Db) 
       return reply.code(403).send({ error: 'Only an active adult can confirm' })
     if (doc.created_by === ctx.user_id && doc.entered_by_creator)
       return reply.code(403).send({ error: 'The named adult confirms this themselves' })
+    // Only the adult the row names may confirm it — with three adults the
+    // wrong one must not be able to.
+    if (namedMember(group, doc.named_person) !== member)
+      return reply.code(403).send({ error: 'Only the named adult confirms this' })
+    await getAuditLogger()?.fromRequest(
+      req,
+      'obligation.confirmed',
+      'household_obligations',
+      doc.id,
+      {},
+    )
     await db
       .collection('household_obligations')
       .updateOne(
