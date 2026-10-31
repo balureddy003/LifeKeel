@@ -3166,6 +3166,8 @@ export type PolicyType =
 // protection-gap rules directly. This is the policy-level model (PRD-102)
 // that powers renewal tracking and coverage-type-gap detection.
 export interface FinancialProfilePolicy {
+  /** Server-assigned stable id (pol_…); older records may not have one yet. */
+  id?: string
   type: PolicyType
   provider: string
   coverage_amount_minor: number
@@ -6405,8 +6407,12 @@ export interface ClaimPacket {
   draft_notification: string
 }
 
-export function assembleClaimPacket(index: number) {
-  return briefPost<{ packet: ClaimPacket }>(`/family/policies/${index}/claim-packet`, {})
+/** `ref` is the policy's stable id when it has one, else its position in the list. */
+export function assembleClaimPacket(ref: string | number) {
+  return briefPost<{ packet: ClaimPacket }>(
+    `/family/policies/${encodeURIComponent(String(ref))}/claim-packet`,
+    {},
+  )
 }
 
 // ─── Employer cover facts (PRD-232) ──────────────────────────────────────────
