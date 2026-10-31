@@ -499,7 +499,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   // /operator is exempt too: the operator shell has its own OperatorGate
   // (a logged-in operator with no family group would otherwise hit the
   // "Set up your family" wall and never reach the console).
+  // /b/<token> brief links show their own sign-in notice and return the reader to the brief.
   const isAuthRoute =
+    pathname.startsWith('/b/') ||
     pathname.startsWith('/welcome') ||
     pathname.startsWith('/signup') ||
     pathname.startsWith('/login') ||
@@ -577,7 +579,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         title="Sign in to continue"
         sub="This page is part of a LifeKeel account. If you followed a link, sign in or create an account to open it."
       >
-        <Link href="/login" className="lk-btn">
+        <Link href={`/login?next=${encodeURIComponent(pathname)}`} className="lk-btn">
           Sign in
         </Link>
         <Link href="/signup" className="lk-btn lk-btn-quiet">
@@ -803,7 +805,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('online', flush)
   }, [isAuthenticated, toast])
 
+  // /b/<token> brief links show their own sign-in notice and return the reader to the brief.
   const isAuthRoute =
+    pathname.startsWith('/b/') ||
     pathname.startsWith('/welcome') ||
     pathname.startsWith('/signup') ||
     pathname.startsWith('/login') ||

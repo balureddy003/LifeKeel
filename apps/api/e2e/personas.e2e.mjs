@@ -129,7 +129,7 @@ await scenario('couple: create, share link, anonymous read, second adult confirm
 })
 
 await scenario(
-  'front door: a brief link opens a real result with no sign-up (PRD-230 item 4)',
+  'front door: a brief link needs one sign-in as the named adult, with no figures before it (PRD-230 item 4)',
   async () => {
     const h = await household()
     const created = await must(
@@ -146,7 +146,17 @@ await scenario(
       call('POST', `/family/briefs/${(created.brief ?? created).id}/share`, h.tokenA, {}),
     )
     const anon = await call('GET', `/b/${share.share.url}`, null)
-    expect(anon.status === 200, `link needs a sign-in (${anon.status}); PRD-230 says it should not`)
+    expect(
+      anon.status === 401 && /sign in/i.test(String(anon.body.error)),
+      `anonymous should get a clear sign-in message, got ${anon.status}`,
+    )
+    const body = JSON.stringify(anon.body)
+    for (const leak of ['income', 'savings', 'monthly', 'result', 'facts'])
+      expect(!body.toLowerCase().includes(leak), `anonymous response leaks "${leak}"`)
+    // A different signed-in household member is told it is not theirs, not shown it.
+    const stranger = await household({ second: false })
+    const other = await call('GET', `/b/${share.share.url}`, stranger.tokenA)
+    expect(other.status === 403, `other household should get 403, got ${other.status}`)
   },
 )
 
