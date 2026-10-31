@@ -108,8 +108,49 @@ export const CLAIMS: Claim[] = [
     text: 'Plain how-to-claim guide for each kind of policy',
     status: 'planned',
   },
-  { id: 'claim-pack', text: 'Claim-ready pack: policies, contacts, papers', status: 'planned' },
+  {
+    id: 'claim-pack',
+    text: 'Claim packet for a life policy: the contact as printed, the policy number and a papers checklist',
+    status: 'live',
+    evidence: 'apps/api/src/routes/family-claim-packet.ts',
+  },
   { id: 'new-life-events', text: 'New checks for new life events', status: 'planned' },
+  {
+    id: 'obligations-map',
+    text: 'Who each recurring bill and account depends on, entered by the household',
+    status: 'live',
+    evidence: 'apps/api/src/routes/household-obligations.ts',
+  },
+  {
+    id: 'employer-cover',
+    text: 'Cover that comes with a job, entered by the household',
+    status: 'live',
+    evidence: 'apps/api/src/routes/family-employer-cover.ts',
+  },
+  {
+    id: 'payment-gaps',
+    text: 'A policy with no payment on file for over 40 days, from the dates entered',
+    status: 'live',
+    evidence: 'detectors/family/policy-review.yaml',
+  },
+  {
+    id: 'nomination-check',
+    text: 'A nomination on file that predates a child on the family record, or names a recorded ex-partner',
+    status: 'live',
+    evidence: 'detectors/family/policy-review.yaml',
+  },
+  {
+    id: 'ask-keel',
+    text: 'Questions answered from what the household has entered',
+    status: 'live',
+    evidence: 'apps/api/src/routes/assistant.ts',
+  },
+  {
+    id: 'alert-channels',
+    text: 'Alerts by push notification or email, with the working channel shown in settings',
+    status: 'live',
+    evidence: 'apps/api/src/delivery/channel-state.ts',
+  },
 
   // Statements made outside the board: the six promises and the cover table.
   {

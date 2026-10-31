@@ -81,6 +81,38 @@ export const CAPABILITIES: Capability[] = [
     qualifier: 'A rehearsal on your figures, not a forecast',
   },
   {
+    claim: 'obligations-map',
+    moment: 'before',
+    text: 'Who each bill and account depends on',
+    live: true,
+    qualifier:
+      'You enter each one and Keel infers nothing. The adult named on a row confirms it themselves',
+  },
+  {
+    claim: 'employer-cover',
+    moment: 'before',
+    text: 'Cover that comes with a job',
+    live: true,
+    qualifier:
+      'You enter what your payslip or HR portal shows. Keel cannot see your employer’s policy',
+  },
+  {
+    claim: 'payment-gaps',
+    moment: 'before',
+    text: 'A policy with no recent payment on file',
+    live: true,
+    qualifier:
+      'Based on the dates you enter. Keel cannot tell whether cover is in force, so check with your provider',
+  },
+  {
+    claim: 'nomination-check',
+    moment: 'before',
+    text: 'Nominations that no longer match your family record',
+    live: true,
+    qualifier:
+      'Compares two records you entered. It never says who to name: trustees or the scheme decide',
+  },
+  {
     claim: 'monthly-letter',
     moment: 'before',
     text: 'Monthly letter about what changed',
@@ -108,6 +140,20 @@ export const CAPABILITIES: Capability[] = [
     text: 'Emails to people you name if you go quiet',
     live: true,
     qualifier: 'Opt-in, off by default. It points them to papers they can already open',
+  },
+  {
+    claim: 'ask-keel',
+    moment: 'during',
+    text: 'Ask Keel about what you have on file',
+    live: true,
+    qualifier: 'Answers from what you have entered. Information only, not advice',
+  },
+  {
+    claim: 'alert-channels',
+    moment: 'during',
+    text: 'Alerts by push notification or email',
+    live: true,
+    qualifier: 'Opt-in. Settings shows which channel works on your device',
   },
   {
     claim: 'named-person-access',
@@ -139,8 +185,10 @@ export const CAPABILITIES: Capability[] = [
   {
     claim: 'claim-pack',
     moment: 'after',
-    text: 'Claim-ready pack: policies, contacts, papers',
-    live: false,
+    text: 'Claim packet for a life policy',
+    live: true,
+    qualifier:
+      'A checklist and a draft from your own record. You send it; your insurer’s own claim pack is the authority',
   },
   {
     claim: 'new-life-events',
