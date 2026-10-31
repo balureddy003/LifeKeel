@@ -65,6 +65,9 @@ jobs:
       # build skips the file entirely when this is empty, so keep the
       # conventional inbox set unless a better endpoint exists.
       NEXT_PUBLIC_SECURITY_CONTACT: ${{ vars.NEXT_PUBLIC_SECURITY_CONTACT || 'security@lifekeel.co.uk' }}
+      # Docked Keel assistant panel — 'on' replaces the full-page /assistant
+      # in production; set the repo Variable to 'off' to roll back.
+      NEXT_PUBLIC_KEEL_PANEL: ${{ vars.NEXT_PUBLIC_KEEL_PANEL || 'on' }}
     steps:
       - name: Check NEXT_PUBLIC_API_URL
         run: |
@@ -88,6 +91,7 @@ jobs:
           NEXT_PUBLIC_SAME_ORIGIN_API: ${{ github.event.inputs.same_origin_api == 'true' && '1' || '' }}
           NEXT_PUBLIC_SENTRY_DSN: ${{ env.NEXT_PUBLIC_SENTRY_DSN }}
           NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ env.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}
+          NEXT_PUBLIC_KEEL_PANEL: ${{ env.NEXT_PUBLIC_KEEL_PANEL }}
 
       # The CSP (script-src 'self') blocks the inline <script> bodies Next.js
       # emits for hydration. Move them to content-addressed files so the
