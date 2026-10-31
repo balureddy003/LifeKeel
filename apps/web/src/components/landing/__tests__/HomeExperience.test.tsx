@@ -31,6 +31,9 @@ describe('homepage live content', () => {
       'One of us might stop earning',
       'Someone is about to earn less',
       'The other adult does not know',
+      'Our mortgage fix is ending',
+      'Nursery or school fees are starting',
+      'A job change or notice period',
     ]) {
       expect(screen.getByText(name)).toBeTruthy()
     }
@@ -39,6 +42,9 @@ describe('homepage live content', () => {
       ['One of us might stop earning', 'income_stops'],
       ['Someone is about to earn less', 'earning_less'],
       ['The other adult does not know', 'handover_gap'],
+      ['Our mortgage fix is ending', 'mortgage_fix'],
+      ['Nursery or school fees are starting', 'fees_start'],
+      ['A job change or notice period', 'job_change'],
     ]
     for (const [name, id] of cards) {
       expect(screen.getByRole('link', { name }).getAttribute('href')).toContain(
