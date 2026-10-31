@@ -36,7 +36,7 @@ import { HealthSummary } from '@/components/HealthSummary'
 import { ReadinessSparkline } from '@/components/ReadinessSparkline'
 import { ReadinessFeed } from '@/components/ReadinessFeed'
 import { PerceivedProtectionCard } from '@/components/PerceivedProtectionCard'
-import { InvitePartnerPrompt } from '@/components/InvitePartnerPrompt'
+import { PartnerCard } from '@/components/InvitePartnerPrompt'
 import { BriefWaitingCard } from '@/components/BriefWaitingCard'
 import CrisisMode, { CRISIS_EVENT_KEY } from '@/components/CrisisMode'
 import { useMode } from '@/lib/mode-context'
@@ -1140,7 +1140,7 @@ export default function HomePage() {
       {/* PRD-141: one optional question per quarter; renders nothing unless due. */}
       <PerceivedProtectionCard />
       <BriefWaitingCard />
-      <InvitePartnerPrompt />
+      <PartnerCard />
 
       {hasLiveData && (
         <motion.div
