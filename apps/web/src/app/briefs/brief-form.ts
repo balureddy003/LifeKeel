@@ -161,8 +161,8 @@ export function inputsToForm(e: BriefCatalogueEntry, i: BriefInputs): FormValues
   return f
 }
 
-/** The first of the two steps: where the household is today. */
-export const TODAY_KEYS = ['income', 'essentials', 'savings'] as const
+/** The first step: where the household is today and when it changes (3 money fields + 1 date, PRD-230). */
+export const TODAY_KEYS = ['income', 'essentials', 'savings', 'change_date'] as const
 
 /** Money briefs are asked in two chunks; handover briefs stay on one screen. */
 export function validateStep(
