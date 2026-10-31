@@ -57,6 +57,7 @@ import {
   remainingFields,
   previewForm,
   stepCount,
+  withStepTwoDefaults,
   validate,
   TODAY_KEYS,
   validateStep,
@@ -924,6 +925,19 @@ export default function BriefsPage() {
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
   const recipientName = recipients.find((r) => r.id === forMember)?.name ?? 'the other adult'
 
+  // ?start=<id>: the question picked on the landing page opens straight into
+  // its form, once, instead of asking the person to pick again.
+  const startedRef = useRef(false)
+  useEffect(() => {
+    if (startedRef.current || !loaded || !canCreate) return
+    const id = new URLSearchParams(window.location.search).get('start')
+    if (!id) return
+    startedRef.current = true
+    const e = byId.get(id)
+    if (e) choose(e)
+     
+  }, [loaded, canCreate, byId])
+
   function choose(e: BriefCatalogueEntry, prefill?: FormValues, from?: string) {
     setEntry(e)
     setF(prefill ?? {})
@@ -1098,6 +1112,7 @@ export default function BriefsPage() {
       return
     }
     haptic('light')
+    setF((cur) => withStepTwoDefaults(entry, cur))
     setStep(2)
     track('brief_form_step', { step: 'change_opened', problem_type: entry.id })
     setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)

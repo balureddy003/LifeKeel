@@ -132,20 +132,27 @@ export function ThreeProblems() {
       <div className="vv-plans">
         {[
           [
+            'income_stops',
             'One of us might stop earning',
             'How many months could the household run on savings and any cover on file?',
           ],
           [
+            'earning_less',
             'Someone is about to earn less',
             'A known drop is coming — see the savings left when it lands, and the months after.',
           ],
           [
+            'handover_gap',
             'The other adult does not know',
             'The runway, who to call, and where the key papers and policies live.',
           ],
-        ].map(([t, d]) => (
+        ].map(([id, t, d]) => (
           <article className="vv-plan" key={t}>
-            <h3>{t}</h3>
+            <h3>
+              <a href={appUrl(`/signup?brief=${id}`)} onClick={signup('problems')}>
+                {t}
+              </a>
+            </h3>
             <p>{d}</p>
           </article>
         ))}

@@ -96,7 +96,7 @@ export default function VerifyOtpPage() {
         const done = await verifyEmailOtp(code)
         haptic('success')
         setPhase('success')
-        router.push(done.next ?? (done.purpose === 'signup' ? '/family-setup' : '/'))
+        router.push(done.next ?? (done.purpose === 'signup' ? '/briefs' : '/'))
       } catch (err) {
         haptic('warning')
         const e = err instanceof AuthRequestError ? err : null

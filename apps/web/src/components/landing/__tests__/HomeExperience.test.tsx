@@ -34,6 +34,17 @@ describe('homepage live content', () => {
     ]) {
       expect(screen.getByText(name)).toBeTruthy()
     }
+    // Each question is a link that carries the choice through signup.
+    const cards: Array<[string, string]> = [
+      ['One of us might stop earning', 'income_stops'],
+      ['Someone is about to earn less', 'earning_less'],
+      ['The other adult does not know', 'handover_gap'],
+    ]
+    for (const [name, id] of cards) {
+      expect(screen.getByRole('link', { name }).getAttribute('href')).toContain(
+        `/signup?brief=${id}`,
+      )
+    }
     // The made-up sample-household picker is gone from the front door
     // (Intent 70); a labelled mock figure elsewhere is fine.
     expect(screen.queryByRole('radio', { name: 'Income stops' })).toBeNull()

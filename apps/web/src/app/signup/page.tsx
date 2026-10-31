@@ -13,6 +13,8 @@ import { currentUtm, track } from '@/lib/growth-track'
 import { trackConversion } from '@/lib/ad-track'
 import { fetchPublicStatus } from '@/lib/api'
 import { Turnstile, useTurnstile } from '@/components/security/Turnstile'
+import { safeNext, stashReturnTo } from '@/lib/return-to'
+import { signupDestination } from '@/lib/signup-destination'
 
 export default function SignUpPage() {
   const [name, setName] = useState('')
@@ -21,6 +23,9 @@ export default function SignUpPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [refCode, setRefCode] = useState<string | undefined>(undefined)
+  // The first brief is the promised first step, so signup lands on it (the
+  // question picked on the landing page rides along as ?brief=).
+  const [after, setAfter] = useState('/briefs')
   const [signupsOpen, setSignupsOpen] = useState<boolean | null>(null)
   const { signUp, signInWithProvider } = useAuth()
   const router = useRouter()
@@ -32,6 +37,8 @@ export default function SignUpPage() {
   useEffect(() => {
     const ref = new URLSearchParams(window.location.search).get('ref')
     if (ref) setRefCode(ref)
+    const q = new URLSearchParams(window.location.search)
+    setAfter(signupDestination(q.get('brief'), safeNext(q.get('next'))))
     track('signup_view', currentUtm())
     // Operator-controlled kill-switch: /status stays public so the page can
     // render a closed state instead of a raw 503 on submit. An unreachable
@@ -66,14 +73,14 @@ export default function SignUpPage() {
     try {
       const result = await signUp(name, email, password, refCode, {
         turnstileToken: captcha.consume(),
-        next: '/family-setup',
+        next: after,
       })
       haptic('success')
       track('signup_completed', { method: 'password' })
       trackConversion('signup')
       // With email OTP the account is created but not yet signed in: the
       // code from the email finishes it (CLOUDFLARE_INTEGRATION.md §6.4).
-      router.push(result.otp ? '/verify-otp' : '/family-setup')
+      router.push(result.otp ? '/verify-otp' : after)
     } catch (err) {
       haptic('warning')
       setError(err instanceof Error ? err.message : 'Sign up failed. Please try again.')
@@ -84,11 +91,12 @@ export default function SignUpPage() {
   const handleGoogle = async () => {
     setError(null)
     try {
+      stashReturnTo(after)
       await signInWithProvider('google')
       haptic('medium')
       track('signup_completed', { method: 'google' })
       trackConversion('signup')
-      router.push('/family-setup')
+      router.push(after)
     } catch (err) {
       haptic('warning')
       setError(err instanceof Error ? err.message : 'Google sign-in failed.')
