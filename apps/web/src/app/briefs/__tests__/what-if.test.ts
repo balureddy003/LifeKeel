@@ -77,3 +77,33 @@ describe('countdown', () => {
     expect(countdownText(-9)).toBe('started 9 days ago')
   })
 })
+
+describe('biggest lever', () => {
+  it('picks the figure whose 10% move changes the runway most', async () => {
+    const { biggestLever } = await import('../what-if')
+    expect(
+      biggestLever(6, [
+        { key: 'new_income_minor', runway: 6.5 },
+        { key: 'new_essentials_minor', runway: 8 },
+        { key: 'liquid_savings_minor', runway: 6.6 },
+      ]),
+    ).toBe('new_essentials_minor')
+  })
+  it('returns nothing when no move changes the answer', async () => {
+    const { biggestLever } = await import('../what-if')
+    expect(biggestLever(6, [{ key: 'liquid_savings_minor', runway: 6 }])).toBeUndefined()
+  })
+  it('nudges on the helpful side and stays inside the slider', async () => {
+    const { leverNudge } = await import('../what-if')
+    const s = {
+      key: 'new_essentials_minor',
+      label: '',
+      base: 200000,
+      min: 100000,
+      max: 300000,
+      step: 1000,
+    } as const
+    expect(leverNudge(s)).toBe(180000)
+    expect(leverNudge({ ...s, key: 'liquid_savings_minor' })).toBe(220000)
+  })
+})
