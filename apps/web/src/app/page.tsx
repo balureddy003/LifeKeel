@@ -1137,8 +1137,6 @@ export default function HomePage() {
 
       {/* PRD-136: "What changed" — the feed narration of everything the
           daily checks found, straight below the score it explains. */}
-      {/* PRD-141: one optional question per quarter; renders nothing unless due. */}
-      <PerceivedProtectionCard />
       <BriefWaitingCard />
       <PartnerCard />
 
@@ -1304,6 +1302,11 @@ export default function HomePage() {
           </GlassCard>
         </Link>
       </motion.div>
+
+      {/* PRD-141: one optional question per quarter; renders nothing unless due.
+          Last, so it never asks for an opinion before the page has given
+          the person anything to act on. */}
+      <PerceivedProtectionCard />
 
       <FeatureTip />
     </div>
