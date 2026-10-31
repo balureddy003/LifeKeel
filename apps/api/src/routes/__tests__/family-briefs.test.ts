@@ -455,6 +455,21 @@ describe('brief contract v2', () => {
       expect(p.json().preview.template_sentence).toBe(created.json().brief.template_sentence)
     })
 
+    it('gives a partial first number from three money fields and a date, with the assumption stated', async () => {
+      const minimum = {
+        monthly_income_minor: INPUTS.monthly_income_minor,
+        monthly_essentials_minor: INPUTS.monthly_essentials_minor,
+        liquid_savings_minor: INPUTS.liquid_savings_minor,
+        change_date: INPUTS.change_date,
+      }
+      const p = await preview('job_change', minimum)
+      expect(p.statusCode).toBe(200)
+      expect(p.json().preview.template_sentence).toContain('partial answer')
+      expect(
+        p.json().preview.facts.some((f: { label: string }) => f.label.startsWith('Assumed')),
+      ).toBe(true)
+    })
+
     it('is not blocked by the first-brief gate, because nothing is created', async () => {
       await db.collection('tenants').deleteMany({})
       await db.collection('tenants').insertOne({ tenant_id: TENANT, plan: 'free' })
