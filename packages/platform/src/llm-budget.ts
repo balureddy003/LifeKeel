@@ -9,6 +9,13 @@ export interface LlmBudgetDecision {
   reason?: 'budget_exhausted' | 'detector_budget_exhausted' | 'plan_spend_budget_exceeded'
 }
 
+/**
+ * Monthly model spend per tenant when the tenant has set no budget of its own.
+ * Without it a tenant that never configured one had no cap at all. Hard stop,
+ * so a runaway or abusive account is refused rather than only alerted on.
+ */
+export const DEFAULT_MONTHLY_LIMIT_USD = 2
+
 export class LlmBudgetGuard {
   private readonly ledger: CostLedger
   constructor(private readonly db: Db) {
@@ -26,37 +33,29 @@ export class LlmBudgetGuard {
         }
       | undefined
     const spent = (await this.ledger.getSummary(tenantId, 31)).total_cost_microdollars
-    if (!budget?.monthly_limit_usd)
-      return {
-        allowed: true,
-        spent_microdollars: spent,
-        limit_microdollars: null,
-        threshold_reached: false,
-      }
-    const limit = budget.monthly_limit_usd * 1_000_000
-    const thresholdReached = spent >= limit * ((budget.alert_threshold_pct ?? 80) / 100)
+    const usingDefault = !budget?.monthly_limit_usd
+    const limit = (budget?.monthly_limit_usd ?? DEFAULT_MONTHLY_LIMIT_USD) * 1_000_000
+    const thresholdReached = spent >= limit * ((budget?.alert_threshold_pct ?? 80) / 100)
     if (thresholdReached)
-      await this.db
-        .collection('system_events')
-        .updateOne(
-          {
+      await this.db.collection('system_events').updateOne(
+        {
+          tenant_id: tenantId,
+          type: 'llm.budget_threshold',
+          month: new Date().toISOString().slice(0, 7),
+        },
+        {
+          $setOnInsert: {
             tenant_id: tenantId,
             type: 'llm.budget_threshold',
             month: new Date().toISOString().slice(0, 7),
+            spent_microdollars: spent,
+            limit_microdollars: limit,
+            created_at: new Date(),
           },
-          {
-            $setOnInsert: {
-              tenant_id: tenantId,
-              type: 'llm.budget_threshold',
-              month: new Date().toISOString().slice(0, 7),
-              spent_microdollars: spent,
-              limit_microdollars: limit,
-              created_at: new Date(),
-            },
-          },
-          { upsert: true },
-        )
-    if (budget.hard_stop && spent >= limit)
+        },
+        { upsert: true },
+      )
+    if ((usingDefault || budget?.hard_stop) && spent >= limit)
       return {
         allowed: false,
         spent_microdollars: spent,
@@ -64,7 +63,7 @@ export class LlmBudgetGuard {
         threshold_reached: true,
         reason: 'budget_exhausted',
       }
-    if (detectorId && budget.per_detector_limit_usd?.[detectorId]) {
+    if (detectorId && budget?.per_detector_limit_usd?.[detectorId]) {
       const detectorSpent = await this.db
         .collection('llm_usage')
         .aggregate<{ total: number }>([
@@ -72,7 +71,7 @@ export class LlmBudgetGuard {
           { $group: { _id: null, total: { $sum: '$cost_microdollars' } } },
         ])
         .next()
-      if ((detectorSpent?.total ?? 0) >= budget.per_detector_limit_usd[detectorId]! * 1_000_000)
+      if ((detectorSpent?.total ?? 0) >= budget.per_detector_limit_usd![detectorId]! * 1_000_000)
         return {
           allowed: false,
           spent_microdollars: spent,

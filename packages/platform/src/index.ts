@@ -105,7 +105,7 @@ export type {
 // Deprecated alias — use LlmResponseCache instead
 export { SemanticCache } from './semantic-cache.js'
 export type { SemanticCacheEntry, SemanticCacheStore } from './semantic-cache.js'
-export { LlmBudgetGuard } from './llm-budget.js'
+export { LlmBudgetGuard, DEFAULT_MONTHLY_LIMIT_USD } from './llm-budget.js'
 export type { LlmBudgetDecision } from './llm-budget.js'
 export { ApprovalSignalHealthMonitor } from './approval-signal-health.js'
 export type { ApprovalSignalHealthScore, ApprovalFlag } from './approval-signal-health.js'
