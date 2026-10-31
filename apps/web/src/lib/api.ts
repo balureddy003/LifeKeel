@@ -6407,6 +6407,8 @@ export interface ClaimPacket {
 
 export function assembleClaimPacket(index: number) {
   return briefPost<{ packet: ClaimPacket }>(`/family/policies/${index}/claim-packet`, {})
+}
+
 // ─── Employer cover facts (PRD-232) ──────────────────────────────────────────
 
 export interface EmployerCoverFact {
