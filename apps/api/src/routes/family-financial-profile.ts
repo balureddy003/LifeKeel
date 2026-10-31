@@ -181,6 +181,10 @@ export const FinancialProfileSchema = z.object({
         // known renewal date simply never contributes to the renewal-window
         // rule, rather than being rejected.
         renewal_date: z.string().optional(),
+        // PRD-233: the last premium payment the household recorded or
+        // confirmed — the flag baseline. premium_history records premium
+        // *changes*, never payments, so it cannot stand in for this.
+        last_payment_date: z.string().optional(),
         // Not read by any detector — purely a reference field so a family
         // (or Keel, drafting a message on their behalf) can quote the right
         // number back to the insurer without digging out the original
@@ -958,12 +962,15 @@ export async function evaluateProfileAndGenerateInsights(
       // payment record is older than the ~40-day expected interval. Never
       // says "lapsed": the record on file cannot show that.
       const stalePayments = profile.policies.flatMap((p) => {
-        const last = p.premium_history?.[p.premium_history.length - 1]
-        if (!last) return []
-        const ms = new Date(last.effective_from).getTime()
+        // The baseline is the last payment the household recorded, not
+        // premium_history (which logs premium changes). No recorded payment
+        // date → nothing to flag; a changed-once premium long ago is not a
+        // stopped payment.
+        if (!p.last_payment_date) return []
+        const ms = new Date(p.last_payment_date).getTime()
         if (Number.isNaN(ms)) return []
         const days = Math.floor((Date.now() - ms) / 86_400_000)
-        return days > 40 ? [{ policy: p, since: last.effective_from, days }] : []
+        return days > 40 ? [{ policy: p, since: p.last_payment_date, days }] : []
       })
       const eventId = crypto.randomUUID()
       const data = {
