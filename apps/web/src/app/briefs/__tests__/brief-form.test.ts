@@ -5,9 +5,11 @@ import {
   dateChips,
   inputsToForm,
   needs,
+  previewForm,
   remainingFields,
   validate,
   validateStep,
+  withStepTwoDefaults,
 } from '../brief-form'
 
 const entry = (over: Partial<BriefCatalogueEntry>): BriefCatalogueEntry => ({
@@ -173,14 +175,20 @@ describe('inputsToForm', () => {
 
 describe('two-step form', () => {
   const e = entry({})
-  it('step one only asks about today', () => {
+  it('step one asks for three money fields and the date, nothing else (PRD-230)', () => {
     const errors = validateStep(e, {}, 1)
-    expect(Object.keys(errors).sort()).toEqual(['essentials', 'income', 'savings'])
+    expect(Object.keys(errors).sort()).toEqual(['change_date', 'essentials', 'income', 'savings'])
   })
-  it('step one passes once today is filled, even with the change still empty', () => {
-    expect(validateStep(e, { income: '5000', essentials: '3000', savings: '0' }, 1)).toEqual({})
+  it('step one passes once today and the date are filled, with the change still empty', () => {
+    const first = { income: '5000', essentials: '3000', savings: '0', change_date: '2027-01-01' }
+    expect(validateStep(e, first, 1)).toEqual({})
   })
-  it('step two asks about everything', () => {
+  it('step one alone is enough for a first number, for every money mode', () => {
+    const first = { income: '5000', essentials: '3000', savings: '0', change_date: '2027-01-01' }
+    for (const mode of ['stop', 'income', 'cost', 'mixed', 'cash'] as const)
+      expect(previewForm(entry({ mode }), first)).not.toBeNull()
+  })
+  it('step two asks about the change', () => {
     expect(
       Object.keys(validateStep(e, { income: '5000', essentials: '3000', savings: '0' }, 2)),
     ).toEqual(expect.arrayContaining(['change_date', 'new_income']))
@@ -219,5 +227,52 @@ describe('dateChips', () => {
       '2027-01-29',
       '2027-04-29',
     ])
+  })
+})
+
+describe('previewForm (a partial answer is allowed, a blocked one is not)', () => {
+  const today = { income: '5000', essentials: '3000', savings: '9000', change_date: '2026-11-28' }
+
+  it('shows an answer from today figures alone, assuming nothing else changes', () => {
+    const p = previewForm(entry({}), today)
+    expect(p?.assumed).toEqual(['income after the change'])
+    expect(p?.form['new_income']).toBe('5000')
+  })
+
+  it('needs no assumption once everything is in', () => {
+    const p = previewForm(entry({}), { ...today, new_income: '2000' })
+    expect(p?.assumed).toEqual([])
+    expect(p?.form['new_income']).toBe('2000')
+  })
+
+  it('stays quiet while today figures or the date are missing', () => {
+    expect(previewForm(entry({}), { income: '5000' })).toBeNull()
+    expect(previewForm(entry({}), { ...today, change_date: '' })).toBeNull()
+  })
+
+  it('shows the baseline for a one-off brief, assuming no amount yet', () => {
+    const p = previewForm(entry({ id: 'windfall', mode: 'cash' }), today)
+    expect(p).not.toBeNull()
+    expect(p?.form['cash_out']).toBe('0')
+    expect(p?.assumed).toEqual(['spending after the change', 'one-off amount'])
+  })
+
+  it('never previews handover or sensitive briefs', () => {
+    expect(previewForm(medical, { change_date: '2026-11-01' })).toBeNull()
+  })
+})
+
+describe('withStepTwoDefaults', () => {
+  const stop = entry({ id: 'income_stops', mode: 'stop' })
+  it('fills the income after the change with 0 when income stops', () => {
+    expect(withStepTwoDefaults(stop, { income: '4000' })).toEqual({
+      income: '4000',
+      new_income: '0',
+    })
+    expect(withStepTwoDefaults(stop, { new_income: '  ' }).new_income).toBe('0')
+  })
+  it('never overwrites a typed value, and leaves other briefs alone', () => {
+    expect(withStepTwoDefaults(stop, { new_income: '1200' }).new_income).toBe('1200')
+    expect(withStepTwoDefaults(entry({}), {})).toEqual({})
   })
 })

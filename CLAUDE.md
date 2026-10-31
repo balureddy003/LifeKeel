@@ -122,7 +122,12 @@ scorer warm-start can use it.
   **conditional on ZDR being enabled** — its Sept-2026 DPA makes non-ZDR
   processing of Personal Data a material breach, so the Console team toggle
   must be on before any task routes there (`x-zero-data-retention:true`
-  response header confirms). Anthropic and
+  response header confirms). **Testing-phase exception (2026-10-31, owner
+  decision):** self-serve ZDR is not offered on this team's xAI tier, so the
+  registry records xai at its actual `limited_abuse_log` and it may serve
+  non-sensitive tasks while pre-launch; before production launch the serving
+  provider must move to one approved without a ZDR condition (groq/Azure/
+  Vertex) or reach enterprise ZDR. Anthropic and
   openai stay `unreviewed` and are refused in a non-dev deployment. The active provider picks in order:
   explicit provider config, then the operator's audited
   `platform_config.llm_provider_override` (the `/operator/configuration`

@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
+import dynamic from 'next/dynamic'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Home,
@@ -18,13 +19,10 @@ import {
 } from 'lucide-react'
 import { useNetworkStatus } from '@/lib/useNetworkStatus'
 import { useAuth } from '@/lib/auth-context'
-import { InstallHint } from '@/components/InstallHint'
 import { useMode } from '@/lib/mode-context'
 import { useAppStore } from '@/lib/store'
 import { MeshGradient, Skeleton, SkeletonCard } from './Glass'
-import { EmergencyMode } from './EmergencyMode'
 import { AppHeroHeader } from './AppHeroHeader'
-import { CommandPalette } from './CommandPalette'
 import { DisclaimerFooter } from './Disclaimer'
 import {
   fetchInboxItems,
@@ -39,12 +37,26 @@ import { useToast } from './Toast'
 import { AuthShell } from '@/components/landing/AuthShell'
 import { MarketingLanding } from './MarketingLanding'
 import { NavRail } from './NavRail'
-import { KeelDock, PANEL_ID } from './keel/KeelDock'
 import { isKeelPanelEnabled } from '@/lib/keel/client'
-import { useKeelPanel } from '@/lib/keel/store'
+import { PANEL_ID, useKeelPanel } from '@/lib/keel/store'
 import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
 import { isNativeShell, biometricLockEnabled, verifyBiometric } from '@/lib/native'
+
+// Signed-in extras load after the first paint, so the first-time visitor's landing
+// download stays inside its budget (PRD-209). None render on the signed-out landing.
+const EmergencyMode = dynamic(() => import('./EmergencyMode').then((m) => m.EmergencyMode), {
+  ssr: false,
+})
+const CommandPalette = dynamic(() => import('./CommandPalette').then((m) => m.CommandPalette), {
+  ssr: false,
+})
+const InstallHint = dynamic(() => import('@/components/InstallHint').then((m) => m.InstallHint), {
+  ssr: false,
+})
+// The dock pulls in the whole panel tree incl. react-markdown; keep it out
+// of the landing's first-load JS (scripts/check-landing-size.mjs budget).
+const KeelDock = dynamic(() => import('./keel/KeelDock').then((m) => m.KeelDock), { ssr: false })
 
 // Intent 35: five items at 390px, not six — the multi-device review's own
 // list (Home, Events, Ask Keel, Family, Settings). Inbox and Finances drop
@@ -499,7 +511,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   // /operator is exempt too: the operator shell has its own OperatorGate
   // (a logged-in operator with no family group would otherwise hit the
   // "Set up your family" wall and never reach the console).
+  // /b/<token> brief links show their own sign-in notice and return the reader to the brief.
   const isAuthRoute =
+    pathname.startsWith('/b/') ||
     pathname.startsWith('/welcome') ||
     pathname.startsWith('/signup') ||
     pathname.startsWith('/login') ||
@@ -521,6 +535,24 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/guides') ||
     pathname.startsWith('/operator') ||
     pathname.startsWith('/invite')
+
+  // A new account heads straight for its first brief. The household behind it
+  // is created quietly (same as "Skip for now") instead of stopping the person
+  // at a set-up screen first; if that fails, the normal set-up screen shows.
+  const [autoFamilyFailed, setAutoFamilyFailed] = useState(false)
+  const autoFamilyStarted = useRef(false)
+  const wantsAutoFamily =
+    isAuthenticated &&
+    !isLoading &&
+    !family &&
+    !familyLoadFailed &&
+    !autoFamilyFailed &&
+    pathname.startsWith('/briefs')
+  useEffect(() => {
+    if (!wantsAutoFamily || autoFamilyStarted.current) return
+    autoFamilyStarted.current = true
+    createFamily(`${user?.name ?? 'My'}'s Family`).catch(() => setAutoFamilyFailed(true))
+  }, [wantsAutoFamily, createFamily, user?.name])
 
   if (isLoading && pathname === '/' && !sessionHint) {
     return (
@@ -577,7 +609,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         title="Sign in to continue"
         sub="This page is part of a LifeKeel account. If you followed a link, sign in or create an account to open it."
       >
-        <Link href="/login" className="lk-btn">
+        <Link href={`/login?next=${encodeURIComponent(pathname)}`} className="lk-btn">
           Sign in
         </Link>
         <Link href="/signup" className="lk-btn lk-btn-quiet">
@@ -620,6 +652,18 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         >
           {retryingFamily ? 'Checking…' : 'Try again'}
         </button>
+      </div>
+    )
+  }
+
+  if (wantsAutoFamily) {
+    return (
+      <div
+        role="status"
+        aria-busy="true"
+        className="flex min-h-[65dvh] items-center justify-center px-4 text-ink-tertiary"
+      >
+        Getting your brief ready…
       </div>
     )
   }
@@ -803,7 +847,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('online', flush)
   }, [isAuthenticated, toast])
 
+  // /b/<token> brief links show their own sign-in notice and return the reader to the brief.
   const isAuthRoute =
+    pathname.startsWith('/b/') ||
     pathname.startsWith('/welcome') ||
     pathname.startsWith('/signup') ||
     pathname.startsWith('/login') ||
@@ -936,7 +982,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {showAskKeel && !keelOpen && <AskKeelButton context={pathname} />}
         </div>
       )}
-      {isKeelPanelEnabled() && (
+      {isKeelPanelEnabled() && keelEligible && (
         <KeelDock
           eligible={keelEligible}
           onEmergency={() => {

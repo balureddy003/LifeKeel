@@ -56,6 +56,7 @@ export function buildInputs(e: BriefCatalogueEntry, f: FormValues): BriefInputs 
   if (steps.length) i.income_steps = steps
   if (f['decision_deadline']) i.decision_deadline = f['decision_deadline']
   if (f['recorded_cover']?.trim()) i.recorded_cover = f['recorded_cover'].trim()
+  if (f['cover_ends_flag'] === 'yes') i.cover_may_end_with_employment = true
   return i
 }
 
@@ -68,6 +69,16 @@ export function needs(e: BriefCatalogueEntry) {
     cover: e.mode === 'stop',
     laterChange: ['unpaid_leave', 'self_employed', 'pregnancy'].includes(e.id),
   }
+}
+
+/**
+ * Answers that follow from the question itself, so nobody types them. When
+ * income stops, the household income after the change is 0 by definition
+ * (separate cover is asked about on its own); a typed value always wins.
+ */
+export function withStepTwoDefaults(e: BriefCatalogueEntry, f: FormValues): FormValues {
+  if (e.mode === 'stop' && (f['new_income'] ?? '').trim() === '') return { ...f, new_income: '0' }
+  return f
 }
 
 /** Client-side checks so people see the problem beside the field, before a round trip. */
@@ -160,8 +171,8 @@ export function inputsToForm(e: BriefCatalogueEntry, i: BriefInputs): FormValues
   return f
 }
 
-/** The first of the two steps: where the household is today. */
-export const TODAY_KEYS = ['income', 'essentials', 'savings'] as const
+/** The first step: where the household is today and when it changes (3 money fields + 1 date, PRD-230). */
+export const TODAY_KEYS = ['income', 'essentials', 'savings', 'change_date'] as const
 
 /** Money briefs are asked in two chunks; handover briefs stay on one screen. */
 export function validateStep(
@@ -179,6 +190,38 @@ export function validateStep(
 /** Fields still needed before an answer can be shown, for a "2 more to go" hint. */
 export function remainingFields(e: BriefCatalogueEntry, f: FormValues): number {
   return Object.keys(validate(e, f)).length
+}
+
+/**
+ * A partial answer is better than a blocked screen. Once today's figures and the
+ * date are in, a missing "after the change" amount is assumed unchanged so the
+ * household sees a months figure straight away, and is told what to add for the
+ * real one. A one-off amount assumes "not yet" so cash briefs show the
+ * baseline. Returns null while even that minimum is missing, or when the gap
+ * is something no sensible default exists for (a dated step).
+ */
+export function previewForm(
+  e: BriefCatalogueEntry,
+  f: FormValues,
+): { form: FormValues; assumed: string[] } | null {
+  if (e.mode === 'handover' || e.sensitive) return null
+  const errors = validate(e, f)
+  const keys = Object.keys(errors)
+  if (keys.length === 0) return { form: f, assumed: [] }
+  const fillable: Record<string, { from?: string; value?: string; label: string }> = {
+    new_income: { from: 'income', label: 'income after the change' },
+    new_essentials: { from: 'essentials', label: 'spending after the change' },
+    cash_out: { value: '0', label: 'one-off amount' },
+  }
+  if (!keys.every((k) => k in fillable)) return null
+  const form = { ...f }
+  const assumed: string[] = []
+  for (const k of keys) {
+    const a = fillable[k]!
+    form[k] = a.from !== undefined ? f[a.from]! : a.value!
+    assumed.push(a.label)
+  }
+  return { form, assumed }
 }
 
 export interface DateChip {

@@ -2174,6 +2174,19 @@ export async function resolveOAuthReturnParams(): Promise<URLSearchParams> {
   const connectorId = current.get('connect')
   if (!grant || !connectorId) return current
 
+  // A grant is single-use, so a repeat call (React runs a mount effect twice in
+  // dev, and a remount re-runs it) must reuse the first result. Without this
+  // the second claim 404s and the page reports a failed connect that worked.
+  const pending = claimedGrants.get(grant)
+  if (pending) return new URLSearchParams(await pending)
+  const claim = claimOAuthGrant(connectorId, grant).then((p) => p.toString())
+  claimedGrants.set(grant, claim)
+  return new URLSearchParams(await claim)
+}
+
+const claimedGrants = new Map<string, Promise<string>>()
+
+async function claimOAuthGrant(connectorId: string, grant: string): Promise<URLSearchParams> {
   const base = getApiBase()
   const token = getAuthToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -3153,11 +3166,14 @@ export type PolicyType =
 // protection-gap rules directly. This is the policy-level model (PRD-102)
 // that powers renewal tracking and coverage-type-gap detection.
 export interface FinancialProfilePolicy {
+  /** Server-assigned stable id (pol_…); older records may not have one yet. */
+  id?: string
   type: PolicyType
   provider: string
   coverage_amount_minor: number
   monthly_premium_minor: number
   renewal_date?: string
+  last_payment_date?: string
   policy_number?: string
   // PRD-110: optional roster-member attribution — person-scoped policies
   // (life, income protection, health, critical illness) can name whose
@@ -3170,6 +3186,12 @@ export interface FinancialProfilePolicy {
   // Who the policy *protects* — distinct from member_id (the holder). Lets
   // family_policy_review flag beneficiaries who've left the roster.
   beneficiary_member_id?: string
+  nomination?: {
+    nominated_label: string
+    nomination_date?: string
+    is_ex_partner?: boolean
+    provider_form_url?: string
+  }
   /** Intent 38: prior premiums, appended server-side when the recorded
    *  amount changes — the price-creep trail. Current premium stays in
    *  monthly_premium_minor. */
@@ -3850,7 +3872,7 @@ export interface MarketingIntegration {
   name: string
   identifier?: string
   disabled: boolean
-  source?: 'env' | 'connection'
+  source?: 'env' | 'connection' | 'manual'
   /** The account that would publish — handle, page name or URN. */
   account?: string
 }
@@ -3866,7 +3888,8 @@ export interface SocialConnection {
   updated_at?: string
 }
 
-export type MarketingPostState = 'draft' | 'approved' | 'published' | 'publish_failed' | 'rejected'
+export type MarketingPostState =
+  'draft' | 'approved' | 'published' | 'publish_failed' | 'rejected' | 'awaiting_manual'
 
 export interface MarketingPost {
   id: string
@@ -3884,6 +3907,8 @@ export interface MarketingPost {
   published_at?: string
   publish_error?: string
   external_url?: string
+  /** Manual handoff: prefilled composer URL the operator opens to post. */
+  manual_url?: string
   media_url?: string
   /** Marketing copy guard result (PRD-210); a failing post cannot be approved. */
   copy_check?: { ok: boolean; violations: { rule: string; match: string }[] }
@@ -3958,6 +3983,19 @@ export async function rejectMarketingPost(id: string): Promise<MarketingPost> {
   const data = await marketingRequest<{ post: MarketingPost }>(
     `/marketing/posts/${id}/reject`,
     'POST',
+  )
+  return data.post
+}
+
+/** Confirm a manual-handoff post was completed in the channel's composer. */
+export async function markMarketingPostPosted(
+  id: string,
+  external_url?: string,
+): Promise<MarketingPost> {
+  const data = await marketingRequest<{ post: MarketingPost }>(
+    `/marketing/posts/${id}/mark-posted`,
+    'POST',
+    external_url ? { external_url } : {},
   )
   return data.post
 }
@@ -6296,9 +6334,10 @@ export interface SharedBriefView extends HouseholdBrief {
 async function briefPost<T>(
   path: string,
   body: unknown,
+  method = 'POST',
 ): Promise<{ ok: boolean; status: number; data?: T }> {
   const res = await credFetch(`${getApiBase()}${path}`, {
-    method: 'POST',
+    method,
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${getAuthToken() ?? ''}`,
@@ -6352,8 +6391,131 @@ export function previewBrief(body: { problem_type: BriefProblemType; inputs: Bri
   return briefPost<{ preview: BriefPreview }>('/family/briefs/preview', body)
 }
 
+// ─── Claim packet (PRD-235) ───────────────────────────────────────────────────
+
+export interface ClaimPacket {
+  provider: string
+  type: string
+  holder: string
+  contact: { phone: string | null; email: string | null }
+  policy_number: string | null
+  nomination: string | null
+  provider_form_url: string | null
+  checklist: Array<{ item: string; on_file: boolean; located: string | null }>
+  gaps: string[]
+  authority_note: string
+  draft_notification: string
+}
+
+/** `ref` is the policy's stable id when it has one, else its position in the list. */
+export function assembleClaimPacket(ref: string | number) {
+  return briefPost<{ packet: ClaimPacket }>(
+    `/family/policies/${encodeURIComponent(String(ref))}/claim-packet`,
+    {},
+  )
+}
+
+// ─── Employer cover facts (PRD-232) ──────────────────────────────────────────
+
+export interface EmployerCoverFact {
+  id: string
+  member_label: string
+  type: string
+  name_as_printed: string
+  source: string | null
+  last_seen_at: string | null
+  ends_with_employment: boolean
+  confirmed: boolean
+}
+
+export interface EmployerCoverInput {
+  member_label: string
+  type: string
+  name_as_printed: string
+  source?: string
+  last_seen_at?: string
+  ends_with_employment?: boolean
+  confirmed?: boolean
+}
+
+export function listEmployerCover() {
+  return apiFetch<{ facts: EmployerCoverFact[] }>('/family/employer-cover', { facts: [] }).then(
+    (r) => r.facts ?? [],
+  )
+}
+export function createEmployerCover(body: EmployerCoverInput) {
+  return briefPost<{ fact: EmployerCoverFact }>('/family/employer-cover', body)
+}
+export function deleteEmployerCover(id: string) {
+  return briefPost<{ ok: boolean }>(`/family/employer-cover/${id}`, {}, 'DELETE')
+}
+
 export function confirmBrief(id: string, result_version: string) {
   return briefPost<{ confirmed: boolean }>(`/family/briefs/${id}/confirm`, { result_version })
+}
+
+// ─── Obligations map (PRD-231) ───────────────────────────────────────────────
+
+export interface Obligation {
+  id: string
+  label: string
+  category: string | null
+  named_person: string
+  pays_from: string | null
+  notices_to: string | null
+  next_due_date: string
+  recurrence: string | null
+  if_unavailable: string | null
+  pending_confirmation: boolean
+  /** True only for the adult the row names, while it is still unconfirmed. */
+  can_confirm?: boolean
+  confirmed_by: string | null
+  created_by: string
+}
+
+export interface ObligationsMap {
+  obligations: Obligation[]
+  /** Editors may add, change and remove rows; other adults read and confirm. */
+  can_edit?: boolean
+  summary: {
+    dependent_count: number
+    top_person?: string | null
+    top_person_count?: number
+    earliest_due_date: string | null
+    earliest_due_label: string | null
+  }
+}
+
+export interface ObligationInput {
+  label: string
+  category?: string
+  named_person: string
+  pays_from?: string
+  notices_to?: string
+  next_due_date: string
+  recurrence?: string
+  if_unavailable?: string
+}
+
+export function getObligationsMap() {
+  return apiFetch<ObligationsMap>('/family/obligations/map', {
+    obligations: [],
+    summary: { dependent_count: 0, earliest_due_date: null, earliest_due_label: null },
+    can_edit: false,
+  })
+}
+
+export function createObligation(body: ObligationInput) {
+  return briefPost<{ obligation: Obligation }>('/family/obligations', body)
+}
+export function updateObligation(id: string, body: Partial<ObligationInput>) {
+  return briefPost<{ obligation: Obligation }>(`/family/obligations/${id}`, body, 'PUT')
+}
+export function deleteObligation(id: string) {
+  return briefPost<{ ok: boolean }>(`/family/obligations/${id}`, {}, 'DELETE')
+}
+export function confirmObligation(id: string) {
+  return briefPost<{ obligation: Obligation }>(`/family/obligations/${id}/confirm`, {})
 }
 
 export function deleteBrief(id: string) {

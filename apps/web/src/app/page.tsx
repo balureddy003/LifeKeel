@@ -36,7 +36,8 @@ import { HealthSummary } from '@/components/HealthSummary'
 import { ReadinessSparkline } from '@/components/ReadinessSparkline'
 import { ReadinessFeed } from '@/components/ReadinessFeed'
 import { PerceivedProtectionCard } from '@/components/PerceivedProtectionCard'
-import { InvitePartnerPrompt } from '@/components/InvitePartnerPrompt'
+import { PartnerCard } from '@/components/InvitePartnerPrompt'
+import { BriefWaitingCard } from '@/components/BriefWaitingCard'
 import CrisisMode, { CRISIS_EVENT_KEY } from '@/components/CrisisMode'
 import { useMode } from '@/lib/mode-context'
 import { useFamilyReadinessScore, useFamilyTimeline, useFamilyInsights } from '@/lib/useFamilyData'
@@ -45,6 +46,7 @@ import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
 import {
   fetchDocuments,
+  listBriefs,
   fetchConnectorStatuses,
   fetchFinancialProfile,
   fetchLifeChangeNudge,
@@ -737,8 +739,12 @@ function GettingStarted() {
   // reset finished steps to "not done".
   const [serverDocs, setServerDocs] = useState(0)
   const [serverConnectors, setServerConnectors] = useState(0)
+  const [briefCount, setBriefCount] = useState(0)
   useEffect(() => {
     let cancelled = false
+    listBriefs().then((b) => {
+      if (!cancelled) setBriefCount(b.length)
+    })
     fetchDocuments().then((d) => {
       if (!cancelled) setServerDocs(d.documents.length)
     })
@@ -753,6 +759,13 @@ function GettingStarted() {
   const connectorCount = Math.max(connectorsLocal.length, serverConnectors)
 
   const steps = [
+    {
+      label: 'Get your first answer',
+      description: 'A few figures, about two minutes. No upload or account to connect',
+      href: '/briefs',
+      icon: Sparkles,
+      done: briefCount > 0,
+    },
     {
       label: 'Upload a document',
       description: 'Insurance policy, will, or bank statement',
@@ -1126,7 +1139,8 @@ export default function HomePage() {
           daily checks found, straight below the score it explains. */}
       {/* PRD-141: one optional question per quarter; renders nothing unless due. */}
       <PerceivedProtectionCard />
-      <InvitePartnerPrompt />
+      <BriefWaitingCard />
+      <PartnerCard />
 
       {hasLiveData && (
         <motion.div

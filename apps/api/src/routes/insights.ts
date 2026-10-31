@@ -33,7 +33,7 @@ import { isOriginAllowedForCookieAuth } from '../auth/session-cookie.js'
 import { recordMomentDecision } from '../verified-moments.js'
 import { generateDraft } from '../insights/generate-draft.js'
 import { extractDraftProvenance } from '../insights/draft-provenance.js'
-import { isFamilyOrganizer } from '../family/family-permissions.js'
+import { isFamilyOrganizer, memberMatchesUser } from '../family/family-permissions.js'
 import { listInsightAttributions, recordInsightAction } from '../insights/insight-attribution.js'
 import {
   consolidateInsights,
@@ -170,6 +170,19 @@ export async function registerInsightRoutes(
     }
 
     const filter: Record<string, unknown> = { tenant_id }
+    // Intent 82 / PRD-234: member-scoped private insights (a nomination
+    // naming an ex-partner) are visible only to the roster member they
+    // name — the default lists hide them from every other viewer.
+    const __roster = db ? await db.collection('family_groups').findOne({ tenant_id }) : null
+    const __callerMember = (
+      (__roster?.['members'] as Array<{ id: string; user_id?: string }> | undefined) ?? []
+    ).find((m) => memberMatchesUser(m, request.authContext.user_id))
+    filter['$nor'] = [
+      {
+        'feature_snapshot.member_private': true,
+        'feature_snapshot.member_id': { $ne: __callerMember?.id ?? '' },
+      },
+    ]
     if (query.category) filter['category'] = query.category
     if (query.urgency) filter['urgency'] = query.urgency
     if (query.state) filter['state'] = query.state
@@ -263,6 +276,19 @@ export async function registerInsightRoutes(
     }
 
     const filter: Record<string, unknown> = { tenant_id }
+    // Intent 82 / PRD-234: member-scoped private insights (a nomination
+    // naming an ex-partner) are visible only to the roster member they
+    // name — the default lists hide them from every other viewer.
+    const __roster = db ? await db.collection('family_groups').findOne({ tenant_id }) : null
+    const __callerMember = (
+      (__roster?.['members'] as Array<{ id: string; user_id?: string }> | undefined) ?? []
+    ).find((m) => memberMatchesUser(m, request.authContext.user_id))
+    filter['$nor'] = [
+      {
+        'feature_snapshot.member_private': true,
+        'feature_snapshot.member_id': { $ne: __callerMember?.id ?? '' },
+      },
+    ]
     if (query.category) filter['category'] = query.category
     if (query.urgency) filter['urgency'] = query.urgency
     if (query.state) filter['state'] = query.state

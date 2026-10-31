@@ -29,6 +29,12 @@
  * Scheduling is in-house: channels can't hold future posts, so an
  * approved post with a future scheduled_at stays 'approved' until the
  * marketing-publish cron sweep dispatches it when due.
+ *
+ * Manual handoff (`x:manual` integration): approving produces a web-intent
+ * composer URL, not an API call — the post parks in 'awaiting_manual' until
+ * the operator confirms via mark-posted. Scheduled manual posts reach the
+ * same state through the sweep: the cron can't post them either, but it can
+ * have them ready in the queue at the planned time.
  */
 import {
   IMAGE_REQUIRED_CHANNELS,
@@ -71,7 +77,16 @@ import { taskLlm } from '../ai/task-gateway.js'
 import { ConnectorActionExecutor } from '@lifekeel/workflows'
 
 export type MarketingPostState =
-  'draft' | 'approved' | 'publishing' | 'published' | 'publish_failed' | 'rejected'
+  | 'draft'
+  | 'approved'
+  | 'publishing'
+  | 'published'
+  | 'publish_failed'
+  | 'rejected'
+  /** Approved, but the channel is human-carried (web-intent handoff, no
+   *  API): the post waits on the operator finishing it in the channel's own
+   *  composer, then confirming via /marketing/posts/:id/mark-posted. */
+  | 'awaiting_manual'
 
 export interface MarketingPostDoc {
   id: string
@@ -92,6 +107,11 @@ export interface MarketingPostDoc {
   bank_entry_id?: string
   published_at?: Date
   publish_error?: string
+  /** Manual handoff: the channel's prefilled composer URL the operator
+   *  opens to finish the post (awaiting_manual). */
+  manual_url?: string
+  /** Who confirmed the manual post went out (mark-posted). */
+  manual_posted_by?: string
   generated?: 'llm' | 'template'
   /** Marketing copy guard result for the current content (PRD-210). A post that fails cannot be approved or published. */
   copy_check?: CopyCheck
@@ -271,9 +291,26 @@ async function publishPost(
       | {
           external_id?: string
           url?: string
+          manual?: { intent_url: string }
           publisher?: { integration_id: string; channel: string; source: string; account: string }
         }
       | undefined
+    // Manual handoff — nothing was dispatched. The post parks here until the
+    // operator opens the intent URL, posts in the channel's own composer and
+    // confirms via mark-posted. published_via is recorded at that point.
+    if (result?.manual) {
+      await col.updateOne(
+        { id: post.id },
+        {
+          $set: {
+            state: 'awaiting_manual',
+            manual_url: result.manual.intent_url,
+            publish_error: null,
+          },
+        },
+      )
+      return { ok: true }
+    }
     await col.updateOne(
       { id: post.id },
       {
@@ -1331,29 +1368,37 @@ export function registerMarketingPostRoutes(
     const channelByConnector = new Map(
       Object.entries(CONNECTOR_CHANNELS).map(([channel, connector]) => [connector, channel]),
     )
+    // X is stored in both places (the OAuth registry plus a publish mirror),
+    // so skip an OAuth row whose channel already has a stored connection.
+    const storedChannels = new Set(conns.map((c) => c.channel as string))
     return {
       connections: [
         ...conns.map(({ credentials: _credentials, ...rest }) => rest),
-        ...creds.map((cred) => {
-          const channel =
-            channelByConnector.get(cred['connector_id'] as string) ?? cred['connector_id']
-          const extra = cred['extra'] as Record<string, string> | undefined
-          const needsReauth = cred['needs_reauth'] === true
-          return {
-            tenant_id: tenantId,
-            channel,
-            handle:
-              extra?.['username'] ??
-              extra?.['page_name'] ??
-              extra?.['name'] ??
-              extra?.['ig_username'] ??
-              '',
-            status: needsReauth ? 'error' : 'active',
-            last_error: needsReauth ? `${channel} token expired — reconnect` : null,
-            connected_by: 'oauth',
-            updated_at: cred['updated_at'],
-          }
-        }),
+        ...creds
+          .filter((cred) => {
+            const channel = channelByConnector.get(cred['connector_id'] as string)
+            return !(channel && storedChannels.has(channel))
+          })
+          .map((cred) => {
+            const channel =
+              channelByConnector.get(cred['connector_id'] as string) ?? cred['connector_id']
+            const extra = cred['extra'] as Record<string, string> | undefined
+            const needsReauth = cred['needs_reauth'] === true
+            return {
+              tenant_id: tenantId,
+              channel,
+              handle:
+                extra?.['username'] ??
+                extra?.['page_name'] ??
+                extra?.['name'] ??
+                extra?.['ig_username'] ??
+                '',
+              status: needsReauth ? 'error' : 'active',
+              last_error: needsReauth ? `${channel} token expired — reconnect` : null,
+              connected_by: 'oauth',
+              updated_at: cred['updated_at'],
+            }
+          }),
       ],
     }
   })
@@ -1761,9 +1806,65 @@ export function registerMarketingPostRoutes(
     },
   )
 
+  /** POST /marketing/posts/:id/mark-posted — the operator confirms they
+   *  finished a manual-handoff post in the channel's own composer. Accepts
+   *  the resulting post URL so engagement/attribution can still join to it
+   *  (the /status/{id} shape gives us external_id for metrics polls). */
+  app.post<{ Params: { id: string } }>(
+    '/marketing/posts/:id/mark-posted',
+    { preHandler: manageGate },
+    async (req, reply) => {
+      const { tenant_id, user_id } = req.authContext
+      const parsed = z
+        .object({ external_url: z.string().url().max(2000).optional() })
+        .safeParse(req.body ?? {})
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Invalid request', issues: parsed.error.issues })
+      }
+      const externalUrl = parsed.data.external_url
+      const post = await col.findOne({
+        id: req.params.id,
+        tenant_id,
+        state: 'awaiting_manual',
+      })
+      if (!post) {
+        return reply.status(404).send({ error: 'Post not found or not awaiting manual post' })
+      }
+      const statusId = /status\/(\d+)/.exec(externalUrl ?? '')?.[1]
+      await col.updateOne(
+        { id: post.id },
+        {
+          $set: {
+            state: 'published',
+            published_at: new Date(),
+            manual_posted_by: user_id,
+            ...(externalUrl ? { external_url: externalUrl } : {}),
+            ...(statusId ? { external_id: statusId } : {}),
+            published_via: {
+              integration_id: post.integration_id,
+              channel: post.channel,
+              source: 'manual',
+              account: 'operator-posted',
+            },
+          },
+          $unset: { publish_error: '' },
+        },
+      )
+      getAuditLogger()?.fromRequest(
+        req,
+        'marketing.post_marked_posted',
+        'marketing_post',
+        post.id,
+        { channel: post.channel, ...(externalUrl ? { external_url: externalUrl } : {}) },
+      )
+      return { post: await col.findOne({ id: post.id }) }
+    },
+  )
+
   /** POST /marketing/posts/:id/reject — kill a queued draft. 'approved' is
    *  included so a scheduled post can be pulled before the publish sweep
-   *  picks it up; 'publishing' is excluded — a claimed dispatch can't be
+   *  picks it up, and 'awaiting_manual' so a pending manual post can be
+   *  cancelled; 'publishing' is excluded — a claimed dispatch can't be
    *  unwound. */
   app.post<{ Params: { id: string } }>(
     '/marketing/posts/:id/reject',
@@ -1771,7 +1872,11 @@ export function registerMarketingPostRoutes(
     async (req, reply) => {
       const { tenant_id, user_id } = req.authContext
       const result = (await col.findOneAndUpdate(
-        { id: req.params.id, tenant_id, state: { $in: ['draft', 'publish_failed', 'approved'] } },
+        {
+          id: req.params.id,
+          tenant_id,
+          state: { $in: ['draft', 'publish_failed', 'approved', 'awaiting_manual'] },
+        },
         { $set: { state: 'rejected', rejected_by: user_id, rejected_at: new Date() } },
         { returnDocument: 'after' },
       )) as MarketingPostDoc | null

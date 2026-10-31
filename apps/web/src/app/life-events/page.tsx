@@ -4,7 +4,18 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { Briefcase, HeartCrack, Activity, HeartPulse, Car, Home, Plane, ChevronRight, Loader2, AlertCircle } from 'lucide-react'
+import {
+  Briefcase,
+  HeartCrack,
+  Activity,
+  HeartPulse,
+  Car,
+  Home,
+  Plane,
+  ChevronRight,
+  Loader2,
+  AlertCircle,
+} from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { GlassCard, GlassButton, PageHeader } from '@/components/Glass'
 import { LifeSafetyNotice } from '@/components/LifeSafetyNotice'
@@ -13,13 +24,48 @@ import { useAuth } from '@/lib/auth-context'
 import { reportLifeEvent, fetchLifeEvents, type LifeEvent, type LifeEventType } from '@/lib/api'
 
 const EVENT_TYPES: { id: LifeEventType; label: string; description: string; icon: LucideIcon }[] = [
-  { id: 'job_loss', label: 'Job loss', description: 'See your real runway and what to do first', icon: Briefcase },
-  { id: 'bereavement', label: 'Bereavement', description: "Notify your family's real insurers and providers", icon: HeartCrack },
-  { id: 'disability', label: 'Disability / critical illness', description: 'See whether your real cover applies', icon: Activity },
-  { id: 'medical', label: 'Medical emergency', description: 'Check your real health cover and what to notify', icon: HeartPulse },
-  { id: 'car', label: 'Car accident', description: 'Your real car policy and claim deadlines', icon: Car },
-  { id: 'property', label: 'Property damage', description: 'Your real home cover and what to document', icon: Home },
-  { id: 'travel', label: 'Travel emergency', description: 'Cover checks, receipts, embassy steps', icon: Plane },
+  {
+    id: 'job_loss',
+    label: 'Job loss',
+    description: 'See your real runway and what to do first',
+    icon: Briefcase,
+  },
+  {
+    id: 'bereavement',
+    label: 'Bereavement',
+    description: "Notify your family's real insurers and providers",
+    icon: HeartCrack,
+  },
+  {
+    id: 'disability',
+    label: 'Disability / critical illness',
+    description: 'See whether your real cover applies',
+    icon: Activity,
+  },
+  {
+    id: 'medical',
+    label: 'Medical emergency',
+    description: 'Check your real health cover and what to notify',
+    icon: HeartPulse,
+  },
+  {
+    id: 'car',
+    label: 'Car accident',
+    description: 'Your real car policy and claim deadlines',
+    icon: Car,
+  },
+  {
+    id: 'property',
+    label: 'Property damage',
+    description: 'Your real home cover and what to document',
+    icon: Home,
+  },
+  {
+    id: 'travel',
+    label: 'Travel emergency',
+    description: 'Cover checks, receipts, embassy steps',
+    icon: Plane,
+  },
 ]
 
 // This page is reachable directly (Home's "Report a life event" card), not
@@ -58,14 +104,19 @@ export default function LifeEventsPage() {
   }, [])
 
   useEffect(() => {
-    if (!selectedType) { setExistingSameType(null); return }
+    if (!selectedType) {
+      setExistingSameType(null)
+      return
+    }
     let cancelled = false
     fetchLifeEvents().then((events) => {
       if (cancelled) return
       // API returns most recent first — first match is the latest report.
       setExistingSameType(events.find((e) => e.event_type === selectedType) ?? null)
     })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [selectedType])
 
   const handleSubmit = async () => {
@@ -73,10 +124,16 @@ export default function LifeEventsPage() {
     haptic('light')
     setSubmitting(true)
     setError(null)
-    const event = await reportLifeEvent(selectedType, affectedMemberId || undefined, context || undefined)
+    const event = await reportLifeEvent(
+      selectedType,
+      affectedMemberId || undefined,
+      context || undefined,
+    )
     setSubmitting(false)
     if (!event) {
-      setError("That didn't go through — nothing was recorded. You can try again whenever you're ready.")
+      setError(
+        "That didn't go through — nothing was recorded. You can try again whenever you're ready.",
+      )
       return
     }
     router.push(`/life-events/${event.id}`)
@@ -122,8 +179,12 @@ export default function LifeEventsPage() {
                         "Notify your family's ...") — none actually fit on
                         one line at phone width, so the ellipsis never
                         conveyed the point it was there for. */}
-                    <div className="text-base font-semibold leading-snug line-clamp-2">{event.label}</div>
-                    <div className="text-xs text-ink-tertiary leading-snug line-clamp-2">{event.description}</div>
+                    <div className="text-base font-semibold leading-snug line-clamp-2">
+                      {event.label}
+                    </div>
+                    <div className="text-xs text-ink-tertiary leading-snug line-clamp-2">
+                      {event.description}
+                    </div>
                   </div>
                   <ChevronRight size={18} className="text-ink-tertiary" />
                 </div>
@@ -132,14 +193,21 @@ export default function LifeEventsPage() {
           ))}
         </div>
       ) : (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="space-y-4"
+        >
           <GlassCard className="p-5">
             <div className="text-sm font-semibold text-ink-secondary mb-3">
               {EVENT_TYPES.find((e) => e.id === selectedType)?.label}
             </div>
 
-            {URGENT_TYPES.has(selectedType) && <div className="mb-4"><LifeSafetyNotice compact /></div>}
-
+            {URGENT_TYPES.has(selectedType) && (
+              <div className="mb-4">
+                <LifeSafetyNotice compact />
+              </div>
+            )}
 
             {existingSameType && (
               <div className="rounded-xl bg-warning/10 border border-warning/20 px-3.5 py-3 mb-4 flex items-start gap-2">
@@ -147,7 +215,10 @@ export default function LifeEventsPage() {
                 <p className="text-xs text-ink-secondary leading-relaxed">
                   An event of this type was already reported on{' '}
                   {new Date(existingSameType.reported_at).toLocaleDateString()}.{' '}
-                  <Link href={`/life-events/${existingSameType.id}`} className="text-family-400 font-semibold">
+                  <Link
+                    href={`/life-events/${existingSameType.id}`}
+                    className="text-family-400 font-semibold"
+                  >
                     Open it
                   </Link>{' '}
                   — or report a new one below if this is a separate incident.
@@ -157,15 +228,20 @@ export default function LifeEventsPage() {
 
             {otherMembers.length > 0 && (
               <div className="mb-4">
-                <label className="text-xs text-ink-tertiary mb-2 block">Who does this affect? (optional)</label>
+                <label htmlFor="le-affected" className="text-xs text-ink-tertiary mb-2 block">
+                  Who does this affect? (optional)
+                </label>
                 <select
+                  id="le-affected"
                   value={affectedMemberId}
                   onChange={(e) => setAffectedMemberId(e.target.value)}
                   className="glass-input w-full rounded-xl px-4 py-3 text-sm text-ink-primary outline-none"
                 >
                   <option value="">The household overall</option>
                   {otherMembers.map((m) => (
-                    <option key={m.id} value={m.id}>{m.name}</option>
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -185,18 +261,33 @@ export default function LifeEventsPage() {
                 className="glass-input w-full rounded-xl px-4 py-3 text-sm text-ink-primary outline-none resize-none"
               />
               <p className="text-[11px] text-ink-tertiary mt-1">
-                Shared with your family on this event, and Keel uses it to answer questions about what happened.
+                Shared with your family on this event, and Keel uses it to answer questions about
+                what happened.
               </p>
             </div>
 
             <GlassButton onClick={handleSubmit} disabled={submitting}>
               {submitting ? <Loader2 size={18} className="animate-spin" /> : null}
-              <span>{submitting ? 'Building your plan…' : existingSameType ? 'Report anyway' : 'Get my plan'}</span>
+              <span>
+                {submitting
+                  ? 'Building your plan…'
+                  : existingSameType
+                    ? 'Report anyway'
+                    : 'Get my plan'}
+              </span>
             </GlassButton>
-            {error && <p role="status" aria-live="polite" className="text-sm text-danger mt-3">{error}</p>}
+            {error && (
+              <p role="status" aria-live="polite" className="text-sm text-danger mt-3">
+                {error}
+              </p>
+            )}
 
             <button
-              onClick={() => { setSelectedType(null); setAffectedMemberId(''); setContext('') }}
+              onClick={() => {
+                setSelectedType(null)
+                setAffectedMemberId('')
+                setContext('')
+              }}
               className="text-xs text-ink-tertiary font-semibold mt-3"
             >
               Choose a different event
@@ -207,8 +298,8 @@ export default function LifeEventsPage() {
 
       <div className="glass rounded-2xl p-4">
         <p className="text-xs text-ink-tertiary leading-relaxed">
-          This is for something that has actually happened, personalized against your family's real data. Just
-          exploring a hypothetical? Try &quot;What If?&quot; from the Events tab instead.
+          This is for something that has actually happened, personalized against your family's real
+          data. Just exploring a hypothetical? Try &quot;What If?&quot; from the Events tab instead.
         </p>
       </div>
     </div>

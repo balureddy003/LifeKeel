@@ -8,7 +8,7 @@
  *  - input errors name the field instead of one generic line.
  */
 import { describe, expect, it } from 'vitest'
-import { solveCatalogueBrief } from '../catalogue.js'
+import { BRIEF_CATALOGUE, solveCatalogueBrief } from '../catalogue.js'
 
 const AS_OF = '2026-10-29'
 const base = {
@@ -218,5 +218,45 @@ describe('the secret guard rail is about secrets, not ordinary words', () => {
         AS_OF,
       ),
     ).toThrow('Take-home income needs to be a whole number of pence')
+  })
+})
+
+describe('first number from the minimum (PRD-230)', () => {
+  const minimum = { ...base, change_date: '2026-12-01' }
+  const moneyTypes = BRIEF_CATALOGUE.filter((e) => e.mode !== 'handover')
+
+  it.each(moneyTypes.map((e) => [e.id]))('%s solves from three money fields and a date', (id) => {
+    const out = solveCatalogueBrief(id!, minimum, AS_OF)
+    expect(out.template_sentence.length).toBeGreaterThan(10)
+  })
+
+  it('says what was assumed and names what to add', () => {
+    const out = solveCatalogueBrief('job_change', minimum, AS_OF)
+    expect(out.facts).toContainEqual({
+      label: 'Assumed: income after the change',
+      value: 'Not entered, shown the same as today',
+    })
+    expect(out.template_sentence).toContain('partial answer')
+  })
+
+  it('does not assume zero income for a stop: baseline until entered', () => {
+    const out = solveCatalogueBrief('income_stops', minimum, AS_OF)
+    expect(out.template_sentence).not.toMatch(/run out/)
+    expect(out.template_sentence).toContain('partial answer')
+  })
+
+  it('a cash brief without the one-off amount shows the baseline', () => {
+    const out = solveCatalogueBrief('windfall', minimum, AS_OF)
+    expect(out.facts.some((f) => f.label === 'Assumed: one-off amount')).toBe(true)
+  })
+
+  it('explicit values win and no partial-answer note appears', () => {
+    const out = solveCatalogueBrief(
+      'earning_less',
+      { ...minimum, new_income_minor: 200_000 },
+      AS_OF,
+    )
+    expect(out.facts.some((f) => f.label.startsWith('Assumed'))).toBe(false)
+    expect(out.template_sentence).not.toContain('partial answer')
   })
 })

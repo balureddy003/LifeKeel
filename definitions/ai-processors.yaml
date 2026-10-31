@@ -173,18 +173,22 @@ processors:
     review_due: '2027-10-23'
 
   xai:
-    # Approved 2026-10-23 (owner decision) — CONDITIONAL: the xAI DPA
-    # (Sept 2026 update) requires Personal Data to be processed ONLY via the
-    # ZDR-enabled API; non-ZDR use is a material breach of the agreement.
-    # Zero Data Retention must be enabled in the xAI Console (Team Settings →
-    # Zero Data Retention) BEFORE any governed task routes here — verify the
-    # x-zero-data-retention:true response header. ZDR is self-serve and
-    # team-wide; it disables xAI-side storage features (Files, Collections,
-    # Batch, stateful Responses) which we do not use. Note: xAI retains a
-    # perpetual licence to prompts/outputs for safety research under the
-    # Enterprise ToS — not model training, but flagged for the annual review.
-    # The default endpoint has no guaranteed processing region; a US
-    # regional endpoint exists at a ~10% premium if residency is needed.
+    # Approved 2026-10-23 (owner decision) on the CONDITION that Zero Data
+    # Retention is enabled — the xAI DPA (Sept 2026 update) requires Personal
+    # Data to be processed ONLY via the ZDR-enabled API; non-ZDR use is a
+    # material breach of the agreement.
+    #
+    # 2026-10-31 exception (owner decision, testing phase only): self-serve
+    # ZDR is not offered on this team's xAI tier (xAI routes non-enterprise
+    # teams to sales for ZDR). Verified live: /v1/me zdr_status=no_zdr and
+    # x-zero-data-retention:false on responses. The owner accepts the DPA
+    # condition while the product is pre-launch/testing and commits to
+    # switching the serving provider (groq at limited_abuse_log, Azure, or
+    # Vertex — all approved without a ZDR condition) or reaching enterprise
+    # ZDR before production launch. Recorded below at the ACTUAL default
+    # retention (30-day audit log) so the gateway check evaluates reality,
+    # not the intended state. Revert to zero_data_retention — and verify the
+    # x-zero-data-retention:true header — if ZDR is ever enabled.
     name: xAI (Grok) API
     hosting: hosted
     status: approved
@@ -193,10 +197,12 @@ processors:
     terms_ref: xAI Enterprise Terms of Service + SpaceXSI Data Processing Addendum (ZDR required for Personal Data, Sept 2026)
     no_training_basis: xAI Enterprise ToS — User Content is not used to train foundation models or develop new products; ZDR additionally prevents persistence of prompts/outputs
     retention:
-      # Recorded at zero_data_retention on the condition that ZDR is enabled
-      # on the team — the DPA requires it for Personal Data. The default
-      # 30-day encrypted audit log exists only when ZDR is off.
-      '*': zero_data_retention
+      # Actual state (2026-10-31): ZDR unavailable on this team tier — the
+      # default up-to-30-day encrypted audit log applies. Non-sensitive
+      # tasks tolerating limited_abuse_log may route here during the
+      # testing-phase exception above; lifekeel_infra_required tasks never
+      # do (their boundary is self-hosted, not retention class).
+      '*': limited_abuse_log
     sub_processors:
       [
         maintained list at https://x.ai/legal/subprocessor-list — AWS,

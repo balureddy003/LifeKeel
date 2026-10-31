@@ -621,3 +621,45 @@ describe('fetchFinancialProfileWithVersion', () => {
     await expect(fetchFinancialProfileWithVersion()).rejects.toThrow('network down')
   })
 })
+
+describe('resolveOAuthReturnParams', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    window.history.replaceState({}, '', '/')
+  })
+
+  it('claims a one-time grant once even when called twice', async () => {
+    window.history.replaceState({}, '', '/?connect=facebook_pages&complete=grant-1')
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ params: { connected: 'facebook_pages' } }),
+      })
+      .mockResolvedValue({
+        ok: false,
+        status: 404,
+        json: () => Promise.resolve({ error: 'grant_not_found' }),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+    const { resolveOAuthReturnParams } = await import('../api')
+
+    const [a, b] = await Promise.all([resolveOAuthReturnParams(), resolveOAuthReturnParams()])
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(a.get('connected')).toBe('facebook_pages')
+    expect(b.get('connected')).toBe('facebook_pages')
+    expect(b.get('error')).toBeNull()
+  })
+
+  it('returns the current params untouched when there is nothing to claim', async () => {
+    window.history.replaceState({}, '', '/?connected=twitter_x')
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const { resolveOAuthReturnParams } = await import('../api')
+    const q = await resolveOAuthReturnParams()
+    expect(q.get('connected')).toBe('twitter_x')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})

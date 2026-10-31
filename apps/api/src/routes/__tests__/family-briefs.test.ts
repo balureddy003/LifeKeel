@@ -455,6 +455,21 @@ describe('brief contract v2', () => {
       expect(p.json().preview.template_sentence).toBe(created.json().brief.template_sentence)
     })
 
+    it('gives a partial first number from three money fields and a date, with the assumption stated', async () => {
+      const minimum = {
+        monthly_income_minor: INPUTS.monthly_income_minor,
+        monthly_essentials_minor: INPUTS.monthly_essentials_minor,
+        liquid_savings_minor: INPUTS.liquid_savings_minor,
+        change_date: INPUTS.change_date,
+      }
+      const p = await preview('job_change', minimum)
+      expect(p.statusCode).toBe(200)
+      expect(p.json().preview.template_sentence).toContain('partial answer')
+      expect(
+        p.json().preview.facts.some((f: { label: string }) => f.label.startsWith('Assumed')),
+      ).toBe(true)
+    })
+
     it('is not blocked by the first-brief gate, because nothing is created', async () => {
       await db.collection('tenants').deleteMany({})
       await db.collection('tenants').insertOne({ tenant_id: TENANT, plan: 'free' })
@@ -484,6 +499,24 @@ describe('brief contract v2', () => {
       const cat2 = await app.inject({ method: 'GET', url: '/family/brief-catalogue' })
       expect(cat2.json().can_create).toBe(true)
     })
+
+    it('produces the first number with the model layer dead (PRD-230)', async () => {
+      // taskLlm is mocked to throw for this whole file: catalogue → preview →
+      // create → share fetch is the first-value path end to end, and it must
+      // never reach the governed model layer.
+      expect((await app.inject({ method: 'GET', url: '/family/brief-catalogue' })).statusCode).toBe(
+        200,
+      )
+      expect((await preview('earning_less', INPUTS)).statusCode).toBe(200)
+      const created = await createV2('earning_less')
+      expect(created.statusCode).toBe(201)
+      currentUser = PARTNER
+      expect(
+        (await app.inject({ method: 'GET', url: `/b/${created.json().brief.share.url}` }))
+          .statusCode,
+      ).toBe(200)
+      currentUser = CREATOR
+    })
   })
 
   it('rejects catalogue create with no named adult recipient', async () => {
@@ -493,6 +526,99 @@ describe('brief contract v2', () => {
       payload: { contract_version: 2, problem_type: 'earning_less', inputs: {} },
     })
     expect(res.statusCode).toBe(400)
+  })
+
+  describe('single-adult household', () => {
+    const SOLO_INPUTS = {
+      monthly_income_minor: 300000,
+      monthly_essentials_minor: 200000,
+      liquid_savings_minor: 600000,
+      new_income_minor: 150000,
+      new_essentials_minor: 200000,
+      change_date: '2027-01-01',
+    }
+    beforeEach(async () => {
+      await db.collection('family_groups').deleteMany({ tenant_id: TENANT })
+      await db
+        .collection('family_groups')
+        .insertOne({ tenant_id: TENANT, members: [CREATOR_M], created_at: new Date() })
+    })
+
+    it('saves a brief with no share and no link; the creator can read and confirm it', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/family/briefs',
+        payload: {
+          contract_version: 2,
+          problem_type: 'earning_less',
+          inputs: SOLO_INPUTS,
+        },
+      })
+      expect(res.statusCode).toBe(201)
+      const b = res.json().brief
+      expect(b.share).toBeNull()
+      const read = await app.inject({ method: 'GET', url: `/family/briefs/${b.id}` })
+      expect(read.statusCode).toBe(200)
+      const ack = await app.inject({
+        method: 'POST',
+        url: `/family/briefs/${b.id}/confirm`,
+        payload: { result_version: b.result_version },
+      })
+      expect(ack.statusCode).toBe(200)
+      // Nobody else has seen it, so it never claims both adults did.
+      expect(ack.json().confirmation.both_confirmed).toBe(false)
+    })
+
+    it('still refuses a named recipient who is not an active adult, and a share with nobody to share to', async () => {
+      const bad = await app.inject({
+        method: 'POST',
+        url: '/family/briefs',
+        payload: {
+          contract_version: 2,
+          problem_type: 'earning_less',
+          for_member_id: 'm-nobody',
+          inputs: SOLO_INPUTS,
+        },
+      })
+      expect(bad.statusCode).toBe(400)
+      const solo = await app.inject({
+        method: 'POST',
+        url: '/family/briefs',
+        payload: {
+          contract_version: 2,
+          problem_type: 'earning_less',
+          inputs: SOLO_INPUTS,
+        },
+      })
+      const share = await app.inject({
+        method: 'POST',
+        url: `/family/briefs/${solo.json().brief.id}/share`,
+        payload: {},
+      })
+      expect(share.statusCode).toBe(400)
+    })
+
+    it('can be shared once another adult joins', async () => {
+      const solo = await app.inject({
+        method: 'POST',
+        url: '/family/briefs',
+        payload: {
+          contract_version: 2,
+          problem_type: 'earning_less',
+          inputs: SOLO_INPUTS,
+        },
+      })
+      await db
+        .collection('family_groups')
+        .updateOne({ tenant_id: TENANT }, { $push: { members: PARTNER_M as never } })
+      const share = await app.inject({
+        method: 'POST',
+        url: `/family/briefs/${solo.json().brief.id}/share`,
+        payload: { for_member_id: 'm-partner' },
+      })
+      expect(share.statusCode).toBe(200)
+      expect(share.json().share.url).toBeTruthy()
+    })
   })
 
   it('creates a versioned snapshot; anonymous and other-user opens are refused', async () => {

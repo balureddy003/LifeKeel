@@ -512,6 +512,52 @@ Follow-ups to the factual catalogue (Intent 78), from a review of what shipped:
    with no figures in the payload, and recipient control with no creator-visible
    "not opened" signal. Tier 0.
 
+## 230 — Friction budget (proposed 2026-10-30)
+
+1. [230-friction-budget-and-zero-connection-first-value.md](230-friction-budget-and-zero-connection-first-value.md) —
+   **PROPOSED, targets to be baselined.** Measure time, fields and connections on the
+   first-value path; first value never needs a connection; the brief link is the front
+   door for households, advisers and employers; the second adult reads first and joins
+   later. Tier 0.
+
+## 231 — Household single-point-of-failure map (proposed 2026-10-30)
+
+1. [231-household-single-point-of-failure-map.md](231-household-single-point-of-failure-map.md) —
+   **PROPOSED.** One row per recurring obligation: who is named, who pays, whose
+   phone gets the notices, the next due date — and a one-line summary of how much
+   depends on one person. Household-entered, no connection. Tier 0.
+
+
+## 233 — Lapse and change detection (proposed 2026-10-30)
+
+1. [233-lapse-and-change-detection.md](233-lapse-and-change-detection.md) —
+   **PROPOSED.** When an expected premium or renewal has no record by its date,
+   an in-app signal says "no payment on file since <date>; check with your
+   provider that cover is in force" — never "lapsed". Extends the existing
+   premium-increase rule. Tier 0.
+## 235 — Claim packet (proposed 2026-10-30)
+
+1. [235-claim-packet.md](235-claim-packet.md) — **PROPOSED.** For one policy
+   type first (life): assembles the insurer's claims contact as printed, the
+   policy number, and a checklist of papers on file or not located, plus a
+   fixed-template draft notification the household reviews and sends. Tier 1
+   prepare-only — no ActionExecutor, nothing sent. Tier gate recorded.
+## 234 — Beneficiary check (proposed 2026-10-30)
+
+1. [234-beneficiary-check.md](234-beneficiary-check.md) — **PROPOSED.**
+   Flags factual differences between recorded pension/policy nominations and
+   the current family (ex-partner, child added after the nomination date, no
+   nomination on file). Advice-line pass recorded in the PRD; ex-partner flags
+   scoped to the nominating adult only. Tier 0.
+
+
+## 232 — Employer cover blind spot (proposed 2026-10-30)
+
+1. [232-employer-cover-blind-spot.md](232-employer-cover-blind-spot.md) —
+   **PROPOSED.** Employer-provided cover recorded on file (type, name as printed,
+   source, last seen) feeding the job-change brief's recorded-cover field;
+   extraction stays `candidate_for_review`. Depth, never front door. Tier 0.
+
 
 ## Suggested build order for 138–147 and 203–206
 

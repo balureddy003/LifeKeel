@@ -119,9 +119,25 @@ export function verifyCard(postId: string, spec: CardSpec, given: string): boole
   return verifyLinkHmac('social-card', `${postId}:${cardSpecHash(spec)}`, given)
 }
 
+/** The address Meta can fetch the card from: API_PUBLIC_URL when set, else the
+ *  deployed API_BASE_URL. A local or plain-http base is never used, because
+ *  Instagram downloads the image from the internet and would fail on it. */
+function publicApiBase(): string {
+  const explicit = (process.env['API_PUBLIC_URL'] ?? '').replace(/\/$/, '')
+  if (explicit) return explicit
+  const base = (process.env['API_BASE_URL'] ?? '').replace(/\/$/, '')
+  try {
+    const u = new URL(base)
+    const local = ['localhost', '127.0.0.1', '[::1]'].includes(u.hostname)
+    return u.protocol === 'https:' && !local ? base : ''
+  } catch {
+    return ''
+  }
+}
+
 /** Absolute card URL for a post doc, or '' when no public API base exists —
  *  the draft then keeps "needs image" rather than a dead link. */
 export function cardUrl(postId: string, spec: CardSpec): string {
-  const base = (process.env['API_PUBLIC_URL'] ?? '').replace(/\/$/, '')
+  const base = publicApiBase()
   return base ? `${base}/public/social-card/${postId}.png?s=${signCard(postId, spec)}` : ''
 }

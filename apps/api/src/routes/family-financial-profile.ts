@@ -162,6 +162,9 @@ export const FinancialProfileSchema = z.object({
         // both the wizard's picker and this endpoint rejected them. No new
         // coverage-adequacy detector for either type yet (see PRD-105's own
         // "Out of scope") — recordable today, reasoned-about later.
+        // PRD-235: stable id so a claim packet always addresses the same
+        // policy — array index moves when another adult edits the list.
+        id: z.string().max(60).optional(),
         type: z.enum([
           'life',
           'income_protection',
@@ -178,6 +181,10 @@ export const FinancialProfileSchema = z.object({
         // known renewal date simply never contributes to the renewal-window
         // rule, rather than being rejected.
         renewal_date: z.string().optional(),
+        // PRD-233: the last premium payment the household recorded or
+        // confirmed — the flag baseline. premium_history records premium
+        // *changes*, never payments, so it cannot stand in for this.
+        last_payment_date: z.string().optional(),
         // Not read by any detector — purely a reference field so a family
         // (or Keel, drafting a message on their behalf) can quote the right
         // number back to the insurer without digging out the original
@@ -197,6 +204,18 @@ export const FinancialProfileSchema = z.object({
         // Optional and never guessed — attribution only comes from an
         // explicit user pick, same posture as member_id.
         beneficiary_member_id: z.string().min(1).optional(),
+        // PRD-234 (Intent 87): death/beneficiary nomination as printed on
+        // the pension or policy — household-entered, never guessed. The
+        // flag facts compare it factually with the roster; LifeKeel never
+        // says who should be named.
+        nomination: z
+          .object({
+            nominated_label: z.string().trim().max(120),
+            nomination_date: z.string().optional(),
+            is_ex_partner: z.boolean().optional(),
+            provider_form_url: z.string().max(500).optional(),
+          })
+          .optional(),
         // The number/address a life-event playbook's "contact" steps can
         // actually put in front of the family instead of "find the number
         // and call" — only ever what a document or a scanned email stated
@@ -814,6 +833,18 @@ export async function evaluateProfileAndGenerateInsights(
     const rosterName = new Map((roster?.members ?? []).map((m) => [m.id, m.name]))
 
     const holderKey = (p: FinancialProfile['policies'][number]) => p.member_id ?? 'household'
+    // Dates read as "14 Aug 2026" in sentences; stored values stay ISO.
+    const plainDate = (iso: string) => {
+      const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`)
+      return Number.isNaN(d.getTime())
+        ? iso
+        : d.toLocaleDateString('en-GB', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+            timeZone: 'UTC',
+          })
+    }
     const holderLabel = (p: FinancialProfile['policies'][number]) =>
       p.member_id ? (rosterName.get(p.member_id) ?? 'a former member') : 'the household'
 
@@ -890,6 +921,33 @@ export async function evaluateProfileAndGenerateInsights(
       generatedInsights.push(...result.insights)
     }
 
+    // PRD-234 (Intent 87): recorded nominations vs the current roster —
+    // factual differences only; the flags never say who should be named.
+    // A pension/life policy with no nomination is itself a flag.
+    // Life policies only: income protection pays the insured, not a
+    // beneficiary. And the flag is meaningful only once the household has
+    // engaged nominations at all — flagging every existing user at launch
+    // would be noise, not signal.
+    const nominationPolicies = profile.policies.filter((p) => p.type === 'life')
+    const engaged = profile.policies.some((p) => p.nomination)
+    const noNomination = engaged ? nominationPolicies.filter((p) => !p.nomination) : []
+    const rosterChildren = (roster?.members ?? []).filter(
+      (m) => m.role === 'child' || (m.relationship_label ?? '').endsWith('child'),
+    )
+    const newChildFlags = nominationPolicies.flatMap((p) => {
+      const n = p.nomination
+      if (!n?.nomination_date) return []
+      const newer = rosterChildren.filter((c) => (c.joined_at ?? '') > (n.nomination_date ?? ''))
+      return newer.length ? [{ policy: p, n, newer }] : []
+    })
+    // Ex-partner flags do NOT ride the household event — they are scoped
+    // to the nominating adult via a member_id event below (Intent 82).
+    const exPartnerByMember = new Map<string, typeof nominationPolicies>()
+    for (const pol of nominationPolicies) {
+      if (pol.nomination?.is_ex_partner && pol.member_id)
+        exPartnerByMember.set(pol.member_id, [...(exPartnerByMember.get(pol.member_id) ?? []), pol])
+    }
+
     // Stale renewal dates (PRD-213): soonestPolicyRenewal skips past-due
     // dates entirely, so without this a policy whose recorded renewal has
     // passed is invisible — the record may just be stale, or the cover may
@@ -913,8 +971,50 @@ export async function evaluateProfileAndGenerateInsights(
       return pct > 5 ? [{ policy: p, prev_minor: prev.amount_minor, pct: Math.round(pct) }] : []
     })
     {
+      // PRD-233 (Intent 88): a premium can stop silently — cancelled direct
+      // debit, expired card — and the family finds out at claim time. The
+      // register cannot see the policy itself, only that the last dated
+      // payment record is older than the ~40-day expected interval. Never
+      // says "lapsed": the record on file cannot show that.
+      const stalePayments = profile.policies.flatMap((p) => {
+        // The baseline is the last payment the household recorded, not
+        // premium_history (which logs premium changes). No recorded payment
+        // date → nothing to flag; a changed-once premium long ago is not a
+        // stopped payment.
+        if (!p.last_payment_date) return []
+        const ms = new Date(p.last_payment_date).getTime()
+        if (Number.isNaN(ms)) return []
+        const days = Math.floor((Date.now() - ms) / 86_400_000)
+        return days > 40 ? [{ policy: p, since: p.last_payment_date, days }] : []
+      })
       const eventId = crypto.randomUUID()
       const data = {
+        stale_payment_count: stalePayments.length,
+        stale_payment_since_date: plainDate(stalePayments.map((s) => s.since).sort()[0] ?? ''),
+        stale_payment_descriptions: stalePayments
+          .map(
+            (s) =>
+              `${s.policy.type} policy with ${s.policy.provider} held by ${holderLabel(s.policy)}: last payment on file ${plainDate(s.since)} (${s.days} days ago)`,
+          )
+          .slice(0, 4)
+          .join('; '),
+        stale_payment_monthly_premium_minor: stalePayments.reduce(
+          (s, r) => s + r.policy.monthly_premium_minor,
+          0,
+        ),
+        no_nomination_count: noNomination.length,
+        no_nomination_descriptions: noNomination
+          .map((p) => `${p.type} policy with ${p.provider} held by ${holderLabel(p)}`)
+          .slice(0, 4)
+          .join('; '),
+        new_child_after_nomination_count: newChildFlags.length,
+        new_child_after_nomination_descriptions: newChildFlags
+          .map(
+            (f) =>
+              `${f.policy.type} policy with ${f.policy.provider} held by ${holderLabel(f.policy)}: nomination dated ${plainDate(f.n.nomination_date ?? '')}, ${f.newer.length} child${f.newer.length === 1 ? '' : 'ren'} on the family record joined after`,
+          )
+          .slice(0, 4)
+          .join('; '),
         stale_renewal_count: staleRenewals.length,
         stale_renewal_descriptions: staleRenewals
           .map(
@@ -955,6 +1055,42 @@ export async function evaluateProfileAndGenerateInsights(
         derived_from_signals: [signalId],
       })
       generatedInsights.push(...result.insights)
+
+      // Intent 82 / PRD-234: one member-scoped event per adult whose
+      // nomination names an ex-partner. member_id lands in the feature
+      // snapshot → entity_key → the ?member_id= insight filter, so the
+      // flag is visible only to the nominating adult.
+      for (const [memberId, policies] of exPartnerByMember) {
+        const memberEventId = crypto.randomUUID()
+        const memberData = {
+          ex_partner_nomination_count: policies.length,
+          ex_partner_nomination_descriptions: policies
+            .map(
+              (pol) =>
+                `${pol.type} policy with ${pol.provider}: the nomination on file${pol.nomination?.nomination_date ? ` dated ${plainDate(pol.nomination.nomination_date)}` : ''} names a person recorded as an ex-partner`,
+            )
+            .join('; '),
+          member_id: memberId,
+          // Intent 82: this flag is private to the nominating adult — the
+          // default insight list drops it for every other viewer.
+          member_private: true,
+        }
+        const memberSignalId = await persistSignal({
+          tenant_id: tenantId,
+          signal_type: 'family.policy_review',
+          source: 'manual-entry',
+          external_id: memberEventId,
+          data: memberData,
+        })
+        const memberResult = await engine.evaluate({
+          event_type: 'family.policy_review',
+          tenant_id: tenantId,
+          event_id: memberEventId,
+          data: memberData,
+          derived_from_signals: [memberSignalId],
+        })
+        generatedInsights.push(...memberResult.insights)
+      }
     }
   }
 
@@ -1381,7 +1517,10 @@ export async function registerFamilyFinancialProfileRoutes(
             q.provider === p.provider &&
             (q.policy_number ?? '') === (p.policy_number ?? ''),
         )
-        if (!prior || prior.monthly_premium_minor === p.monthly_premium_minor) return p
+        // PRD-235: a policy keeps one stable id for life. A client that omits it
+        // (older web builds, imports) gets the id already on file, else a new one.
+        const withId = p.id ? p : { ...p, id: prior?.id ?? `pol_${crypto.randomUUID()}` }
+        if (!prior || prior.monthly_premium_minor === p.monthly_premium_minor) return withId
         const history = [
           ...(prior.premium_history ?? []),
           {
@@ -1389,7 +1528,7 @@ export async function registerFamilyFinancialProfileRoutes(
             effective_from: previousDoc!.updated_at?.toISOString?.() ?? new Date().toISOString(),
           },
         ]
-        return { ...p, premium_history: history }
+        return { ...withId, premium_history: history }
       })
 
       const fields = {

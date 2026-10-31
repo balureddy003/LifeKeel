@@ -132,6 +132,19 @@ describe('erasure leaves nothing and touches no one else', () => {
     },
   )
 
+  it('removes household obligations and employer cover facts for the tenant only', async () => {
+    for (const t of [A, B]) {
+      await db.collection('household_obligations').insertOne({ tenant_id: t, id: `o-${t}` })
+      await db.collection('employer_cover_facts').insertOne({ tenant_id: t, id: `c-${t}` })
+    }
+    const report = await eraseTenantDataReport(db, A)
+    expect(report.residual).toEqual([])
+    for (const name of ['household_obligations', 'employer_cover_facts']) {
+      expect(await db.collection(name).countDocuments({ tenant_id: A })).toBe(0)
+      expect(await db.collection(name).countDocuments({ tenant_id: B })).toBe(1)
+    }
+  })
+
   it('is safe to run again and then reports nothing removed', async () => {
     await seedEverything(A)
     await eraseTenantDataReport(db, A)
@@ -184,7 +197,7 @@ describe('POST /account/delete', () => {
       azure: /abuse monitoring/,
       vertex: /abuse monitoring/,
       groq: /abuse monitoring/, // limited_abuse_log until ZDR is enabled
-      xai: /keeps no copy/, // zero_data_retention — DPA requires ZDR
+      xai: /abuse monitoring/, // limited_abuse_log — testing-phase exception, ZDR unavailable on team tier
       anthropic: /Not confirmed/,
       openai: /Not confirmed/,
     }

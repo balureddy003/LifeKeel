@@ -23,7 +23,7 @@ import { useRouteParam } from '@/lib/useRouteParam'
 import { getApiBase } from '@/lib/env'
 import { getAuthToken } from '@/lib/api'
 import { haptic } from '@/lib/haptics'
-import { briefHeadline, splitBriefSentence } from '@/lib/brief-text'
+import { briefHeadline, plainDates, splitBriefSentence } from '@/lib/brief-text'
 
 interface Confirmation {
   creator_at: string | null
@@ -181,8 +181,9 @@ export default function BriefShareClient() {
       {status === 'signin' && (
         <Notice icon={<Lock size={20} />} title="Sign in to see this brief">
           <p>
-            This brief was shared with one named adult. Sign in with that account, then come back to
-            this link.
+            This brief was shared with one named adult in a household. Sign in as that adult and you
+            will come straight back here. If you have not set up your account yet, use the invite
+            email or link from the person who sent this.
           </p>
           <Link href={`/login?next=${encodeURIComponent(`/b/${token}`)}`} className={primaryBtn}>
             Sign in
@@ -232,20 +233,10 @@ export default function BriefShareClient() {
                 : `Prepared for ${name}`}
             </p>
           )}
-          <ul className="mt-4 space-y-2 text-ink-secondary">
-            <li className="flex gap-2">
-              <Check size={18} className="mt-0.5 shrink-0 text-family-400" aria-hidden="true" />
-              It answers one household question using the facts the household entered.
-            </li>
-            <li className="flex gap-2">
-              <Check size={18} className="mt-0.5 shrink-0 text-family-400" aria-hidden="true" />
-              Nothing here is a recommendation or a product suggestion.
-            </li>
-            <li className="flex gap-2">
-              <Check size={18} className="mt-0.5 shrink-0 text-family-400" aria-hidden="true" />
-              Tapping the button records that you have seen this exact version.
-            </li>
-          </ul>
+          <p className="mt-4 text-ink-secondary">
+            The months and the date are on the next screen. Tapping records that you have seen this
+            exact version.
+          </p>
           {brief.can_confirm ? (
             <button
               type="button"
@@ -302,54 +293,6 @@ export default function BriefShareClient() {
             )}
           </GlassCard>
 
-          <div
-            className={`flex items-start gap-3 rounded-2xl border p-4 ${
-              confirmation?.both_confirmed
-                ? 'border-green-500/30 bg-green-500/10'
-                : 'border-haze bg-surface-1'
-            }`}
-          >
-            {confirmation?.both_confirmed ? (
-              <motion.span
-                className="mt-0.5 shrink-0"
-                initial={reduce ? false : { scale: 0.4, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ type: 'spring', stiffness: 400, damping: 18 }}
-              >
-                <Check className="text-green-500" size={20} aria-hidden="true" />
-              </motion.span>
-            ) : (
-              <Clock className="mt-0.5 shrink-0 text-ink-tertiary" size={20} aria-hidden="true" />
-            )}
-            <p className="text-sm text-ink-secondary">
-              {confirmation?.both_confirmed
-                ? 'You and the sender have both confirmed this version.'
-                : confirmed
-                  ? 'You have confirmed this version. The sender has not confirmed yet.'
-                  : 'Your confirmation has been recorded.'}
-            </p>
-          </div>
-
-          {(brief.facts ?? []).length > 0 && (
-            <GlassCard className="p-6">
-              <h2 className="font-medium text-ink-primary">What was entered</h2>
-              <dl className="mt-3 space-y-2 text-sm">
-                {brief.facts!.map((x, i) => (
-                  <div key={i} className="flex justify-between gap-4 border-b border-haze pb-2">
-                    <dt className="text-ink-tertiary">{x.label}</dt>
-                    <dd
-                      className={`text-right text-ink-primary ${
-                        x.value.length <= 24 ? 'shrink-0 whitespace-nowrap' : 'min-w-0 break-words'
-                      }`}
-                    >
-                      {x.value}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            </GlassCard>
-          )}
-
           {brief.sections && (
             <GlassCard className="space-y-6 p-6">
               {!!brief.sections.adults?.length && (
@@ -393,6 +336,54 @@ export default function BriefShareClient() {
             </GlassCard>
           )}
 
+          <div
+            className={`flex items-start gap-3 rounded-2xl border p-4 ${
+              confirmation?.both_confirmed
+                ? 'border-green-500/30 bg-green-500/10'
+                : 'border-haze bg-surface-1'
+            }`}
+          >
+            {confirmation?.both_confirmed ? (
+              <motion.span
+                className="mt-0.5 shrink-0"
+                initial={reduce ? false : { scale: 0.4, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 18 }}
+              >
+                <Check className="text-green-500" size={20} aria-hidden="true" />
+              </motion.span>
+            ) : (
+              <Clock className="mt-0.5 shrink-0 text-ink-tertiary" size={20} aria-hidden="true" />
+            )}
+            <p className="text-sm text-ink-secondary">
+              {confirmation?.both_confirmed
+                ? 'You and the sender have both confirmed this version.'
+                : confirmed
+                  ? 'You have confirmed this version. The sender has not confirmed yet.'
+                  : 'Your confirmation has been recorded.'}
+            </p>
+          </div>
+
+          {(brief.facts ?? []).length > 0 && (
+            <GlassCard className="p-6">
+              <h2 className="font-medium text-ink-primary">What was entered</h2>
+              <dl className="mt-3 space-y-2 text-sm">
+                {brief.facts!.map((x, i) => (
+                  <div key={i} className="flex justify-between gap-4 border-b border-haze pb-2">
+                    <dt className="text-ink-tertiary">{plainDates(x.label)}</dt>
+                    <dd
+                      className={`text-right text-ink-primary ${
+                        x.value.length <= 24 ? 'shrink-0 whitespace-nowrap' : 'min-w-0 break-words'
+                      }`}
+                    >
+                      {plainDates(x.value)}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </GlassCard>
+          )}
+
           <GlassCard className="p-5 print:hidden">
             <p className="font-medium text-ink-primary">What happens next</p>
             <ul className="mt-2 space-y-2 text-sm text-ink-secondary">
@@ -421,9 +412,9 @@ export default function BriefShareClient() {
           </button>
 
           <p className="text-xs text-ink-tertiary">
-            Worked out {new Date(brief.created_at).toLocaleDateString('en-GB')} from what the
-            household entered. Your confirmation is recorded against this exact version. LifeKeel
-            shows figures — it does not recommend products.
+            Worked out {plainDates(brief.created_at.slice(0, 10))} from what the household entered.
+            Your confirmation is recorded against this exact version. LifeKeel shows figures — it
+            does not recommend products.
           </p>
         </div>
       )}

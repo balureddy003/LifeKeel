@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { briefHeadline, runsOutAround, splitBriefSentence } from '../brief-text'
+import { briefHeadline, plainDates, runsOutAround, splitBriefSentence } from '../brief-text'
 
 const NOTE =
   ' Figures are the household’s own entries — tax, benefits, investment returns and price rises are not covered. Free guidance: MoneyHelper; for bigger decisions, a licensed professional.'
@@ -46,5 +46,18 @@ describe('briefHeadline', () => {
     expect(
       briefHeadline('These are the household’s recorded facts. Missing details are marked.'),
     ).toBe('These are the household’s recorded facts.')
+  })
+})
+
+describe('plainDates', () => {
+  it('writes ISO dates the way the rest of the app does', () => {
+    expect(plainDates('2027-01-15')).toBe('15 Jan 2027')
+    expect(plainDates('Dated step 2027-03-01 household income / month')).toBe(
+      'Dated step 1 Mar 2027 household income / month',
+    )
+  })
+  it('leaves text that is not a real date alone', () => {
+    expect(plainDates('£4,000.00')).toBe('£4,000.00')
+    expect(plainDates('2027-13-45')).toBe('2027-13-45')
   })
 })

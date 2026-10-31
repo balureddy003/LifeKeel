@@ -73,6 +73,12 @@ function webCopyFiles(): string[] {
     'apps/web/src/components/ExtractionReview.tsx',
     'apps/web/src/lib/deletion-receipt-copy.ts',
     'apps/web/src/components/DeletionReceiptCard.tsx',
+    // PRD-235: the claim packet states what is on file and names no outcome.
+    'apps/web/src/app/packet/page.tsx',
+    // PRD-231: the obligations map states who is named and what is due.
+    'apps/web/src/app/map/page.tsx',
+    // PRD-232: cover facts state what is on file and when it may end.
+    'apps/web/src/app/cover/page.tsx',
     'apps/web/src/lib/ai-disclosure-copy.ts',
     'apps/web/src/app/ai-processing/page.tsx',
     'apps/web/src/components/ChannelsCard.tsx',

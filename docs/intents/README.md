@@ -148,6 +148,20 @@ record a recurring reason to be reopened.
 | `81-annual-household-refresh.md` | Refresh a confirmed brief from last time's figures, household-entered review date, in-app prompt, no outbound messages | PRD-228 | **PROPOSED** — gated on Stage 1 return and gate metrics |
 | `82-trusted-person-and-months-only-share.md` | "Just me" path, trusted person confirms by one-time link, months-only share, recipient controls with no creator notification | PRD-229 | **PROPOSED** — **BLOCKED** on a recorded safeguarding review |
 
+## 83–91: Friction budget and the use cases behind it (2026-10-30)
+
+| File | Concern | Becomes PRD | Status |
+|---|---|---|---|
+| `83-friction-budget-and-zero-connection-first-value.md` | Measure friction on the first-value path, keep first value connection-free, brief link as front door for every channel, second adult reads first and joins later | PRD-230 | **PROPOSED** — baseline the targets before enforcing. Ranked use cases and channels: [review](../reviews/channels-and-use-cases-frictionless-2026-10.md) |
+| `84-employer-cover-blind-spot.md` | Find employer-provided cover on file; warn that it may end with the job; feeds the job-change brief | — | **PROPOSED** — depth, not front door |
+| `85-household-single-point-of-failure-map.md` | Who is named, who pays, whose phone gets notices; what stops, as dates, if one adult is out | — | **PROPOSED** |
+| `86-claim-packet.md` | Prepare-only claim checklist and draft to the existing provider, one policy type first | — | **PROPOSED** — Tier 1 prepare-only |
+| `87-beneficiary-check.md` | Flag nominations that differ from the current family, link to the provider's form | — | **PROPOSED** — advice-line pass needed |
+| `88-lapse-and-change-detection.md` | "No payment on file" and price-creep signals from policy history | — | **PROPOSED** |
+| `89-parent-mode.md` | Hold a parent's file with the parent's consent | — | **BLOCKED** on the PRD-229 safeguarding review |
+| `90-staged-emergency-access.md` | Timed release of papers to named adults | — | **PARKED** — irreversible action, legal review |
+| `91-adviser-and-employer-brief-link-pilot.md` | Advisers and employers send a brief link; measured on time to first number | PRD-207 | **GATED** on regulatory advice |
+
 Note: `78-factual-brief-catalogue.md` is shipped (PRs #308) but is not yet listed in
 the table above; add its row when this index is next reconciled.
 

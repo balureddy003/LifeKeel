@@ -17,6 +17,7 @@
  * step; dry-run only controls whether the approved actions dispatch.
  */
 
+import { plainDates } from '@/lib/brief-text'
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { BellRing, Loader2, ShieldCheck, TrendingUp, Zap } from 'lucide-react'
@@ -240,7 +241,7 @@ export default function AutomationSettingsPage() {
                         <div key={r.id} className="flex items-center justify-between gap-2">
                           <span className="text-sm text-ink-secondary truncate">
                             {r.policy.provider} {r.policy.type.replace(/_/g, ' ')} — renews{' '}
-                            {r.renewal_date}
+                            {plainDates(r.renewal_date)}
                           </span>
                           <button
                             onClick={() => handleCancelReminder(r.id)}
@@ -266,7 +267,7 @@ export default function AutomationSettingsPage() {
                               ? 'Couldn’t send'
                               : 'Cancelled'}{' '}
                           · {r.policy.provider} {r.policy.type.replace(/_/g, ' ')} ·{' '}
-                          {r.renewal_date}
+                          {plainDates(r.renewal_date)}
                         </div>
                       ))}
                     </div>
