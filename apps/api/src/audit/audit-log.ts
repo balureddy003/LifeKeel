@@ -90,6 +90,7 @@ export type AuditAction =
   | 'obligation.created'
   | 'obligation.updated'
   | 'obligation.deleted'
+  | 'obligation.confirmed'
   | 'claim_packet.assembled'
   | 'employer_cover.created'
   | 'employer_cover.updated'

@@ -128,6 +128,7 @@ describe('the map and summary', () => {
     const { summary } = (await map()).json()
     expect(summary).toEqual({
       dependent_count: 0,
+      total_count: 0,
       earliest_due_date: null,
       earliest_due_label: null,
     })
