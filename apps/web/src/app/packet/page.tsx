@@ -12,27 +12,27 @@ const ghostBtn =
 
 export default function ClaimPacketPage() {
   const [lifePolicies, setLifePolicies] = useState<Array<{
-    index: number
+    ref: string | number
     provider: string
   }> | null>(null)
   const [packet, setPacket] = useState<ClaimPacket | null>(null)
-  const [busy, setBusy] = useState<number | null>(null)
+  const [busy, setBusy] = useState<string | number | null>(null)
   const toast = useToast()
 
   useEffect(() => {
     void fetchFinancialProfile().then((p) => {
       setLifePolicies(
         (p?.policies ?? [])
-          .map((pol, i) => ({ index: i, type: pol.type, provider: pol.provider }))
+          .map((pol, i) => ({ ref: pol.id ?? i, type: pol.type, provider: pol.provider }))
           .filter((x) => x.type === 'life')
-          .map(({ index, provider }) => ({ index, provider })),
+          .map(({ ref, provider }) => ({ ref, provider })),
       )
     })
   }, [])
 
-  async function prepare(index: number) {
-    setBusy(index)
-    const res = await assembleClaimPacket(index)
+  async function prepare(ref: string | number) {
+    setBusy(ref)
+    const res = await assembleClaimPacket(ref)
     setBusy(null)
     if (!res.ok || !res.data) {
       toast({ message: 'Could not assemble the packet. Try again.', variant: 'error' })
@@ -62,16 +62,16 @@ export default function ClaimPacketPage() {
       {lifePolicies && lifePolicies.length > 0 && !packet && (
         <GlassCard className="mt-6 space-y-3 p-5">
           {lifePolicies.map((p) => (
-            <div key={p.index} className="flex items-center justify-between gap-3">
+            <div key={p.ref} className="flex items-center justify-between gap-3">
               <p className="font-medium text-ink-primary">{p.provider}</p>
               <button
                 type="button"
-                onClick={() => prepare(p.index)}
+                onClick={() => prepare(p.ref)}
                 disabled={busy !== null}
                 className={ghostBtn}
               >
                 <FileText size={16} aria-hidden="true" />
-                {busy === p.index ? 'Assembling…' : 'Prepare packet'}
+                {busy === p.ref ? 'Assembling…' : 'Prepare packet'}
               </button>
             </div>
           ))}
