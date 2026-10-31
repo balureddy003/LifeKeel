@@ -98,6 +98,7 @@ export type AuditAction =
   | 'life_event.nudge_shown'
   | 'life_event.nudge_dismissed'
   | 'life_event.nudge_acted_on'
+  | 'life_event.details_updated'
   | 'referral.attributed'
   | 'referral.rewarded'
   | 'insight.prepare_on_device'

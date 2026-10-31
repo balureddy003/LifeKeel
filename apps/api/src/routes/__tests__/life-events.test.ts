@@ -125,6 +125,14 @@ vi.mock('../../db.js', () => ({
           if (!ids.includes(v as string)) ids.push(v as string)
         doc.data['completed_step_ids'] = ids
       }
+      if (update['$set']) {
+        for (const [k, v] of Object.entries(update['$set']))
+          if (k.startsWith('data.')) doc.data[k.slice(5)] = v
+      }
+      if (update['$unset']) {
+        for (const k of Object.keys(update['$unset']))
+          if (k.startsWith('data.')) delete doc.data[k.slice(5)]
+      }
       if (update['$pull']) {
         const remove = new Set(Object.values(update['$pull']) as string[])
         doc.data['completed_step_ids'] = (
@@ -205,14 +213,36 @@ describe('PRD-108: POST /family/life-events', () => {
     llmMock.mockClear()
   })
 
-  it('rejects reporting a life event before any financial profile exists', async () => {
+  it('still gives the first steps when no financial profile exists, saying what is not on file', async () => {
     const { app } = await buildApp(null)
     const res = await app.inject({
       method: 'POST',
       url: '/family/life-events',
       payload: { event_type: 'job_loss' },
     })
-    expect(res.statusCode).toBe(400)
+    expect(res.statusCode).toBe(201)
+    const steps = res.json().playbook.steps as Array<{ body: string }>
+    expect(steps.length).toBeGreaterThan(0)
+    expect(JSON.stringify(steps)).toMatch(/on file/i)
+  })
+
+  it('lists and completes steps for an event reported without a profile', async () => {
+    const { app } = await buildApp(null)
+    const made = await app.inject({
+      method: 'POST',
+      url: '/family/life-events',
+      payload: { event_type: 'bereavement' },
+    })
+    const { id, playbook } = made.json()
+    const list = await app.inject({ method: 'GET', url: '/family/life-events' })
+    expect(list.statusCode).toBe(200)
+    expect(list.json().events.length).toBe(1)
+    const done = await app.inject({
+      method: 'POST',
+      url: `/family/life-events/${id}/steps/${playbook.steps[0].id}/complete`,
+      payload: { done: true },
+    })
+    expect(done.statusCode).toBe(200)
   })
 
   it('rejects an unknown event_type', async () => {
@@ -896,5 +926,70 @@ describe('PRD-111: GET /family/life-events/nudge and POST /nudge/dismiss', () =>
       payload: { event_type: 'job_loss' },
     })
     expect(res.statusCode).toBe(201)
+  })
+})
+
+describe('POST /family/life-events/:id/details (add detail after the first steps)', () => {
+  beforeEach(() => {
+    signalsStore = []
+  })
+
+  async function reported() {
+    const { app } = await buildApp(null)
+    const made = await app.inject({
+      method: 'POST',
+      url: '/family/life-events',
+      payload: { event_type: 'medical' },
+    })
+    return { app, id: made.json().id as string }
+  }
+
+  it('saves who it affects and a note', async () => {
+    const { app, id } = await reported()
+    const res = await app.inject({
+      method: 'POST',
+      url: `/family/life-events/${id}/details`,
+      payload: { affected_member_id: 'm-1', context: "In A&E at St Mary's" },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().affected_member_id).toBe('m-1')
+    expect(res.json().context).toContain('St Mary')
+    expect(signalsStore[0]!.data['affected_member_id']).toBe('m-1')
+  })
+
+  it('clears the note when sent empty', async () => {
+    const { app, id } = await reported()
+    await app.inject({
+      method: 'POST',
+      url: `/family/life-events/${id}/details`,
+      payload: { context: 'something' },
+    })
+    const res = await app.inject({
+      method: 'POST',
+      url: `/family/life-events/${id}/details`,
+      payload: { context: '' },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(signalsStore[0]!.data['context']).toBeUndefined()
+  })
+
+  it('404s for an unknown event', async () => {
+    const { app } = await reported()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/life-events/nope/details',
+      payload: { context: 'x' },
+    })
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('404s for a member who is not on the roster', async () => {
+    const { app, id } = await reported()
+    const res = await app.inject({
+      method: 'POST',
+      url: `/family/life-events/${id}/details`,
+      payload: { affected_member_id: 'ghost' },
+    })
+    expect(res.statusCode).toBe(404)
   })
 })
