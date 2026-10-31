@@ -87,7 +87,7 @@ for (const [id, n] of Object.entries(fieldCounts)) (byCount[n] ??= []).push(id)
 for (const [n, ids] of Object.entries(byCount))
   console.log(`  ${n} money fields: ${ids.join(', ')}`)
 console.log(
-  '  (first form step asks 3 money fields; the rest come on step 2, so these counts are totals)',
+  '  (totals with every optional detail; the first-step budget of 3 money fields + a date is asserted above)',
 )
 
 // 3. Bad input produces a human message, never a stack/500.
