@@ -36,6 +36,7 @@ import { HealthSummary } from '@/components/HealthSummary'
 import { ReadinessSparkline } from '@/components/ReadinessSparkline'
 import { ReadinessFeed } from '@/components/ReadinessFeed'
 import { PerceivedProtectionCard } from '@/components/PerceivedProtectionCard'
+import { TodayCard } from '@/components/TodayCard'
 import { PartnerCard } from '@/components/InvitePartnerPrompt'
 import { BriefWaitingCard } from '@/components/BriefWaitingCard'
 import CrisisMode, { CRISIS_EVENT_KEY } from '@/components/CrisisMode'
@@ -992,6 +993,11 @@ export default function HomePage() {
 
       {/* After the first result, not before: while the first setup card is on screen, a second ask competes with it. */}
       {hasLiveData ? <InviteFamilyBanner /> : <FinishSetupBanner />}
+      <TodayCard
+        insights={insights}
+        profileCompleteness={profileCompleteness}
+        hasLiveData={hasLiveData}
+      />
       <SinceLastVisit
         score={readinessScore}
         hasLiveData={hasLiveData}
