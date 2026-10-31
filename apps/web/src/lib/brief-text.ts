@@ -32,3 +32,20 @@ export function briefHeadline(main: string): string {
   if (covered.length >= 3) return 'Income covers the entered spending.'
   return `${clauses[0] ?? main}.`
 }
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/**
+ * Every ISO date in a string as "15 Jan 2027", the way the rest of the app
+ * writes dates. Display only: the stored facts, and the version the household
+ * confirmed, keep the original text. Anything that is not a real date is left
+ * alone.
+ */
+export function plainDates(text: string): string {
+  return text.replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, (whole, y: string, m: string, d: string) => {
+    const month = MONTHS[Number(m) - 1]
+    const day = Number(d)
+    if (!month || day < 1 || day > 31) return whole
+    return `${day} ${month} ${y}`
+  })
+}

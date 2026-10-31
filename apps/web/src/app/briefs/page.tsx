@@ -47,7 +47,7 @@ import { CountUp } from './CountUp'
 import { RunwayChart } from './RunwayChart'
 import { WhatIf } from './WhatIf'
 import { countdownText, daysUntil } from './what-if'
-import { briefHeadline, runsOutAround, splitBriefSentence } from '@/lib/brief-text'
+import { briefHeadline, plainDates, runsOutAround, splitBriefSentence } from '@/lib/brief-text'
 import {
   MAX_STEPS,
   buildInputs,
@@ -505,6 +505,8 @@ function Status({ b, other }: { b: HouseholdBrief; other: string }) {
       {text}
     </span>
   )
+  // A household of one has nobody to compare notes with, so no "not confirmed".
+  if (!b.share && !c?.creator_at) return null
   return (
     <div className="flex flex-wrap gap-2">
       {chip(!!c?.creator_at, c?.creator_at ? 'You confirmed' : 'You have not confirmed')}
@@ -571,6 +573,11 @@ function ResultCard({
     onChanged()
   }
 
+  // Confirming that you have seen your own answer is a ritual for two adults,
+  // so a household of one is not asked to do it (it can still be confirmed
+  // from the list once someone joins).
+  const solo = !brief.share && !brief.confirmation?.creator_at
+
   return (
     <GlassCard className="space-y-5 p-6">
       <div>
@@ -618,13 +625,13 @@ function ResultCard({
         <dl className="space-y-1 text-sm">
           {brief.facts!.map((x, i) => (
             <div key={i} className="flex justify-between gap-4 border-b border-haze pb-1">
-              <dt className="text-ink-tertiary">{x.label}</dt>
+              <dt className="text-ink-tertiary">{plainDates(x.label)}</dt>
               <dd
                 className={`text-right text-ink-primary ${
                   x.value.length <= 24 ? 'shrink-0 whitespace-nowrap' : 'min-w-0 break-words'
                 }`}
               >
-                {x.value}
+                {plainDates(x.value)}
               </dd>
             </div>
           ))}
@@ -634,49 +641,57 @@ function ResultCard({
       <WhatIf brief={brief} />
 
       <div className="rounded-2xl border border-haze bg-surface-1 p-4">
-        <p className="text-sm font-medium text-ink-primary">Two quick steps</p>
+        <p className="text-sm font-medium text-ink-primary">
+          {solo ? 'Saved for you' : 'Two quick steps'}
+        </p>
         <ol className="mt-4 space-y-5">
+          {!solo && (
+            <li className="flex gap-3">
+              <span
+                aria-hidden="true"
+                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
+                  brief.confirmation?.creator_at
+                    ? 'bg-green-500/20 text-green-600'
+                    : 'bg-family-500 text-white'
+                }`}
+              >
+                {brief.confirmation?.creator_at ? <Check size={16} /> : '1'}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-ink-primary">
+                  Read your answer, then confirm
+                </p>
+                <p className="text-sm text-ink-secondary">
+                  This records that you have seen this exact version.
+                </p>
+                {brief.confirmation?.creator_at ? (
+                  <p className="mt-2 text-sm font-medium text-green-600">You confirmed</p>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void confirm()}
+                    className="mt-3 inline-flex min-h-[48px] w-full items-center justify-center rounded-full bg-family-500 px-5 text-sm font-semibold text-white disabled:opacity-50 sm:w-auto"
+                  >
+                    {busy ? 'Saving…' : 'I have read this'}
+                  </button>
+                )}
+              </div>
+            </li>
+          )}
           <li className="flex gap-3">
-            <span
-              aria-hidden="true"
-              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
-                brief.confirmation?.creator_at
-                  ? 'bg-green-500/20 text-green-600'
-                  : 'bg-family-500 text-white'
-              }`}
-            >
-              {brief.confirmation?.creator_at ? <Check size={16} /> : '1'}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-ink-primary">Read your answer, then confirm</p>
-              <p className="text-sm text-ink-secondary">
-                This records that you have seen this exact version.
-              </p>
-              {brief.confirmation?.creator_at ? (
-                <p className="mt-2 text-sm font-medium text-green-600">You confirmed</p>
-              ) : (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void confirm()}
-                  className="mt-3 inline-flex min-h-[48px] w-full items-center justify-center rounded-full bg-family-500 px-5 text-sm font-semibold text-white disabled:opacity-50 sm:w-auto"
-                >
-                  {busy ? 'Saving…' : 'I have read this'}
-                </button>
-              )}
-            </div>
-          </li>
-          <li className="flex gap-3">
-            <span
-              aria-hidden="true"
-              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
-                brief.confirmation?.recipient_at
-                  ? 'bg-green-500/20 text-green-600'
-                  : 'bg-surface-2 text-ink-secondary'
-              }`}
-            >
-              {brief.confirmation?.recipient_at ? <Check size={16} /> : '2'}
-            </span>
+            {!solo && (
+              <span
+                aria-hidden="true"
+                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
+                  brief.confirmation?.recipient_at
+                    ? 'bg-green-500/20 text-green-600'
+                    : 'bg-surface-2 text-ink-secondary'
+                }`}
+              >
+                {brief.confirmation?.recipient_at ? <Check size={16} /> : '2'}
+              </span>
+            )}
             <div className="min-w-0 flex-1">
               {brief.share ? (
                 <>
@@ -935,7 +950,6 @@ export default function BriefsPage() {
     startedRef.current = true
     const e = byId.get(id)
     if (e) choose(e)
-     
   }, [loaded, canCreate, byId])
 
   function choose(e: BriefCatalogueEntry, prefill?: FormValues, from?: string) {
@@ -1005,7 +1019,7 @@ export default function BriefsPage() {
     const e = byId.get(b.problem_type)
     if (!e || e.mode === 'handover' || !b.inputs) return
     track('brief_update_started', { problem_type: e.id })
-    choose(e, inputsToForm(e, b.inputs), new Date(b.created_at).toLocaleDateString('en-GB'))
+    choose(e, inputsToForm(e, b.inputs), plainDates(b.created_at.slice(0, 10)))
   }
 
   function openBrief(id: string) {
@@ -1664,7 +1678,7 @@ export default function BriefsPage() {
                         )}
                       </span>
                       <span className="block text-xs text-ink-tertiary">
-                        {new Date(b.created_at).toLocaleDateString('en-GB')}
+                        {plainDates(b.created_at.slice(0, 10))}
                       </span>
                     </span>
                     <ChevronRight
