@@ -64,7 +64,7 @@ export function PerceivedProtectionCard() {
             key={s.score}
             type="button"
             onClick={() => answer(s.score)}
-            className="rounded-xl bg-tint/[0.04] border border-tint/[0.08] px-1 py-2 text-xs text-ink-secondary"
+            className="rounded-xl bg-tint/[0.04] border border-tint/[0.08] px-0.5 py-2 text-[11px] leading-tight break-normal text-ink-secondary"
           >
             <span className="block text-sm font-semibold text-ink-primary">{s.score}</span>
             {s.label}

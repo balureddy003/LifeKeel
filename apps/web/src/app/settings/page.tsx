@@ -127,8 +127,16 @@ const INVITABLE_ROLES: FamilyRole[] = ['parent', 'adult', 'child']
 export default function SettingsPage() {
   const { mode, setMode } = useMode()
   const [theme, setTheme] = useThemePreference()
-  const { user, family, signOut, inviteMember, removeMember, updateMemberRole, updateProfile } =
-    useAuth()
+  const {
+    user,
+    family,
+    signOut,
+    inviteMember,
+    removeMember,
+    updateMemberRole,
+    updateProfile,
+    refresh,
+  } = useAuth()
   const router = useRouter()
   const confirm = useConfirm()
   const toast = useToast()
@@ -348,9 +356,12 @@ export default function SettingsPage() {
     setActingOnRequestId(id)
     setAccessRequestError(null)
     try {
-      await approveAccessRequest(id)
+      const approved = await approveAccessRequest(id)
       haptic('success')
       setAccessRequests((prev) => prev.filter((r) => r.id !== id))
+      toast({ message: `${approved.name} can now sign in. Let them know.` })
+      // The roster should show them straight away, not after a reload.
+      void refresh()
     } catch (err) {
       haptic('warning')
       setAccessRequestError(err instanceof Error ? err.message : 'Could not approve this request.')
@@ -372,6 +383,23 @@ export default function SettingsPage() {
       setAccessRequestError(err instanceof Error ? err.message : 'Could not deny this request.')
     } finally {
       setActingOnRequestId(null)
+    }
+  }
+
+  // One tap gives the partner a link that opens the join screen with the
+  // code already filled in, instead of reading a six-character code aloud.
+  const copyInviteLink = async () => {
+    const code = inviteCodeOverride ?? family?.inviteCode
+    if (!code) return
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/invite/${code}`)
+      haptic('success')
+      toast({ message: 'Invite link copied. Send it to your partner.' })
+    } catch {
+      toast({
+        message: "Couldn't copy the link — read out the invite code instead",
+        variant: 'error',
+      })
     }
   }
 
@@ -421,6 +449,12 @@ export default function SettingsPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     if (params.get('add') === '1') setShowAddMember(true)
+    if (params.get('requests') === '1') {
+      setTimeout(
+        () => document.getElementById('join-requests')?.scrollIntoView({ block: 'start' }),
+        600,
+      )
+    }
   }, [])
 
   const handleSignOut = () => {
@@ -733,21 +767,32 @@ export default function SettingsPage() {
               label={`Invite code: ${inviteCodeOverride ?? family.inviteCode}`}
               value={
                 isOrganizer ? (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleResetInviteCode()
-                    }}
-                    disabled={resettingCode}
-                    className="text-xs text-family-400 font-semibold px-2 py-1 rounded-lg bg-family-500/10 flex items-center gap-1"
-                  >
-                    {resettingCode ? (
-                      <Loader2 size={12} className="animate-spin" />
-                    ) : (
-                      <RefreshCw size={12} />
-                    )}
-                    Reset
-                  </button>
+                  <span className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        void copyInviteLink()
+                      }}
+                      className="text-xs text-family-400 font-semibold px-2 py-1 rounded-lg bg-family-500/10"
+                    >
+                      Copy link
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleResetInviteCode()
+                      }}
+                      disabled={resettingCode}
+                      className="text-xs text-family-400 font-semibold px-2 py-1 rounded-lg bg-family-500/10 flex items-center gap-1"
+                    >
+                      {resettingCode ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <RefreshCw size={12} />
+                      )}
+                      Reset
+                    </button>
+                  </span>
                 ) : null
               }
             />
@@ -871,51 +916,53 @@ export default function SettingsPage() {
         {/* Access requests (PRD-110) — organizer-only. A pending request never
           grants any access by itself; this is the one place that does. */}
         {isOrganizer && accessRequests.length > 0 && (
-          <ListSection title="Join Requests">
-            {accessRequestError && (
-              <p role="status" aria-live="polite" className="text-xs text-danger px-4 py-2">
-                {accessRequestError}
-              </p>
-            )}
-            {accessRequests.map((r) => (
-              <ListRow key={r.id} icon={UserPlus}>
-                <div className="flex items-center justify-between w-full gap-3">
-                  <div className="text-left min-w-0">
-                    <div className="text-base font-medium truncate">{r.name}</div>
-                    <div className="text-xs text-ink-tertiary mt-0.5 truncate">{r.email}</div>
+          <div id="join-requests" className="scroll-mt-40">
+            <ListSection title="Join Requests">
+              {accessRequestError && (
+                <p role="status" aria-live="polite" className="text-xs text-danger px-4 py-2">
+                  {accessRequestError}
+                </p>
+              )}
+              {accessRequests.map((r) => (
+                <ListRow key={r.id} icon={UserPlus}>
+                  <div className="flex items-center justify-between w-full gap-3">
+                    <div className="text-left min-w-0">
+                      <div className="text-base font-medium truncate">{r.name}</div>
+                      <div className="text-xs text-ink-tertiary mt-0.5 truncate">{r.email}</div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {actingOnRequestId === r.id ? (
+                        <Loader2 size={16} className="animate-spin text-ink-tertiary" />
+                      ) : (
+                        <>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleApproveRequest(r.id)
+                            }}
+                            aria-label={`Approve ${r.name}`}
+                            className="w-8 h-8 rounded-lg bg-success/10 text-success flex items-center justify-center"
+                          >
+                            <Check size={16} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDenyRequest(r.id)
+                            }}
+                            aria-label={`Deny ${r.name}`}
+                            className="w-8 h-8 rounded-lg bg-danger/10 text-danger flex items-center justify-center"
+                          >
+                            <X size={16} />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    {actingOnRequestId === r.id ? (
-                      <Loader2 size={16} className="animate-spin text-ink-tertiary" />
-                    ) : (
-                      <>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleApproveRequest(r.id)
-                          }}
-                          aria-label={`Approve ${r.name}`}
-                          className="w-8 h-8 rounded-lg bg-success/10 text-success flex items-center justify-center"
-                        >
-                          <Check size={16} />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleDenyRequest(r.id)
-                          }}
-                          aria-label={`Deny ${r.name}`}
-                          className="w-8 h-8 rounded-lg bg-danger/10 text-danger flex items-center justify-center"
-                        >
-                          <X size={16} />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </ListRow>
-            ))}
-          </ListSection>
+                </ListRow>
+              ))}
+            </ListSection>
+          </div>
         )}
 
         {/* Continuity plan (PRD-130) — organizer-only. If the organizer

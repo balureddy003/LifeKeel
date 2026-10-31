@@ -23,7 +23,7 @@ import { useRouteParam } from '@/lib/useRouteParam'
 import { getApiBase } from '@/lib/env'
 import { getAuthToken } from '@/lib/api'
 import { haptic } from '@/lib/haptics'
-import { briefHeadline, splitBriefSentence } from '@/lib/brief-text'
+import { briefHeadline, plainDates, splitBriefSentence } from '@/lib/brief-text'
 
 interface Confirmation {
   creator_at: string | null
@@ -183,7 +183,7 @@ export default function BriefShareClient() {
           <p>
             This brief was shared with one named adult in a household. Sign in as that adult and you
             will come straight back here. If you have not set up your account yet, use the invite
-            email from the person who sent this.
+            email or link from the person who sent this.
           </p>
           <Link href={`/login?next=${encodeURIComponent(`/b/${token}`)}`} className={primaryBtn}>
             Sign in
@@ -370,13 +370,13 @@ export default function BriefShareClient() {
               <dl className="mt-3 space-y-2 text-sm">
                 {brief.facts!.map((x, i) => (
                   <div key={i} className="flex justify-between gap-4 border-b border-haze pb-2">
-                    <dt className="text-ink-tertiary">{x.label}</dt>
+                    <dt className="text-ink-tertiary">{plainDates(x.label)}</dt>
                     <dd
                       className={`text-right text-ink-primary ${
                         x.value.length <= 24 ? 'shrink-0 whitespace-nowrap' : 'min-w-0 break-words'
                       }`}
                     >
-                      {x.value}
+                      {plainDates(x.value)}
                     </dd>
                   </div>
                 ))}
@@ -412,9 +412,9 @@ export default function BriefShareClient() {
           </button>
 
           <p className="text-xs text-ink-tertiary">
-            Worked out {new Date(brief.created_at).toLocaleDateString('en-GB')} from what the
-            household entered. Your confirmation is recorded against this exact version. LifeKeel
-            shows figures — it does not recommend products.
+            Worked out {plainDates(brief.created_at.slice(0, 10))} from what the household entered.
+            Your confirmation is recorded against this exact version. LifeKeel shows figures — it
+            does not recommend products.
           </p>
         </div>
       )}
