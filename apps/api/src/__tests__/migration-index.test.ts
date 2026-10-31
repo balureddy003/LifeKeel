@@ -6,7 +6,9 @@ function makeDb({ unique = false, duplicate = false } = {}) {
   const dropIndex = vi.fn().mockResolvedValue(undefined)
   const hasNext = vi.fn().mockResolvedValue(duplicate)
   const aggregate = vi.fn().mockReturnValue({ hasNext })
-  const indexes = vi.fn().mockResolvedValue([{ name: 'tenant_id_1', key: { tenant_id: 1 }, unique }])
+  const indexes = vi
+    .fn()
+    .mockResolvedValue([{ name: 'tenant_id_1', key: { tenant_id: 1 }, unique }])
   const collection = vi.fn().mockReturnValue({ aggregate, createIndex, dropIndex, indexes })
   const listCollections = vi.fn().mockReturnValue({ hasNext: vi.fn().mockResolvedValue(true) })
   return { db: { collection, listCollections } as any, aggregate, createIndex, dropIndex }
@@ -35,5 +37,21 @@ describe('ensureUniqueIndex', () => {
     )
     expect(dropIndex).not.toHaveBeenCalled()
     expect(createIndex).not.toHaveBeenCalled()
+  })
+})
+
+describe('obligations and employer-cover indexes', () => {
+  it('indexes both tenant-read collections by tenant and by id', async () => {
+    const { migrations } = await import('../migrate.js')
+    const m = migrations.find((x) => x.id === '20261031000000-obligations-and-cover-indexes')
+    expect(m).toBeDefined()
+    const createIndex = vi.fn().mockResolvedValue('ok')
+    const collection = vi.fn().mockReturnValue({ createIndex })
+    await m!.up({ collection } as any)
+    for (const name of ['household_obligations', 'employer_cover_facts']) {
+      expect(collection).toHaveBeenCalledWith(name)
+    }
+    expect(createIndex).toHaveBeenCalledWith({ tenant_id: 1, created_at: 1 })
+    expect(createIndex).toHaveBeenCalledWith({ id: 1 })
   })
 })
