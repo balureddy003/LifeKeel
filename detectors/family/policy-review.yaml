@@ -121,7 +121,7 @@ rules:
     impact_low: 0
     impact_high: 0
     reasoning_template: >
-      {{data.no_nomination_count}} life or income-protection policies on file have no
+      {{data.no_nomination_count}} life policies on file have no
       nomination recorded: {{data.no_nomination_descriptions}}. Trustees or the
       scheme decide — check the scheme's rules; the provider's own form or page
       is where a nomination is recorded. This is informational only.

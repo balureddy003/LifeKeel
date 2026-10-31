@@ -905,10 +905,13 @@ export async function evaluateProfileAndGenerateInsights(
     // PRD-234 (Intent 87): recorded nominations vs the current roster —
     // factual differences only; the flags never say who should be named.
     // A pension/life policy with no nomination is itself a flag.
-    const nominationPolicies = profile.policies.filter(
-      (p) => p.type === 'life' || p.type === 'income_protection',
-    )
-    const noNomination = nominationPolicies.filter((p) => !p.nomination)
+    // Life policies only: income protection pays the insured, not a
+    // beneficiary. And the flag is meaningful only once the household has
+    // engaged nominations at all — flagging every existing user at launch
+    // would be noise, not signal.
+    const nominationPolicies = profile.policies.filter((p) => p.type === 'life')
+    const engaged = profile.policies.some((p) => p.nomination)
+    const noNomination = engaged ? nominationPolicies.filter((p) => !p.nomination) : []
     const rosterChildren = (roster?.members ?? []).filter(
       (m) => m.role === 'child' || (m.relationship_label ?? '').endsWith('child'),
     )
@@ -1046,6 +1049,9 @@ export async function evaluateProfileAndGenerateInsights(
             )
             .join('; '),
           member_id: memberId,
+          // Intent 82: this flag is private to the nominating adult — the
+          // default insight list drops it for every other viewer.
+          member_private: true,
         }
         const memberSignalId = await persistSignal({
           tenant_id: tenantId,
