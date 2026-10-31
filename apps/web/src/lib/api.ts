@@ -3486,6 +3486,31 @@ export async function reportLifeEvent(
   }
 }
 
+// Add who it affects and a note after the first steps are already showing
+// (Emergency Mode asks for neither up front). Null clears a field.
+export async function updateLifeEventDetails(
+  id: string,
+  details: { affected_member_id?: string | null; context?: string },
+): Promise<LifeEvent | null> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    const res = await credFetch(`${base}/family/life-events/${encodeURIComponent(id)}/details`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(details),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || 'Request failed')
+    return data as LifeEvent
+  } catch (err) {
+    reportError(err, { lifeEventId: id })
+    return null
+  }
+}
+
 // PRD-111: whether an unreported-life-change nudge is currently active.
 // Deliberately just a boolean — the server never sends a reason, so
 // there's nothing here that could leak a guess about what changed.

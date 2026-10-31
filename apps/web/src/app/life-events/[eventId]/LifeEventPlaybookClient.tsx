@@ -19,10 +19,12 @@ import { GlassCard, GlassButton, PageHeader, PageTransition } from '@/components
 import { LifeSafetyNotice } from '@/components/LifeSafetyNotice'
 import { DraftProvenanceNote } from '@/components/DraftProvenance'
 import { haptic } from '@/lib/haptics'
+import { useAuth } from '@/lib/auth-context'
 import {
   fetchLifeEvents,
   prepareLifeEventStepDraft,
   setLifeEventStepDone,
+  updateLifeEventDetails,
   pingOnDeviceDraftUsed,
   type LifeEvent,
   type LifeEventPlaybookStep,
@@ -42,6 +44,105 @@ import {
 // banner, and for these four types everything on this screen is insurance/
 // financial admin, not first response.
 const URGENT_TYPES = new Set<LifeEventType>(['medical', 'car', 'property', 'travel'])
+
+/**
+ * Emergency Mode skips the form, so who it affects and a note are offered here,
+ * after the steps are already on screen. Shows the saved values read-only
+ * until the person chooses to add or change them.
+ */
+export function EventDetails({
+  event,
+  onSaved,
+}: {
+  event: LifeEvent
+  onSaved: (e: LifeEvent) => void
+}) {
+  const { family } = useAuth()
+  const people = (family?.members ?? []).filter((m) => m.role !== 'child')
+  const [open, setOpen] = useState(false)
+  const [who, setWho] = useState(event.affected_member_id ?? '')
+  const [note, setNote] = useState(event.context ?? '')
+  const [saving, setSaving] = useState(false)
+  const [failed, setFailed] = useState(false)
+
+  const save = async () => {
+    setSaving(true)
+    setFailed(false)
+    const updated = await updateLifeEventDetails(event.id, {
+      affected_member_id: who || null,
+      context: note.trim(),
+    })
+    setSaving(false)
+    if (!updated) {
+      setFailed(true)
+      return
+    }
+    onSaved(updated)
+    setOpen(false)
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-sm text-family-300 underline underline-offset-2 min-h-[44px]"
+      >
+        {event.context || event.affected_member_id
+          ? 'Edit details'
+          : 'Add who it affects or a note'}
+      </button>
+    )
+  }
+  return (
+    <GlassCard className="p-4 space-y-3">
+      {people.length > 0 && (
+        <label className="block text-sm text-ink-secondary">
+          Who does this affect?
+          <select
+            value={who}
+            onChange={(e) => setWho(e.target.value)}
+            className="mt-1 block w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-ink-primary"
+          >
+            <option value="">Not sure or the whole family</option>
+            {people.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <label className="block text-sm text-ink-secondary">
+        What happened, in your words
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          maxLength={2000}
+          rows={3}
+          className="mt-1 block w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-ink-primary"
+        />
+      </label>
+      {failed && (
+        <p role="alert" className="text-sm text-red-300">
+          That did not save. Try again.
+        </p>
+      )}
+      <div className="flex gap-3">
+        <GlassButton onClick={save} disabled={saving}>
+          {saving ? 'Saving…' : 'Save'}
+        </GlassButton>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="text-sm text-ink-tertiary min-h-[44px]"
+        >
+          Cancel
+        </button>
+      </div>
+    </GlassCard>
+  )
+}
 
 // Checklist completion is now server-persisted (remediation item 19) —
 // localStorage remains only as an instant-paint cache while the server
@@ -384,6 +485,12 @@ export default function LifeEventPlaybookClient() {
             </GlassCard>
           </motion.div>
         )}
+
+        <EventDetails
+          key={`${event.affected_member_id ?? ''}|${event.context ?? ''}`}
+          event={event}
+          onSaved={setEvent}
+        />
 
         <motion.div
           initial={{ opacity: 0, y: 20 }}
