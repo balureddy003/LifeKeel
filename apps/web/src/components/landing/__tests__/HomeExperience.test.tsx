@@ -9,8 +9,8 @@ describe('homepage live content', () => {
   it('keeps the live homepage message and detailed sections', () => {
     render(<HomeExperience />)
     for (const name of [
-      'Your family’s money, cover and papers. One bright place.',
-      'Three steps to a clearer picture.',
+      'One money question. One number. Both of you.',
+      'Three steps. One evening.',
       'One problem, one evening, one number.',
       'Ready before. Found during. Sorted after.',
       'When something happens, your family has somewhere to start.',
@@ -21,6 +21,14 @@ describe('homepage live content', () => {
       'Make your account. Keel starts checking what you tell it.',
     ])
       expect(screen.getByRole('heading', { name })).toBeTruthy()
+    // The problems come before the steps and the capability list.
+    const order = (t: string) =>
+      screen
+        .getByRole('heading', { name: t })
+        .compareDocumentPosition(screen.getByRole('heading', { name: 'Three steps. One evening.' }))
+    expect(
+      order('One problem, one evening, one number.') & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
     expect(screen.getByText('£7.99 a month')).toBeTruthy()
     expect(screen.queryByText(/deleted immediately|Deletion is immediate/i)).toBeNull()
   })

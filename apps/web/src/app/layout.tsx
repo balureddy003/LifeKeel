@@ -57,9 +57,9 @@ const mono = IBM_Plex_Mono({
   preload: false,
 })
 
-const TITLE = "LifeKeel — your family's cover and next steps, kept in one place"
+const TITLE = 'LifeKeel — one money question, one number, both of you'
 const DESCRIPTION =
-  'See what you hold on file, where it looks light, and the steps to take on a bad day. Informational only, not financial advice.'
+  'Pick a household money problem, enter a few figures and get one answer in months to share with the other adult. Informational only, not financial advice.'
 // Canonical public domain — served via the Firebase Hosting site
 // "lifekeel-trellis" (apps/web/.firebaserc). lifekeel.si redirects here.
 const SITE_URL = 'https://lifekeel.co.uk'

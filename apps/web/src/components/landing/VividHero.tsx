@@ -42,12 +42,12 @@ export function VividHero() {
           Free to start. No card needed.
         </p>
         <h1 id="vv-hero-h">
-          Your family&rsquo;s money, cover and papers.{' '}
-          <span className="vv-grad">One bright place.</span>
+          One money question. One number. <span className="vv-grad">Both of you.</span>
         </h1>
         <p className="vv-lede">
-          Tell LifeKeel what your household holds. Keel shows what is on file, where it looks light
-          against a rough estimate, and the steps to take if something happens.
+          Pick the problem in front of your household: an income that stops or drops, a mortgage fix
+          ending, fees starting. Enter a few figures and Keel gives one answer in months, with the
+          date it depends on. Send it to the other adult and you will see when they have opened it.
         </p>
         <div className="vv-hero-cta" id="signup">
           <a
@@ -58,11 +58,11 @@ export function VividHero() {
               track('landing_cta_click', { location: 'home_hero', method: 'signup' })
             }}
           >
-            Create your free account
+            Start your first brief. It is free.
             <ArrowRight size={18} aria-hidden="true" />
           </a>
-          <a className="vv-btn vv-btn-ghost" href="#how-it-works">
-            See how it works
+          <a className="vv-btn vv-btn-ghost" href="#problems">
+            See the six problems
           </a>
         </div>
         <ul className="vv-hero-trust">

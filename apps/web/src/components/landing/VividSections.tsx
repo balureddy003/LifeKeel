@@ -79,25 +79,25 @@ export function StatStrip() {
 const STEPS: { icon: LucideIcon; title: string; body: string }[] = [
   {
     icon: ClipboardList,
-    title: 'Add what you hold',
-    body: 'Savings, cover, debts, wills and papers, and who is in the family. Type it in or upload the document.',
+    title: 'Choose the problem',
+    body: 'Income stopping, a drop in pay, a fix ending, fees starting. Start from the one in front of you.',
   },
   {
     icon: ScanSearch,
-    title: 'Keel checks it',
-    body: 'Runway, cover against a rough estimate, renewals, duplicates and retirement pace, all from your own figures.',
+    title: 'Enter a few figures',
+    body: 'Savings, monthly costs, any cover on file. Keel works out the months and the date it depends on, from your own figures.',
   },
   {
     icon: Compass,
-    title: 'Know the next step',
-    body: 'A readiness snapshot today, and a short set of steps on the day something happens.',
+    title: 'Send the link',
+    body: 'The other adult reads the same answer. You see when they have opened it.',
   },
 ]
 
 export function HowItWorks() {
   return (
     <section className="vv-section" aria-labelledby="vv-how-h">
-      <Heading eyebrow="How it works" id="vv-how-h" title="Three steps to a clearer picture." />
+      <Heading eyebrow="How it works" id="vv-how-h" title="Three steps. One evening." />
       <ol className="vv-steps">
         {STEPS.map(({ icon: Icon, title, body }, i) => (
           <li key={title}>
@@ -155,7 +155,7 @@ const PROBLEMS: Array<[string, string, string]> = [
 
 export function ThreeProblems() {
   return (
-    <section className="vv-section" aria-labelledby="vv-problems-h">
+    <section className="vv-section" id="problems" aria-labelledby="vv-problems-h">
       <Heading
         eyebrow="Start here"
         id="vv-problems-h"
