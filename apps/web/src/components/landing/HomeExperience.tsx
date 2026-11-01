@@ -22,8 +22,8 @@ export function HomeExperience() {
       <VividHero />
       <StatStrip />
       <div id="how-it-works">
-        <HowItWorks />
         <ThreeProblems />
+        <HowItWorks />
       </div>
       <Features />
       <BadDay />

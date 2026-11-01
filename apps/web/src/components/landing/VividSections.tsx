@@ -120,6 +120,39 @@ const MOMENT_STYLE: Record<Moment, { tone: string; icon: LucideIcon }> = {
   after: { tone: 'amber', icon: MessageSquareText },
 }
 
+const PROBLEMS: Array<[string, string, string]> = [
+  [
+    'income_stops',
+    'One of us might stop earning',
+    'How many months could the household run on savings and any cover on file?',
+  ],
+  [
+    'earning_less',
+    'Someone is about to earn less',
+    'A known drop is coming — see the savings left when it lands, and the months after.',
+  ],
+  [
+    'handover_gap',
+    'The other adult does not know',
+    'The runway, who to call, and where the key papers and policies live.',
+  ],
+  [
+    'mortgage_fix',
+    'Our mortgage fix is ending',
+    'Enter the new payment and see how the months change from the day it starts.',
+  ],
+  [
+    'fees_start',
+    'Nursery or school fees are starting',
+    'A new monthly cost from a known date — see what it does to the months left.',
+  ],
+  [
+    'job_change',
+    'A job change or notice period',
+    'The gap after the final pay date, and the months you could cover it.',
+  ],
+]
+
 export function ThreeProblems() {
   return (
     <section className="vv-section" aria-labelledby="vv-problems-h">
@@ -130,23 +163,7 @@ export function ThreeProblems() {
         intro="Pick the question in front of your household. A few figures in, one answer out — send it to the other adult and you will see when they have opened it."
       />
       <div className="vv-plans">
-        {[
-          [
-            'income_stops',
-            'One of us might stop earning',
-            'How many months could the household run on savings and any cover on file?',
-          ],
-          [
-            'earning_less',
-            'Someone is about to earn less',
-            'A known drop is coming — see the savings left when it lands, and the months after.',
-          ],
-          [
-            'handover_gap',
-            'The other adult does not know',
-            'The runway, who to call, and where the key papers and policies live.',
-          ],
-        ].map(([id, t, d]) => (
+        {PROBLEMS.map(([id, t, d]) => (
           <article className="vv-plan" key={t}>
             <h3>
               <a href={appUrl(`/signup?brief=${id}`)} onClick={signup('problems')}>
