@@ -14,7 +14,7 @@ import { trackConversion } from '@/lib/ad-track'
 import { fetchPublicStatus } from '@/lib/api'
 import { Turnstile, useTurnstile } from '@/components/security/Turnstile'
 import { safeNext, stashReturnTo } from '@/lib/return-to'
-import { signupDestination } from '@/lib/signup-destination'
+import { signupDestination, signupProblem } from '@/lib/signup-destination'
 
 export default function SignUpPage() {
   const [name, setName] = useState('')
@@ -26,6 +26,7 @@ export default function SignUpPage() {
   // The first brief is the promised first step, so signup lands on it (the
   // question picked on the landing page rides along as ?brief=).
   const [after, setAfter] = useState('/briefs')
+  const [problem, setProblem] = useState<string | null>(null)
   const [signupsOpen, setSignupsOpen] = useState<boolean | null>(null)
   const { signUp, signInWithProvider } = useAuth()
   const router = useRouter()
@@ -39,6 +40,7 @@ export default function SignUpPage() {
     if (ref) setRefCode(ref)
     const q = new URLSearchParams(window.location.search)
     setAfter(signupDestination(q.get('brief'), safeNext(q.get('next'))))
+    setProblem(signupProblem(q.get('brief')))
     track('signup_view', currentUtm())
     // Operator-controlled kill-switch: /status stays public so the page can
     // render a closed state instead of a raw 503 on submit. An unreachable
@@ -117,7 +119,12 @@ export default function SignUpPage() {
   }
 
   return (
-    <AuthShell intro="signup" title="Create your account" aside={<RegionSwitch />}>
+    <AuthShell
+      intro="signup"
+      introProblem={problem}
+      title="Create your account"
+      aside={<RegionSwitch />}
+    >
       <button
         type="button"
         className="lk-btn lk-btn-google"
