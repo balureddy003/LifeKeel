@@ -218,9 +218,17 @@ export function HealthSummary() {
             )}
           </div>
         </div>
-        <div className="text-3xl font-bold text-success flex-shrink-0 leading-none">
-          {overallScore}
-        </div>
+        {/* An average over only some areas reads as a verdict on the whole
+            family, so the number appears once every area is assessed. */}
+        {anySample ? (
+          <div className="text-xs font-semibold text-ink-tertiary flex-shrink-0 text-right">
+            {liveKeys.length} of {domainKeys.length} areas assessed
+          </div>
+        ) : (
+          <div className="text-3xl font-bold text-success flex-shrink-0 leading-none">
+            {overallScore}
+          </div>
+        )}
       </div>
 
       {/* Activity rings — 4 × the old 80px size (320px) overran a 375px
