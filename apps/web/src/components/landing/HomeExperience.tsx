@@ -23,13 +23,13 @@ export function HomeExperience() {
       <StatStrip />
       <div id="how-it-works">
         <ThreeProblems />
+        <Trust />
         <HowItWorks />
       </div>
-      <Features />
-      <BadDay />
       <PlusBand />
-      <Trust />
       <Plans />
+      <BadDay />
+      <Features />
       <Questions />
       <FinalCta />
     </main>

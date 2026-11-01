@@ -28,7 +28,9 @@ export function StickyCta() {
     const hc = document.querySelector('.lk-hero-cta')
     const ios: IntersectionObserver[] = []
     if (hc) {
-      const io = new IntersectionObserver((es) => setHeroCta(es[0]!.isIntersecting), { threshold: 0 })
+      const io = new IntersectionObserver((es) => setHeroCta(es[0]!.isIntersecting), {
+        threshold: 0,
+      })
       io.observe(hc)
       ios.push(io)
     }
