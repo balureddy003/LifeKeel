@@ -268,17 +268,17 @@ export default function BriefShareClient() {
         <div className="mt-6 space-y-4">
           <GlassCard className="p-6">
             <h1 className="text-sm font-medium text-ink-tertiary">{brief.title}</h1>
+            <p className="mt-3 text-2xl font-semibold leading-snug text-ink-primary">
+              {briefHeadline(sentence.main)}
+            </p>
             {typeof runway === 'number' ? (
               <p className="mt-2 text-ink-primary">
-                <span className="text-5xl font-semibold tracking-tight">{runway}</span>
-                <span className="ml-2 text-lg text-ink-secondary">
+                <span className="text-3xl font-semibold tracking-tight">{runway}</span>
+                <span className="ml-2 text-base text-ink-secondary">
                   months of savings after the change
                 </span>
               </p>
             ) : null}
-            <p className="mt-4 text-xl font-medium leading-snug text-ink-primary">
-              {briefHeadline(sentence.main)}
-            </p>
             <details className="mt-2">
               <summary className="min-h-[44px] cursor-pointer py-2 text-sm font-medium text-family-400">
                 How this was worked out

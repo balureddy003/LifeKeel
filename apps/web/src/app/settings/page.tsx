@@ -392,7 +392,11 @@ export default function SettingsPage() {
     const code = inviteCodeOverride ?? family?.inviteCode
     if (!code) return
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}/invite/${code}`)
+      // The sender's first name rides in the link so the person opening it
+      // knows who it is from. The code alone still reveals nothing.
+      const from = user?.name?.trim().split(/\s+/)[0]
+      const link = `${window.location.origin}/invite/${code}${from ? `?from=${encodeURIComponent(from)}` : ''}`
+      await navigator.clipboard.writeText(link)
       haptic('success')
       toast({ message: 'Invite link copied. Send it to your partner.' })
     } catch {
