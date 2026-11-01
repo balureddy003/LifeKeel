@@ -90,7 +90,7 @@ const STEPS: { icon: LucideIcon; title: string; body: string }[] = [
   {
     icon: Compass,
     title: 'Know the next step',
-    body: 'A readiness snapshot today, and a short set of steps on the day something happens.',
+    body: 'One answer in months, with the date it depends on, and a short set of steps on the day something happens.',
   },
 ]
 

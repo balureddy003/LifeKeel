@@ -25,9 +25,9 @@ export function HomeExperience() {
         <ThreeProblems />
         <HowItWorks />
       </div>
-      <Features />
       <BadDay />
       <PlusBand />
+      <Features />
       <Trust />
       <Plans />
       <Questions />
