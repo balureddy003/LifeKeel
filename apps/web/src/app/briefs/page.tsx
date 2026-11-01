@@ -948,6 +948,11 @@ export default function BriefsPage() {
     (m) => m.role !== 'child' && (m as { status?: string }).status === 'pending',
   )
   const startedRef = useRef(false)
+  const [wantsStart, setWantsStart] = useState(false)
+  const [startMissing, setStartMissing] = useState(false)
+  useEffect(() => {
+    setWantsStart(!!new URLSearchParams(window.location.search).get('start'))
+  }, [])
   useEffect(() => {
     if (startedRef.current || !loaded || !canCreate) return
     const id = new URLSearchParams(window.location.search).get('start')
@@ -955,6 +960,7 @@ export default function BriefsPage() {
     startedRef.current = true
     const e = byId.get(id)
     if (e) choose(e)
+    else setStartMissing(true)
   }, [loaded, canCreate, byId])
 
   function choose(e: BriefCatalogueEntry, prefill?: FormValues, from?: string) {
@@ -1218,6 +1224,7 @@ export default function BriefsPage() {
 
       {!loaded && (
         <div className="mt-6 space-y-3" role="status" aria-label="Loading">
+          {wantsStart && <p className="text-sm text-ink-secondary">Opening your brief…</p>}
           <Skeleton className="h-24 w-full" />
           <Skeleton className="h-24 w-full" />
         </div>
@@ -1296,6 +1303,12 @@ export default function BriefsPage() {
             )
           }}
         />
+      )}
+
+      {loaded && canCreate && startMissing && !entry && !created && (
+        <p className="mt-6 text-sm text-ink-secondary" role="status">
+          We could not open that brief. Pick the closest one below.
+        </p>
       )}
 
       {loaded && canCreate && !entry && !created && (
