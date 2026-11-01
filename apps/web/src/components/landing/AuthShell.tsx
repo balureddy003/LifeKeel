@@ -24,6 +24,7 @@ export function AuthShell({
   wide,
   headingRef,
   intro,
+  introProblem,
 }: {
   title: string
   sub?: string | undefined
@@ -35,6 +36,8 @@ export function AuthShell({
   headingRef?: Ref<HTMLHeadingElement>
   /** Page-specific left panel; screens without one keep the general intro. */
   intro?: AuthIntroVariant | undefined
+  /** For the signup panel: the problem the visitor picked on the landing page. */
+  introProblem?: string | null | undefined
 }) {
   return (
     <div className="landing lk-auth">
@@ -44,7 +47,7 @@ export function AuthShell({
       </header>
       <div className="lk-auth-layout">
         {intro ? (
-          <AuthIntro variant={intro} />
+          <AuthIntro variant={intro} problem={introProblem} />
         ) : (
           <aside className="lk-auth-intro" aria-label="About LifeKeel">
             <p className="lk-eyebrow">A LITTLE MORE READY FOR LIFE</p>

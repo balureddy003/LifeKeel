@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { signupDestination } from '../signup-destination'
+import { signupDestination, signupProblem } from '../signup-destination'
 
 describe('signupDestination', () => {
   it('lands on the briefs page by default, not the family-setup quiz', () => {
@@ -15,5 +15,16 @@ describe('signupDestination', () => {
   })
   it('keeps an explicit same-site next over the brief', () => {
     expect(signupDestination('income_stops', '/b/abc')).toBe('/b/abc')
+  })
+})
+
+describe('signupProblem', () => {
+  it('names the problem picked on the landing page', () => {
+    expect(signupProblem('mortgage_fix')).toBe('Our mortgage fix is ending')
+  })
+  it('names nothing for an unknown or unsafe id', () => {
+    expect(signupProblem('nope')).toBeNull()
+    expect(signupProblem('//evil')).toBeNull()
+    expect(signupProblem(null)).toBeNull()
   })
 })

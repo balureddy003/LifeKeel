@@ -1,13 +1,4 @@
-import {
-  CalendarClock,
-  FileText,
-  FolderLock,
-  KeyRound,
-  Mail,
-  ShieldCheck,
-  Users,
-  Wallet,
-} from 'lucide-react'
+import { CalendarClock, FolderLock, KeyRound, Mail, ShieldCheck, Users, Wallet } from 'lucide-react'
 
 export type AuthIntroVariant = 'login' | 'signup' | 'reset'
 
@@ -44,18 +35,18 @@ function LoginIntro() {
   )
 }
 
-function SignupIntro() {
+function SignupIntro({ problem }: { problem?: string | null | undefined }) {
   return (
     <>
       <p className="lk-eyebrow">START FREE</p>
-      <h2>Set up your family’s home base.</h2>
-      <p>Start with what you know. You can add the rest at your own pace.</p>
+      <h2>{problem ? `Your brief: ${problem}.` : 'Your first brief is next.'}</h2>
+      <p>One evening, a few figures, one answer in months. Your first brief is free.</p>
       <ol className="lk-intro-steps">
         {[
           { Icon: KeyRound, title: 'Create your account', note: 'You’re doing this now' },
-          { Icon: Users, title: 'Add your household', note: 'The people you look after' },
-          { Icon: FileText, title: 'Add what’s on file', note: 'Policies, accounts and papers' },
-          { Icon: ShieldCheck, title: 'See where things stand', note: 'In one calm view' },
+          { Icon: Wallet, title: 'Enter a few figures', note: 'Savings, monthly costs, any cover' },
+          { Icon: ShieldCheck, title: 'See the months', note: 'And the date they depend on' },
+          { Icon: Users, title: 'Send the link', note: 'You see when they have opened it' },
         ].map(({ Icon, title, note }, i) => (
           <li key={title} aria-current={i === 0 ? 'step' : undefined}>
             <span className="lk-intro-step-icon">
@@ -106,11 +97,17 @@ function ResetIntro() {
   )
 }
 
-export function AuthIntro({ variant }: { variant: AuthIntroVariant }) {
+export function AuthIntro({
+  variant,
+  problem,
+}: {
+  variant: AuthIntroVariant
+  problem?: string | null | undefined
+}) {
   return (
     <aside className="lk-auth-intro" data-intro={variant} aria-label="About LifeKeel">
       {variant === 'login' && <LoginIntro />}
-      {variant === 'signup' && <SignupIntro />}
+      {variant === 'signup' && <SignupIntro problem={problem} />}
       {variant === 'reset' && <ResetIntro />}
     </aside>
   )
