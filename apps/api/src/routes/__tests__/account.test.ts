@@ -84,7 +84,7 @@ function makeCol(docs: Record<string, unknown>[]): FakeCollection {
 function makeDb() {
   const cols: Record<string, FakeCollection> = {
     users: makeCol([USER, { id: 'u2', tenant_id: 'other', email: 'x@y.z' }]),
-    family_groups: makeCol([{ tenant_id: TENANT, name: 'Fam' }]),
+    family_groups: makeCol([{ tenant_id: TENANT, name: 'Fam', members: [] }]),
     family_financial_profile: makeCol([{ tenant_id: TENANT, employment: {} }]),
     documents: makeCol([{ tenant_id: TENANT, id: 'doc1', file_id: 'f1' }]),
     'documents.files': makeCol([
@@ -273,7 +273,10 @@ describe('POST /account/delete', () => {
     })
 
     // growth_events nests the tenant under meta.tenant_id
-    expect(db.cols['growth_events']!.deleteMany).toHaveBeenCalledWith({ 'meta.tenant_id': TENANT })
+    // (older brief events kept it at the top level, so both shapes match)
+    expect(db.cols['growth_events']!.deleteMany).toHaveBeenCalledWith({
+      $or: [{ 'meta.tenant_id': TENANT }, { tenant_id: TENANT }],
+    })
 
     // referrals touches the tenant as referrer OR referee
     const referralFilter = db.cols['referrals']!.deleteMany.mock.calls[0]?.[0] as Record<

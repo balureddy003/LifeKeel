@@ -57,11 +57,34 @@ function matchFilter(doc: Record<string, unknown>, filter: Record<string, unknow
 // find filters, so these stubs see the scoped doc/query directly.
 function col(store: Record<string, unknown>[]) {
   return {
-    findOne: async (filter: Record<string, unknown> = {}) => store.find((d) => matchFilter(d, filter)) ?? null,
-    find: (filter: Record<string, unknown> = {}) => ({
-      toArray: async () => store.filter((d) => matchFilter(d, filter)),
-    }),
-    insertOne: async (doc: Record<string, unknown>) => { store.push(doc); return { insertedId: doc.id } },
+    findOne: async (filter: Record<string, unknown> = {}) =>
+      store.find((d) => matchFilter(d, filter)) ?? null,
+    find: (filter: Record<string, unknown> = {}) => {
+      let rows = store.filter((d) => matchFilter(d, filter))
+      const cursor = {
+        sort: (spec: Record<string, 1 | -1>) => {
+          const [[k, dir]] = Object.entries(spec) as [[string, 1 | -1]]
+          rows = [...rows].sort((a, b) => String(a[k]).localeCompare(String(b[k])) * dir)
+          return cursor
+        },
+        skip: (n: number) => {
+          rows = rows.slice(n)
+          return cursor
+        },
+        limit: (n: number) => {
+          rows = rows.slice(0, n)
+          return cursor
+        },
+        toArray: async () => rows,
+      }
+      return cursor
+    },
+    countDocuments: async (filter: Record<string, unknown> = {}) =>
+      store.filter((d) => matchFilter(d, filter)).length,
+    insertOne: async (doc: Record<string, unknown>) => {
+      store.push(doc)
+      return { insertedId: doc.id }
+    },
     deleteOne: async (filter: Record<string, unknown>) => {
       const i = store.findIndex((d) => matchFilter(d, filter))
       if (i >= 0) store.splice(i, 1)
@@ -148,7 +171,11 @@ describe('family scenarios', () => {
     const create = await app.inject({
       method: 'POST',
       url: '/family/scenarios',
-      payload: { name: 'Job loss in 6 months', monthlyIncomeDeltaMinor: -500_000, monthsUntilChange: 6 },
+      payload: {
+        name: 'Job loss in 6 months',
+        monthlyIncomeDeltaMinor: -500_000,
+        monthsUntilChange: 6,
+      },
     })
     expect(create.statusCode).toBe(201)
     const saved = create.json().scenario
@@ -162,6 +189,24 @@ describe('family scenarios', () => {
     expect(listed.id).toBe(saved.id)
     // £15,000 + £12,000 accrued = £27,000 → 9 months
     expect(listed.result.projectedRunwayMonths).toBe(9)
+    await app.close()
+  })
+
+  it('pages the list newest first and reads the profile once per request (review F12)', async () => {
+    const app = await buildApp(ADULT_ID)
+    for (let i = 0; i < 5; i++)
+      scenarioDocs.push({
+        id: `s${i}`,
+        tenant_id: TENANT,
+        name: `S${i}`,
+        inputs: { monthlyExtraSavingsMinor: 1_000 },
+        created_by: ADULT_ID,
+        created_at: `2026-10-0${i + 1}T00:00:00.000Z`,
+      })
+    const res = await app.inject({ method: 'GET', url: '/family/scenarios?limit=2&offset=1' })
+    const body = res.json()
+    expect(body.total).toBe(5)
+    expect(body.scenarios.map((s: { id: string }) => s.id)).toEqual(['s3', 's2'])
     await app.close()
   })
 

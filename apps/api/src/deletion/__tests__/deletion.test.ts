@@ -24,6 +24,7 @@ import { runErasureReplay } from '../../jobs/erasure-replay.js'
 import { RetentionWorker } from '../../jobs/retention-worker.js'
 import { backupStatement } from '../receipt.js'
 import { initTaskGateway } from '../../ai/task-gateway.js'
+import { emitBriefEvent } from '../../briefs/briefs.js'
 
 const A = 'tenant-a'
 const B = 'tenant-b'
@@ -143,6 +144,22 @@ describe('erasure leaves nothing and touches no one else', () => {
       expect(await db.collection(name).countDocuments({ tenant_id: A })).toBe(0)
       expect(await db.collection(name).countDocuments({ tenant_id: B })).toBe(1)
     }
+  })
+
+  it('erases brief growth events in the shape the real writer produces, and the legacy shape (review F09)', async () => {
+    for (const t of [A, B]) {
+      await emitBriefEvent(db, t, 'brief_created', { problem_type: 'x' })
+      // Rows written before 2026-11 kept the tenant at the top level.
+      await db
+        .collection('growth_events')
+        .insertOne({ tenant_id: t, event: 'brief_gate_hit', meta: null })
+    }
+    const report = await eraseTenantDataReport(db, A)
+    expect(report.residual).toEqual([])
+    const left = await db.collection('growth_events').find({}).toArray()
+    expect(JSON.stringify(left)).not.toContain(A)
+    expect(await db.collection('growth_events').countDocuments({ 'meta.tenant_id': B })).toBe(1)
+    expect(await db.collection('growth_events').countDocuments({ tenant_id: B })).toBe(1)
   })
 
   it('is safe to run again and then reports nothing removed', async () => {

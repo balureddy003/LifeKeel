@@ -117,6 +117,8 @@ export const DELETABLE_COLLECTIONS = [
   'llm_usage',
   // Unified spend ledger (B8) — tenant-attributed spend telemetry.
   'spend_events',
+  // In-flight LLM spend reservations (10-minute TTL).
+  'llm_budget_reservations',
   'feature_hash_models',
   'feature_hash_model_versions',
   'tenant_level_models',
@@ -156,8 +158,12 @@ export const CUSTOM_DELETES: ReadonlyArray<{
     userEmails: string[]
   }) => Record<string, unknown>
 }> = [
-  // Growth funnel events store the tenant under meta.tenant_id.
-  { collection: 'growth_events', filter: (c) => ({ 'meta.tenant_id': c.tenantId }) },
+  // Growth funnel events store the tenant under meta.tenant_id. Brief events
+  // written before 2026-11 put it at the top level, so both shapes match.
+  {
+    collection: 'growth_events',
+    filter: (c) => ({ $or: [{ 'meta.tenant_id': c.tenantId }, { tenant_id: c.tenantId }] }),
+  },
   // A referral touches two tenants — the referrer and the referee.
   {
     collection: 'referrals',

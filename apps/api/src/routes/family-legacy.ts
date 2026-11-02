@@ -187,6 +187,34 @@ const NoteBody = KnowledgeNote.omit({
 // link must point at a real vault document. All failures are 400s — a bad
 // reference is a client error, not a silent drop.
 
+function matchesLegacyMember(
+  family: Pick<FamilyGroupDoc, 'members'> | null,
+  memberId: string | undefined,
+  userId: string,
+): boolean {
+  const m = memberId ? family?.members.find((x) => x.id === memberId) : undefined
+  return m ? memberMatchesUser(m, userId) : memberId === userId
+}
+
+/**
+ * §7 read rule for a legacy document, for a viewer already known to be an
+ * active adult. Shared by the documents route and the household export so
+ * the two can't drift apart.
+ */
+export function legacyDocumentVisible(
+  d: Pick<LegacyDocumentDoc, 'visibility' | 'subject_member_id' | 'roles'>,
+  family: Pick<FamilyGroupDoc, 'members'> | null,
+  userId: string,
+  isOrganizer: boolean,
+): boolean {
+  if (d.visibility === 'adults' || isOrganizer) return true
+  return (
+    d.visibility === 'named_roles' &&
+    (matchesLegacyMember(family, d.subject_member_id, userId) ||
+      d.roles.some((r) => matchesLegacyMember(family, r.member_id, userId)))
+  )
+}
+
 export async function validateLegacyRefs(
   db: Db,
   tenantId: string,
@@ -288,23 +316,15 @@ export function registerFamilyLegacyRoutes(
       db.collection<FamilyGroupDoc>('family_groups').findOne({ tenant_id }),
       isFamilyOrganizer(db, tenant_id, user_id),
     ])
-    const memberFor = (id?: string) => (id ? family?.members.find((m) => m.id === id) : undefined)
-    const matchesUser = (id?: string) => {
-      const m = memberFor(id)
-      return m ? memberMatchesUser(m, user_id) : id === user_id
-    }
-    const isSubject = (d: LegacyDocumentDoc) => matchesUser(d.subject_member_id)
-    const isNamed = (d: LegacyDocumentDoc) => d.roles.some((r) => matchesUser(r.member_id))
-    const canView = (d: LegacyDocumentDoc) =>
-      d.visibility === 'adults' ||
-      isOrganizer ||
-      (d.visibility === 'named_roles' && (isSubject(d) || isNamed(d)))
-
     const docs = (await docsFor(tenant_id).find({}).toArray()) as LegacyDocumentDoc[]
-    const visible = docs.filter(canView)
+    const visible = docs.filter((d) => legacyDocumentVisible(d, family, user_id, isOrganizer))
     // §7: every read of a restricted document by a third party is audited.
     for (const d of visible) {
-      if (d.visibility !== 'adults' && !isOrganizer && !isSubject(d)) {
+      if (
+        d.visibility !== 'adults' &&
+        !isOrganizer &&
+        !matchesLegacyMember(family, d.subject_member_id, user_id)
+      ) {
         getAuditLogger()?.log({
           tenant_id,
           user_id,

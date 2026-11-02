@@ -44,7 +44,15 @@ import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { getAuditLogger } from '../audit/audit-log.js'
 import { DELETABLE_COLLECTIONS, eraseTenantDataReport } from '../erasure.js'
-import { isHouseholdEditor } from '../family/family-permissions.js'
+import {
+  isFamilyAdult,
+  isFamilyOrganizer,
+  isHouseholdEditor,
+} from '../family/family-permissions.js'
+import { decryptEnveloped } from '../crypto/envelope.js'
+import { briefsFor, withoutHandoverFacts, type HouseholdBriefDoc } from '../briefs/briefs.js'
+import { legacyDocumentVisible, type LegacyDocumentDoc } from './family-legacy.js'
+import type { FamilyGroupDoc } from './family-group.js'
 import {
   cancelSubscriptionForDeletedTenant,
   markCancellationPending,
@@ -105,6 +113,7 @@ const EXPORT_EXCLUDED = new Set<string>([
   'web_push_subscriptions',
   'mobile_push_tokens',
   'llm_cache',
+  'llm_budget_reservations',
   'feature_hash_models',
   'feature_hash_model_versions',
   'tenant_level_models',
@@ -138,6 +147,29 @@ function stripSecrets(value: unknown): unknown {
     )
   }
   return value
+}
+
+/**
+ * A brief as its participant may read it: sensitive facts decrypted only
+ * while unexpired (and the read logged, as in the app), never the
+ * ciphertext or a plaintext duplicate in inputs.
+ */
+async function exportBrief(
+  db: Db,
+  b: HouseholdBriefDoc,
+  viewer: string,
+): Promise<Record<string, unknown>> {
+  if (!b.sensitive && !b.facts_encrypted) return b as unknown as Record<string, unknown>
+  const { facts_encrypted, ...rest } = b
+  let facts: unknown = []
+  if (facts_encrypted && !(b.facts_expire_at && b.facts_expire_at < new Date())) {
+    facts = JSON.parse((await decryptEnveloped(db, facts_encrypted)) ?? '[]')
+    await briefsFor(db, b.tenant_id).updateOne(
+      { id: b.id },
+      { $push: { sensitive_access: { user_id: viewer, at: new Date() } } },
+    )
+  }
+  return { ...rest, inputs: withoutHandoverFacts(b.inputs), facts }
 }
 
 export function registerAccountRoutes(app: FastifyInstance, db: Db): void {
@@ -177,6 +209,15 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db): void {
     const ownMember = (family?.['members'] as Array<Record<string, unknown>> | undefined)?.find(
       (m) => m['id'] === user_id || m['user_id'] === user_id,
     )
+
+    // Resolved before streaming starts, so a failure is an error response,
+    // not a truncated download.
+    const [adult, organizer] = editor
+      ? await Promise.all([
+          isFamilyAdult(db, tenant_id, user_id),
+          isFamilyOrganizer(db, tenant_id, user_id),
+        ])
+      : [false, false]
 
     async function* bundle(): AsyncGenerator<string> {
       const field = (key: string, value: unknown, first = false) =>
@@ -249,11 +290,37 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db): void {
         'action_receipts',
         'reminders',
       ])
+      // Records with a per-person read rule are exported under that same
+      // rule, not tenant-wide: the erasure catalogue says what to delete, not
+      // who may read it (review F02).
+      const viewerScoped: Record<string, () => Promise<unknown[]>> = {
+        household_briefs: async () => {
+          const briefs = (await read('household_briefs', {
+            tenant_id,
+            $or: [
+              ...(adult ? [{ created_by: user_id }, { 'share.for_user_id': user_id }] : []),
+              { contract_version: { $exists: false }, created_by: user_id },
+            ],
+          })) as unknown as HouseholdBriefDoc[]
+          return Promise.all(briefs.map((b) => exportBrief(db, b, user_id)))
+        },
+        legacy_documents: async () =>
+          adult
+            ? ((await read('legacy_documents')) as unknown as LegacyDocumentDoc[]).filter((d) =>
+                legacyDocumentVisible(d, family as FamilyGroupDoc | null, user_id, organizer),
+              )
+            : [],
+        legacy_contacts: async () => (adult ? read('legacy_contacts') : []),
+        legacy_notes: async () => (adult ? read('legacy_notes') : []),
+        keel_proposals: () => read('keel_proposals', { tenant_id, user_id }),
+        keel_preferences: () => read('keel_preferences', { tenant_id, user_id }),
+      }
+
       yield ',"other_records":{'
       let first = true
       for (const name of DELETABLE_COLLECTIONS) {
         if (EXPORT_EXCLUDED.has(name) || listed.has(name)) continue
-        const docs = await read(name)
+        const docs = await (viewerScoped[name] ?? (() => read(name)))()
         if (docs.length === 0) continue
         yield field(name, capped(name, docs), first)
         first = false

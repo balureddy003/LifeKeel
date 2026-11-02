@@ -34,6 +34,7 @@ import { getCircuitBreaker } from './llm-circuit-breaker.js'
 import { BudgetExhaustedError } from './structured-llm.js'
 import type { GuardEventSink } from './guard-event-sink.js'
 import type { LlmBudgetDecision } from './llm-budget.js'
+import { computeCost } from './cost-ledger.js'
 import {
   checkProcessorForTask,
   type ProcessorRegistry,
@@ -313,7 +314,12 @@ export interface TaskGatewayDeps {
    *  guard differentiate batch vs interactive tasks (Stage B8 plan caps
    *  only deny batch-class spend). */
   budgetGuard?: {
-    check(tenantId: string, detectorId?: string, policy?: AiTaskPolicy): Promise<LlmBudgetDecision>
+    check(
+      tenantId: string,
+      detectorId?: string,
+      policy?: AiTaskPolicy,
+      estimateMicrodollars?: number,
+    ): Promise<LlmBudgetDecision>
   }
   /** Receives guard events (injection, PII redaction, forbidden output). */
   guardEventSink?: GuardEventSink
@@ -505,14 +511,21 @@ export function governedLlm(
     }
     enforceProcessor(deps, policy, resolvedModel)
 
+    let releaseBudget: (() => Promise<void>) | undefined
     if (deps.budgetGuard) {
-      const decision = await deps.budgetGuard.check(tenantId, opts.detectorId, policy)
+      const estimate = computeCost(
+        resolvedModel,
+        estimateTokens(system) + estimateTokens(prompt),
+        policy.max_output_tokens,
+      )
+      const decision = await deps.budgetGuard.check(tenantId, opts.detectorId, policy, estimate)
       if (!decision.allowed) {
         throw new BudgetExhaustedError(
           `LLM budget exceeded for tenant ${tenantId}: ${decision.reason}`,
           decision,
         )
       }
+      releaseBudget = decision.release
     }
 
     const guardedPrompt = inputGuard.guard(prompt)
@@ -526,7 +539,10 @@ export function governedLlm(
         const raw = await breaker.callOnce(() =>
           withDeadline(taskId, policy.deadline_ms, (signal) =>
             llmCallContext.run({ task_id: taskId, tenant_id: tenantId }, () =>
-              base(system, guardedPrompt.value, resolvedModel, { signal }),
+              base(system, guardedPrompt.value, resolvedModel, {
+                signal,
+                maxOutputTokens: policy.max_output_tokens,
+              }),
             ),
           ),
         )
@@ -568,6 +584,7 @@ export function governedLlm(
       }
       throw err
     } finally {
+      await releaseBudget?.()
       try {
         deps.onCall?.({
           task_id: taskId,

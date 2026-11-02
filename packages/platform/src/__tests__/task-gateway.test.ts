@@ -177,6 +177,7 @@ describe('governedLlm', () => {
     expect(await fn('sys', 'prompt')).toBe('answer')
     expect(base).toHaveBeenCalledWith('sys', 'prompt', 'tier:fast', {
       signal: expect.any(AbortSignal),
+      maxOutputTokens: 200,
     })
   })
 
@@ -236,6 +237,39 @@ describe('governedLlm', () => {
       BudgetExhaustedError,
     )
     expect(base).not.toHaveBeenCalled()
+  })
+
+  it("passes the task's output ceiling to the provider (review F10)", async () => {
+    const base = vi.fn(ok)
+    const d = deps({ registry: registryOf(policy({ max_output_tokens: 123 })) })
+    await governedLlm(base, d, 'test.task.v1', 't1')('sys', 'p')
+    expect(base.mock.calls[0]![3]).toMatchObject({ maxOutputTokens: 123 })
+  })
+
+  it('reserves the worst-case cost and releases it after the call, even on failure', async () => {
+    const estimates: Array<number | undefined> = []
+    const release = vi.fn(async () => {})
+    const d = deps({
+      budgetGuard: {
+        check: async (_t, _d, _p, estimate) => {
+          estimates.push(estimate)
+          return {
+            allowed: true,
+            spent_microdollars: 0,
+            limit_microdollars: 100,
+            threshold_reached: false,
+            release,
+          }
+        },
+      },
+    })
+    await governedLlm(vi.fn(ok), d, 'test.task.v1', 't1')('sys', 'p')
+    const failing: LlmFn = async () => {
+      throw new Error('provider down')
+    }
+    await expect(governedLlm(failing, d, 'test.task.v1', 't1')('sys', 'p')).rejects.toThrow()
+    expect(estimates.every((e) => typeof e === 'number' && e > 0)).toBe(true)
+    expect(release).toHaveBeenCalledTimes(2)
   })
 
   it('fails fast when the per-task breaker is open', async () => {

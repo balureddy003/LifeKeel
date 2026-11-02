@@ -7,7 +7,16 @@ export interface LlmBudgetDecision {
   limit_microdollars: number | null
   threshold_reached: boolean
   reason?: 'budget_exhausted' | 'detector_budget_exhausted' | 'plan_spend_budget_exceeded'
+  /** Set when the call holds a spend reservation; call it once the call has settled. */
+  release?: () => Promise<void>
 }
+
+/**
+ * In-flight spend reservations (one row per call). A row outlives a crashed
+ * process only until expires_at; a TTL index on that field removes it.
+ */
+export const LLM_BUDGET_RESERVATIONS = 'llm_budget_reservations'
+const RESERVATION_TTL_MS = 10 * 60 * 1000
 
 /**
  * Monthly model spend per tenant when the tenant has set no budget of its own.
@@ -22,7 +31,19 @@ export class LlmBudgetGuard {
     this.ledger = new CostLedger(db)
   }
 
-  async check(tenantId: string, detectorId?: string): Promise<LlmBudgetDecision> {
+  /**
+   * `estimateMicrodollars` is the call's worst case (input estimate plus the
+   * task's output ceiling). Under a hard stop the call reserves it first and
+   * is refused when ledger spend plus every in-flight reservation would pass
+   * the limit, so concurrent calls cannot jointly overspend (review F10).
+   * Insert-then-sum is conservative: racing callers may both be refused, but
+   * never both admitted past the limit.
+   */
+  async check(
+    tenantId: string,
+    detectorId?: string,
+    estimateMicrodollars = 0,
+  ): Promise<LlmBudgetDecision> {
     const settings = await this.db.collection('tenant_settings').findOne({ tenant_id: tenantId })
     const budget = settings?.['llm_budget'] as
       | {
@@ -80,11 +101,45 @@ export class LlmBudgetGuard {
           reason: 'detector_budget_exhausted',
         }
     }
-    return {
+    const allowed: LlmBudgetDecision = {
       allowed: true,
       spent_microdollars: spent,
       limit_microdollars: limit,
       threshold_reached: thresholdReached,
     }
+    if (!(usingDefault || budget?.hard_stop) || estimateMicrodollars <= 0) return allowed
+    const release = await this.reserve(tenantId, estimateMicrodollars, limit - spent)
+    if (!release)
+      return { ...allowed, allowed: false, threshold_reached: true, reason: 'budget_exhausted' }
+    return { ...allowed, release }
+  }
+
+  private async reserve(
+    tenantId: string,
+    amount: number,
+    headroom: number,
+  ): Promise<(() => Promise<void>) | null> {
+    const col = this.db.collection(LLM_BUDGET_RESERVATIONS)
+    const now = new Date()
+    const { insertedId } = await col.insertOne({
+      tenant_id: tenantId,
+      amount_microdollars: amount,
+      created_at: now,
+      expires_at: new Date(now.getTime() + RESERVATION_TTL_MS),
+    })
+    const release = async () => {
+      await col.deleteOne({ _id: insertedId }).catch(() => {})
+    }
+    const held = await col
+      .aggregate<{ total: number }>([
+        { $match: { tenant_id: tenantId, expires_at: { $gt: now } } },
+        { $group: { _id: null, total: { $sum: '$amount_microdollars' } } },
+      ])
+      .next()
+    if ((held?.total ?? amount) > headroom) {
+      await release()
+      return null
+    }
+    return release
   }
 }

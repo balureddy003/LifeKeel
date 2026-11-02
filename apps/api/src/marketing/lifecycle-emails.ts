@@ -58,12 +58,18 @@ interface LifecycleSendDoc {
   email: string
   /** pending = claimed, provider call in flight; sent = SendGrid accepted;
    *  skipped = deliberately not sent (e.g. provider unconfigured);
-   *  failed = provider rejected. */
-  status: 'pending' | 'sent' | 'skipped' | 'failed'
+   *  failed = provider rejected;
+   *  sending = a campaign worker holds the row and may be talking to the
+   *  provider (campaign rows only; see runCampaignSendJob). */
+  status: 'pending' | 'sending' | 'sent' | 'skipped' | 'failed'
   attempts: number
   error?: string
   created_at: Date
   updated_at?: Date
+  /** Campaign rows: when a worker moved the row to 'sending'. */
+  sending_at?: Date
+  /** Campaign rows: the worker claim that owns the 'sending' state. */
+  claim_id?: string
   /** Set on campaign claims so engagement can roll up per campaign. */
   campaign_id?: string
   /** Recipient snapshot for campaign claims — the durable send job carries

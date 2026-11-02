@@ -83,6 +83,22 @@ describe('recoverStrandedJobs (visibility lease)', () => {
         lists[key] = [...values, ...(lists[key] ?? [])]
         return lists[key]!.length
       },
+      // MOVE_SCRIPT contract for list sources: remove raw, then push next.
+      eval: async (
+        _s: string,
+        _n: number,
+        src: string,
+        dest: string,
+        raw: string,
+        next: string,
+      ) => {
+        const list = lists[src] ?? []
+        const i = list.indexOf(raw)
+        if (i === -1) return 0
+        list.splice(i, 1)
+        lists[dest] = [next, ...(lists[dest] ?? [])]
+        return 1
+      },
       get: async (key: string) => kvs[key] ?? null,
       del: async (...keys: string[]) => {
         let n = 0

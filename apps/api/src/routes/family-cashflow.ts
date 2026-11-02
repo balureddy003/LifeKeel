@@ -25,6 +25,8 @@ import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { getTenantCollection } from '@lifekeel/platform'
 import { getFamilyCashflowCollection, getFamilyFinancialProfileCollection } from '../db.js'
+import { isHouseholdEditor } from '../family/family-permissions.js'
+import type { FamilyGroupDoc } from './family-group.js'
 
 export interface CashflowEntryDoc extends Record<string, unknown> {
   id: string
@@ -47,32 +49,48 @@ const EntryBody = z.object({
 
 /** Normalize any recurrence to a monthly equivalent; 'once' contributes 0
  *  to the run-rate by design. */
-export function monthlyEquivalentMinor(entry: Pick<CashflowEntryDoc, 'amount_minor' | 'recurrence'>): number {
+export function monthlyEquivalentMinor(
+  entry: Pick<CashflowEntryDoc, 'amount_minor' | 'recurrence'>,
+): number {
   switch (entry.recurrence) {
-    case 'weekly': return Math.round((entry.amount_minor * 52) / 12)
-    case 'yearly': return Math.round(entry.amount_minor / 12)
-    case 'monthly': return entry.amount_minor
-    case 'once': return 0
+    case 'weekly':
+      return Math.round((entry.amount_minor * 52) / 12)
+    case 'yearly':
+      return Math.round(entry.amount_minor / 12)
+    case 'monthly':
+      return entry.amount_minor
+    case 'once':
+      return 0
   }
 }
 
 export function registerFamilyCashflowRoutes(app: FastifyInstance, db: Db): void {
-  const entriesFor = (tenantId: string) => getTenantCollection<CashflowEntryDoc>(db, 'family_cashflow_entries', tenantId)
-  getFamilyCashflowCollection(db).createIndex({ tenant_id: 1, created_at: -1 }).catch(() => {})
+  const entriesFor = (tenantId: string) =>
+    getTenantCollection<CashflowEntryDoc>(db, 'family_cashflow_entries', tenantId)
+  getFamilyCashflowCollection(db)
+    .createIndex({ tenant_id: 1, created_at: -1 })
+    .catch(() => {})
 
   app.get('/family/cashflow', async (req) => {
     const { tenant_id } = req.authContext
-    const entries = ((await entriesFor(tenant_id).find({}).toArray()) as CashflowEntryDoc[])
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    const entries = ((await entriesFor(tenant_id).find({}).toArray()) as CashflowEntryDoc[]).sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    )
 
-    const monthly_inflow_minor = entries.filter((e) => e.kind === 'income').reduce((s, e) => s + monthlyEquivalentMinor(e), 0)
-    const monthly_outflow_minor = entries.filter((e) => e.kind === 'expense').reduce((s, e) => s + monthlyEquivalentMinor(e), 0)
+    const monthly_inflow_minor = entries
+      .filter((e) => e.kind === 'income')
+      .reduce((s, e) => s + monthlyEquivalentMinor(e), 0)
+    const monthly_outflow_minor = entries
+      .filter((e) => e.kind === 'expense')
+      .reduce((s, e) => s + monthlyEquivalentMinor(e), 0)
     const net_minor = monthly_inflow_minor - monthly_outflow_minor
 
     // Runway = months the emergency savings cover a net burn. A surplus
     // household doesn't have a runway problem — null, not infinity.
     const profile = await getFamilyFinancialProfileCollection(db).findOne({ tenant_id })
-    const savings = (profile?.['emergency_fund'] as { emergency_savings_minor?: number } | undefined)?.emergency_savings_minor ?? 0
+    const savings =
+      (profile?.['emergency_fund'] as { emergency_savings_minor?: number } | undefined)
+        ?.emergency_savings_minor ?? 0
     const runway_months = net_minor < 0 ? Math.round((savings / -net_minor) * 10) / 10 : null
 
     return {
@@ -90,19 +108,39 @@ export function registerFamilyCashflowRoutes(app: FastifyInstance, db: Db): void
     }
   })
 
-  app.post('/family/cashflow/entries', async (req, reply) => {
-    const { tenant_id } = req.authContext
-    const parsed = EntryBody.safeParse(req.body ?? {})
-    if (!parsed.success) return reply.status(400).send({ error: 'Invalid entry', details: parsed.error.issues })
+  // The ledger is shared household data: only an editor may change it (review F04).
+  const forbidden = 'Only a household editor can change the cash-flow ledger'
 
-    const doc: CashflowEntryDoc = { id: randomUUID(), tenant_id, ...parsed.data, created_at: new Date() }
+  app.post('/family/cashflow/entries', async (req, reply) => {
+    const { tenant_id, user_id, roles } = req.authContext
+    if (!(await isHouseholdEditor(db, tenant_id, user_id, roles)))
+      return reply.status(403).send({ error: forbidden })
+    const parsed = EntryBody.safeParse(req.body ?? {})
+    if (!parsed.success)
+      return reply.status(400).send({ error: 'Invalid entry', details: parsed.error.issues })
+    if (parsed.data.member_id) {
+      const family = await db.collection<FamilyGroupDoc>('family_groups').findOne({ tenant_id })
+      if (!family?.members.some((m) => m.id === parsed.data.member_id))
+        return reply.status(400).send({ error: 'That person is not in this household' })
+    }
+
+    const doc: CashflowEntryDoc = {
+      id: randomUUID(),
+      tenant_id,
+      ...parsed.data,
+      created_at: new Date(),
+    }
     await entriesFor(tenant_id).insertOne(doc)
     return { entry: { ...doc, monthly_minor: monthlyEquivalentMinor(doc) } }
   })
 
   app.delete<{ Params: { id: string } }>('/family/cashflow/entries/:id', async (req, reply) => {
-    const { tenant_id } = req.authContext
-    const result = (await entriesFor(tenant_id).deleteOne({ id: req.params.id })) as { deletedCount: number }
+    const { tenant_id, user_id, roles } = req.authContext
+    if (!(await isHouseholdEditor(db, tenant_id, user_id, roles)))
+      return reply.status(403).send({ error: forbidden })
+    const result = (await entriesFor(tenant_id).deleteOne({ id: req.params.id })) as {
+      deletedCount: number
+    }
     if (result.deletedCount === 0) return reply.status(404).send({ error: 'Entry not found' })
     return { ok: true }
   })
