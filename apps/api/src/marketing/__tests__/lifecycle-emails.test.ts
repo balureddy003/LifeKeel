@@ -140,6 +140,18 @@ describe('runLifecycleSweep — activation + upgrade', () => {
     expect(await runLifecycleSweep(db)).toHaveLength(0)
   })
 
+  it('nudges a password signup that has no status field', async () => {
+    await db.collection('users').insertOne({
+      id: 'u1',
+      email: 'u@example.com',
+      name: 'Uma',
+      tenant_id: 't1',
+      created_at: new Date(Date.now() - 3 * DAY),
+    })
+    const sent = await runLifecycleSweep(db)
+    expect(sent.map((s) => s.sequence)).toEqual(['activation'])
+  })
+
   it('nudges an engaged free-tenant user toward paid — once', async () => {
     await db
       .collection('tenants')

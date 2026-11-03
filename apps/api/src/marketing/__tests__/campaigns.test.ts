@@ -110,6 +110,12 @@ describe('resolveAudience', () => {
     expect(r.map((x) => x.id)).toEqual(['u1'])
   })
 
+  it('users audience includes a password signup with no status field', async () => {
+    await seedUser({ status: undefined })
+    const r = await resolveAudience(db, { audience: 'users' })
+    expect(r.map((x) => x.id)).toEqual(['u1'])
+  })
+
   it('plan + trialing filters join through tenants', async () => {
     await seedUser()
     await seedUser({ id: 'u2', email: 'paid@example.com', tenant_id: 't2' })

@@ -41,7 +41,7 @@ claims:
   - id: no_training
     statement: Your content is not used to train AI models.
     publishable: false
-    reason: Waits for the AI task and processor registry check to be enforced by code, not only described (PRD-142).
+    reason: The AI task gateway now enforces the processor registry in code (PRD-142), but provider no-training terms and consent for third-party AI are still procedural, so code alone cannot back this claim.
 
   - id: pen_test
     statement: An independent penetration test of upload, sign-in links, share links and mailbox connection.
@@ -56,7 +56,7 @@ claims:
   - id: processor_agreements
     statement: Data processing agreements are in place with each processor.
     publishable: false
-    reason: Every hosted processor is still marked as terms under review.
+    reason: Some hosted processors are approved in the registry, but others are still unreviewed and one is approved only under a pre-launch retention exception.
 
   - id: cyber_essentials_plus
     statement: Certified to Cyber Essentials Plus.
