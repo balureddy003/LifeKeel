@@ -61,6 +61,7 @@ export function StripeSetup() {
   useEffect(load, [load])
 
   const actions = status?.reconcile?.actions ?? []
+  const reconcileErrors = status?.reconcile?.errors ?? []
   const fixable = actions.filter(
     (a) => a.object !== 'webhook' && a.op !== 'noop' && a.op !== 'skipped',
   )
@@ -151,11 +152,19 @@ export function StripeSetup() {
                 </span>
               </div>
             ))}
-            {status.reconcile?.errors.map((e) => (
-              <p key={`${e.object}:${e.key}`} className="py-2 text-sm text-danger">
-                {e.object}: {e.message}
+            {reconcileErrors.length > 1 &&
+            reconcileErrors.every((e) => e.message === reconcileErrors[0]!.message) ? (
+              <p className="py-2 text-sm text-danger">
+                Every check failed ({[...new Set(reconcileErrors.map((e) => e.object))].join(', ')}
+                ): {reconcileErrors[0]!.message}
               </p>
-            ))}
+            ) : (
+              reconcileErrors.map((e) => (
+                <p key={`${e.object}:${e.key}`} className="py-2 text-sm text-danger">
+                  {e.object}: {e.message}
+                </p>
+              ))
+            )}
           </div>
 
           {webhookMissing && (

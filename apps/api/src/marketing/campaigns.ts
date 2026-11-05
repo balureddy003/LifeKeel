@@ -117,7 +117,10 @@ function createdWindow(filter: CampaignAudience, now: number): Record<string, Da
 }
 
 async function resolveUsers(db: Db, filter: CampaignAudience, now: number): Promise<Recipient[]> {
-  const q: Record<string, unknown> = { status: 'active', email_opt_out: { $ne: true } }
+  const q: Record<string, unknown> = {
+    status: { $in: ['active', null] },
+    email_opt_out: { $ne: true },
+  }
   const win = createdWindow(filter, now)
   if (win) q['created_at'] = win
   // Intent 09: a member whose roster entry is 'child' or under 18 never

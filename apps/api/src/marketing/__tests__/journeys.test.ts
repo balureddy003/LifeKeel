@@ -122,6 +122,12 @@ describe('buildJourneys', () => {
     expect((await buildJourneys(db, RANGE)).map((j) => j.tenant_id)).toEqual(['t1'])
   })
 
+  it('counts a signup with no status field as active (password signups never set one)', async () => {
+    const { status: _omit, ...noStatus } = user('pw', 't1')
+    await db.collection('users').insertOne(noStatus)
+    expect((await buildJourneys(db, RANGE)).map((j) => j.tenant_id)).toEqual(['t1'])
+  })
+
   it('excludes a signup whose roster member is a child or under 18, like campaign mail does', async () => {
     await db
       .collection('users')

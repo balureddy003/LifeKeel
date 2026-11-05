@@ -47,6 +47,8 @@ const log = createLogger({ service: 'lifecycle', version: '0.0.0' })
 
 const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
+// Password signups never write `status`; missing means active.
+const ACTIVE_USER = { $in: ['active', null] }
 
 interface LifecycleSendDoc {
   id: string
@@ -473,7 +475,7 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
       .find(
         {
           created_at: { $gte: new Date(now - 4 * DAY), $lte: new Date(now - 2 * DAY) },
-          status: 'active',
+          status: ACTIVE_USER,
         },
         { projection: { _id: 0, id: 1, email: 1, name: 1, tenant_id: 1, created_at: 1 } },
       )
@@ -680,10 +682,10 @@ async function collectJobs(db: Db, appUrl: string): Promise<EmailJob[]> {
     const userFilter: Record<string, unknown> =
       intentTenants.size > 0
         ? {
-            status: 'active',
+            status: ACTIVE_USER,
             $or: [{ id: { $in: engagedUserIds } }, { tenant_id: { $in: [...intentTenants] } }],
           }
-        : { status: 'active', id: { $in: engagedUserIds } }
+        : { status: ACTIVE_USER, id: { $in: engagedUserIds } }
     const users = await excludeMinorUsers(
       db,
       await db

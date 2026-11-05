@@ -184,7 +184,7 @@ export default function OperatorTenantsPage() {
                       title={healthTitle(tenant.health)}
                       className={`rounded-full border px-2 py-0.5 text-xs ${healthClasses(tenant.health.score)}`}
                     >
-                      {tenant.health.score}
+                      Health {tenant.health.score}
                     </span>
                   )}
                   <span

@@ -5,7 +5,9 @@
 # (`allowed_processors`); this file says whether each one is approved.
 #
 # STATUS TODAY: `azure` and `vertex` are approved (owner decisions,
-# 2026-10-22); anthropic, openai and groq remain `unreviewed`. Unknown facts
+# 2026-10-22), `groq` and `xai` on 2026-10-23 (xai under the pre-launch
+# testing-phase exception in CLAUDE.md); anthropic and openai remain
+# `unreviewed`. Unknown facts
 # are the explicit value `not_reviewed`, never an invented one. Retention for
 # an unreviewed processor is the most conservative class (limited_abuse_log)
 # because that is what must be assumed until reviewed.
