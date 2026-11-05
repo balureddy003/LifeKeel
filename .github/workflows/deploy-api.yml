@@ -17,6 +17,8 @@ env:
   REGISTRY_HOST: ${{ secrets.GCP_REGION || 'us-central1' }}-docker.pkg.dev
   API_IMAGE: ${{ secrets.GCP_ARTIFACT_REGISTRY || format('{0}-docker.pkg.dev/{1}/lifekeel-docker', secrets.GCP_REGION || 'us-central1', secrets.GCP_PROJECT_ID) }}/api
   API_SERVICE: ${{ secrets.CLOUD_RUN_SERVICE_NAME || 'lifekeel-api' }}
+  # Background work (crons, queue consumers) runs here, not on the public API (review F13).
+  JOBS_SERVICE: ${{ vars.CLOUD_RUN_JOBS_SERVICE_NAME || 'lifekeel-jobs' }}
 
 # One deploy at a time: two runs must not race each other's traffic shift. Never cancel one mid-flight.
 concurrency:
@@ -180,6 +182,7 @@ jobs:
           flags: --port=3001 --allow-unauthenticated --cpu=1 --memory=512Mi --max-instances=4 --concurrency=80 --min-instances=0 --update-env-vars=^@^CORS_ORIGIN=${{ vars.CORS_ORIGIN || vars.LIFEKEEL_URL || secrets.LIFEKEEL_URL }}@LIFEKEEL_APP_HOSTS=${{ vars.LIFEKEEL_APP_HOSTS || 'app.lifekeel.co.uk,app.lifekeel.si' }}@TURNSTILE_ALLOWED_HOSTNAMES=${{ vars.TURNSTILE_ALLOWED_HOSTNAMES }} ${{ steps.pre.outputs.exists == 'true' && format('--no-traffic --tag={0}', steps.pre.outputs.tag) || '' }}
           env_vars: |
             NODE_ENV=production
+            SERVICE_ROLE=api
             LIFEKEEL_DEPLOYMENT_MODE=cloud
             LOG_LEVEL=info
             LIFEKEEL_URL=${{ vars.LIFEKEEL_URL || secrets.LIFEKEEL_URL }}
@@ -286,6 +289,50 @@ jobs:
           fi
           MIG_VER=$(echo "$BODY" | head -n -1 | jq -r '.dependencies.migration_version // "unknown"')
           echo "New revision $NEW is healthy (migration ledger at $MIG_VER)"
+
+      # Step 3b. Background work runs in a private jobs service built from the exact revision just deployed,
+      # so its image, env and secrets cannot drift from the API's. Internal ingress and no unauthenticated
+      # access; one always-allocated instance so crons and queue consumers run while the API scales to zero.
+      # `replace` waits until the new jobs revision is ready. If it fails, traffic is never shifted and the
+      # previous API revision (which still runs background work in role "all") keeps serving.
+      - name: Deploy the background jobs service
+        env:
+          SERVICE: ${{ env.API_SERVICE }}
+          JOBS: ${{ env.JOBS_SERVICE }}
+          REGION: ${{ env.GCP_REGION }}
+          PROJECT: ${{ env.GCP_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          gcloud run services describe "$SERVICE" --region "$REGION" --project "$PROJECT" --format=export > "$RUNNER_TEMP/jobs.yaml"
+          IMAGE=$(yq '.spec.template.spec.containers[0].image' "$RUNNER_TEMP/jobs.yaml")
+          if [ "$IMAGE" != "$IMAGE_REF" ]; then
+            echo "::error::The API service template is $IMAGE, expected $IMAGE_REF. Not deploying the jobs service."
+            exit 1
+          fi
+          yq -i '
+            .metadata.name = strenv(JOBS) |
+            .metadata.annotations."run.googleapis.com/ingress" = "internal" |
+            del(.spec.traffic) |
+            del(.spec.template.metadata.name) |
+            .spec.template.metadata.annotations."autoscaling.knative.dev/minScale" = "1" |
+            .spec.template.metadata.annotations."autoscaling.knative.dev/maxScale" = "2" |
+            .spec.template.metadata.annotations."run.googleapis.com/cpu-throttling" = "false" |
+            (.spec.template.spec.containers[0].env[] | select(.name == "SERVICE_ROLE") | .value) = "jobs"
+          ' "$RUNNER_TEMP/jobs.yaml"
+          ROLE=$(yq '.spec.template.spec.containers[0].env[] | select(.name == "SERVICE_ROLE") | .value' "$RUNNER_TEMP/jobs.yaml")
+          if [ "$ROLE" != "jobs" ]; then
+            echo "::error::Could not set SERVICE_ROLE=jobs on the jobs service spec. Not deploying."
+            exit 1
+          fi
+          gcloud run services replace "$RUNNER_TEMP/jobs.yaml" --region "$REGION" --project "$PROJECT"
+          gcloud run services describe "$JOBS" --region "$REGION" --project "$PROJECT" --format=json > "$RUNNER_TEMP/jobs.json"
+          READY=$(jq -r '[.status.conditions[] | select(.type == "Ready")] | first | .status // "Unknown"' "$RUNNER_TEMP/jobs.json")
+          INGRESS=$(jq -r '.metadata.annotations["run.googleapis.com/ingress"] // "unknown"' "$RUNNER_TEMP/jobs.json")
+          if [ "$READY" != "True" ] || [ "$INGRESS" != "internal" ]; then
+            echo "::error::Jobs service $JOBS is Ready=$READY ingress=$INGRESS. API traffic was not shifted."
+            exit 1
+          fi
+          echo "Jobs service $JOBS is ready on $IMAGE_REF (internal ingress, min 1 instance, CPU always allocated)"
 
       # Step 4 of 4. Move all traffic to the verified revision, check production again, and put the previous
       # revision back automatically if it is not healthy. Revisions are pinned by name, so a later plain

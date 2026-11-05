@@ -18,6 +18,12 @@
  *    memory instead of dropping; handler failure retries inline with
  *    the same attempt cap.
  *
+ *  - Every move between lists (retry, recovery, delayed promotion, dead
+ *    replay) is one Lua script: remove from the source and push to the
+ *    destination happen together, so a disconnect or crash between them
+ *    cannot leave a job in neither place. Queue keys share a `{queue}`
+ *    prefix but are not hash-tagged; this assumes a single Redis node.
+ *
  * Exactly-once is NOT claimed: a handler that crashes after producing an
  * external side effect can run again on recovery. Handlers must be
  * idempotent (webhook ingest is, via signal/insight dedupe).
@@ -102,10 +108,41 @@ export type RedisClient = {
   set(key: string, value: string, ...args: string[]): Promise<string | null>
   get(key: string): Promise<string | null>
   del(...keys: string[]): Promise<number>
+  eval(script: string, numKeys: number, ...args: string[]): Promise<unknown>
   quit(): Promise<string>
   duplicate(): RedisClient
   on(event: string, handler: (...args: unknown[]) => void): void
   connect(): Promise<void>
+}
+
+// ── Atomic transfer ──────────────────────────────────────────────────────────
+
+/**
+ * Remove `raw` from the source (a list, or a zset for delayed jobs) and,
+ * only if it was there, LPUSH `next` onto the destination — in one atomic
+ * step. Returns true when this caller made the move; false means another
+ * worker/recoverer already claimed the entry.
+ */
+const MOVE_SCRIPT = `
+local removed
+if ARGV[3] == 'zset' then
+  removed = redis.call('ZREM', KEYS[1], ARGV[1])
+else
+  removed = redis.call('LREM', KEYS[1], 1, ARGV[1])
+end
+if removed == 1 then redis.call('LPUSH', KEYS[2], ARGV[2]) end
+return removed
+`
+
+export async function moveJob(
+  client: RedisClient,
+  source: string,
+  dest: string,
+  raw: string,
+  next: string = raw,
+  sourceKind: 'list' | 'zset' = 'list',
+): Promise<boolean> {
+  return Number(await client.eval(MOVE_SCRIPT, 2, source, dest, raw, next, sourceKind)) === 1
 }
 
 // ── Redis loader ──────────────────────────────────────────────────────────────
@@ -284,11 +321,9 @@ export class QueueManager {
           try {
             const due = await client.zrangebyscore(delayedKey, 0, Date.now(), 'LIMIT', '0', '100')
             for (const raw of due) {
-              // zrem is the claim — only the mover that removed the entry
-              // pushes it, so parallel replicas can't double-promote.
-              if ((await client.zrem(delayedKey, raw)) === 1) {
-                await client.lpush(queueName, raw)
-              }
+              // The atomic zrem+lpush is the claim — only one replica's
+              // move succeeds, and a crash can't drop the job in between.
+              await moveJob(client, delayedKey, queueName, raw, raw, 'zset')
             }
           } catch {
             // Redis hiccup — next tick retries
@@ -314,8 +349,8 @@ export class QueueManager {
         try {
           job = JSON.parse(raw) as QueueJob
         } catch {
-          await client.lrem(processingKey, 1, raw)
-          log.error({ queue: queueName }, 'Malformed job')
+          await moveJob(client, processingKey, `${queueName}:dead`, raw)
+          log.error({ queue: queueName }, 'Malformed job dead-lettered')
           continue
         }
 
@@ -338,17 +373,16 @@ export class QueueManager {
           await handler(job.payload)
           await client.lrem(processingKey, 1, raw)
         } catch (err) {
-          await client.lrem(processingKey, 1, raw)
           const attempts = (job.attempts ?? 0) + 1
           if (attempts >= MAX_ATTEMPTS) {
-            await client.lpush(`${queueName}:dead`, raw)
+            await moveJob(client, processingKey, `${queueName}:dead`, raw)
             log.error(
               { queue: queueName, job_id: job.id, attempts, err },
               'Job dead-lettered after max attempts',
             )
           } else {
             job.attempts = attempts
-            await client.lpush(queueName, JSON.stringify(job))
+            await moveJob(client, processingKey, queueName, raw, JSON.stringify(job))
             log.warn(
               { queue: queueName, job_id: job.id, attempts, err },
               'Handler error — job re-queued',
@@ -490,8 +524,9 @@ export const queueManager = new QueueManager()
  * Lease-aware stranded-job recovery, exported separately so it can be
  * unit-tested with a mock client. A processing entry is reclaimed only
  * when its visibility lease is missing or expired — a live worker's job
- * is left alone. The lrem-by-value claim is atomic, so parallel sweepers
- * can't double-recover the same entry.
+ * is left alone. Each reclaim is one atomic move (see moveJob), so
+ * parallel sweepers can't double-recover an entry and a failure part-way
+ * leaves the job where it was.
  */
 export async function recoverStrandedJobs(
   client: RedisClient,
@@ -512,29 +547,34 @@ export async function recoverStrandedJobs(
       const leaseUntil = Number((await client.get(leaseKey)) ?? 0)
       if (leaseUntil > now) continue // a live worker still holds this job
     }
-    const removed = await client.lrem(processingKey, 1, raw)
-    if (removed !== 1) continue // another recoverer claimed it
-    if (leaseKey) await client.del(leaseKey).catch(() => 0)
     if (job === null) {
-      log.error({ queue: queueName }, 'Dropping malformed stranded job')
+      // Unparseable: keep it inspectable in the dead list rather than drop it.
+      if (await moveJob(client, processingKey, `${queueName}:dead`, raw))
+        log.error({ queue: queueName }, 'Malformed stranded job dead-lettered')
       continue
     }
     const attempts = (job.attempts ?? 0) + 1
-    if (attempts >= MAX_ATTEMPTS) {
-      await client.lpush(`${queueName}:dead`, raw)
+    const dead = attempts >= MAX_ATTEMPTS
+    if (!dead) job.attempts = attempts
+    const moved = await moveJob(
+      client,
+      processingKey,
+      dead ? `${queueName}:dead` : queueName,
+      raw,
+      dead ? raw : JSON.stringify(job),
+    )
+    if (!moved) continue // another recoverer claimed it
+    if (leaseKey) await client.del(leaseKey).catch(() => 0)
+    if (dead)
       log.error({ queue: queueName, job_id: job.id, attempts }, 'Stranded job dead-lettered')
-    } else {
-      job.attempts = attempts
-      await client.lpush(queueName, JSON.stringify(job))
-      log.warn({ queue: queueName, job_id: job.id, attempts }, 'Recovered stranded job')
-    }
+    else log.warn({ queue: queueName, job_id: job.id, attempts }, 'Recovered stranded job')
   }
 }
 
 /**
  * Pure requeue operation, exported separately so it can be unit-tested
- * with a mock client. The lrem-by-value claim means only one caller can
- * move a given dead entry — safe under concurrent operators.
+ * with a mock client. The atomic move means only one caller can move a
+ * given dead entry — safe under concurrent operators.
  */
 export async function requeueDeadJob(
   client: RedisClient,
@@ -551,10 +591,9 @@ export async function requeueDeadJob(
       continue
     }
     if (job.id !== jobId) continue
-    if ((await client.lrem(deadKey, 1, raw)) !== 1) return false // another operator claimed it
     job.attempts = 0
-    await client.lpush(queueName, JSON.stringify(job))
-    return true
+    // false: another operator claimed it
+    return moveJob(client, deadKey, queueName, raw, JSON.stringify(job))
   }
   return false
 }

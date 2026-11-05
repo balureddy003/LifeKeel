@@ -16,7 +16,7 @@
  */
 import type { Db } from 'mongodb'
 import { createLogger, getTenantCollection } from '@lifekeel/platform'
-import { projectScenario } from '../scenarios/project.js'
+import { loadScenarioContext, projectScenarioWith } from '../scenarios/project.js'
 import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
 import type { FamilyScenarioDoc } from '../routes/family-scenarios.js'
 
@@ -35,22 +35,30 @@ function runwayDelta(prev: number | null, next: number | null): number | null {
   return next - prev
 }
 
-export async function runScenarioWatchlist(db: Db): Promise<{ tenants: number; scenarios: number; moved: number }> {
+export async function runScenarioWatchlist(
+  db: Db,
+): Promise<{ tenants: number; scenarios: number; moved: number }> {
   const now = new Date()
-  const tenants = (await db.collection('family_scenarios').distinct('tenant_id', { watch: { $ne: false } })) as string[]
+  const tenants = (await db
+    .collection('family_scenarios')
+    .distinct('tenant_id', { watch: { $ne: false } })) as string[]
   let scenarios = 0
   let moved = 0
 
   for (const tenantId of tenants) {
     const col = getTenantCollection<FamilyScenarioDoc>(db, 'family_scenarios', tenantId)
     const docs = (await col.find({ watch: { $ne: false } }).toArray()) as FamilyScenarioDoc[]
+    const ctx = await loadScenarioContext(db, tenantId)
     for (const doc of docs) {
       scenarios++
       let outcome
       try {
-        outcome = await projectScenario(db, tenantId, doc.inputs)
+        outcome = projectScenarioWith(ctx, doc.inputs)
       } catch (err) {
-        log.warn({ err, tenant_id: tenantId, scenario_id: doc.id }, 'Scenario projection failed — skipped')
+        log.warn(
+          { err, tenant_id: tenantId, scenario_id: doc.id },
+          'Scenario projection failed — skipped',
+        )
         continue
       }
       if (outcome.status !== 'ok' || !outcome.result) continue
@@ -67,7 +75,8 @@ export async function runScenarioWatchlist(db: Db): Promise<{ tenants: number; s
 
       const dRunway = runwayDelta(prev.runway_months, runway)
       const depletionChanged = prev.depletion_month !== depletion
-      if ((dRunway === null || Math.abs(dRunway) < MOVE_THRESHOLD_MONTHS) && !depletionChanged) continue
+      if ((dRunway === null || Math.abs(dRunway) < MOVE_THRESHOLD_MONTHS) && !depletionChanged)
+        continue
 
       moved++
       const fell = dRunway !== null && dRunway < 0
@@ -75,16 +84,37 @@ export async function runScenarioWatchlist(db: Db): Promise<{ tenants: number; s
       emitReadinessEvent(db, tenantId, {
         type: 'scenario_moved',
         severity: fell ? 'attention' : 'notice',
-        direction: dRunway === null ? (depletionChanged ? (depletion === null ? 'up' : 'down') : 'flat') : dRunway > 0 ? 'up' : dRunway < 0 ? 'down' : 'flat',
+        direction:
+          dRunway === null
+            ? depletionChanged
+              ? depletion === null
+                ? 'up'
+                : 'down'
+              : 'flat'
+            : dRunway > 0
+              ? 'up'
+              : dRunway < 0
+                ? 'down'
+                : 'flat',
         member_id: doc.inputs?.member_id ?? null,
         domain: 'scenarios',
-        title: `${doc.name}: ${fmt(prev.runway_months)} → ${fmt(runway)} months of runway`.slice(0, 120),
+        title: `${doc.name}: ${fmt(prev.runway_months)} → ${fmt(runway)} months of runway`.slice(
+          0,
+          120,
+        ),
         summary: depletionChanged
           ? `The projection moved — the fund ${depletion === null ? 'no longer runs out mid-timeline' : `now runs out around month ${depletion}`}.`
           : `The projected runway moved ${dRunway !== null && dRunway > 0 ? 'up' : 'down'} on the latest numbers.`,
         evidence: [
           { label: 'Runway', value: `${fmt(prev.runway_months)} → ${fmt(runway)}` },
-          ...(depletionChanged ? [{ label: 'Fund depleted', value: `${fmt(prev.depletion_month)} → ${fmt(depletion)}` }] : []),
+          ...(depletionChanged
+            ? [
+                {
+                  label: 'Fund depleted',
+                  value: `${fmt(prev.depletion_month)} → ${fmt(depletion)}`,
+                },
+              ]
+            : []),
         ],
         links: [{ kind: 'scenario', id: doc.id }],
         next_check_at: null,

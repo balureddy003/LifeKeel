@@ -29,6 +29,7 @@ import {
   narrateBrief,
   solveBrief,
   tokenHash,
+  withoutHandoverFacts,
   type BriefInputs,
   type BriefProblemType,
   type HouseholdBriefDoc,
@@ -70,7 +71,7 @@ function briefView(b: HouseholdBriefDoc, token?: string, facts?: BriefFact[]) {
     problem_type: b.problem_type,
     contract_version: b.contract_version,
     title: b.title,
-    inputs: b.inputs,
+    inputs: b.sensitive ? withoutHandoverFacts(b.inputs) : b.inputs,
     result: b.result,
     template_sentence: b.template_sentence,
     facts: facts ?? b.facts ?? [],
@@ -120,7 +121,7 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
     if (b.facts_expire_at && b.facts_expire_at < new Date()) {
       await briefsFor(db, b.tenant_id).updateOne(
         { id: b.id },
-        { $unset: { facts_encrypted: '', facts: '' } },
+        { $unset: { facts_encrypted: '', facts: '', 'inputs.facts': '' } },
       )
       return []
     }
@@ -349,7 +350,7 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
       tenant_id,
       problem_type: problem,
       title,
-      inputs: solved.inputs as BriefInputs,
+      inputs: (sensitive ? withoutHandoverFacts(solved.inputs) : solved.inputs) as BriefInputs,
       result: solved.result,
       ...(sensitive
         ? {
@@ -364,7 +365,10 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
       narrated_solver_version: null,
       narrated_data_version: null,
       solver_version: solverVersion,
-      data_version: briefDataVersion(problem, solved.inputs),
+      data_version: briefDataVersion(
+        problem,
+        sensitive ? withoutHandoverFacts(solved.inputs) : solved.inputs,
+      ),
       result_version: resultVersion,
       as_of_date: asOf,
       acknowledgements: [],

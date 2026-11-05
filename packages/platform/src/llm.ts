@@ -266,6 +266,9 @@ export interface LlmConfig {
  * task gateway's deadline uses it so an expired call frees the model. */
 export interface LlmCallOptions {
   signal?: AbortSignal
+  /** Output ceiling for this call (the task registry's max_output_tokens).
+   *  Overrides the router's configured default. */
+  maxOutputTokens?: number
 }
 
 /** The canonical LLM function type used everywhere in LifeKeel */
@@ -541,7 +544,10 @@ async function callOpenAI(
     const response = await client.chat.completions.create(
       {
         model,
-        max_tokens: isReasoningModel ? null : (maxTokens as number | null),
+        // Reasoning models reject max_tokens; their ceiling is max_completion_tokens.
+        ...(isReasoningModel
+          ? { max_completion_tokens: maxTokens }
+          : { max_tokens: maxTokens as number | null }),
         temperature: isReasoningModel ? null : (temperature as number | null),
         messages: isReasoningModel
           ? [{ role: 'user', content: `${system}\n\n${prompt}` }]
@@ -893,6 +899,7 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
     opts?: LlmCallOptions,
   ): Promise<string> {
     const signal = opts?.signal
+    const callMaxTokens = opts?.maxOutputTokens ?? maxTokens
     // Support tier strings: 'tier:fast' | 'tier:balanced' | 'tier:powerful'
     let resolvedModel = model ?? defaultModel
     let tierProvider: LlmProvider | null = null
@@ -920,7 +927,7 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
             prompt,
             resolvedModel,
             apiKey,
-            maxTokens,
+            callMaxTokens,
             temperature,
             cfg.onUsage,
             signal,
@@ -935,7 +942,7 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
             prompt,
             resolvedModel,
             apiKey,
-            maxTokens,
+            callMaxTokens,
             temperature,
             cfg.onUsage,
             signal,
@@ -983,7 +990,7 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
             azureBaseUrl,
             apiKey,
             apiVersion,
-            maxTokens,
+            callMaxTokens,
             temperature,
             foundry,
             cfg.onUsage,
@@ -1014,7 +1021,7 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
             location,
             getHeaders,
             effort,
-            maxTokens,
+            callMaxTokens,
             temperature,
             cfg.onUsage,
             signal,
@@ -1029,7 +1036,7 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
             prompt,
             resolvedModel,
             apiKey,
-            maxTokens,
+            callMaxTokens,
             temperature,
             cfg.onUsage,
             signal,
@@ -1044,7 +1051,7 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
             prompt,
             resolvedModel,
             apiKey,
-            maxTokens,
+            callMaxTokens,
             temperature,
             cfg.onUsage,
             signal,
@@ -1059,7 +1066,7 @@ export function createLlmRouter(cfg: LlmConfig = {}): LlmFn {
             prompt,
             resolvedModel,
             baseUrl,
-            maxTokens,
+            callMaxTokens,
             temperature,
             cfg.ollamaHeaders,
             cfg.onUsage,

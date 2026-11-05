@@ -11,6 +11,7 @@ const TENANT = 't-cashflow'
 
 let entries: Record<string, unknown>[]
 let profile: Record<string, unknown> | null
+let family: Record<string, unknown>
 
 function match(doc: Record<string, unknown>, filter: Record<string, unknown>): boolean {
   return Object.entries(filter).every(([k, v]) => doc[k] === v)
@@ -18,9 +19,15 @@ function match(doc: Record<string, unknown>, filter: Record<string, unknown>): b
 
 function col(store: Record<string, unknown>[]) {
   return {
-    find: (filter: Record<string, unknown> = {}) => ({ toArray: async () => store.filter((d) => match(d, filter)) }),
-    findOne: async (filter: Record<string, unknown> = {}) => store.find((d) => match(d, filter)) ?? null,
-    insertOne: async (doc: Record<string, unknown>) => { store.push(doc); return { insertedId: doc['id'] } },
+    find: (filter: Record<string, unknown> = {}) => ({
+      toArray: async () => store.filter((d) => match(d, filter)),
+    }),
+    findOne: async (filter: Record<string, unknown> = {}) =>
+      store.find((d) => match(d, filter)) ?? null,
+    insertOne: async (doc: Record<string, unknown>) => {
+      store.push(doc)
+      return { insertedId: doc['id'] }
+    },
     deleteOne: async (filter: Record<string, unknown>) => {
       const idx = store.findIndex((d) => match(d, filter))
       if (idx >= 0) store.splice(idx, 1)
@@ -33,14 +40,20 @@ function col(store: Record<string, unknown>[]) {
 function makeDb() {
   return {
     collection: (name: string) =>
-      name === 'family_cashflow_entries' ? col(entries) : name === 'family_financial_profile' ? col(profile ? [profile] : []) : col([]),
+      name === 'family_cashflow_entries'
+        ? col(entries)
+        : name === 'family_financial_profile'
+          ? col(profile ? [profile] : [])
+          : name === 'family_groups'
+            ? col([family])
+            : col([]),
   } as never
 }
 
-async function buildApp() {
+async function buildApp(user_id = 'u1', roles: string[] = ['owner']) {
   const app = Fastify()
   app.addHook('onRequest', async (request) => {
-    ;(request as { authContext?: unknown }).authContext = { tenant_id: TENANT, user_id: 'u1' }
+    ;(request as { authContext?: unknown }).authContext = { tenant_id: TENANT, user_id, roles }
   })
   registerFamilyCashflowRoutes(app, makeDb())
   return app
@@ -49,16 +62,86 @@ async function buildApp() {
 beforeEach(() => {
   entries = []
   profile = { tenant_id: TENANT, emergency_fund: { emergency_savings_minor: 900_000 } }
+  family = {
+    tenant_id: TENANT,
+    members: [
+      { id: 'u1', name: 'Alex', role: 'organizer', status: 'active' },
+      { id: 'u2', name: 'Sam', role: 'adult', status: 'active' },
+      { id: 'kid', name: 'Kit', role: 'adult', status: 'active', date_of_birth: '2015-01-01' },
+    ],
+  }
+})
+
+describe('cash-flow write permissions (review F04)', () => {
+  const expense = { kind: 'expense', label: 'Gym', amount_minor: 5_000 }
+
+  it('a viewer can read but cannot add or delete entries', async () => {
+    entries.push({
+      id: 'e1',
+      tenant_id: TENANT,
+      kind: 'expense',
+      label: 'Rent',
+      amount_minor: 1,
+      recurrence: 'monthly',
+      created_at: new Date(),
+    })
+    const app = await buildApp('u2', ['viewer'])
+    expect((await app.inject({ method: 'GET', url: '/family/cashflow' })).statusCode).toBe(200)
+    const add = await app.inject({
+      method: 'POST',
+      url: '/family/cashflow/entries',
+      payload: expense,
+    })
+    expect(add.statusCode).toBe(403)
+    const del = await app.inject({ method: 'DELETE', url: '/family/cashflow/entries/e1' })
+    expect(del.statusCode).toBe(403)
+    expect(entries.map((e) => e['id'])).toEqual(['e1'])
+    await app.close()
+  })
+
+  it('a minor by date of birth cannot write even with an editor role', async () => {
+    const app = await buildApp('kid', ['admin'])
+    const add = await app.inject({
+      method: 'POST',
+      url: '/family/cashflow/entries',
+      payload: expense,
+    })
+    expect(add.statusCode).toBe(403)
+    expect(entries).toHaveLength(0)
+    await app.close()
+  })
+
+  it('rejects a member_id that is not on the household roster', async () => {
+    const app = await buildApp()
+    const bad = await app.inject({
+      method: 'POST',
+      url: '/family/cashflow/entries',
+      payload: { ...expense, member_id: 'stranger' },
+    })
+    expect(bad.statusCode).toBe(400)
+    const ok = await app.inject({
+      method: 'POST',
+      url: '/family/cashflow/entries',
+      payload: { ...expense, member_id: 'u2' },
+    })
+    expect(ok.statusCode).toBe(200)
+    await app.close()
+  })
 })
 
 describe('POST /family/cashflow/entries', () => {
   it('validates and stores an entry', async () => {
     const app = await buildApp()
-    const bad = await app.inject({ method: 'POST', url: '/family/cashflow/entries', payload: { kind: 'income', amount_minor: -5 } })
+    const bad = await app.inject({
+      method: 'POST',
+      url: '/family/cashflow/entries',
+      payload: { kind: 'income', amount_minor: -5 },
+    })
     expect(bad.statusCode).toBe(400)
 
     const ok = await app.inject({
-      method: 'POST', url: '/family/cashflow/entries',
+      method: 'POST',
+      url: '/family/cashflow/entries',
       payload: { kind: 'expense', label: 'Childcare', amount_minor: 80_000, recurrence: 'monthly' },
     })
     expect(ok.statusCode).toBe(200)
@@ -71,11 +154,46 @@ describe('POST /family/cashflow/entries', () => {
 describe('GET /family/cashflow', () => {
   it('computes the monthly run-rate across recurrences and a runway against emergency savings', async () => {
     const app = await buildApp()
-    await app.inject({ method: 'POST', url: '/family/cashflow/entries', payload: { kind: 'income', label: 'Salary', amount_minor: 400_000, recurrence: 'monthly' } })
-    await app.inject({ method: 'POST', url: '/family/cashflow/entries', payload: { kind: 'expense', label: 'Rent', amount_minor: 200_000, recurrence: 'monthly' } })
-    await app.inject({ method: 'POST', url: '/family/cashflow/entries', payload: { kind: 'expense', label: 'Weekly shop', amount_minor: 12_000, recurrence: 'weekly' } }) // → 52,000/mo
-    await app.inject({ method: 'POST', url: '/family/cashflow/entries', payload: { kind: 'expense', label: 'Annual insurance', amount_minor: 120_000, recurrence: 'yearly' } }) // → 10,000/mo
-    await app.inject({ method: 'POST', url: '/family/cashflow/entries', payload: { kind: 'expense', label: 'One-off repair', amount_minor: 50_000, recurrence: 'once' } }) // not in run-rate
+    await app.inject({
+      method: 'POST',
+      url: '/family/cashflow/entries',
+      payload: { kind: 'income', label: 'Salary', amount_minor: 400_000, recurrence: 'monthly' },
+    })
+    await app.inject({
+      method: 'POST',
+      url: '/family/cashflow/entries',
+      payload: { kind: 'expense', label: 'Rent', amount_minor: 200_000, recurrence: 'monthly' },
+    })
+    await app.inject({
+      method: 'POST',
+      url: '/family/cashflow/entries',
+      payload: {
+        kind: 'expense',
+        label: 'Weekly shop',
+        amount_minor: 12_000,
+        recurrence: 'weekly',
+      },
+    }) // → 52,000/mo
+    await app.inject({
+      method: 'POST',
+      url: '/family/cashflow/entries',
+      payload: {
+        kind: 'expense',
+        label: 'Annual insurance',
+        amount_minor: 120_000,
+        recurrence: 'yearly',
+      },
+    }) // → 10,000/mo
+    await app.inject({
+      method: 'POST',
+      url: '/family/cashflow/entries',
+      payload: {
+        kind: 'expense',
+        label: 'One-off repair',
+        amount_minor: 50_000,
+        recurrence: 'once',
+      },
+    }) // not in run-rate
 
     const res = await app.inject({ method: 'GET', url: '/family/cashflow' })
     const body = res.json()
@@ -92,8 +210,16 @@ describe('GET /family/cashflow', () => {
 
   it('computes runway months when the household burns more than it earns', async () => {
     const app = await buildApp()
-    await app.inject({ method: 'POST', url: '/family/cashflow/entries', payload: { kind: 'income', label: 'Salary', amount_minor: 100_000, recurrence: 'monthly' } })
-    await app.inject({ method: 'POST', url: '/family/cashflow/entries', payload: { kind: 'expense', label: 'Rent', amount_minor: 200_000, recurrence: 'monthly' } })
+    await app.inject({
+      method: 'POST',
+      url: '/family/cashflow/entries',
+      payload: { kind: 'income', label: 'Salary', amount_minor: 100_000, recurrence: 'monthly' },
+    })
+    await app.inject({
+      method: 'POST',
+      url: '/family/cashflow/entries',
+      payload: { kind: 'expense', label: 'Rent', amount_minor: 200_000, recurrence: 'monthly' },
+    })
     const body = (await app.inject({ method: 'GET', url: '/family/cashflow' })).json()
     // Burn 100k/mo against £9k savings → 9.0 months.
     expect(body.summary.net_minor).toBe(-100_000)
@@ -103,8 +229,17 @@ describe('GET /family/cashflow', () => {
 
   it('delete removes an entry and 404s on a stranger id', async () => {
     const app = await buildApp()
-    const created = (await app.inject({ method: 'POST', url: '/family/cashflow/entries', payload: { kind: 'expense', label: 'Gym', amount_minor: 5_000 } })).json().entry
-    const res = await app.inject({ method: 'DELETE', url: `/family/cashflow/entries/${created.id}` })
+    const created = (
+      await app.inject({
+        method: 'POST',
+        url: '/family/cashflow/entries',
+        payload: { kind: 'expense', label: 'Gym', amount_minor: 5_000 },
+      })
+    ).json().entry
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/family/cashflow/entries/${created.id}`,
+    })
     expect(res.statusCode).toBe(200)
     expect(entries).toHaveLength(0)
     const missing = await app.inject({ method: 'DELETE', url: '/family/cashflow/entries/nope' })

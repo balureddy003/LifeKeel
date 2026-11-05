@@ -16,6 +16,7 @@ import {
   deriveReceiptChain,
   receiptChainInput,
   registerFamilyReceiptRoutes,
+  streamReceiptChain,
 } from '../family-receipts.js'
 import type { ActionReceipt } from '@lifekeel/workflows'
 
@@ -191,6 +192,46 @@ describe('GET /family/receipts (PRD-214)', () => {
     expect(body.receipts).toHaveLength(2)
     // Positions 1 and 0 of the chain — page 2 of a newest-first view.
     expect(body.receipts.map((r: { chain_index: number }) => r.chain_index)).toEqual([1, 0])
+    await app.close()
+  })
+})
+
+describe('streamed chain (review F12)', () => {
+  it('matches deriveReceiptChain exactly, including ids sharing a timestamp', async () => {
+    const same = new Date('2026-10-20T10:00:00Z')
+    const rows = [
+      receipt({ id: 'B-upper', executed_at: same }),
+      receipt({ id: 'a-lower', executed_at: same }),
+      receipt({ id: 'c', executed_at: new Date('2026-10-19T09:00:00Z') }),
+      receipt({ id: 'd', executed_at: new Date('2026-10-21T09:00:00Z'), outcome: 'pending' }),
+    ]
+    await db.collection<ActionReceipt>('action_receipts').insertMany(rows.map((r) => ({ ...r })))
+    const streamed: string[] = []
+    for await (const r of streamReceiptChain(db, TENANT))
+      streamed.push(`${r.chain_index}:${r.id}:${r.chain_hash}`)
+    expect(streamed).toEqual(
+      deriveReceiptChain(rows).map((r) => `${r.chain_index}:${r.id}:${r.chain_hash}`),
+    )
+  })
+
+  it('pages from the head with the same total and head as a full read', async () => {
+    const rows = Array.from({ length: 12 }, (_, i) =>
+      receipt({
+        id: `r-${String(i).padStart(2, '0')}`,
+        executed_at: new Date(Date.UTC(2026, 9, 1 + i)),
+      }),
+    )
+    await db.collection<ActionReceipt>('action_receipts').insertMany(rows.map((r) => ({ ...r })))
+    const app = await buildApp(ADULT)
+    const full = deriveReceiptChain(rows)
+    const body = (
+      await app.inject({ method: 'GET', url: '/family/receipts?limit=3&offset=4' })
+    ).json()
+    expect(body.total).toBe(12)
+    expect(body.chain_head).toBe(full.at(-1)!.chain_hash)
+    expect(body.receipts.map((r: { chain_index: number }) => r.chain_index)).toEqual([7, 6, 5])
+    const beyond = (await app.inject({ method: 'GET', url: '/family/receipts?offset=50' })).json()
+    expect(beyond.receipts).toEqual([])
     await app.close()
   })
 })

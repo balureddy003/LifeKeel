@@ -31,7 +31,12 @@ import { z } from 'zod'
 import { getTenantCollection } from '@lifekeel/platform'
 import { isFamilyAdult } from '../family/family-permissions.js'
 import { type ScenarioChange, type ScenarioResult } from '../scenarios/calculate.js'
-import { projectScenario } from '../scenarios/project.js'
+import {
+  loadScenarioContext,
+  projectScenario,
+  projectScenarioWith,
+  type ScenarioContext,
+} from '../scenarios/project.js'
 import type { FamilyGroupDoc } from './family-group.js'
 
 export const ScenarioStepSchema = z.object({
@@ -99,8 +104,8 @@ export function registerFamilyScenarioRoutes(app: FastifyInstance, db: Db): void
   const scenariosFor = (tenantId: string) =>
     getTenantCollection<FamilyScenarioDoc>(db, 'family_scenarios', tenantId)
 
-  const toView = async (tenantId: string, doc: FamilyScenarioDoc): Promise<ScenarioView> => {
-    const outcome = await projectScenario(db, tenantId, doc.inputs)
+  const toView = (ctx: ScenarioContext, doc: FamilyScenarioDoc): ScenarioView => {
+    const outcome = projectScenarioWith(ctx, doc.inputs)
     // A scenario saved against a member who was later removed can't be
     // projected honestly — report it as dataless, not wrong.
     const ok = outcome.status === 'ok'
@@ -172,19 +177,28 @@ export function registerFamilyScenarioRoutes(app: FastifyInstance, db: Db): void
       watch: true,
     }
     await scenariosFor(tenant_id).insertOne(doc)
-    return reply.status(201).send({ scenario: await toView(tenant_id, doc) })
+    return reply
+      .status(201)
+      .send({ scenario: toView(await loadScenarioContext(db, tenant_id), doc) })
   })
 
-  app.get('/family/scenarios', async (req) => {
-    const { tenant_id } = req.authContext
-    const docs = await scenariosFor(tenant_id).find({}).toArray()
-    const scenarios = await Promise.all(
-      (docs as FamilyScenarioDoc[])
-        .sort((a, b) => b.created_at.localeCompare(a.created_at))
-        .map((d) => toView(tenant_id, d)),
-    )
-    return { scenarios }
-  })
+  // Paged, newest first. The profile and roster are read once per request
+  // and every projection runs against them (review F12).
+  app.get<{ Querystring: { limit?: string; offset?: string } }>(
+    '/family/scenarios',
+    async (req) => {
+      const { tenant_id } = req.authContext
+      const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 200)
+      const offset = Math.max(Number(req.query.offset) || 0, 0)
+      const col = scenariosFor(tenant_id)
+      const [docs, total, ctx] = await Promise.all([
+        col.find({}).sort({ created_at: -1 }).skip(offset).limit(limit).toArray(),
+        col.countDocuments({}),
+        loadScenarioContext(db, tenant_id),
+      ])
+      return { scenarios: (docs as FamilyScenarioDoc[]).map((d) => toView(ctx, d)), total }
+    },
+  )
 
   // PRD-136: the watchlist — saved scenarios enrolled in the nightly
   // recompute. `watch !== false` so docs written before the flag existed
@@ -239,7 +253,9 @@ export function registerFamilyScenarioRoutes(app: FastifyInstance, db: Db): void
     const { tenant_id } = req.authContext
     const doc = await scenariosFor(tenant_id).findOne({ id: req.params.id })
     if (!doc) return reply.status(404).send({ error: 'Scenario not found' })
-    return reply.send({ scenario: await toView(tenant_id, doc as FamilyScenarioDoc) })
+    return reply.send({
+      scenario: toView(await loadScenarioContext(db, tenant_id), doc as FamilyScenarioDoc),
+    })
   })
 
   // Deleting someone else's saved scenario is a real family-communication

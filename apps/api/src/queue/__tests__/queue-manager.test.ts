@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it, beforeAll, vi } from 'vitest'
-import { QueueManager, requeueDeadJob } from '../QueueManager.js'
+import { QueueManager, recoverStrandedJobs, requeueDeadJob } from '../QueueManager.js'
 
 // Dead port — connect() fails, so publish/subscribe take the inline path
 // for the whole file.
@@ -30,7 +30,9 @@ describe('inline fallback', () => {
     const received: unknown[] = []
 
     await qm.publish(q('early'), { hello: 'world' })
-    qm.subscribe(q('early'), async (p) => { received.push(p) })
+    qm.subscribe(q('early'), async (p) => {
+      received.push(p)
+    })
 
     await vi.waitFor(() => expect(received).toHaveLength(1), { timeout: 3000 })
     expect(received[0]).toEqual({ hello: 'world' })
@@ -48,14 +50,16 @@ describe('inline fallback', () => {
     // attempts 1→3: initial, +500ms, +1000ms backoff
     await vi.waitFor(() => expect(calls.length).toBeGreaterThanOrEqual(3), { timeout: 5000 })
     // Give a would-be 4th attempt time to fire — it must not exist.
-    await new Promise(r => setTimeout(r, 1600))
+    await new Promise((r) => setTimeout(r, 1600))
     expect(calls).toHaveLength(3)
   })
 
   it('delivers immediately when a handler is already subscribed', async () => {
     const qm = new QueueManager()
     const received: unknown[] = []
-    qm.subscribe(q('ready'), async (p) => { received.push(p) })
+    qm.subscribe(q('ready'), async (p) => {
+      received.push(p)
+    })
 
     await qm.publish(q('ready'), { a: 1 })
     await vi.waitFor(() => expect(received).toHaveLength(1), { timeout: 3000 })
@@ -79,6 +83,22 @@ describe('requeueDeadJob', () => {
         lists[key] = [...values, ...(lists[key] ?? [])]
         return lists[key]!.length
       },
+      // Same contract as MOVE_SCRIPT for list sources.
+      eval: async (
+        _script: string,
+        _n: number,
+        src: string,
+        dest: string,
+        raw: string,
+        next: string,
+      ) => {
+        const list = lists[src] ?? []
+        const i = list.indexOf(raw)
+        if (i === -1) return 0
+        list.splice(i, 1)
+        lists[dest] = [next, ...(lists[dest] ?? [])]
+        return 1
+      },
     } as never // cast: mock only implements what requeueDeadJob calls
   }
 
@@ -93,9 +113,29 @@ describe('requeueDeadJob', () => {
   })
 
   it('returns false for an unknown job id and skips malformed entries', async () => {
-    const lists: Record<string, string[]> = { 'q:dead': ['not-json', JSON.stringify({ id: 'job-2', enqueuedAt: 1 })] }
+    const lists: Record<string, string[]> = {
+      'q:dead': ['not-json', JSON.stringify({ id: 'job-2', enqueuedAt: 1 })],
+    }
     const moved = await requeueDeadJob(mockClient(lists), 'q', 'job-9')
     expect(moved).toBe(false)
     expect(lists['q:dead']).toHaveLength(2)
+  })
+})
+
+describe('recoverStrandedJobs transfer atomicity (review F05)', () => {
+  it('leaves the job in :processing when the move fails, instead of losing it', async () => {
+    const raw = JSON.stringify({ id: 'job-1', payload: {}, enqueuedAt: 1, attempts: 0 })
+    const lists: Record<string, string[]> = { 'q:processing': [raw], q: [] }
+    const client = {
+      lrange: async (key: string) => [...(lists[key] ?? [])],
+      get: async () => null,
+      del: async () => 1,
+      eval: async () => {
+        throw new Error('connection lost')
+      },
+    } as never
+    await expect(recoverStrandedJobs(client, 'q')).rejects.toThrow('connection lost')
+    expect(lists['q:processing']).toEqual([raw])
+    expect(lists['q']).toEqual([])
   })
 })
