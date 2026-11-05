@@ -945,19 +945,19 @@ export default function SettingsPage() {
                               handleApproveRequest(r.id)
                             }}
                             aria-label={`Approve ${r.name}`}
-                            className="w-8 h-8 rounded-lg bg-success/10 text-success flex items-center justify-center"
+                            className="h-8 px-3 rounded-lg bg-success/10 text-success text-sm font-medium flex items-center gap-1.5"
                           >
-                            <Check size={16} />
+                            <Check size={16} aria-hidden="true" /> Approve
                           </button>
                           <button
                             onClick={(e) => {
                               e.stopPropagation()
                               handleDenyRequest(r.id)
                             }}
-                            aria-label={`Deny ${r.name}`}
-                            className="w-8 h-8 rounded-lg bg-danger/10 text-danger flex items-center justify-center"
+                            aria-label={`Decline ${r.name}`}
+                            className="h-8 px-3 rounded-lg bg-danger/10 text-danger text-sm font-medium flex items-center gap-1.5"
                           >
-                            <X size={16} />
+                            <X size={16} aria-hidden="true" /> Decline
                           </button>
                         </>
                       )}
