@@ -1,6 +1,8 @@
 'use client'
 
 import { EditAccessSwitch } from '@/components/EditAccessSwitch'
+import { PushToggle } from '@/components/PushToggle'
+import { TextButton } from '@/components/TextButton'
 import { ACCOUNT_DELETE_WARNING } from '@/lib/deletion-receipt-copy'
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
@@ -1114,14 +1116,12 @@ export default function SettingsPage() {
                   onChange={(e) => setContextNote(e.target.value)}
                   className="glass-input w-full rounded-xl px-3 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 resize-none"
                 />
-                <button
-                  type="button"
+                <TextButton
                   disabled={contextBusy || contextNote === (family?.contextNote ?? '')}
                   onClick={saveContextNote}
-                  className="text-xs font-semibold text-family-400 disabled:opacity-40"
                 >
                   {contextBusy ? 'Saving…' : contextSaved ? 'Saved' : 'Save context'}
-                </button>
+                </TextButton>
               </div>
             </ListRow>
           </ListSection>
@@ -1253,22 +1253,11 @@ export default function SettingsPage() {
                         : 'Renewals and new insights — never marketing'}
                     </div>
                   </div>
-                  <button
-                    role="switch"
-                    aria-checked={pushEnabled}
-                    aria-label="Push notifications"
+                  <PushToggle
+                    enabled={pushEnabled}
                     disabled={pushAvailable === false || pushBusy}
-                    onClick={handlePushToggle}
-                    className={`relative w-12 h-7 rounded-full transition-colors disabled:opacity-40 flex-shrink-0 ${
-                      pushEnabled ? 'bg-family-500' : 'bg-tint/10'
-                    }`}
-                  >
-                    <span
-                      className={`absolute top-0.5 w-6 h-6 rounded-full bg-white transition-transform ${
-                        pushEnabled ? 'translate-x-[22px]' : 'translate-x-0.5'
-                      }`}
-                    />
-                  </button>
+                    onToggle={handlePushToggle}
+                  />
                 </div>
               </ListRow>
             </ListSection>
