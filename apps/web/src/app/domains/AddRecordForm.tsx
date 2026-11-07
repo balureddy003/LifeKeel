@@ -10,7 +10,7 @@ const inputCls =
 const primaryBtn =
   'inline-flex min-h-[48px] items-center justify-center rounded-full bg-family-500 px-5 text-base font-semibold text-white disabled:opacity-50'
 const ghostBtn =
-  'inline-flex min-h-[40px] items-center gap-2 rounded-full border border-haze px-4 text-sm font-medium text-ink-primary'
+  'inline-flex min-h-[48px] items-center gap-2 rounded-full border border-haze px-4 text-base font-medium text-ink-primary'
 
 /** One form drawn from a pack's store-backed record type. */
 export function AddRecordForm({
