@@ -105,3 +105,25 @@ describe('what each kind promises', () => {
     expect(kindById('join_approved')?.audience).toBe('requester')
   })
 })
+
+describe('the catalogue is honest about reach', () => {
+  it('lists every channel an alert reaches, not only the lock-screen-safe ones', () => {
+    // channels.ts sends the finding, a confidence figure and an approve link by
+    // SMS, WhatsApp and chat; the push closed set does not cover them.
+    expect(kindById('insight_alert')?.channels).toEqual(
+      expect.arrayContaining(['push', 'email', 'sms', 'whatsapp', 'chat']),
+    )
+  })
+
+  it('separates the reporter-only checklist reminder from the vault reminder that reaches other adults', () => {
+    expect(kindById('life_event_checklist_reminder')?.fixed_because).toMatch(
+      /only to the person who reported/,
+    )
+    const vault = kindById('life_event_vault_reminder')!
+    expect(vault.fixed_because).toMatch(/other adults/)
+    expect(vault.fixed_because).toMatch(/names who reported/)
+    expect(vault.safeguarding).toBe(true)
+    expect(vault.channels).not.toContain('push')
+    expect(kindById('life_event_reminder')).toBeUndefined()
+  })
+})

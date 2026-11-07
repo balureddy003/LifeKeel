@@ -4,9 +4,12 @@
  * lock screen may show.
  *
  * Rules the entries and the tests hold to:
- *  - A push body is chosen from this file, never composed from record data. It
+ *  - A PUSH body is chosen from this file, never composed from record data. It
  *    contains no digit, currency symbol or person/provider name, so it is safe
- *    on a shared or locked phone. The detail is behind sign-in.
+ *    on a shared or locked phone. The detail is behind sign-in. This closed set
+ *    governs push only: email, SMS, WhatsApp and chat messages for alerts carry
+ *    the finding, a confidence figure and an approve link (channels.ts), and
+ *    are listed under each kind's `channels` so the family sees them.
  *  - Every kind states its reason in one sentence ("Why you got this").
  *  - A message never counts streaks, days away or "your family is waiting".
  *  - Safety-class and consent-controlled kinds are not mutable here; they have
@@ -17,7 +20,7 @@
  */
 import type { DeliveryPreferences } from './delivery-router.js'
 
-export type KindChannel = 'push' | 'email' | 'in_app'
+export type KindChannel = 'push' | 'email' | 'sms' | 'whatsapp' | 'chat' | 'in_app'
 
 export interface NotificationKind {
   id: string
@@ -45,7 +48,7 @@ export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
     label: 'Alerts about your family list',
     reason: 'LifeKeel found something in the information you gave it that is worth a look.',
     status: 'live',
-    channels: ['push', 'email'],
+    channels: ['push', 'email', 'sms', 'whatsapp', 'chat'],
     push_bodies: {
       critical: 'An important update needs your attention.',
       normal: 'You have a new update in LifeKeel.',
@@ -84,14 +87,27 @@ export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
     mutable: true,
   },
   {
-    id: 'life_event_reminder',
-    label: 'Life event reminders',
-    reason: 'You reported a life event, so LifeKeel reminds you once about what is still open.',
+    id: 'life_event_checklist_reminder',
+    label: 'Life event checklist reminder',
+    reason: 'You reported a life event, so LifeKeel reminds you once about the steps still open.',
     status: 'live',
     channels: ['email'],
     push_bodies: {},
     mutable: false,
-    fixed_because: 'Sent once per event you report, only to the person who reported it.',
+    fixed_because: 'Sent once per event, only to the person who reported it.',
+    safeguarding: true,
+  },
+  {
+    id: 'life_event_vault_reminder',
+    label: 'A family member reported a life event',
+    reason:
+      'Another adult reported a life event, so LifeKeel reminds you that the family vault exists and has documents.',
+    status: 'live',
+    channels: ['email'],
+    push_bodies: {},
+    mutable: false,
+    fixed_because:
+      'Sent once per event to the other adults. It names who reported it and the type of event.',
     safeguarding: true,
   },
   {

@@ -265,7 +265,13 @@ describe('notification kinds: why you got this, and one mute per kind', () => {
   it('refuses to mute a kind that is not mutable or does not exist', async () => {
     const { db } = makeDb()
     const app = await build(db)
-    for (const bad of ['policy_renewal_reminder', 'life_event_reminder', 'date_upcoming', 'nope']) {
+    for (const bad of [
+      'policy_renewal_reminder',
+      'life_event_checklist_reminder',
+      'life_event_vault_reminder',
+      'date_upcoming',
+      'nope',
+    ]) {
       const r = await app.inject({
         method: 'PATCH',
         url: '/family/notifications',
