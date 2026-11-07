@@ -68,8 +68,9 @@ export const EDITOR_AUTH_ROLES = new Set(['owner', 'admin', 'operator', 'analyst
 /**
  * May this user change shared household records (financial profile,
  * policies applied from documents or email) and export the household's
- * data (R04, R05)? Needs a non-viewer role and, when the user is on the
- * roster, an active adult entry. Viewers can read but not write.
+ * data (R04, R05)? Needs a non-viewer role, or the organizer's edit grant on
+ * the roster, and, when the user is on the roster, an active adult entry.
+ * Viewers without that grant can read but not write.
  */
 export async function isHouseholdEditor(
   db: Db,
@@ -77,11 +78,18 @@ export async function isHouseholdEditor(
   userId: string,
   roles: readonly string[] | undefined,
 ): Promise<boolean> {
-  if (!roles?.some((role) => EDITOR_AUTH_ROLES.has(role))) return false
   const family = await db
     .collection<FamilyGroupDoc>('family_groups')
     .findOne({ tenant_id: tenantId })
   const member = family?.members?.find((m) => memberMatchesUser(m, userId))
+  if (!roles?.some((role) => EDITOR_AUTH_ROLES.has(role))) {
+    // No editor role on the session. The organizer can still have let this
+    // adult edit (stored on the roster, so it applies at once). An adult
+    // sitting on a session token that predates the grant is covered too.
+    return (
+      !!member && member.can_edit === true && member.status === 'active' && !isMinorMember(member)
+    )
+  }
   if (!member) return true
   return member.status === 'active' && !isMinorMember(member)
 }

@@ -10,6 +10,7 @@ import {
   removeFamilyGroupMember,
   updateFamilyGroupMemberRole,
   updateFamilyGroupMemberDateOfBirth,
+  setFamilyGroupMemberEditAccess,
   acceptFamilyInvite as apiAcceptFamilyInvite,
   type ApiFamilyGroup,
 } from './api'
@@ -93,6 +94,8 @@ interface AuthContextValue {
   removeMember: (id: string) => Promise<void>
   updateMemberRole: (id: string, role: FamilyRole) => Promise<void>
   updateMemberDateOfBirth: (id: string, dateOfBirth: string) => Promise<void>
+  /** Organizer only. */
+  setMemberEditAccess: (id: string, enabled: boolean) => Promise<void>
   refresh: () => Promise<void>
 }
 
@@ -637,6 +640,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const setMemberEditAccess = async (id: string, enabled: boolean) => {
+    const previous = family
+    if (family) {
+      persist(user, {
+        ...family,
+        members: family.members.map((m) => (m.id === id ? { ...m, canEdit: enabled } : m)),
+      })
+    }
+    try {
+      const apiFamily = await setFamilyGroupMemberEditAccess(id, enabled)
+      persist(user, toFamilyGroup(apiFamily))
+    } catch (err) {
+      persist(user, previous)
+      throw err
+    }
+  }
+
   const updateMemberDateOfBirth = async (id: string, dateOfBirth: string) => {
     const previous = family
     if (family) {
@@ -701,6 +721,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         removeMember,
         updateMemberRole,
         updateMemberDateOfBirth,
+        setMemberEditAccess,
         refresh,
       }}
     >

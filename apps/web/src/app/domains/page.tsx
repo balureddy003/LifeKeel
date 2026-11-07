@@ -162,8 +162,8 @@ export default function DomainsPage() {
         <>
           {!view.can_edit && (
             <p className="mt-4 text-sm text-ink-secondary">
-              You can look at this and confirm it. This account cannot add or remove what is on
-              file.
+              You can look at this and confirm it. This account cannot add or remove what is on the
+              family list. The organizer can change that in Settings, under Family.
             </p>
           )}
           {view.matrix && view.matrix.rows.length > 0 ? (

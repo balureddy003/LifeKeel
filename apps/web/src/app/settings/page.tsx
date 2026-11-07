@@ -1,5 +1,6 @@
 'use client'
 
+import { EditAccessSwitch } from '@/components/EditAccessSwitch'
 import { ACCOUNT_DELETE_WARNING } from '@/lib/deletion-receipt-copy'
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
@@ -133,6 +134,7 @@ export default function SettingsPage() {
     signOut,
     inviteMember,
     removeMember,
+    setMemberEditAccess,
     updateMemberRole,
     updateProfile,
     refresh,
@@ -718,6 +720,18 @@ export default function SettingsPage() {
                       {ROLE_LABELS[m.role]}
                       {m.relationshipLabel ? ` · ${RELATIONSHIP_LABELS[m.relationshipLabel]}` : ''}
                     </div>
+                    {isOrganizer &&
+                      m.status === 'active' &&
+                      (m.role === 'adult' || m.role === 'parent') && (
+                        <EditAccessSwitch
+                          name={m.name}
+                          enabled={m.canEdit === true}
+                          onChange={(next) => {
+                            haptic('light')
+                            setMemberEditAccess(m.id, next).catch(() => haptic('warning'))
+                          }}
+                        />
+                      )}
                   </div>
                   <div className="flex items-center gap-3">
                     <span

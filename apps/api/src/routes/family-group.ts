@@ -91,6 +91,10 @@ export interface FamilyMemberDoc {
   // Intent 25: optional relationship label for children ("my child" /
   // "partner's child" / "shared"). Set via POST/PATCH; display-only.
   relationship_label?: RelationshipLabel
+  // The organizer let this adult add and edit household records. Stored on the
+  // roster, not on a session role, so it applies at once and ends when the
+  // member is removed or becomes a child.
+  can_edit?: boolean
 }
 
 export interface FamilyGroupDoc extends Record<string, unknown> {
@@ -156,6 +160,7 @@ function toResponse(doc: FamilyGroupDoc, inviteViewedAt: Map<string, Date> = new
       ...(m.user_id ? { userId: m.user_id } : {}),
       ...(m.date_of_birth ? { dateOfBirth: m.date_of_birth } : {}),
       ...(m.relationship_label ? { relationshipLabel: m.relationship_label } : {}),
+      ...(m.can_edit ? { canEdit: true } : {}),
     })),
     ...(doc.context_note ? { contextNote: doc.context_note } : {}),
   }
@@ -377,6 +382,8 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
     // change to adult/parent — the child-only guard above only covers
     // the same request.
     if (role !== undefined && role !== 'child') unset['members.$.relationship_label'] = ''
+    // A child can never hold edit access.
+    if (role === 'child') unset['members.$.can_edit'] = ''
 
     const result = (await groupsFor(tenant_id).findOneAndUpdate(
       { 'members.id': req.params.id },
@@ -386,6 +393,47 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
     if (!result) return reply.status(404).send({ error: 'Member not found' })
     return { family: toResponse(result) }
   })
+
+  // ── PUT /family/members/:id/edit-access ─────────────────────────────────
+  // The organizer lets a second adult add and edit household records (or takes
+  // it back). Tier 0 permission bookkeeping: nothing is sent and nothing acts
+  // for anyone; every grant and revoke is audit-logged.
+  fastify.put<{ Params: { id: string }; Body: { enabled?: unknown } }>(
+    '/family/members/:id/edit-access',
+    async (req, reply) => {
+      const { tenant_id, user_id } = req.authContext
+      if (!(await isFamilyOrganizer(db, tenant_id, user_id)))
+        return reply.status(403).send({ error: 'Only the organizer can change edit access' })
+      const enabled = req.body?.enabled
+      if (typeof enabled !== 'boolean')
+        return reply.status(400).send({ error: 'enabled must be true or false' })
+
+      const group = (await groupsFor(tenant_id).findOne({})) as FamilyGroupDoc | null
+      const member = group?.members.find((m) => m.id === req.params.id)
+      if (!member) return reply.status(404).send({ error: 'Member not found' })
+      if (member.role === 'organizer')
+        return reply.status(409).send({ error: 'The organizer can always edit' })
+      if (member.role === 'child')
+        return reply.status(400).send({ error: 'Children cannot have edit access' })
+      if (member.status !== 'active')
+        return reply
+          .status(400)
+          .send({ error: 'They need to join before they can have edit access' })
+
+      const result = (await groupsFor(tenant_id).findOneAndUpdate(
+        { 'members.id': member.id },
+        enabled
+          ? { $set: { 'members.$.can_edit': true, updated_at: new Date() } }
+          : { $set: { updated_at: new Date() }, $unset: { 'members.$.can_edit': '' } },
+        { returnDocument: 'after' },
+      )) as FamilyGroupDoc | null
+      if (!result) return reply.status(404).send({ error: 'Member not found' })
+      getAuditLogger()?.fromRequest(req, 'family.edit_access_changed', 'family_member', member.id, {
+        enabled,
+      })
+      return { family: toResponse(result) }
+    },
+  )
 
   // ── DELETE /family/members/:id ──────────────────────────────────────────
   fastify.delete<{ Params: { id: string } }>('/family/members/:id', async (req, reply) => {
