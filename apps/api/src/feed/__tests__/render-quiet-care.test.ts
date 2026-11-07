@@ -163,10 +163,10 @@ describe('domain lines in the monthly digest (round 5b)', () => {
     const r = renderQuietCareDigest({ ...base, lists })
     expect(r.text).toContain('On your family list')
     expect(r.text).toContain(
-      'Life and income protection: 3 records on file, not yet seen by every adult.',
+      'Life and income protection: 3 records on the family list, not yet seen by every adult.',
     )
     expect(r.text).toContain('A policy renewal date is coming up (14 December).')
-    expect(r.text).toContain('Car and transport: 1 record on file, seen by every adult.')
+    expect(r.text).toContain('Car and transport: 1 record on the family list, seen by every adult.')
     expect(r.html).toContain('On your family list')
   })
 

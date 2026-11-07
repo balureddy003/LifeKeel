@@ -37,7 +37,7 @@ export interface QuietCareData {
   new_insights: number
   resolved_insights: number
   renewals: { type: string; renewal_date: string }[]
-  /** One factual line per domain with records on file (counts and dates only). */
+  /** One factual line per domain with records on the family list (counts and dates only). */
   lists?: Array<{
     title: string
     records: number
@@ -72,7 +72,9 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 function listLines(d: QuietCareData): string[] {
   return (d.lists ?? []).flatMap((l) => {
     const seen = l.seen_by_all ? 'seen by every adult' : 'not yet seen by every adult'
-    const lines = [`${l.title}: ${plural(l.records, 'record', 'records')} on file, ${seen}.`]
+    const lines = [
+      `${l.title}: ${plural(l.records, 'record', 'records')} on the family list, ${seen}.`,
+    ]
     if (l.next) lines.push(`${l.next.label} (${formatDay(new Date(l.next.date))}).`)
     return lines
   })

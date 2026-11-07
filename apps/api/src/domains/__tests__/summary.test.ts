@@ -31,7 +31,7 @@ beforeEach(async () => {
 })
 
 describe('summariseDomains', () => {
-  it('says nothing for a household with nothing on file', async () => {
+  it('says nothing for a household with nothing on the family list', async () => {
     expect(await summariseDomains(db, T, NOW)).toEqual([])
   })
 
