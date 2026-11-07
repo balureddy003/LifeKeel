@@ -343,6 +343,15 @@ describe('keyboard and touch access', () => {
     expect(region.getAttribute('tabindex')).toBe('0')
   })
 
+  it('keeps the policy name visible while the matrix scrolls sideways, and controls at 16px', async () => {
+    getDomainView.mockResolvedValue(view())
+    render(<DomainsPage />)
+    const rowHeader = await screen.findByRole('rowheader', { name: 'Policy · Provider A' })
+    expect(rowHeader.className).toContain('sticky')
+    expect(rowHeader.className).toContain('left-0')
+    expect(screen.getByRole('button', { name: 'Sam' }).className).toContain('text-base')
+  })
+
   it('gives the person chips and the confirm button a 48px touch target', async () => {
     getDomainView.mockResolvedValue(view())
     render(<DomainsPage />)

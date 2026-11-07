@@ -173,7 +173,7 @@ export default function DomainsPage() {
                       <tr key={r.id} className="border-b border-haze last:border-0">
                         <th
                           scope="row"
-                          className="min-w-[10rem] break-normal p-3 font-medium text-ink-primary"
+                          className="sticky left-0 min-w-[10rem] break-normal bg-surface-1 p-3 font-medium text-ink-primary"
                         >
                           {r.label}
                         </th>
@@ -279,7 +279,7 @@ export default function DomainsPage() {
                     type="button"
                     onClick={() => openPlaybook(p.id)}
                     aria-pressed={pb?.member.id === p.id}
-                    className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full border border-haze px-4 text-sm font-medium text-ink-primary aria-pressed:bg-family-500 aria-pressed:text-white"
+                    className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full border border-haze px-4 text-base font-medium text-ink-primary aria-pressed:bg-family-500 aria-pressed:text-white"
                   >
                     {p.name}
                   </button>

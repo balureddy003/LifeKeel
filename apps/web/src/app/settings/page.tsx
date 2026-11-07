@@ -945,7 +945,7 @@ export default function SettingsPage() {
                               handleApproveRequest(r.id)
                             }}
                             aria-label={`Approve ${r.name}`}
-                            className="min-h-[48px] px-3 rounded-lg bg-success/10 text-success text-sm font-medium flex items-center gap-1.5"
+                            className="min-h-[48px] px-3 rounded-lg bg-success/10 text-success text-base font-medium flex items-center gap-1.5"
                           >
                             <Check size={16} aria-hidden="true" /> Approve
                           </button>
@@ -955,7 +955,7 @@ export default function SettingsPage() {
                               handleDenyRequest(r.id)
                             }}
                             aria-label={`Decline ${r.name}`}
-                            className="min-h-[48px] px-3 rounded-lg bg-danger/10 text-danger text-sm font-medium flex items-center gap-1.5"
+                            className="min-h-[48px] px-3 rounded-lg bg-danger/10 text-danger text-base font-medium flex items-center gap-1.5"
                           >
                             <X size={16} aria-hidden="true" /> Decline
                           </button>
