@@ -46,6 +46,29 @@ describe('domain registry', () => {
     expect(problems).toMatch(/sensitive field cannot be externally visible/)
   })
 
+  it('refuses a sensitive field on a stored record, but allows it on an adapter record', () => {
+    const stored = DomainPackSchema.parse({
+      ...lifeProtection,
+      id: 'health_x',
+      records: [
+        {
+          key: 'condition',
+          label: 'Condition',
+          person_attribution: 'subject',
+          source: { kind: 'store' },
+          fields: [{ key: 'note', label: 'Note', kind: 'text', sensitive: true }],
+        },
+      ],
+      matrix: undefined,
+      playbook: undefined,
+      planning: [],
+      external: { enabled: false, permitted: {} },
+    })
+    expect(validateDomains([stored], PLAYBOOKS).join()).toMatch(/cannot hold a sensitive field/)
+    // life protection keeps a sensitive policy number on an adapter record
+    expect(validateDomains([lifeProtection], PLAYBOOKS)).toEqual([])
+  })
+
   it('rejects duplicate domain ids', () => {
     expect(validateDomains([lifeProtection, lifeProtection], PLAYBOOKS).join()).toMatch(
       /duplicate domain id/,

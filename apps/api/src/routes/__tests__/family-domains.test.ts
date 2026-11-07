@@ -25,6 +25,10 @@ beforeAll(async () => {
   client = new MongoClient(mongod.getUri())
   await client.connect()
   db = client.db('domains-test')
+  // Same unique index migrate.ts creates in production.
+  await db
+    .collection('domain_confirmations')
+    .createIndex({ tenant_id: 1, domain_id: 1, user_id: 1, result_version: 1 }, { unique: true })
   app = Fastify()
   app.addHook('onRequest', async (request) => {
     if (currentUser)
@@ -241,10 +245,22 @@ describe('planning dates', () => {
     expect(v.upcoming[1].days).toBe(10)
   })
 
-  it('does not change the version the adults confirm', async () => {
-    const a = await get()
-    expect(a.upcoming).toEqual([])
-    expect(a.result_version).toHaveLength(64)
+  it('does not change the version the adults confirm when only a reminder appears', async () => {
+    const before = await get()
+    expect(before.upcoming).toEqual([])
+    await db
+      .collection('family_financial_profile')
+      .updateOne(
+        { tenant_id: TENANT, 'policies.id': 'pol_1' },
+        { $set: { 'policies.$.renewal_date': daysFromNow(5) } },
+      )
+    const after = await get()
+    expect(after.upcoming).toHaveLength(1)
+    // The renewal date is a recorded fact, so it IS part of the version; the
+    // reminder list itself is not. Same date, different day => same version.
+    const again = await get()
+    expect(again.result_version).toBe(after.result_version)
+    expect(after.result_version).not.toBe(before.result_version)
   })
 })
 
@@ -376,6 +392,36 @@ describe('car and transport: a second domain added as data only', () => {
     expect(r.statusCode).toBe(200)
     expect(r.json().playbook).toBe('car')
     expect(r.json().groups[0].rows.map((x: { id: string }) => x.id)).toContain('pol_3')
+  })
+})
+
+describe('record values are checked against the pack', () => {
+  const add = (body: Record<string, unknown>) =>
+    app.inject({ method: 'POST', url: '/family/domains/car/records/vehicle', payload: body })
+
+  it('refuses a made-up person, a bad date and a person who is not on the list', async () => {
+    expect((await add({ holder_member_id: 'ghost', values: { reg: 'AB12' } })).statusCode).toBe(400)
+    expect((await add({ values: { mot_due: '2027-02-30' } })).statusCode).toBe(400)
+    expect((await add({ values: { mot_due: 'next spring' } })).statusCode).toBe(400)
+    expect((await add({ covers_member_id: 'ghost', values: { reg: 'AB12' } })).statusCode).toBe(400)
+    expect(await db.collection('domain_records').countDocuments({})).toBe(0)
+  })
+
+  it('accepts a real date and a person on the list', async () => {
+    const r = await add({
+      holder_member_id: 'alex',
+      values: { reg: 'AB12 CDE', mot_due: '2027-02-28' },
+    })
+    expect(r.statusCode).toBe(201)
+  })
+})
+
+describe('confirming twice at once', () => {
+  it('stays idempotent and returns the same result both times', async () => {
+    const v = await get()
+    const [a, b] = await Promise.all([confirm(v.result_version), confirm(v.result_version)])
+    expect([a.statusCode, b.statusCode]).toEqual([200, 200])
+    expect(await db.collection('domain_confirmations').countDocuments({})).toBe(1)
   })
 })
 

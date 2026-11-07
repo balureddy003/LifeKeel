@@ -26,7 +26,11 @@ export const FieldSchema = z
     label: z.string().min(1).max(80),
     kind: z.enum(['text', 'date', 'money', 'choice', 'member']),
     choices: z.array(z.string().min(1).max(60)).max(20).optional(),
-    /** Encrypted at rest and excluded from logs (see crypto/envelope). */
+    /**
+     * Reserved for fields that must be encrypted at rest. Store-backed records
+     * do not encrypt yet, so the registry refuses `sensitive` on them (see
+     * validateDomains); only adapter-backed records may carry it.
+     */
     sensitive: z.boolean().default(false),
   })
   .strict()

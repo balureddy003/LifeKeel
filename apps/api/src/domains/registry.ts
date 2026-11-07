@@ -32,6 +32,10 @@ export function validateDomains(domains: readonly DomainPack[], playbookDir: str
       const keys = new Set(r.fields.map((f) => f.key))
       if (keys.size !== r.fields.length) problems.push(`${d.id}.${r.key}: duplicate field key`)
       for (const f of r.fields) {
+        if (f.sensitive && r.source.kind === 'store')
+          problems.push(
+            `${d.id}.${r.key}.${f.key}: a stored record cannot hold a sensitive field until it is encrypted`,
+          )
         if (f.kind === 'choice' && !f.choices?.length)
           problems.push(`${d.id}.${r.key}.${f.key}: choice field needs choices`)
       }

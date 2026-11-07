@@ -13,6 +13,7 @@ import { getAuditLogger } from '../audit/audit-log.js'
 import { SECRET_PATTERNS } from '../briefs/catalogue.js'
 import { DOMAINS } from '../domains/registry.js'
 import type { DomainPack } from '../domains/types.js'
+import { checkRecordValues } from '../domains/records.js'
 import { buildDomainPlaybook } from '../domains/playbook.js'
 import {
   buildDomainView,
@@ -108,6 +109,15 @@ export function registerFamilyDomainRoutes(
       const known = new Set(rec.fields.map((f) => f.key))
       if (Object.keys(values).some((k) => !known.has(k)))
         return reply.code(400).send({ error: 'Check the details and try again' })
+      const { roster } = await loadDomainRows(db, ctx.tenant_id, { ...pack, records: [] })
+      const problem = checkRecordValues(
+        rec,
+        values,
+        new Set(roster.map((m) => m.id)),
+        parsed.data.holder_member_id,
+        parsed.data.covers_member_id,
+      )
+      if (problem) return reply.code(400).send({ error: problem })
       const bad = Object.entries(values).find(([, v]) => SECRET_PATTERNS.some((re) => re.test(v)))
       if (bad)
         return reply.code(400).send({
@@ -168,15 +178,20 @@ export function registerFamilyDomainRoutes(
     // A confirmation only counts for the exact version the adult was shown.
     if (parsed.data.result_version !== view.result_version)
       return reply.code(409).send({ error: 'This changed since you opened it. Review it again.' })
-    await getTenantCollection<DomainConfirmationDoc>(
-      db,
-      'domain_confirmations',
-      ctx.tenant_id,
-    ).updateOne(
-      { domain_id: pack.id, user_id: ctx.user_id, result_version: view.result_version },
-      { $setOnInsert: { confirmed_at: new Date() } },
-      { upsert: true },
-    )
+    try {
+      await getTenantCollection<DomainConfirmationDoc>(
+        db,
+        'domain_confirmations',
+        ctx.tenant_id,
+      ).updateOne(
+        { domain_id: pack.id, user_id: ctx.user_id, result_version: view.result_version },
+        { $setOnInsert: { confirmed_at: new Date() } },
+        { upsert: true },
+      )
+    } catch (err) {
+      // Two taps at once can race the unique index; the stamp exists either way.
+      if ((err as { code?: number }).code !== 11000) throw err
+    }
     await getAuditLogger()?.fromRequest(
       req,
       'domain.confirmed',
