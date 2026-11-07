@@ -58,7 +58,8 @@ export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
   {
     id: 'policy_renewal_reminder',
     label: 'Policy renewal reminders',
-    reason: 'You turned on renewal reminders, so LifeKeel tells you before a renewal date on file.',
+    reason:
+      'You turned on renewal reminders, so LifeKeel tells you before a renewal date on the family list.',
     status: 'live',
     channels: ['push'],
     push_bodies: {},
@@ -147,7 +148,7 @@ export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
     reason: 'Someone used your family’s invite and is waiting for you to approve or decline.',
     status: 'planned',
     channels: ['email', 'in_app'],
-    push_bodies: { ready: 'Someone asked to join your family list.' },
+    push_bodies: { ready: 'Someone asked to join your family.' },
     mutable: false,
     fixed_because: 'The organizer is the only person who can approve a request.',
     safeguarding: true,
@@ -165,7 +166,7 @@ export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
   {
     id: 'holder_changed',
     label: 'A detail may need a look',
-    reason: 'A record names someone who is no longer on the family list.',
+    reason: 'A record names someone who is no longer in the family.',
     status: 'planned',
     channels: ['email', 'in_app'],
     push_bodies: { ready: 'A detail on your family list may need a look.' },
