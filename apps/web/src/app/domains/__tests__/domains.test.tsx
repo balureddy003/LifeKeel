@@ -460,6 +460,72 @@ describe('hardening (critic pass 2)', () => {
   })
 })
 
+describe('easy capture, first step (no new processing)', () => {
+  it('tells a person their phone keyboard can type what they say, and does not call it private', async () => {
+    window.history.pushState({}, '', '/domains?d=car')
+    getDomainView.mockResolvedValue(carView())
+    render(<DomainsPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /Add a vehicle/ }))
+    const tip = screen.getByText(/your phone's keyboard can type what you say/i)
+    expect(tip.textContent).toMatch(/feature of your phone/)
+    expect(tip.textContent).not.toMatch(/private|secure|encrypted|approved/i)
+  })
+
+  it('makes text inputs friendly to dictation and autofill hints', async () => {
+    window.history.pushState({}, '', '/domains?d=car')
+    getDomainView.mockResolvedValue(carView())
+    render(<DomainsPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /Add a vehicle/ }))
+    const reg = screen.getByLabelText(/Registration/) as HTMLInputElement
+    expect(reg.getAttribute('autocomplete')).toBe('off')
+    expect(reg.getAttribute('autocapitalize')).toBe('sentences')
+    expect(reg.getAttribute('enterkeyhint')).toBe('next')
+    expect((screen.getByLabelText(/MOT due/) as HTMLInputElement).type).toBe('date')
+  })
+
+  it('offers Photograph a letter or policy to an editor, linking to the existing upload, and not to a read-only adult', async () => {
+    window.history.pushState({}, '', '/domains?d=life_protection')
+    getDomainView.mockResolvedValue(view())
+    render(<DomainsPage />)
+    const link = await screen.findByRole('link', { name: /Photograph a letter or policy/ })
+    expect(link.getAttribute('href')).toBe('/upload')
+    expect(
+      screen.getByText(/Nothing is added to the family list until you confirm it/),
+    ).toBeTruthy()
+    cleanup()
+    getDomainView.mockResolvedValue({ ...view(), can_edit: false })
+    render(<DomainsPage />)
+    await screen.findByText('Holds it')
+    expect(screen.queryByRole('link', { name: /Photograph a letter or policy/ })).toBeNull()
+  })
+
+  it('says where rows read from elsewhere are changed, and says nothing when every row is typed here', async () => {
+    window.history.pushState({}, '', '/domains?d=life_protection')
+    getDomainView.mockResolvedValue(view())
+    render(<DomainsPage />)
+    expect(await screen.findByText(/Some of this comes from your/)).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'financial profile' }).getAttribute('href')).toBe(
+      '/financial-profile',
+    )
+    cleanup()
+    window.history.pushState({}, '', '/domains?d=car')
+    getDomainView.mockResolvedValue(
+      carView([
+        {
+          id: 'v1',
+          record: 'vehicle',
+          holder_member_id: null,
+          covers_member_id: null,
+          values: { reg: 'AB12 CDE' },
+        },
+      ]),
+    )
+    render(<DomainsPage />)
+    await screen.findByText('AB12 CDE')
+    expect(screen.queryByText(/Some of this comes from your/)).toBeNull()
+  })
+})
+
 describe('domain copy', () => {
   it('words a date relative to today', () => {
     expect(daysText(0)).toBe('today')
