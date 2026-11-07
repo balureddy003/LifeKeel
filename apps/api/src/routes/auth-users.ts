@@ -233,6 +233,21 @@ const GENERIC_LOGIN_ERROR = 'Invalid email or password'
 const THROTTLED_LOGIN_ERROR =
   'Too many sign-in attempts. Wait a few minutes or reset your password.'
 
+/** Same switch signup uses; read at call time so code outside this file can follow it. */
+export function emailVerificationEnabled(): boolean {
+  return process.env['EMAIL_VERIFICATION_ENABLED'] === 'true'
+}
+
+/** A fresh verification token for an account created outside signup (e.g. join approval). Only the hash is stored. */
+export function issueEmailVerification(): { hash: string; expires: Date; url: string } {
+  const token = generateEmailVerificationToken()
+  return {
+    hash: hashAuthToken(token),
+    expires: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    url: verificationUrl(token),
+  }
+}
+
 /** The link in the verification email — goes to the web /verify-email
  *  page, which POSTs the token back to /auth/verify-email. Never logged:
  *  possession of this URL proves mailbox ownership. The token rides in the

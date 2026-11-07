@@ -48,6 +48,7 @@ import {
   type User,
 } from './auth-users.js'
 import { sendFamilyInviteEmail, sendJoinApprovedEmail } from '../auth-email.js'
+import { emailVerificationEnabled, issueEmailVerification } from './auth-users.js'
 import { emailConfigured } from '../email/transport.js'
 import { isMinorMember, memberMatchesUser } from '../family/family-permissions.js'
 import { generateInviteCode, type FamilyGroupDoc, type FamilyMemberDoc } from './family-group.js'
@@ -98,6 +99,10 @@ function inviteTokenFilter(token: unknown): { token: { $in: string[] } } | null 
 const MAX_INVITES_PER_DAY = 20
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000
+
+/** A join request nobody answers stops being valid, and stops blocking a fresh one. */
+export const JOIN_REQUEST_TTL_DAYS = 14
+const requestCutoff = () => new Date(Date.now() - JOIN_REQUEST_TTL_DAYS * 86_400_000)
 
 interface JoinBody {
   invite_code?: string
@@ -173,7 +178,9 @@ export function registerFamilyJoinRoutes(
         email: normalizedEmail,
         status: 'pending',
       })
-      if (existingRequest)
+      if (existingRequest && (existingRequest['requested_at'] as Date) < requestCutoff()) {
+        await requests.deleteOne({ id: existingRequest['id'] })
+      } else if (existingRequest)
         return reply.status(409).send({ error: 'A request for this email is already pending' })
 
       const salt = randomBytes(16).toString('hex')
@@ -217,7 +224,7 @@ export function registerFamilyJoinRoutes(
       return reply.status(403).send({ error: 'Only the organizer can view join requests' })
 
     const pending = await requests
-      .find({ tenant_id, status: 'pending' })
+      .find({ tenant_id, status: 'pending', requested_at: { $gte: requestCutoff() } })
       .sort({ requested_at: -1 })
       .toArray()
     return {
@@ -245,6 +252,12 @@ export function registerFamilyJoinRoutes(
         status: 'pending',
       })) as FamilyJoinRequestDoc | null
       if (!request) return reply.status(404).send({ error: 'Join request not found' })
+      if (request.requested_at < requestCutoff()) {
+        await requests.deleteOne({ id: request.id })
+        return reply
+          .status(410)
+          .send({ error: 'This request expired. Ask them to send a new one.' })
+      }
 
       const users = await getUsersCollection()
       // Re-check at approval time, not just at request time — someone else
@@ -257,6 +270,7 @@ export function registerFamilyJoinRoutes(
           .send({ error: 'This email was registered elsewhere since the request was made' })
       }
 
+      const verification = emailVerificationEnabled() ? issueEmailVerification() : null
       const newUser: User = {
         id: randomUUID(),
         email: request.email,
@@ -272,11 +286,14 @@ export function registerFamilyJoinRoutes(
         locked_until: undefined,
         external_id: undefined,
         external_provider: undefined,
-        // The invite link itself proves mailbox ownership — it only reached
-        // this address because the organizer's invite email landed there.
-        email_verified: true,
+        // A per-member invite email proves the mailbox; a join request does not:
+        // the organizer shares one invite code and the joiner types any address.
+        // So, exactly as signup does, the address stays unverified until the
+        // emailed link is used (when verification is on for the platform).
+        email_verified: !verification,
         email_verification_token: undefined,
-        email_verification_expires: undefined,
+        email_verification_expires: verification?.expires,
+        ...(verification ? { email_verification_token_hash: verification.hash } : {}),
         password_reset_token: undefined,
         password_reset_expires: undefined,
         updated_at: undefined,
@@ -341,7 +358,13 @@ export function registerFamilyJoinRoutes(
 
       // The joiner has no other signal that it is time to sign in.
       const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
-      await sendJoinApprovedEmail(newUser.email, newUser.name, family.name, `${appUrl}/login`)
+      await sendJoinApprovedEmail(
+        newUser.email,
+        newUser.name,
+        family.name,
+        `${appUrl}/login`,
+        verification?.url,
+      )
 
       return { approved: true, name: newUser.name, email: newUser.email }
     },
