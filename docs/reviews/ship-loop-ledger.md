@@ -2,7 +2,7 @@
 
 Tracks the rounds in `docs/reviews/ux-journey-notifications-review-2026-11-07.md` (section 4; added in PR 379). One row per round. "Production-ready" here means ready for the owner to merge and deploy. Nothing in this loop merges or deploys.
 
-Updated: 2026-11-07 (loop stopped at iteration 9: all 10 PRs green, no human review comments, round 9 deferred. Iteration 8: critic pass 3 folded in and its confirmed findings fixed on 384, 386, 387. Iteration 7: PRs 378-386 CI green; shipped round (c) as PR 387; critic pass 3 running, report will be docs/reviews/critic-pass-3-2026-11-07.md. Iteration 6: PRs 378-385 CI green; shipped round (b) as PR 386. Iteration 5: PRs 378-384 CI green; shipped round (a) as the next PR. Iteration 4: critic pass 2 folded in, report in `docs/reviews/critic-pass-2-2026-11-07.md`; its three High findings fixed on their own PRs).
+Updated: 2026-11-07 (decisions on edit rights, SMS/WhatsApp and wording recorded; PRs 388 and 389 opened after the loop stopped. Loop stopped at iteration 9: all 10 PRs green, no human review comments, round 9 deferred. Iteration 8: critic pass 3 folded in and its confirmed findings fixed on 384, 386, 387. Iteration 7: PRs 378-386 CI green; shipped round (c) as PR 387; critic pass 3 running, report will be docs/reviews/critic-pass-3-2026-11-07.md. Iteration 6: PRs 378-385 CI green; shipped round (b) as PR 386. Iteration 5: PRs 378-384 CI green; shipped round (a) as the next PR. Iteration 4: critic pass 2 folded in, report in `docs/reviews/critic-pass-2-2026-11-07.md`; its three High findings fixed on their own PRs).
 
 | Round | What | Status | PR | Acceptance check |
 |---|---|---|---|---|
@@ -54,6 +54,16 @@ New rounds from the critic, in order: (a) catalogue truthfulness (inventory + tr
 | Low (385): allow-list is file-level; `auth-email.ts` is a blanket entry; "every live kind has a sender" is satisfied by the list, not the code | accepted; stated in the PR |
 
 **Merge order recommended by the critic** (git merge-tree found no conflicts between PR heads): 378, 379, 380 (before 381, because the catalogue lists `join_approved` as live), 381, 383, 382, 384, 385, 387, 386. Stacked: 384 and 387 on 379, 385 on 381, 386 on 380, 382 on 378. Merging is yours; nothing here merges.
+
+## Owner decisions received after the loop stopped (2026-11-07)
+
+| Decision | Answer | What followed |
+|---|---|---|
+| Can the organizer let a second adult edit? | Yes | [PR 388](https://github.com/balureddy003/LifeKeel/pull/388): `PUT /family/members/:id/edit-access`, stored on the roster (applies at once, ends on removal), switch in Settings, audit-logged. Stacked on 387. |
+| Should SMS/WhatsApp alerts keep detail and the signed approve link? | Yes, with links | No code change: that is current behaviour. The catalogue lists those channels honestly. Push never carries an approve link. Recorded here as a deliberate choice. |
+| Noun for the household record: "family list" or "on file"? | "Family list" | [PR 389](https://github.com/balureddy003/LifeKeel/pull/389) (domains, packs, doors, `copy-nouns` test), plus a commit on 381 (catalogue) and one on 382 (digest). The roster is now "the family". Strings outside these areas (financial profile, documents) still say "on file". |
+
+Still open from the critics: join account model (set-password link), whether production has verification or OTP login on, safeguarding default for email subjects, per-adult vs organizer-only mute, plus 2c, 3b, 4c, 5a, 6a, 7, 8, (g), (h).
 
 Owner decisions collected so far: SMS/WhatsApp detail and approve links; join account model (set-password link); whether production has `EMAIL_VERIFICATION_ENABLED` or OTP login on; organizer-granted edit rights; safeguarding default for email subjects; noun for "family list" vs "on file"; per-adult or organizer-only mute; plus 2c, 3b, 4c, 5a, 6a, 7, 8, (g), (h).
 
