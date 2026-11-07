@@ -63,6 +63,16 @@ New rounds from the critic, in order: (a) catalogue truthfulness (inventory + tr
 | Should SMS/WhatsApp alerts keep detail and the signed approve link? | Yes, with links | No code change: that is current behaviour. The catalogue lists those channels honestly. Push never carries an approve link. Recorded here as a deliberate choice. |
 | Noun for the household record: "family list" or "on file"? | "Family list" | [PR 389](https://github.com/balureddy003/LifeKeel/pull/389) (domains, packs, doors, `copy-nouns` test), plus a commit on 381 (catalogue) and one on 382 (digest). The roster is now "the family". Strings outside these areas (financial profile, documents) still say "on file". |
 
+## Easy capture and usability (after the loop stopped)
+
+| Item | Status | PR |
+|---|---|---|
+| Usability test kit, input-capture inventory, easy-capture design (docs) | open, docs only | [390](https://github.com/balureddy003/LifeKeel/pull/390) |
+| C0: dictation-friendly add form (honest tip), "Photograph a letter or policy" card, "comes from your financial profile" source line; no new processing; 375px measured | open, stacked on 389 | [391](https://github.com/balureddy003/LifeKeel/pull/391) |
+| Readability check for family-facing copy (grade 9 and jargon, mutations red) | open, stacked on 391 | [392](https://github.com/balureddy003/LifeKeel/pull/392) |
+| C1 sentence-to-draft (type or dictate), C2 share target, C3 forward-an-email, C4 voice | NOT started: need the owner's decisions listed in the design doc (natural-language drafts, free-plan promise, speech processor or on-device spike, mail receiver, one-route microphone permission) | |
+| Check production vision config: `resolveVisionClient()` prefers `OPENAI_API_KEY` and OpenAI is `unreviewed` in the processor registry | owner/ops check; could not be seen from the repo | |
+
 Still open from the critics: join account model (set-password link), whether production has verification or OTP login on, safeguarding default for email subjects, per-adult vs organizer-only mute, plus 2c, 3b, 4c, 5a, 6a, 7, 8, (g), (h).
 
 Owner decisions collected so far: SMS/WhatsApp detail and approve links; join account model (set-password link); whether production has `EMAIL_VERIFICATION_ENABLED` or OTP login on; organizer-granted edit rights; safeguarding default for email subjects; noun for "family list" vs "on file"; per-adult or organizer-only mute; plus 2c, 3b, 4c, 5a, 6a, 7, 8, (g), (h).
