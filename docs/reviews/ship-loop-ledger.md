@@ -2,7 +2,7 @@
 
 Tracks the rounds in `docs/reviews/ux-journey-notifications-review-2026-11-07.md` (section 4; added in PR 379). One row per round. "Production-ready" here means ready for the owner to merge and deploy. Nothing in this loop merges or deploys.
 
-Updated: 2026-11-07 (decisions on edit rights, SMS/WhatsApp and wording recorded; PRs 388 and 389 opened after the loop stopped. Loop stopped at iteration 9: all 10 PRs green, no human review comments, round 9 deferred. Iteration 8: critic pass 3 folded in and its confirmed findings fixed on 384, 386, 387. Iteration 7: PRs 378-386 CI green; shipped round (c) as PR 387; critic pass 3 running, report will be docs/reviews/critic-pass-3-2026-11-07.md. Iteration 6: PRs 378-385 CI green; shipped round (b) as PR 386. Iteration 5: PRs 378-384 CI green; shipped round (a) as the next PR. Iteration 4: critic pass 2 folded in, report in `docs/reviews/critic-pass-2-2026-11-07.md`; its three High findings fixed on their own PRs).
+Updated: 2026-11-07 (on-device voice decision recorded, PRs 393 and 394; decisions on edit rights, SMS/WhatsApp and wording recorded; PRs 388 and 389 opened after the loop stopped. Loop stopped at iteration 9: all 10 PRs green, no human review comments, round 9 deferred. Iteration 8: critic pass 3 folded in and its confirmed findings fixed on 384, 386, 387. Iteration 7: PRs 378-386 CI green; shipped round (c) as PR 387; critic pass 3 running, report will be docs/reviews/critic-pass-3-2026-11-07.md. Iteration 6: PRs 378-385 CI green; shipped round (b) as PR 386. Iteration 5: PRs 378-384 CI green; shipped round (a) as the next PR. Iteration 4: critic pass 2 folded in, report in `docs/reviews/critic-pass-2-2026-11-07.md`; its three High findings fixed on their own PRs).
 
 | Round | What | Status | PR | Acceptance check |
 |---|---|---|---|---|
@@ -70,7 +70,11 @@ New rounds from the critic, in order: (a) catalogue truthfulness (inventory + tr
 | Usability test kit, input-capture inventory, easy-capture design (docs) | open, docs only | [390](https://github.com/balureddy003/LifeKeel/pull/390) |
 | C0: dictation-friendly add form (honest tip), "Photograph a letter or policy" card, "comes from your financial profile" source line; no new processing; 375px measured | open, stacked on 389 | [391](https://github.com/balureddy003/LifeKeel/pull/391) |
 | Readability check for family-facing copy (grade 9 and jargon, mutations red) | open, stacked on 391 | [392](https://github.com/balureddy003/LifeKeel/pull/392) |
-| C1 sentence-to-draft (type or dictate), C2 share target, C3 forward-an-email, C4 voice | NOT started: need the owner's decisions listed in the design doc (natural-language drafts, free-plan promise, speech processor or on-device spike, mail receiver, one-route microphone permission) | |
+| C1 sentence-to-draft, built locally (deterministic, no model, no network), review before save | open, stacked on 391 | [393](https://github.com/balureddy003/LifeKeel/pull/393) |
+| C4 on-device voice (Whisper tiny, English, ~40 MB from huggingface.co, runs on the phone), consent, remove-model, microphone allowed on the domains pages only; OFF unless `NEXT_PUBLIC_ON_DEVICE_VOICE=on`; real model and microphone NOT exercised | open, stacked on 393 | [394](https://github.com/balureddy003/LifeKeel/pull/394) |
+| Owner decision 2026-11-07: use an on-device model | taken; removes the speech-processor and audio-retention questions | |
+| C2 share target, C3 forward-an-email | NOT started: C2 is small but iOS web support is limited; C3 needs a mail-receiving provider and its processor review | |
+| Still to decide: free-plan promise for photo reading; real-phone test before turning voice on | owner | |
 | Check production vision config: `resolveVisionClient()` prefers `OPENAI_API_KEY` and OpenAI is `unreviewed` in the processor registry | owner/ops check; could not be seen from the repo | |
 
 Still open from the critics: join account model (set-password link), whether production has verification or OTP login on, safeguarding default for email subjects, per-adult vs organizer-only mute, plus 2c, 3b, 4c, 5a, 6a, 7, 8, (g), (h).
