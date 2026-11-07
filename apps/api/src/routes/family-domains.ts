@@ -13,8 +13,10 @@ import { getAuditLogger } from '../audit/audit-log.js'
 import { SECRET_PATTERNS } from '../briefs/catalogue.js'
 import { DOMAINS } from '../domains/registry.js'
 import type { DomainPack } from '../domains/types.js'
+import { buildDomainPlaybook } from '../domains/playbook.js'
 import {
   buildDomainView,
+  loadDomainRows,
   type DomainConfirmationDoc,
   type DomainRecordDoc,
 } from '../domains/view.js'
@@ -57,6 +59,22 @@ export function registerFamilyDomainRoutes(
     reply.header('Cache-Control', 'private, no-store')
     return buildDomainView(db, ctx.tenant_id, pack, ctx.user_id)
   })
+
+  app.get<{ Params: { id: string }; Querystring: { member?: string } }>(
+    '/family/domains/:id/playbook',
+    async (req, reply) => {
+      const ctx = req.authContext
+      if (!ctx || !(await isFamilyAdult(db, ctx.tenant_id, ctx.user_id)))
+        return reply.code(401).send({ error: 'Adults only' })
+      const pack = find(req.params.id)
+      if (!pack?.playbook) return reply.code(404).send({ error: 'Not found' })
+      const { roster, rows } = await loadDomainRows(db, ctx.tenant_id, pack)
+      const member = roster.find((m) => m.id === req.query.member)
+      if (!member) return reply.code(400).send({ error: 'Choose a person on the family list' })
+      reply.header('Cache-Control', 'private, no-store')
+      return { ...buildDomainPlaybook(pack, rows, member), roster }
+    },
+  )
 
   app.post<{ Params: { id: string; record: string } }>(
     '/family/domains/:id/records/:record',

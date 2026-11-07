@@ -214,6 +214,138 @@ describe('life protection domain', () => {
   })
 })
 
+const daysFromNow = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10)
+
+describe('planning dates', () => {
+  it('lists renewals inside the lead time or already past, soonest first, and nothing later', async () => {
+    await db.collection('family_financial_profile').updateOne(
+      { tenant_id: TENANT },
+      {
+        $set: {
+          policies: [
+            {
+              id: 'a',
+              type: 'life',
+              provider: 'Soon',
+              member_id: 'sam',
+              renewal_date: daysFromNow(10),
+            },
+            {
+              id: 'b',
+              type: 'life',
+              provider: 'Past',
+              member_id: 'sam',
+              renewal_date: daysFromNow(-3),
+            },
+            {
+              id: 'c',
+              type: 'life',
+              provider: 'Far',
+              member_id: 'sam',
+              renewal_date: daysFromNow(200),
+            },
+            { id: 'd', type: 'life', provider: 'None', member_id: 'sam' },
+            {
+              id: 'e',
+              type: 'car',
+              provider: 'Motor',
+              member_id: 'sam',
+              renewal_date: daysFromNow(5),
+            },
+          ],
+        },
+      },
+    )
+    const v = await get()
+    expect(v.upcoming.map((u: { row_id: string }) => u.row_id)).toEqual(['b', 'a'])
+    expect(v.upcoming[0]).toMatchObject({ trigger: 'renewal', days: -3 })
+    expect(v.upcoming[1].days).toBe(10)
+  })
+
+  it('does not change the version the adults confirm', async () => {
+    const a = await get()
+    expect(a.upcoming).toEqual([])
+    expect(a.result_version).toHaveLength(64)
+  })
+})
+
+describe('bereavement playbook binding', () => {
+  const pb = async (member?: string) =>
+    app.inject({
+      method: 'GET',
+      url: `/family/domains/life_protection/playbook${member ? `?member=${member}` : ''}`,
+    })
+
+  it('shows only what is relevant to the named person, and leaves other people alone', async () => {
+    await db.collection('family_financial_profile').updateOne(
+      { tenant_id: TENANT },
+      {
+        $set: {
+          policies: [
+            {
+              id: 'p_sam',
+              type: 'life',
+              provider: 'Own A',
+              member_id: 'sam',
+              contact_phone: '0800 111',
+            },
+            {
+              id: 'p_alex_covers_sam',
+              type: 'life',
+              provider: 'Alex B',
+              member_id: 'alex',
+              beneficiary_member_id: 'sam',
+            },
+            { id: 'p_alex_own', type: 'income_protection', provider: 'Alex C', member_id: 'alex' },
+            { id: 'p_unk', type: 'life', provider: 'Unknown D' },
+            { id: 'p_car', type: 'car', provider: 'Motor', member_id: 'sam' },
+          ],
+        },
+      },
+    )
+    await db.collection('employer_cover_facts').insertOne({
+      tenant_id: TENANT,
+      id: 'ec_sam',
+      member_label: 'Sam',
+      type: 'death_in_service',
+      name_as_printed: 'Group Life',
+      ends_with_employment: true,
+    })
+    const r = await pb('sam')
+    expect(r.statusCode).toBe(200)
+    const by = Object.fromEntries(
+      r
+        .json()
+        .groups.map((g: { key: string; rows: { id: string }[] }) => [
+          g.key,
+          g.rows.map((x) => x.id),
+        ]),
+    )
+    expect(by['theirs'].sort()).toEqual(['ec_sam', 'p_sam'])
+    expect(by['covers']).toEqual(['p_alex_covers_sam'])
+    expect(by['to_check']).toEqual(['p_unk'])
+    expect(by['others']).toEqual(['p_alex_own'])
+    expect(JSON.stringify(r.json())).not.toContain('p_car')
+    expect(
+      r.json().groups[0].rows.find((x: { id: string }) => x.id === 'p_sam').claims_contact,
+    ).toBe('0800 111')
+  })
+
+  it('needs a named person on the roster, and adults only', async () => {
+    expect((await pb()).statusCode).toBe(400)
+    expect((await pb('stranger')).statusCode).toBe(400)
+    currentUser = 'kid'
+    expect((await pb('sam')).statusCode).toBe(401)
+  })
+
+  it('is not offered for a pack without a playbook', async () => {
+    expect(
+      (await app.inject({ method: 'GET', url: '/family/domains/car/playbook?member=sam' }))
+        .statusCode,
+    ).toBe(404)
+  })
+})
+
 describe('store-backed records (extension proof: a pack added as data)', () => {
   const add = (values: Record<string, string>) =>
     app.inject({

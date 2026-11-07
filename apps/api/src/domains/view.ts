@@ -39,6 +39,15 @@ export interface DomainView {
   } | null
   /** Facts about the record itself, never a judgement about adequacy. */
   gaps: Array<{ row_id: string; note: string }>
+  /** Dates that prompt a re-check: due within the trigger's lead time, or already past. */
+  upcoming: Array<{
+    trigger: string
+    label: string
+    row_id: string
+    row_label: string
+    date: string
+    days: number
+  }>
   result_version: string
   confirmation: {
     required: RosterRef[]
@@ -60,12 +69,7 @@ const sortKeys = (o: unknown): unknown =>
         )
       : o
 
-export async function buildDomainView(
-  db: Db,
-  tenantId: string,
-  pack: DomainPack,
-  viewerUserId?: string,
-): Promise<DomainView> {
+export async function loadDomainRows(db: Db, tenantId: string, pack: DomainPack) {
   const group = await db
     .collection<FamilyGroupDoc>('family_groups')
     .findOne({ tenant_id: tenantId })
@@ -94,6 +98,18 @@ export async function buildDomainView(
       )
     }
   }
+
+  return { active, roster, rows }
+}
+
+export async function buildDomainView(
+  db: Db,
+  tenantId: string,
+  pack: DomainPack,
+  viewerUserId?: string,
+  now: Date = new Date(),
+): Promise<DomainView> {
+  const { active, roster, rows } = await loadDomainRows(db, tenantId, pack)
 
   const rosterIds = new Set(roster.map((r) => r.id))
   const nameOf = (id: string | null) => roster.find((r) => r.id === id)?.name ?? ''
@@ -134,6 +150,29 @@ export async function buildDomainView(
       }
     : null
 
+  const upcoming: DomainView['upcoming'] = []
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  for (const t of pack.planning) {
+    if (t.on.kind !== 'date_field') continue
+    const { record, field } = t.on
+    for (const r of rows.filter((x) => x.record === record)) {
+      const raw = r.values[field]
+      const at = raw && /^\d{4}-\d{2}-\d{2}/.test(raw) ? Date.parse(raw.slice(0, 10)) : NaN
+      if (Number.isNaN(at)) continue
+      const days = Math.round((at - today) / 86_400_000)
+      if (days <= t.lead_days)
+        upcoming.push({
+          trigger: t.key,
+          label: t.label,
+          row_id: r.id,
+          row_label: label(r),
+          date: raw!.slice(0, 10),
+          days,
+        })
+    }
+  }
+  upcoming.sort((a, b) => a.days - b.days)
+
   // Member names are part of the version so a rename is a visible change too.
   const result_version = createHash('sha256')
     .update(
@@ -165,6 +204,7 @@ export async function buildDomainView(
     rows,
     matrix,
     gaps,
+    upcoming,
     result_version,
     confirmation: {
       required,

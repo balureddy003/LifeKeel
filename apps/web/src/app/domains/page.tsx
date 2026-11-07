@@ -7,13 +7,15 @@ import { GlassCard, PageHeader, Skeleton } from '@/components/Glass'
 import {
   confirmDomain,
   getDomains,
+  getDomainPlaybook,
   getDomainView,
   type DomainPackInfo,
+  type DomainPlaybook,
   type DomainView,
 } from '@/lib/api'
 import { haptic } from '@/lib/haptics'
 import { useToast } from '@/components/Toast'
-import { cellText, confirmSummary } from './domain-copy'
+import { cellText, confirmSummary, daysText } from './domain-copy'
 
 const primaryBtn =
   'inline-flex min-h-[48px] items-center justify-center rounded-full bg-family-500 px-5 text-base font-semibold text-white disabled:opacity-50'
@@ -23,6 +25,8 @@ export default function DomainsPage() {
   const [packs, setPacks] = useState<DomainPackInfo[] | null>(null)
   const [view, setView] = useState<DomainView | null | undefined>(undefined)
   const [busy, setBusy] = useState(false)
+  const [people, setPeople] = useState<Array<{ id: string; name: string }>>([])
+  const [pb, setPb] = useState<DomainPlaybook | null | undefined>(undefined)
   const toast = useToast()
 
   useEffect(() => {
@@ -33,6 +37,16 @@ export default function DomainsPage() {
     if (id) void getDomainView(id).then(setView)
     else void getDomains().then((d) => setPacks(d.domains))
   }, [id])
+
+  useEffect(() => {
+    if (view) setPeople(view.matrix?.columns ?? [])
+  }, [view])
+
+  async function openPlaybook(memberId: string) {
+    if (!id) return
+    setPb(undefined)
+    setPb(await getDomainPlaybook(id, memberId))
+  }
 
   async function confirm() {
     if (!view || !id) return
@@ -166,6 +180,19 @@ export default function DomainsPage() {
             </GlassCard>
           )}
 
+          {view.upcoming.length > 0 && (
+            <GlassCard className="mt-4 p-5">
+              <h2 className="font-medium text-ink-primary">Coming up</h2>
+              <ul className="mt-2 space-y-1 text-sm text-ink-secondary">
+                {view.upcoming.map((u) => (
+                  <li key={`${u.trigger}-${u.row_id}`}>
+                    {u.row_label}: {u.label.toLowerCase()}, {daysText(u.days)} ({u.date})
+                  </li>
+                ))}
+              </ul>
+            </GlassCard>
+          )}
+
           <GlassCard className="mt-4 p-5">
             <p className="flex items-start gap-2 text-ink-primary">
               {view.confirmation.both_confirmed && (
@@ -188,6 +215,59 @@ export default function DomainsPage() {
               </button>
             )}
           </GlassCard>
+          {view.matrix && view.matrix.rows.length > 0 && people.length > 0 && (
+            <GlassCard className="mt-4 p-5">
+              <h2 className="font-medium text-ink-primary">If someone dies: what is on file</h2>
+              <p className="mt-1 text-sm text-ink-secondary">
+                Pick a person to see only the records that matter for them.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {people.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => openPlaybook(p.id)}
+                    aria-pressed={pb?.member.id === p.id}
+                    className="inline-flex min-h-[40px] items-center rounded-full border border-haze px-4 text-sm font-medium text-ink-primary aria-pressed:bg-family-500 aria-pressed:text-white"
+                  >
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+              {pb === null && (
+                <p className="mt-3 text-sm text-ink-secondary">This could not be loaded.</p>
+              )}
+              {pb && (
+                <div className="mt-4 space-y-4">
+                  {pb.groups.length === 0 && (
+                    <p className="text-sm text-ink-secondary">
+                      Nothing on file for {pb.member.name}.
+                    </p>
+                  )}
+                  {pb.groups.map((g) => (
+                    <section key={g.key}>
+                      <h3 className="text-sm font-medium text-ink-primary">{g.label}</h3>
+                      <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-ink-secondary">
+                        {g.rows.map((r) => (
+                          <li key={r.id}>
+                            {r.label}
+                            {r.claims_contact ? ` · claims contact: ${r.claims_contact}` : ''}
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  ))}
+                  <p className="text-sm text-ink-secondary">
+                    Each provider is contacted by you. The full list of first steps is under{' '}
+                    <Link href="/life-events" className="underline">
+                      life events
+                    </Link>
+                    .
+                  </p>
+                </div>
+              )}
+            </GlassCard>
+          )}
         </>
       )}
     </main>

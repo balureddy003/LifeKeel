@@ -5,17 +5,19 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import { render, cleanup, screen, waitFor, fireEvent } from '@testing-library/react'
 import DomainsPage from '../page'
-import { cellText, confirmSummary } from '../domain-copy'
+import { cellText, confirmSummary, daysText } from '../domain-copy'
 import type { DomainView } from '@/lib/api'
 
 const getDomains = vi.fn()
 const getDomainView = vi.fn()
 const confirmDomain = vi.fn()
+const getDomainPlaybook = vi.fn()
 const toast = vi.fn()
 vi.mock('@/lib/api', async (orig) => ({
   ...(await orig<typeof import('@/lib/api')>()),
   getDomains: () => getDomains(),
   getDomainView: (id: string) => getDomainView(id),
+  getDomainPlaybook: (id: string, m: string) => getDomainPlaybook(id, m),
   confirmDomain: (id: string, v: string) => confirmDomain(id, v),
 }))
 vi.mock('@/components/Toast', () => ({ useToast: () => toast }))
@@ -36,6 +38,7 @@ const view = (
     rows: [{ id: 'p1', label: 'Policy · Provider A', cells: { sam: 'holds', alex: 'covers' } }],
   },
   gaps,
+  upcoming: [],
   result_version: 'a'.repeat(64),
   confirmation: {
     required: [
@@ -142,7 +145,85 @@ describe('domains page', () => {
   })
 })
 
+describe('planning and first steps', () => {
+  it('lists dates that prompt a re-check', async () => {
+    getDomainView.mockResolvedValue({
+      ...view(),
+      upcoming: [
+        {
+          trigger: 'renewal',
+          label: 'A policy renewal date is coming up',
+          row_id: 'p1',
+          row_label: 'Policy · Provider A',
+          date: '2026-12-01',
+          days: 12,
+        },
+      ],
+    })
+    render(<DomainsPage />)
+    expect(
+      await screen.findByText(
+        /Policy · Provider A: a policy renewal date is coming up, in 12 days \(2026-12-01\)/,
+      ),
+    ).toBeTruthy()
+  })
+
+  it('shows only the records for the chosen person, grouped, with the full steps linked', async () => {
+    getDomainView.mockResolvedValue(view())
+    getDomainPlaybook.mockResolvedValue({
+      playbook: 'bereavement',
+      member: { id: 'sam', name: 'Sam' },
+      roster: [],
+      groups: [
+        {
+          key: 'theirs',
+          label: 'On file for Sam',
+          rows: [
+            {
+              id: 'p1',
+              label: 'Policy · Provider A',
+              claims_contact: '0800 111',
+              renewal_date: null,
+            },
+          ],
+        },
+        {
+          key: 'others',
+          label: 'Held by other family members, not part of this',
+          rows: [
+            { id: 'p2', label: 'Policy · Provider B', claims_contact: null, renewal_date: null },
+          ],
+        },
+      ],
+    })
+    render(<DomainsPage />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Sam' }))
+    expect(await screen.findByText('On file for Sam')).toBeTruthy()
+    expect(getDomainPlaybook).toHaveBeenCalledWith('life_protection', 'sam')
+    expect(screen.getByText(/claims contact: 0800 111/)).toBeTruthy()
+    expect(screen.getByText('Held by other family members, not part of this')).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'life events' }).getAttribute('href')).toBe(
+      '/life-events',
+    )
+  })
+
+  it('says so when the first steps cannot load', async () => {
+    getDomainView.mockResolvedValue(view())
+    getDomainPlaybook.mockResolvedValue(null)
+    render(<DomainsPage />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Alex' }))
+    expect(await screen.findByText('This could not be loaded.')).toBeTruthy()
+  })
+})
+
 describe('domain copy', () => {
+  it('words a date relative to today', () => {
+    expect(daysText(0)).toBe('today')
+    expect(daysText(1)).toBe('tomorrow')
+    expect(daysText(12)).toBe('in 12 days')
+    expect(daysText(-3)).toBe('3 days ago')
+  })
+
   it('describes cells and confirmation as facts', () => {
     expect(cellText(null)).toBe('Not recorded')
     expect(cellText('holds_and_covers')).toBe('Holds it and is covered')

@@ -6572,6 +6572,14 @@ export interface DomainView {
     rows: Array<{ id: string; label: string; cells: Record<string, DomainCell> }>
   } | null
   gaps: Array<{ row_id: string; note: string }>
+  upcoming: Array<{
+    trigger: string
+    label: string
+    row_id: string
+    row_label: string
+    date: string
+    days: number
+  }>
   result_version: string
   confirmation: {
     required: Array<{ id: string; name: string }>
@@ -6586,6 +6594,27 @@ export function getDomains() {
 }
 export function getDomainView(id: string) {
   return apiFetch<DomainView | null>(`/family/domains/${encodeURIComponent(id)}`, null)
+}
+export interface DomainPlaybook {
+  playbook: string
+  member: { id: string; name: string }
+  groups: Array<{
+    key: 'theirs' | 'covers' | 'to_check' | 'others'
+    label: string
+    rows: Array<{
+      id: string
+      label: string
+      claims_contact: string | null
+      renewal_date: string | null
+    }>
+  }>
+  roster: Array<{ id: string; name: string }>
+}
+export function getDomainPlaybook(id: string, memberId: string) {
+  return apiFetch<DomainPlaybook | null>(
+    `/family/domains/${encodeURIComponent(id)}/playbook?member=${encodeURIComponent(memberId)}`,
+    null,
+  )
 }
 export function confirmDomain(id: string, resultVersion: string) {
   return briefPost<DomainView>(`/family/domains/${encodeURIComponent(id)}/confirm`, {

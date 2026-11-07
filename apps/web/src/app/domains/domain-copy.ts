@@ -25,3 +25,10 @@ export function confirmSummary(c: DomainView['confirmation']): string {
   const waiting = c.required.filter((p) => !seen.has(p.id)).map((p) => p.name)
   return `Waiting for ${waiting.join(' and ')} to confirm they have seen this version.`
 }
+
+/** When a date falls, in words. */
+export function daysText(days: number): string {
+  if (days === 0) return 'today'
+  if (days > 0) return days === 1 ? 'tomorrow' : `in ${days} days`
+  return days === -1 ? 'yesterday' : `${-days} days ago`
+}
