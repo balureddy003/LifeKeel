@@ -466,9 +466,12 @@ describe('easy capture, first step (no new processing)', () => {
     getDomainView.mockResolvedValue(carView())
     render(<DomainsPage />)
     fireEvent.click(await screen.findByRole('button', { name: /Add a vehicle/ }))
-    const tip = screen.getByText(/your phone's keyboard can type what you say/i)
-    expect(tip.textContent).toMatch(/feature of your phone/)
-    expect(tip.textContent).not.toMatch(/private|secure|encrypted|approved/i)
+    const tips = screen.getAllByText(/your phone's keyboard can type what you say/i)
+    expect(tips.length).toBeGreaterThanOrEqual(1)
+    for (const tip of tips) {
+      expect(tip.textContent).toMatch(/feature of your phone/)
+      expect(tip.textContent).not.toMatch(/private|secure|encrypted|approved/i)
+    }
   })
 
   it('makes text inputs friendly to dictation and autofill hints', async () => {
@@ -523,6 +526,106 @@ describe('easy capture, first step (no new processing)', () => {
     render(<DomainsPage />)
     await screen.findByText('AB12 CDE')
     expect(screen.queryByText(/Some of this comes from your/)).toBeNull()
+  })
+})
+
+describe('say or type one sentence', () => {
+  beforeEach(() => {
+    window.history.pushState({}, '', '/domains?d=car')
+  })
+  const sentence = (v: string) =>
+    fireEvent.change(screen.getByLabelText('Tell us in one sentence'), { target: { value: v } })
+  const prepare = () =>
+    fireEvent.click(screen.getByRole('button', { name: /Show me what you understood/ }))
+
+  it('shows what it understood and saves only when the person taps Save', async () => {
+    getDomainView.mockResolvedValue(carView())
+    addDomainRecord.mockResolvedValue({ ok: true, status: 201, data: { id: 'x' } })
+    render(<DomainsPage />)
+    await screen.findByLabelText('Tell us in one sentence')
+    sentence("MOT due 9 May on AB12 CDE, Sam's car and my cousin likes jazz")
+    prepare()
+    expect(await screen.findByText('Check this before it is saved')).toBeTruthy()
+    expect(screen.getByText('AB12 CDE')).toBeTruthy()
+    expect(screen.getByText('Sam')).toBeTruthy()
+    expect(screen.getByText(/^9 May \d{4}$/)).toBeTruthy() // said the way people say it, not 2027-05-09
+    expect(screen.getByText(/We did not use: .*cousin likes jazz/)).toBeTruthy()
+    expect(addDomainRecord).not.toHaveBeenCalled() // nothing saved yet
+    fireEvent.click(screen.getByRole('button', { name: 'Save to the family list' }))
+    await waitFor(() =>
+      expect(addDomainRecord).toHaveBeenCalledWith('car', 'vehicle', {
+        holder_member_id: 'sam',
+        values: { mot_due: expect.stringMatching(/^\d{4}-05-09$/), reg: 'AB12 CDE' },
+      }),
+    )
+    expect(await screen.findByText('Saved to the family list.')).toBeTruthy()
+  })
+
+  it('keeps the draft and does not say saved when the save fails', async () => {
+    getDomainView.mockResolvedValue(carView())
+    addDomainRecord.mockResolvedValue({
+      ok: false,
+      status: 400,
+      data: { error: 'Enter MOT due as a real date' },
+    })
+    render(<DomainsPage />)
+    await screen.findByLabelText('Tell us in one sentence')
+    sentence('MOT due 9 May')
+    prepare()
+    fireEvent.click(await screen.findByRole('button', { name: 'Save to the family list' }))
+    await waitFor(() => expect(addDomainRecord).toHaveBeenCalled())
+    expect(screen.queryByText('Saved to the family list.')).toBeNull()
+    expect(screen.getByText('Check this before it is saved')).toBeTruthy()
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'error' }))
+  })
+
+  it('"Not right" throws the draft away without saving', async () => {
+    getDomainView.mockResolvedValue(carView())
+    render(<DomainsPage />)
+    await screen.findByLabelText('Tell us in one sentence')
+    sentence('MOT due 9 May')
+    prepare()
+    fireEvent.click(await screen.findByRole('button', { name: 'Not right' }))
+    expect(screen.queryByText('Check this before it is saved')).toBeNull()
+    expect(addDomainRecord).not.toHaveBeenCalled()
+  })
+
+  it('says so, and offers the form, when it cannot read anything', async () => {
+    getDomainView.mockResolvedValue(carView())
+    render(<DomainsPage />)
+    await screen.findByLabelText('Tell us in one sentence')
+    sentence('hello there how are you today')
+    prepare()
+    expect(await screen.findByText('We could not read that')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Save to the family list' })).toBeNull()
+  })
+
+  it('reads nothing until asked, keeps focus on the result, and uses no network to read', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    getDomainView.mockResolvedValue(carView())
+    render(<DomainsPage />)
+    await screen.findByLabelText('Tell us in one sentence')
+    const before = fetchSpy.mock.calls.length
+    sentence('MOT due 9 May')
+    expect(screen.queryByText('Check this before it is saved')).toBeNull()
+    prepare()
+    const heading = await screen.findByText('Check this before it is saved')
+    await waitFor(() => expect(document.activeElement).toBe(heading))
+    expect(fetchSpy.mock.calls.length).toBe(before)
+    fetchSpy.mockRestore()
+  })
+
+  it('is not offered to a read-only adult or for a pack with nothing typed in', async () => {
+    getDomainView.mockResolvedValue({ ...carView(), can_edit: false })
+    render(<DomainsPage />)
+    await screen.findByText('Car and transport')
+    expect(screen.queryByLabelText('Tell us in one sentence')).toBeNull()
+    cleanup()
+    window.history.pushState({}, '', '/domains?d=life_protection')
+    getDomainView.mockResolvedValue(view())
+    render(<DomainsPage />)
+    await screen.findByText('Holds it')
+    expect(screen.queryByLabelText('Tell us in one sentence')).toBeNull()
   })
 })
 

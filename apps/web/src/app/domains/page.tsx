@@ -18,6 +18,7 @@ import {
 import { haptic } from '@/lib/haptics'
 import { useToast } from '@/components/Toast'
 import { AddRecordForm } from './AddRecordForm'
+import { SentenceCapture } from './SentenceCapture'
 import { RecordList } from './RecordList'
 import { adapterSources, cellText, confirmSummary, daysText, rowLabel } from './domain-copy'
 
@@ -249,6 +250,7 @@ export default function DomainsPage() {
             </p>
           )}
 
+          <SentenceCapture view={view} busy={busy} onAdd={add} />
           <AddRecordForm view={view} busy={busy} onAdd={add} />
 
           {view.can_edit && (

@@ -100,6 +100,7 @@ function webCopyFiles(): string[] {
     'apps/api/src/routes/family-domains.ts',
     // Domain pages state what is on file and who has seen it.
     'apps/web/src/app/domains/page.tsx',
+    'apps/web/src/app/domains/SentenceCapture.tsx',
     // The three doors on the home page: what each gives you, never what to do with money.
     'apps/web/src/components/ThreeDoors.tsx',
     'apps/web/src/app/domains/domain-copy.ts',
