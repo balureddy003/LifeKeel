@@ -333,6 +333,31 @@ describe('a second domain drawn by the same page', () => {
     expect(deleteDomainRecord).not.toHaveBeenCalled()
     expect(screen.queryByRole('button', { name: 'Yes, remove' })).toBeNull()
     expect(screen.getByText('AB12 CDE')).toBeTruthy()
+    // Focus goes back to the button that opened the question, not the document.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Remove Vehicle' })),
+    )
+  })
+
+  it('after a removal, focus moves to the line that says who has seen the new version', async () => {
+    getDomainView
+      .mockResolvedValueOnce(
+        carView([
+          {
+            id: 'v1',
+            record: 'vehicle',
+            holder_member_id: null,
+            covers_member_id: null,
+            values: { reg: 'AB12 CDE' },
+          },
+        ]),
+      )
+      .mockResolvedValueOnce(carView([]))
+    deleteDomainRecord.mockResolvedValue({ ok: true, status: 204 })
+    render(<DomainsPage />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Vehicle' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, remove' }))
+    await waitFor(() => expect(document.activeElement?.getAttribute('role')).toBe('status'))
   })
 
   it('adds a record from a form drawn from the pack, sending only what was filled in', async () => {
@@ -410,12 +435,14 @@ describe('hardening (critic pass 2)', () => {
   it('tells a read-only adult why there is nothing to add, and says nothing to an editor', async () => {
     getDomainView.mockResolvedValue({ ...view(), can_edit: false })
     render(<DomainsPage />)
-    expect(await screen.findByText(/Changing what is on file needs edit access/)).toBeTruthy()
+    expect(
+      await screen.findByText(/This account cannot add or remove what is on file/),
+    ).toBeTruthy()
     cleanup()
     getDomainView.mockResolvedValue(view())
     render(<DomainsPage />)
     await screen.findByText('Holds it')
-    expect(screen.queryByText(/needs edit access/)).toBeNull()
+    expect(screen.queryByText(/cannot add or remove/)).toBeNull()
   })
 
   it('offers Try again when the page cannot load, and loads on the second try', async () => {

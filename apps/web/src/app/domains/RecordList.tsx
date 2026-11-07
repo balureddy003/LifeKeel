@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { GlassCard } from '@/components/Glass'
 import type { DomainView } from '@/lib/api'
@@ -14,6 +14,7 @@ export function RecordList({
   onRemove: (rowId: string) => void
 }) {
   const [confirming, setConfirming] = useState<string | null>(null)
+  const removeButtons = useRef<Record<string, HTMLButtonElement | null>>({})
   return (
     <div className="mt-6 space-y-5">
       {view.pack.records.map((rec) => {
@@ -48,6 +49,9 @@ export function RecordList({
                     {removable && (
                       <button
                         type="button"
+                        ref={(el) => {
+                          removeButtons.current[r.id] = el
+                        }}
                         onClick={() => setConfirming(r.id)}
                         aria-label={`Remove ${rec.label}`}
                         className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full border border-haze px-3"
@@ -68,7 +72,11 @@ export function RecordList({
                       <button
                         type="button"
                         autoFocus
-                        onClick={() => setConfirming(null)}
+                        onClick={() => {
+                          setConfirming(null)
+                          // Back to the button that opened the question.
+                          requestAnimationFrame(() => removeButtons.current[r.id]?.focus())
+                        }}
                         className="inline-flex min-h-[48px] items-center rounded-full border border-haze px-4 text-base font-medium text-ink-primary"
                       >
                         Keep it

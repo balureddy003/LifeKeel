@@ -80,6 +80,8 @@ export default function DomainsPage() {
     }
     haptic('warning')
     setView(await getDomainView(id))
+    // The row and its buttons are gone; hand focus to the line saying who has seen the new version.
+    requestAnimationFrame(() => statusRef.current?.focus())
   }
 
   async function confirm() {
@@ -160,8 +162,8 @@ export default function DomainsPage() {
         <>
           {!view.can_edit && (
             <p className="mt-4 text-sm text-ink-secondary">
-              You can look at this and confirm it. Changing what is on file needs edit access, which
-              the organizer can arrange.
+              You can look at this and confirm it. This account cannot add or remove what is on
+              file.
             </p>
           )}
           {view.matrix && view.matrix.rows.length > 0 ? (
