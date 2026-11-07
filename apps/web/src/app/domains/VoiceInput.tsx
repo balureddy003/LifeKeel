@@ -35,9 +35,25 @@ const realDeps: VoiceDeps = {
   clearModel: clearSttModelCache,
 }
 
-/** Voice is off until the owner turns it on for a deployment (NEXT_PUBLIC_ON_DEVICE_VOICE=on). */
+const PREVIEW_KEY = 'lk_voice_preview'
+
+/**
+ * Voice is off until it is turned on, either for a whole deployment
+ * (NEXT_PUBLIC_ON_DEVICE_VOICE=on) or by a tester for their own device: open
+ * any domains page with ?voice=on (and ?voice=off to undo). The preview is
+ * remembered on that device only. It changes nothing about consent: the
+ * person is still asked before anything downloads.
+ */
 export function voiceEnabled(): boolean {
-  return process.env['NEXT_PUBLIC_ON_DEVICE_VOICE'] === 'on'
+  if (process.env['NEXT_PUBLIC_ON_DEVICE_VOICE'] === 'on') return true
+  try {
+    const q = new URLSearchParams(window.location.search).get('voice')
+    if (q === 'on') localStorage.setItem(PREVIEW_KEY, 'on')
+    else if (q === 'off') localStorage.removeItem(PREVIEW_KEY)
+    return localStorage.getItem(PREVIEW_KEY) === 'on'
+  } catch {
+    return false
+  }
 }
 
 function hasConsent(): boolean {

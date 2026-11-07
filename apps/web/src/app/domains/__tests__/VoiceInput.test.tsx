@@ -24,6 +24,47 @@ function deps(
 beforeEach(() => localStorage.clear())
 afterEach(cleanup)
 
+describe('the tester preview switch', () => {
+  afterEach(() => window.history.pushState({}, '', '/'))
+
+  it('is off by default, turns on with ?voice=on, is remembered on that device, and turns off with ?voice=off', () => {
+    const { container, unmount } = render(<VoiceInput onText={() => {}} deps={deps()} />)
+    expect(container.textContent).toBe('')
+    unmount()
+
+    window.history.pushState({}, '', '/domains?d=car&voice=on')
+    const on = render(<VoiceInput onText={() => {}} deps={deps()} />)
+    expect(screen.getByRole('button', { name: 'Say it' })).toBeTruthy()
+    on.unmount()
+
+    window.history.pushState({}, '', '/domains?d=car') // no param: still remembered
+    const again = render(<VoiceInput onText={() => {}} deps={deps()} />)
+    expect(screen.getByRole('button', { name: 'Say it' })).toBeTruthy()
+    again.unmount()
+
+    window.history.pushState({}, '', '/domains?d=car&voice=off')
+    const off = render(<VoiceInput onText={() => {}} deps={deps()} />)
+    expect(off.container.textContent).toBe('')
+  })
+
+  it('never skips consent: the preview only shows the button', () => {
+    window.history.pushState({}, '', '/domains?voice=on')
+    const d = deps()
+    render(<VoiceInput onText={() => {}} deps={d} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Say it' }))
+    expect(screen.getByRole('group', { name: /Turn your voice into words/ })).toBeTruthy()
+    expect(d.startRecording).not.toHaveBeenCalled()
+  })
+
+  it('still needs a browser that can record', () => {
+    window.history.pushState({}, '', '/domains?voice=on')
+    const { container } = render(
+      <VoiceInput onText={() => {}} deps={deps({ isSupported: () => false })} />,
+    )
+    expect(container.textContent).toBe('')
+  })
+})
+
 describe('VoiceInput', () => {
   it('is not shown when voice is off or the browser cannot record', () => {
     const { container, rerender } = render(
