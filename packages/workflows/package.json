@@ -24,7 +24,7 @@
   },
   "dependencies": {
     "@lifekeel/platform": "workspace:^",
-    "mongodb": "^7.7.0",
+    "mongodb": "^7.8.0",
     "zod": "^4.6.6"
   },
   "devDependencies": {
