@@ -14,6 +14,12 @@ export function cellText(cell: DomainCell): string {
   }
 }
 
+/** "A", "A and B", "A, B and C": names read as a list, not a chain of "and". */
+function joinNames(names: string[]): string {
+  if (names.length <= 2) return names.join(' and ')
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+}
+
 /** One sentence on who has seen the current version. */
 export function confirmSummary(c: DomainView['confirmation']): string {
   if (c.required.length === 0) return 'No adults in the family yet.'
@@ -23,7 +29,7 @@ export function confirmSummary(c: DomainView['confirmation']): string {
       : `All ${c.required.length} adults have seen this version.`
   const seen = new Set(c.confirmed.map((p) => p.id))
   const waiting = c.required.filter((p) => !seen.has(p.id)).map((p) => p.name)
-  return `Waiting for ${waiting.join(' and ')} to confirm they have seen this version.`
+  return `Waiting for ${joinNames(waiting)} to confirm they have seen this version.`
 }
 
 /** When a date falls, in words. */
