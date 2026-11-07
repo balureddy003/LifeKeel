@@ -55,7 +55,7 @@ export function registerFamilyDomainRoutes(
     const pack = find(req.params.id)
     if (!pack) return reply.code(404).send({ error: 'Not found' })
     reply.header('Cache-Control', 'private, no-store')
-    return buildDomainView(db, ctx.tenant_id, pack)
+    return buildDomainView(db, ctx.tenant_id, pack, ctx.user_id)
   })
 
   app.post<{ Params: { id: string; record: string } }>(
@@ -132,7 +132,7 @@ export function registerFamilyDomainRoutes(
     if (!pack) return reply.code(404).send({ error: 'Not found' })
     const parsed = AckSchema.safeParse(req.body)
     if (!parsed.success) return reply.code(400).send({ error: 'Check the details and try again' })
-    const view = await buildDomainView(db, ctx.tenant_id, pack)
+    const view = await buildDomainView(db, ctx.tenant_id, pack, ctx.user_id)
     // A confirmation only counts for the exact version the adult was shown.
     if (parsed.data.result_version !== view.result_version)
       return reply.code(409).send({ error: 'This changed since you opened it. Review it again.' })
@@ -152,6 +152,6 @@ export function registerFamilyDomainRoutes(
       pack.id,
       {},
     )
-    return buildDomainView(db, ctx.tenant_id, pack)
+    return buildDomainView(db, ctx.tenant_id, pack, ctx.user_id)
   })
 }

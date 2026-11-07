@@ -44,6 +44,8 @@ export interface DomainView {
     required: RosterRef[]
     confirmed: Array<RosterRef & { confirmed_at: Date }>
     both_confirmed: boolean
+    /** Has the asking adult already confirmed this exact version? */
+    viewer_confirmed: boolean
   }
 }
 
@@ -62,6 +64,7 @@ export async function buildDomainView(
   db: Db,
   tenantId: string,
   pack: DomainPack,
+  viewerUserId?: string,
 ): Promise<DomainView> {
   const group = await db
     .collection<FamilyGroupDoc>('family_groups')
@@ -96,9 +99,8 @@ export async function buildDomainView(
   const nameOf = (id: string | null) => roster.find((r) => r.id === id)?.name ?? ''
   const label = (r: DomainRow) => {
     const rec = pack.records.find((x) => x.key === r.record)!
-    return [rec.label, r.values['provider'] || r.values['name_as_printed'] || r.values['type']]
-      .filter(Boolean)
-      .join(' · ')
+    const detail = r.values['provider'] || r.values['name_as_printed'] || r.values['type']
+    return [rec.label, detail?.replace(/_/g, ' ')].filter(Boolean).join(' · ')
   }
 
   const gaps: DomainView['gaps'] = []
@@ -168,6 +170,7 @@ export async function buildDomainView(
       required,
       confirmed,
       both_confirmed: required.length > 0 && confirmed.length === required.length,
+      viewer_confirmed: !!viewerUserId && acks.some((a) => a.user_id === viewerUserId),
     },
   }
 }

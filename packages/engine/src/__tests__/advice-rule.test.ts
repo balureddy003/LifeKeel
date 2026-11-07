@@ -93,6 +93,9 @@ function webCopyFiles(): string[] {
     ...walk('apps/api/src/domains/packs'),
     'apps/api/src/domains/view.ts',
     'apps/api/src/routes/family-domains.ts',
+    // Domain pages state what is on file and who has seen it.
+    'apps/web/src/app/domains/page.tsx',
+    'apps/web/src/app/domains/domain-copy.ts',
     // Keel inline agent panel: help text, presets, setup step titles and fixed replies.
     'apps/api/src/keel-agent/help.ts',
     'apps/api/src/keel-agent/presets.ts',

@@ -115,6 +115,7 @@ describe('life protection domain', () => {
     expect(v.rows.map((r: { id: string }) => r.id).sort()).toEqual(['pol_1', 'pol_2'])
     const row = v.matrix.rows.find((r: { id: string }) => r.id === 'pol_1')
     expect(row.cells).toMatchObject({ sam: 'holds', alex: 'covers', kid: null })
+    expect(row.label).toBe('Policy · Provider A')
     expect(v.gaps).toEqual([])
   })
 
@@ -149,7 +150,12 @@ describe('life protection domain', () => {
       'alex',
       'sam',
     ])
-    expect((await confirm(v1.result_version)).json().confirmation.both_confirmed).toBe(false)
+    const first = (await confirm(v1.result_version)).json()
+    expect(first.confirmation.both_confirmed).toBe(false)
+    expect(first.confirmation.viewer_confirmed).toBe(true)
+    currentUser = ALEX
+    expect((await get()).confirmation.viewer_confirmed).toBe(false)
+    currentUser = SAM
     currentUser = ALEX
     currentRoles = ['viewer']
     const done = (await confirm(v1.result_version)).json()

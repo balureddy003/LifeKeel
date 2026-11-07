@@ -6546,6 +6546,53 @@ export function confirmObligation(id: string) {
   return briefPost<{ obligation: Obligation }>(`/family/obligations/${id}/confirm`, {})
 }
 
+// ─── Domain packs (life & income protection pilot) ──────────────────────────
+
+export interface DomainPackInfo {
+  id: string
+  title: string
+  summary: string
+  confirm: 'both_adults' | 'organiser'
+}
+
+export type DomainCell = 'holds' | 'covers' | 'holds_and_covers' | null
+
+export interface DomainView {
+  domain_id: string
+  rows: Array<{
+    id: string
+    record: string
+    holder_member_id: string | null
+    covers_member_id: string | null
+    values: Record<string, string>
+  }>
+  matrix: {
+    label: string
+    columns: Array<{ id: string; name: string }>
+    rows: Array<{ id: string; label: string; cells: Record<string, DomainCell> }>
+  } | null
+  gaps: Array<{ row_id: string; note: string }>
+  result_version: string
+  confirmation: {
+    required: Array<{ id: string; name: string }>
+    confirmed: Array<{ id: string; name: string; confirmed_at: string }>
+    both_confirmed: boolean
+    viewer_confirmed: boolean
+  }
+}
+
+export function getDomains() {
+  return apiFetch<{ domains: DomainPackInfo[] }>('/family/domains', { domains: [] })
+}
+export function getDomainView(id: string) {
+  return apiFetch<DomainView | null>(`/family/domains/${encodeURIComponent(id)}`, null)
+}
+export function confirmDomain(id: string, resultVersion: string) {
+  return briefPost<DomainView>(`/family/domains/${encodeURIComponent(id)}/confirm`, {
+    result_version: resultVersion,
+  })
+}
+
 export function deleteBrief(id: string) {
   return credFetch(`${getApiBase()}/family/briefs/${id}`, {
     method: 'DELETE',
