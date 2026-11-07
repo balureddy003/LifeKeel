@@ -90,6 +90,12 @@ describe('validate', () => {
     expect(validate(entry({}), { ...ok, savings: '-1' })['savings']).toMatch(/zero or more/)
   })
 
+  it('rejects amounts the API would refuse, and non-numbers', () => {
+    expect(validate(entry({}), { ...ok, income: '10000000.01' })['income']).toMatch(/10,000,000/)
+    expect(validate(entry({}), { ...ok, income: '1e999' })['income']).toMatch(/10,000,000/)
+    expect(validate(entry({}), { ...ok, income: '10000000' })['income']).toBeUndefined()
+  })
+
   it('needs a one-off amount for cash entries', () => {
     const cash = entry({ id: 'windfall', mode: 'cash' })
     expect(validate(cash, { ...ok, new_essentials: '3000' })['cash_out']).toBeTruthy()

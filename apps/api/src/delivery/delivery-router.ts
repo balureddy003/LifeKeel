@@ -33,6 +33,7 @@ import { recordSpend, spendCost } from '../spend-ledger.js'
 import { activeEmailProvider } from '../email/transport.js'
 import { decideSend, maybeOfferDigestOnly, recordSent } from './notification-budget.js'
 import { resolveAlertEmail } from './alert-email.js'
+import { isKindMuted } from './notification-catalogue.js'
 
 type Db = { collection: (name: string) => any }
 
@@ -66,6 +67,8 @@ export interface DeliveryPreferences {
   /** When true, a week/month where nothing moved still earns the
    *  "nothing moved" one-liner email. */
   heartbeat_quiet_weeks?: boolean
+  /** Notification kinds the family muted (ids from notification-catalogue.ts; only mutable kinds count). */
+  kinds_muted?: string[]
   /** Readiness domains the family doesn't want insights/feed items for. */
   domains_muted?: string[]
   /** 'mine' scopes heartbeat/digest content to the recipient's member. */
@@ -475,6 +478,9 @@ export class DeliveryRouter {
     // Urgency floor
     const insightUrgency = (insight['urgency'] as string) ?? 'medium'
     if ((URGENCY_RANK[insightUrgency] ?? 0) < (URGENCY_RANK[prefs.min_urgency] ?? 0)) return null
+
+    // A muted kind stays muted, except critical alerts: no setting silences those.
+    if (insightUrgency !== 'critical' && isKindMuted(prefs, 'insight_alert')) return null
 
     // Quiet hours — defer non-critical
     if (this.inQuietHours(prefs) && insightUrgency !== 'critical') {

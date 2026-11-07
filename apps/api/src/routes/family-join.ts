@@ -47,7 +47,7 @@ import {
   EMAIL_FORMAT_RE,
   type User,
 } from './auth-users.js'
-import { sendFamilyInviteEmail } from '../auth-email.js'
+import { sendFamilyInviteEmail, sendJoinApprovedEmail } from '../auth-email.js'
 import { emailConfigured } from '../email/transport.js'
 import { isMinorMember, memberMatchesUser } from '../family/family-permissions.js'
 import { generateInviteCode, type FamilyGroupDoc, type FamilyMemberDoc } from './family-group.js'
@@ -338,6 +338,10 @@ export function registerFamilyJoinRoutes(
         { new_user_id: newUser.id, email: request.email },
       )
       log.info({ tenantId: tenant_id, newUserId: newUser.id }, 'Family join request approved')
+
+      // The joiner has no other signal that it is time to sign in.
+      const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
+      await sendJoinApprovedEmail(newUser.email, newUser.name, family.name, `${appUrl}/login`)
 
       return { approved: true, name: newUser.name, email: newUser.email }
     },

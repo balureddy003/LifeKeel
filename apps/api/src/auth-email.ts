@@ -262,6 +262,56 @@ export async function sendFamilyInviteEmail(
   }
 }
 
+/**
+ * Tells a person their request to join a family was approved. Sent only after
+ * the organizer taps Approve, to the address the person gave when they asked.
+ * Informational: it carries the family name and a sign-in link, no household
+ * data. Without it the joiner has no signal that it is time to sign in.
+ */
+export async function sendJoinApprovedEmail(
+  to: string,
+  name: string,
+  familyName: string,
+  signInUrl: string,
+): Promise<void> {
+  if (!emailConfigured()) {
+    log.warn({ to }, 'No email provider configured — skipping join-approved email')
+    return
+  }
+
+  const apiKey = process.env['SENDGRID_API_KEY']
+  if (apiKey) sgMail.setApiKey(apiKey)
+  const firstName = name.split(' ')[0] || 'there'
+
+  try {
+    await sgMail.send({
+      to,
+      from: { email: getFromEmail(), name: 'LifeKeel' },
+      subject: `You can now sign in to ${familyName} on LifeKeel`,
+      text: `Hi ${firstName},\n\nYour request to join ${familyName} on LifeKeel was approved. Sign in with the email and password you chose:\n${signInUrl}\n\nIf you did not ask to join, you can ignore this message.`,
+      html: renderEmail({
+        preheader: `Your request to join ${familyName} was approved.`,
+        eyebrow: 'Request approved',
+        title: `You can now sign in to ${familyName}`,
+        bodyHtml:
+          p(`Hi ${escapeHtml(firstName)},`) +
+          p(
+            `Your request to join <strong>${escapeHtml(familyName)}</strong> on LifeKeel was approved. Sign in with the email and password you chose.`,
+          ),
+        cta: { url: signInUrl, label: 'Sign in' },
+        note: 'If you did not ask to join, you can ignore this message.',
+        footer: {
+          reason:
+            'You got this because you asked to join a family on LifeKeel and the organizer approved it.',
+        },
+      }),
+    })
+    log.info({ to }, 'Join-approved email sent')
+  } catch (err) {
+    log.error({ to, err }, 'Failed to send join-approved email')
+  }
+}
+
 // PRD-130: continuity switch. The check-in goes to the organizer; the
 // alert goes to their designated family members. Both are informational —
 // nothing unlocks, no access is granted; the family vault's standing

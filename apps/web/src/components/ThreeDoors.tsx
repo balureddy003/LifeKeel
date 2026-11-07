@@ -64,8 +64,11 @@ export function ThreeDoors() {
           </Link>
         ))}
       </div>
-      <p className="mt-2 text-xs text-ink-tertiary">
-        <Link href="/domains?d=life_protection" className="underline">
+      <p className="mt-1 text-xs text-ink-tertiary">
+        <Link
+          href="/domains?d=life_protection"
+          className="inline-flex min-h-[48px] items-center underline"
+        >
           See who is covered by which policy
         </Link>
       </p>

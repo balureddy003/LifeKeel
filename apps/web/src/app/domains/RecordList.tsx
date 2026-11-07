@@ -48,7 +48,7 @@ export function RecordList({
                         type="button"
                         onClick={() => onRemove(r.id)}
                         aria-label={`Remove ${rec.label}`}
-                        className="inline-flex min-h-[40px] items-center rounded-full border border-haze px-3"
+                        className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full border border-haze px-3"
                       >
                         <Trash2 size={16} aria-hidden="true" />
                       </button>

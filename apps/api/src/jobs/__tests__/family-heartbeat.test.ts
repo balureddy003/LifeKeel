@@ -282,6 +282,24 @@ describe('runFamilyHeartbeat', () => {
     expect(r2.skipped_off).toBe(1)
   })
 
+  it('a muted kind is skipped like cadence off, only for the cadence it belongs to', async () => {
+    const { db } = makeDb({
+      prefs: { heartbeat_cadence: 'weekly', kinds_muted: ['weekly_heartbeat'] },
+      events: [scoreMoved()],
+    })
+    const r = await runFamilyHeartbeat(db, { cadence: 'weekly', now: NOW })
+    expect(r.sent).toBe(0)
+    expect(r.skipped_off).toBe(1)
+
+    // muting the digest does not stop the weekly update
+    const { db: db2 } = makeDb({
+      prefs: { heartbeat_cadence: 'weekly', kinds_muted: ['quiet_care_digest'] },
+      events: [scoreMoved()],
+    })
+    const r2 = await runFamilyHeartbeat(db2, { cadence: 'weekly', now: NOW })
+    expect(r2.sent).toBeGreaterThan(0)
+  })
+
   it('muted events do not count as movement', async () => {
     const { db } = makeDb({ events: [{ ...scoreMoved(), muted: true }] })
     const r = await runFamilyHeartbeat(db, { cadence: 'weekly', now: NOW })
@@ -476,7 +494,7 @@ describe('runFamilyHeartbeat', () => {
     })
     await runFamilyHeartbeat(db, { cadence: 'monthly', now: new Date('2026-03-01T08:00:00Z') })
     expect((sendMock.mock.calls.at(-1)![2] as { text: string }).text).toContain(
-      "You haven't opened the last two alerts.",
+      'Two recent alerts had no response.',
     )
   })
 })

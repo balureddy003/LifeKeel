@@ -17,6 +17,7 @@ import type { Db } from 'mongodb'
 import { z } from 'zod'
 import { isFamilyAdult, isFamilyOrganizer } from '../family/family-permissions.js'
 import type { Channel, DeliveryPreferences } from '../delivery/delivery-router.js'
+import { MUTABLE_KIND_IDS, liveKinds } from '../delivery/notification-catalogue.js'
 
 const CHANNELS = ['whatsapp', 'sms', 'email', 'web_push', 'mobile_push'] as const
 const URGENCIES = ['critical', 'high', 'medium', 'low'] as const
@@ -38,8 +39,25 @@ const PatchBody = z.object({
   heartbeat_cadence: z.enum(['weekly', 'monthly', 'off']).optional(),
   heartbeat_quiet_weeks: z.boolean().optional(),
   domains_muted: z.array(z.enum(DOMAINS)).optional(),
+  kinds_muted: z.array(z.enum(MUTABLE_KIND_IDS)).optional(),
   member_scope: z.enum(['all', 'mine']).optional(),
 })
+
+/** What the family sees for each live kind: why they get it, and whether and how it can be muted. */
+function kindsFor(prefs: Partial<DeliveryPreferences> | null) {
+  const muted = new Set(prefs?.kinds_muted ?? [])
+  return liveKinds()
+    .filter((k) => k.audience !== 'requester')
+    .map((k) => ({
+      id: k.id,
+      label: k.label,
+      reason: k.reason,
+      channels: k.channels,
+      mutable: k.mutable,
+      muted: k.mutable && muted.has(k.id),
+      fixed_because: k.fixed_because ?? null,
+    }))
+}
 
 function withDefaults(prefs: Partial<DeliveryPreferences> | null) {
   return {
@@ -58,6 +76,7 @@ function withDefaults(prefs: Partial<DeliveryPreferences> | null) {
     heartbeat_cadence: prefs?.heartbeat_cadence ?? 'monthly',
     heartbeat_quiet_weeks: prefs?.heartbeat_quiet_weeks ?? false,
     domains_muted: prefs?.domains_muted ?? [],
+    kinds_muted: prefs?.kinds_muted ?? [],
     member_scope: prefs?.member_scope ?? 'all',
     // PRD-139: true while "switch to digest only?" is on offer and unanswered.
     digest_offer_pending: Boolean((prefs as { digest_offer?: unknown } | null)?.digest_offer),
@@ -75,7 +94,11 @@ export function registerFamilyNotificationRoutes(app: FastifyInstance, db: Db): 
         .send({ error: 'Notification settings are visible to adult family members only.' })
     }
     const prefs = (await prefsCol().findOne({ tenant_id })) as DeliveryPreferences | null
-    return { preferences: withDefaults(prefs), exempt_criticals: [...EXEMPT_CRITICALS] }
+    return {
+      preferences: withDefaults(prefs),
+      exempt_criticals: [...EXEMPT_CRITICALS],
+      kinds: kindsFor(prefs),
+    }
   })
 
   /** POST /family/notifications/digest-offer — the organizer's answer to "switch to digest only?". */
@@ -94,7 +117,11 @@ export function registerFamilyNotificationRoutes(app: FastifyInstance, db: Db): 
       { upsert: true },
     )
     const saved = (await prefsCol().findOne({ tenant_id })) as DeliveryPreferences | null
-    return { preferences: withDefaults(saved), exempt_criticals: [...EXEMPT_CRITICALS] }
+    return {
+      preferences: withDefaults(saved),
+      exempt_criticals: [...EXEMPT_CRITICALS],
+      kinds: kindsFor(saved),
+    }
   })
 
   app.patch('/family/notifications', async (req, reply) => {
@@ -134,6 +161,10 @@ export function registerFamilyNotificationRoutes(app: FastifyInstance, db: Db): 
       { upsert: true },
     )
     const saved = (await prefsCol().findOne({ tenant_id })) as DeliveryPreferences | null
-    return { preferences: withDefaults(saved), exempt_criticals: [...EXEMPT_CRITICALS] }
+    return {
+      preferences: withDefaults(saved),
+      exempt_criticals: [...EXEMPT_CRITICALS],
+      kinds: kindsFor(saved),
+    }
   })
 }
