@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { GlassCard } from '@/components/Glass'
 import type { DomainView } from '@/lib/api'
@@ -12,6 +13,7 @@ export function RecordList({
   view: DomainView
   onRemove: (rowId: string) => void
 }) {
+  const [confirming, setConfirming] = useState<string | null>(null)
   return (
     <div className="mt-6 space-y-5">
       {view.pack.records.map((rec) => {
@@ -46,7 +48,7 @@ export function RecordList({
                     {removable && (
                       <button
                         type="button"
-                        onClick={() => onRemove(r.id)}
+                        onClick={() => setConfirming(r.id)}
                         aria-label={`Remove ${rec.label}`}
                         className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full border border-haze px-3"
                       >
@@ -54,6 +56,35 @@ export function RecordList({
                       </button>
                     )}
                   </div>
+                  {removable && confirming === r.id && (
+                    <div
+                      role="group"
+                      aria-label={`Remove this ${rec.label.toLowerCase()}?`}
+                      className="mt-3 flex flex-wrap items-center gap-2 border-t border-haze pt-3"
+                    >
+                      <p className="w-full text-base text-ink-primary">
+                        Remove this {rec.label.toLowerCase()} from the list?
+                      </p>
+                      <button
+                        type="button"
+                        autoFocus
+                        onClick={() => setConfirming(null)}
+                        className="inline-flex min-h-[48px] items-center rounded-full border border-haze px-4 text-base font-medium text-ink-primary"
+                      >
+                        Keep it
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConfirming(null)
+                          onRemove(r.id)
+                        }}
+                        className="inline-flex min-h-[48px] items-center rounded-full bg-danger/10 px-4 text-base font-medium text-danger"
+                      >
+                        Yes, remove
+                      </button>
+                    </div>
+                  )}
                 </GlassCard>
               ))}
             </div>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { CheckCircle2 } from 'lucide-react'
 import { GlassCard, PageHeader, Skeleton } from '@/components/Glass'
@@ -32,6 +32,7 @@ export default function DomainsPage() {
   const [people, setPeople] = useState<Array<{ id: string; name: string }>>([])
   const [pb, setPb] = useState<DomainPlaybook | null | undefined>(undefined)
   const toast = useToast()
+  const statusRef = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {
     setId(new URLSearchParams(window.location.search).get('d'))
@@ -99,6 +100,14 @@ export default function DomainsPage() {
     haptic('success')
     toast({ message: 'Confirmed' })
     setView(res.data)
+    // The button that had focus is gone; hand focus to the confirmation line.
+    requestAnimationFrame(() => statusRef.current?.focus())
+  }
+
+  function retry() {
+    if (!id) return
+    setView(undefined)
+    void getDomainView(id).then(setView)
   }
 
   if (id === undefined) return <main className="mx-auto max-w-2xl px-4 pb-16" />
@@ -142,10 +151,19 @@ export default function DomainsPage() {
           <p className="text-ink-secondary">
             This could not be loaded. Only adults on the family list can see it.
           </p>
+          <button type="button" onClick={retry} className={`${primaryBtn} mt-4`}>
+            Try again
+          </button>
         </GlassCard>
       )}
       {view && (
         <>
+          {!view.can_edit && (
+            <p className="mt-4 text-sm text-ink-secondary">
+              You can look at this and confirm it. Changing what is on file needs edit access, which
+              the organizer can arrange.
+            </p>
+          )}
           {view.matrix && view.matrix.rows.length > 0 ? (
             <GlassCard className="mt-6 p-0">
               <div
@@ -253,7 +271,14 @@ export default function DomainsPage() {
                   aria-hidden="true"
                 />
               )}
-              <span role="status">{confirmSummary(view.confirmation)}</span>
+              <span
+                role="status"
+                ref={statusRef}
+                tabIndex={-1}
+                className="focus:outline-none focus-visible:ring-2 focus-visible:ring-family-500"
+              >
+                {confirmSummary(view.confirmation)}
+              </span>
             </p>
             {!view.confirmation.viewer_confirmed && view.rows.length > 0 && (
               <button

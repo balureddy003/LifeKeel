@@ -308,7 +308,31 @@ describe('a second domain drawn by the same page', () => {
     expect(await screen.findByText('AB12 CDE')).toBeTruthy()
     expect(screen.getByText('If there is an accident or breakdown: what is on file')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Remove Vehicle' }))
+    expect(deleteDomainRecord).not.toHaveBeenCalled() // asks first
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, remove' }))
     await waitFor(() => expect(deleteDomainRecord).toHaveBeenCalledWith('car', 'v1'))
+  })
+
+  it('keeps the record when the person chooses Keep it, with Keep it focused first', async () => {
+    getDomainView.mockResolvedValue(
+      carView([
+        {
+          id: 'v1',
+          record: 'vehicle',
+          holder_member_id: null,
+          covers_member_id: null,
+          values: { reg: 'AB12 CDE' },
+        },
+      ]),
+    )
+    render(<DomainsPage />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Vehicle' }))
+    const keep = screen.getByRole('button', { name: 'Keep it' })
+    expect(document.activeElement).toBe(keep)
+    fireEvent.click(keep)
+    expect(deleteDomainRecord).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: 'Yes, remove' })).toBeNull()
+    expect(screen.getByText('AB12 CDE')).toBeTruthy()
   })
 
   it('adds a record from a form drawn from the pack, sending only what was filled in', async () => {
@@ -360,6 +384,46 @@ describe('keyboard and touch access', () => {
     expect(screen.getByRole('button', { name: 'I have seen this' }).className).toContain(
       'min-h-[48px]',
     )
+  })
+})
+
+describe('hardening (critic pass 2)', () => {
+  it('moves focus to the confirmation line after I have seen this, so keyboard users are not dropped', async () => {
+    getDomainView.mockResolvedValue(view())
+    confirmDomain.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: view({
+        viewer_confirmed: true,
+        confirmed: [{ id: 'sam', name: 'Sam', confirmed_at: 'x' }],
+      }),
+    })
+    render(<DomainsPage />)
+    fireEvent.click(await screen.findByRole('button', { name: 'I have seen this' }))
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'I have seen this' })).toBeNull(),
+    )
+    await waitFor(() => expect(document.activeElement?.getAttribute('role')).toBe('status'))
+    expect(document.activeElement?.textContent).toMatch(/Waiting for Alex/)
+  })
+
+  it('tells a read-only adult why there is nothing to add, and says nothing to an editor', async () => {
+    getDomainView.mockResolvedValue({ ...view(), can_edit: false })
+    render(<DomainsPage />)
+    expect(await screen.findByText(/Changing what is on file needs edit access/)).toBeTruthy()
+    cleanup()
+    getDomainView.mockResolvedValue(view())
+    render(<DomainsPage />)
+    await screen.findByText('Holds it')
+    expect(screen.queryByText(/needs edit access/)).toBeNull()
+  })
+
+  it('offers Try again when the page cannot load, and loads on the second try', async () => {
+    getDomainView.mockResolvedValueOnce(null).mockResolvedValueOnce(view())
+    render(<DomainsPage />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Try again' }))
+    expect(await screen.findByText('Holds it')).toBeTruthy()
+    expect(getDomainView).toHaveBeenCalledTimes(2)
   })
 })
 
