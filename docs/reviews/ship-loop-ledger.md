@@ -2,7 +2,7 @@
 
 Tracks the rounds in `docs/reviews/ux-journey-notifications-review-2026-11-07.md` (section 4; added in PR 379). One row per round. "Production-ready" here means ready for the owner to merge and deploy. Nothing in this loop merges or deploys.
 
-Updated: 2026-11-07 (loop iteration 2: PRs 378-382 CI green, no review comments; shipped 383).
+Updated: 2026-11-07 (loop iteration 3: PRs 378-383 CI green, no review comments; shipped 384; critic pass 2 running, report will be docs/reviews/critic-pass-2-2026-11-07.md).
 
 | Round | What | Status | PR | Acceptance check |
 |---|---|---|---|---|
@@ -20,7 +20,7 @@ Updated: 2026-11-07 (loop iteration 2: PRs 378-382 CI green, no review comments;
 | 7 | Document-ready draft | blocked-on-owner | | Privacy review + registered gateway task |
 | 8 | Holder changed | blocked-on-owner | | Safeguarding review |
 | 9 | Primitives migration | todo | | |
-| 10 | Measured a11y gate in CI | todo | | |
+| 10 | Measured a11y gate in CI | open (jsdom half) | [384](https://github.com/balureddy003/LifeKeel/pull/384) | axe + 48px + reduced-motion checks, 3 regressions red; 375px browser gate (Playwright) not built: needs live-stack harness |
 
 Also blocked: anything serving the external-person view (PRD-229); the shell footer contrast token (shell-wide).
 
