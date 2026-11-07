@@ -39,6 +39,17 @@ describe('EditAccessSwitch', () => {
     expect(rowClick).not.toHaveBeenCalled()
   })
 
+  it('says what tapping it will do, in words, tied to the switch for screen readers', () => {
+    const { rerender } = render(
+      <EditAccessSwitch name="Alex" enabled={false} onChange={() => {}} />,
+    )
+    const off = screen.getByText('Turn this on to let Alex add and change the family list.')
+    expect(screen.getByRole('switch').getAttribute('aria-describedby')).toBe(off.id)
+    rerender(<EditAccessSwitch name="Alex" enabled onChange={() => {}} />)
+    const on = screen.getByText('Turn this off to make the family list view only for Alex.')
+    expect(screen.getByRole('switch').getAttribute('aria-describedby')).toBe(on.id)
+  })
+
   it('does nothing while a change is in flight', () => {
     const onChange = vi.fn()
     render(<EditAccessSwitch name="Alex" enabled={false} busy onChange={onChange} />)
