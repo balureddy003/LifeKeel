@@ -67,9 +67,8 @@ export function NotificationsCard({
           className="rounded-xl bg-family-500/10 border border-family-500/20 p-3"
         >
           <p className="text-xs text-ink-primary leading-relaxed">
-            You haven&apos;t opened the last two alerts. Want digest only instead? You would get one
-            summary email a month instead. Important reminders and safety messages still arrive
-            either way.
+            Two recent alerts had no response. Want one monthly summary email instead? Important
+            reminders and safety messages still arrive either way.
           </p>
           {isOrganizer && onDigestOffer ? (
             <div className="mt-2 flex gap-2">

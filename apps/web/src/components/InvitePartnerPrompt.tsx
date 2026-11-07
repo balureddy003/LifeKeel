@@ -44,7 +44,7 @@ export function InvitePartnerPrompt() {
         Add your partner so they can see this too
       </p>
       <p className="text-xs text-ink-secondary mt-1">
-        If something happens, the chart only helps if someone else can find it.
+        You both see the same answer, and each of you confirms you have seen it.
       </p>
       <div className="flex gap-2 mt-3">
         <Link

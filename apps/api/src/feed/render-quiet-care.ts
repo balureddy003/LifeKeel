@@ -97,7 +97,7 @@ export function renderQuietCareDigest(
   const next = `Next digest: ${formatDay(d.next_check)}.`
   const cadence = 'You get this once a month. You can change how often, or turn it off.'
   const offer = d.digest_offer
-    ? "You haven't opened the last two alerts. You can choose digest only in settings; nothing changes unless you do."
+    ? 'Two recent alerts had no response. You can choose digest only in settings; nothing changes unless you do.'
     : ''
 
   let subject: string
