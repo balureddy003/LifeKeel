@@ -273,6 +273,8 @@ export async function sendJoinApprovedEmail(
   name: string,
   familyName: string,
   signInUrl: string,
+  /** When set, the address is not yet proven: the link confirms the mailbox before sign-in. */
+  verifyUrl?: string,
 ): Promise<void> {
   if (!emailConfigured()) {
     log.warn({ to }, 'No email provider configured — skipping join-approved email')
@@ -288,7 +290,9 @@ export async function sendJoinApprovedEmail(
       to,
       from: { email: getFromEmail(), name: 'LifeKeel' },
       subject: `You can now sign in to ${familyName} on LifeKeel`,
-      text: `Hi ${firstName},\n\nYour request to join ${familyName} on LifeKeel was approved. Sign in with the email and password you chose:\n${signInUrl}\n\nIf you did not ask to join, you can ignore this message.`,
+      text: verifyUrl
+        ? `Hi ${firstName},\n\nYour request to join ${familyName} on LifeKeel was approved. First confirm this email address (the link expires in 24 hours):\n${verifyUrl}\n\nThen sign in with the email and password you chose:\n${signInUrl}\n\nIf you did not ask to join, you can ignore this message.`
+        : `Hi ${firstName},\n\nYour request to join ${familyName} on LifeKeel was approved. Sign in with the email and password you chose:\n${signInUrl}\n\nIf you did not ask to join, you can ignore this message.`,
       html: renderEmail({
         preheader: `Your request to join ${familyName} was approved.`,
         eyebrow: 'Request approved',
@@ -296,9 +300,11 @@ export async function sendJoinApprovedEmail(
         bodyHtml:
           p(`Hi ${escapeHtml(firstName)},`) +
           p(
-            `Your request to join <strong>${escapeHtml(familyName)}</strong> on LifeKeel was approved. Sign in with the email and password you chose.`,
+            `Your request to join <strong>${escapeHtml(familyName)}</strong> on LifeKeel was approved. ${verifyUrl ? 'Confirm this email address first, then sign in with the email and password you chose.' : 'Sign in with the email and password you chose.'}`,
           ),
-        cta: { url: signInUrl, label: 'Sign in' },
+        cta: verifyUrl
+          ? { url: verifyUrl, label: 'Confirm your email' }
+          : { url: signInUrl, label: 'Sign in' },
         note: 'If you did not ask to join, you can ignore this message.',
         footer: {
           reason:

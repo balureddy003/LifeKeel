@@ -8,7 +8,7 @@
  * to distinguish from the organizer).
  */
 
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import Fastify from 'fastify'
 import { registerFamilyJoinRoutes } from '../family-join.js'
 import { hashPassword } from '../auth-users.js'
@@ -79,6 +79,8 @@ function match(doc: Record<string, unknown>, filter: Record<string, unknown>): b
     if (k === 'members.id') return (doc['members'] as { id: string }[]).some((m) => m.id === v)
     if (v && typeof v === 'object' && '$in' in (v as Record<string, unknown>))
       return (v as { $in: unknown[] }).$in.includes(doc[k])
+    if (v && typeof v === 'object' && '$lt' in (v as Record<string, unknown>))
+      return (doc[k] as Date) < (v as { $lt: Date }).$lt
     if (v && typeof v === 'object' && '$gte' in (v as Record<string, unknown>))
       return (doc[k] as Date) >= (v as { $gte: Date }).$gte
     return doc[k] === v
@@ -142,6 +144,11 @@ function makeFakeDb(state: FakeState) {
       if (idx === -1) return { deletedCount: 0 }
       state.joinRequests.splice(idx, 1)
       return { deletedCount: 1 }
+    },
+    deleteMany: async (filter: Record<string, unknown>) => {
+      const before = state.joinRequests.length
+      state.joinRequests = state.joinRequests.filter((r) => !match(r, filter))
+      return { deletedCount: before - state.joinRequests.length }
     },
     find: (filter: Record<string, unknown>) => {
       const results = state.joinRequests.filter((r) => match(r, filter))
@@ -474,6 +481,100 @@ describe('POST /family/access-requests/:id/approve', () => {
     expect(joined?.status).toBe('active')
 
     expect(state.joinRequests).toHaveLength(0)
+  })
+
+  describe('mailbox proof (critic pass 2)', () => {
+    const request = (over: Record<string, unknown> = {}) => ({
+      id: 'req-1',
+      tenant_id: TENANT,
+      name: 'Jane Doe',
+      email: 'jane@example.com',
+      password_hash: 'hashed',
+      salt: 'salt123',
+      status: 'pending',
+      requested_at: new Date(),
+      ...over,
+    })
+    afterEach(() => {
+      delete process.env['EMAIL_VERIFICATION_ENABLED']
+    })
+
+    it('when verification is on, the account starts unverified and the email carries the confirm link', async () => {
+      process.env['EMAIL_VERIFICATION_ENABLED'] = 'true'
+      state.joinRequests.push(request())
+      const app = await buildApp(ORGANIZER_ID)
+      const res = await app.inject({ method: 'POST', url: '/family/access-requests/req-1/approve' })
+      expect(res.statusCode).toBe(200)
+      const user = state.users[0]!
+      expect(user['email_verified']).toBe(false)
+      const stored = user['email_verification_token_hash'] as string
+      expect(stored).toMatch(/^[0-9a-f]{64}$/)
+      expect((user['email_verification_expires'] as Date).getTime()).toBeGreaterThan(Date.now())
+      const verifyUrl = sendJoinApprovedEmail.mock.calls[0]![4] as string
+      const token = /\/verify-email#token=([0-9a-f]{64})$/.exec(verifyUrl)?.[1]
+      expect(token).toBeDefined()
+      expect(token).not.toBe(stored) // only the hash is stored
+      expect(createHash('sha256').update(token!).digest('hex')).toBe(stored)
+    })
+
+    it('when verification is off the behaviour is unchanged: verified, plain sign-in email', async () => {
+      state.joinRequests.push(request())
+      const app = await buildApp(ORGANIZER_ID)
+      await app.inject({ method: 'POST', url: '/family/access-requests/req-1/approve' })
+      expect(state.users[0]!['email_verified']).toBe(true)
+      expect(sendJoinApprovedEmail.mock.calls[0]![4]).toBeUndefined()
+    })
+
+    it('an expired request cannot be approved, is cleared, and sends nothing', async () => {
+      state.joinRequests.push(request({ requested_at: new Date(Date.now() - 15 * 86_400_000) }))
+      const app = await buildApp(ORGANIZER_ID)
+      const res = await app.inject({ method: 'POST', url: '/family/access-requests/req-1/approve' })
+      expect(res.statusCode).toBe(410)
+      expect(state.users).toHaveLength(0)
+      expect(state.joinRequests).toHaveLength(0)
+      expect(sendJoinApprovedEmail).not.toHaveBeenCalled()
+    })
+
+    it('the organizer list hides expired requests, and an expired one no longer blocks a new request', async () => {
+      state.joinRequests.push(request({ requested_at: new Date(Date.now() - 15 * 86_400_000) }))
+      const org = await buildApp(ORGANIZER_ID)
+      const list = await org.inject({ method: 'GET', url: '/family/access-requests' })
+      expect(list.json().requests).toEqual([])
+      // ...and the expired request, with its password hash, is gone, not just hidden.
+      expect(state.joinRequests).toHaveLength(0)
+      const anon = await buildApp(null)
+      const again = await anon.inject({
+        method: 'POST',
+        url: '/family/join',
+        payload: {
+          invite_code: INVITE_CODE,
+          name: 'Jane Doe',
+          email: 'jane@example.com',
+          password: 'password123',
+        },
+      })
+      expect(again.statusCode).toBe(201)
+      expect(state.joinRequests).toHaveLength(1)
+      expect((state.joinRequests[0]!['requested_at'] as Date).getTime()).toBeGreaterThan(
+        Date.now() - 60_000,
+      )
+    })
+
+    it('a fresh pending request still blocks a duplicate', async () => {
+      state.joinRequests.push(request())
+      const anon = await buildApp(null)
+      const dup = await anon.inject({
+        method: 'POST',
+        url: '/family/join',
+        payload: {
+          invite_code: INVITE_CODE,
+          name: 'Jane Doe',
+          email: 'jane@example.com',
+          password: 'password123',
+        },
+      })
+      expect(dup.statusCode).toBe(409)
+    })
   })
 
   it('404s for a request that does not exist or already resolved', async () => {
