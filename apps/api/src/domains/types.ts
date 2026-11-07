@@ -83,7 +83,12 @@ export const DomainPackSchema = z
       .optional(),
     /** playbooks/family/<playbook>.yaml and which records it may show. */
     playbook: z
-      .object({ playbook: Slug, show_records: z.array(Slug).min(1) })
+      .object({
+        playbook: Slug,
+        show_records: z.array(Slug).min(1),
+        /** Heading above the person picker, e.g. 'If someone dies: what is on file'. */
+        label: z.string().min(1).max(100).default('If something happens: what is on file'),
+      })
       .strict()
       .optional(),
     planning: z.array(PlanningTriggerSchema).max(8).default([]),

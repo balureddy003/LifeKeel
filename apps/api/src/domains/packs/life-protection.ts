@@ -52,7 +52,11 @@ export const lifeProtection: DomainPack = {
     },
   ],
   matrix: { record: 'policy', label: 'Who is covered by what' },
-  playbook: { playbook: 'bereavement', show_records: ['policy', 'employer_cover'] },
+  playbook: {
+    playbook: 'bereavement',
+    show_records: ['policy', 'employer_cover'],
+    label: 'If someone dies: what is on file',
+  },
   planning: [
     {
       key: 'renewal',

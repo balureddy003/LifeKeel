@@ -26,7 +26,7 @@ describe('domain registry', () => {
     const bad: DomainPack = {
       ...lifeProtection,
       id: 'broken',
-      playbook: { playbook: 'does_not_exist', show_records: ['ghost'] },
+      playbook: { playbook: 'does_not_exist', show_records: ['ghost'], label: 'x' },
       matrix: { record: 'ghost', label: 'x' },
       planning: [
         {
@@ -54,9 +54,9 @@ describe('domain registry', () => {
 
   it('accepts a new pack added as data alone (extension proof)', () => {
     const extra = DomainPackSchema.parse({
-      id: 'car',
-      title: 'Car and transport',
-      summary: 'Which vehicles and policies are on file.',
+      id: 'pets',
+      title: 'Pets',
+      summary: 'Which pets and vets are on file.',
       records: [
         {
           key: 'vehicle',

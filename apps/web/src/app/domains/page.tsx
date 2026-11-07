@@ -5,7 +5,9 @@ import Link from 'next/link'
 import { CheckCircle2 } from 'lucide-react'
 import { GlassCard, PageHeader, Skeleton } from '@/components/Glass'
 import {
+  addDomainRecord,
   confirmDomain,
+  deleteDomainRecord,
   getDomains,
   getDomainPlaybook,
   getDomainView,
@@ -15,7 +17,9 @@ import {
 } from '@/lib/api'
 import { haptic } from '@/lib/haptics'
 import { useToast } from '@/components/Toast'
-import { cellText, confirmSummary, daysText } from './domain-copy'
+import { AddRecordForm } from './AddRecordForm'
+import { RecordList } from './RecordList'
+import { cellText, confirmSummary, daysText, rowLabel } from './domain-copy'
 
 const primaryBtn =
   'inline-flex min-h-[48px] items-center justify-center rounded-full bg-family-500 px-5 text-base font-semibold text-white disabled:opacity-50'
@@ -39,13 +43,42 @@ export default function DomainsPage() {
   }, [id])
 
   useEffect(() => {
-    if (view) setPeople(view.matrix?.columns ?? [])
+    if (view) setPeople(view.roster)
   }, [view])
 
   async function openPlaybook(memberId: string) {
     if (!id) return
     setPb(undefined)
     setPb(await getDomainPlaybook(id, memberId))
+  }
+
+  async function add(record: string, holder: string | null, values: Record<string, string>) {
+    if (!id) return false
+    setBusy(true)
+    const res = await addDomainRecord(id, record, { holder_member_id: holder, values })
+    setBusy(false)
+    if (!res.ok) {
+      toast({
+        message:
+          (res.data as { error?: string } | undefined)?.error ?? 'Could not save. Try again.',
+        variant: 'error',
+      })
+      return false
+    }
+    haptic('success')
+    setView(await getDomainView(id))
+    return true
+  }
+
+  async function remove(rowId: string) {
+    if (!id) return
+    const res = await deleteDomainRecord(id, rowId)
+    if (!res.ok) {
+      toast({ message: 'Could not remove. Try again.', variant: 'error' })
+      return
+    }
+    haptic('warning')
+    setView(await getDomainView(id))
   }
 
   async function confirm() {
@@ -95,8 +128,8 @@ export default function DomainsPage() {
   return (
     <main className="mx-auto max-w-2xl px-4 pb-16">
       <PageHeader
-        title="Who is covered"
-        subtitle="Which policies are on file, who holds each one and who it covers."
+        title={view?.pack.title ?? 'What is on file'}
+        subtitle={view?.pack.summary ?? 'Each area of family life, in one place.'}
       />
       {view === undefined && (
         <div className="mt-6 space-y-3" role="status" aria-label="Loading">
@@ -113,17 +146,7 @@ export default function DomainsPage() {
       )}
       {view && (
         <>
-          {!view.matrix || view.matrix.rows.length === 0 ? (
-            <GlassCard className="mt-6 p-5">
-              <p className="text-ink-secondary">
-                Nothing on file yet. Add policies in your{' '}
-                <Link href="/financial-profile" className="underline">
-                  financial profile
-                </Link>{' '}
-                and they appear here.
-              </p>
-            </GlassCard>
-          ) : (
+          {view.matrix && view.matrix.rows.length > 0 ? (
             <GlassCard className="mt-6 overflow-x-auto p-0">
               <table className="w-full min-w-[520px] text-left text-sm">
                 <caption className="sr-only">{view.matrix.label}</caption>
@@ -161,14 +184,35 @@ export default function DomainsPage() {
                 </tbody>
               </table>
             </GlassCard>
+          ) : view.rows.length === 0 ? (
+            <GlassCard className="mt-6 p-5">
+              <p className="text-ink-secondary">
+                Nothing on file yet.
+                {view.pack.records.some((r) => r.source.kind === 'adapter') && (
+                  <>
+                    {' '}
+                    Policies added in your{' '}
+                    <Link href="/financial-profile" className="underline">
+                      financial profile
+                    </Link>{' '}
+                    appear here.
+                  </>
+                )}
+              </p>
+            </GlassCard>
+          ) : (
+            <RecordList view={view} onRemove={remove} />
           )}
+
+          <AddRecordForm view={view} busy={busy} onAdd={add} />
 
           {view.gaps.length > 0 && (
             <GlassCard className="mt-4 p-5">
               <h2 className="font-medium text-ink-primary">To check</h2>
               <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink-secondary">
                 {view.gaps.map((g, i) => {
-                  const label = view.matrix?.rows.find((r) => r.id === g.row_id)?.label
+                  const row = view.rows.find((r) => r.id === g.row_id)
+                  const label = row ? rowLabel(view.pack, row) : undefined
                   return (
                     <li key={`${g.row_id}-${i}`}>
                       {label ? `${label}: ` : ''}
@@ -186,7 +230,7 @@ export default function DomainsPage() {
               <ul className="mt-2 space-y-1 text-sm text-ink-secondary">
                 {view.upcoming.map((u) => (
                   <li key={`${u.trigger}-${u.row_id}`}>
-                    {u.row_label}: {u.label.toLowerCase()}, {daysText(u.days)} ({u.date})
+                    {u.row_label}: {u.label}, {daysText(u.days)} ({u.date})
                   </li>
                 ))}
               </ul>
@@ -204,7 +248,7 @@ export default function DomainsPage() {
               )}
               <span role="status">{confirmSummary(view.confirmation)}</span>
             </p>
-            {!view.confirmation.viewer_confirmed && view.matrix && view.matrix.rows.length > 0 && (
+            {!view.confirmation.viewer_confirmed && view.rows.length > 0 && (
               <button
                 type="button"
                 onClick={confirm}
@@ -215,9 +259,9 @@ export default function DomainsPage() {
               </button>
             )}
           </GlassCard>
-          {view.matrix && view.matrix.rows.length > 0 && people.length > 0 && (
+          {view.rows.length > 0 && view.pack.playbook && people.length > 0 && (
             <GlassCard className="mt-4 p-5">
-              <h2 className="font-medium text-ink-primary">If someone dies: what is on file</h2>
+              <h2 className="font-medium text-ink-primary">{view.pack.playbook.label}</h2>
               <p className="mt-1 text-sm text-ink-secondary">
                 Pick a person to see only the records that matter for them.
               </p>

@@ -32,3 +32,14 @@ export function daysText(days: number): string {
   if (days > 0) return days === 1 ? 'tomorrow' : `in ${days} days`
   return days === -1 ? 'yesterday' : `${-days} days ago`
 }
+
+type Pack = DomainView['pack']
+type Row = DomainView['rows'][number]
+
+/** "Vehicle · AB12 CDE": the record's name and its first descriptive value. */
+export function rowLabel(pack: Pack, row: Row): string {
+  const rec = pack.records.find((r) => r.key === row.record)
+  const first = rec?.fields.find((f) => f.kind !== 'member' && row.values[f.key])
+  const detail = first ? (row.values[first.key] ?? '') : ''
+  return [rec?.label ?? row.record, detail.replace(/_/g, ' ')].filter(Boolean).join(' · ')
+}

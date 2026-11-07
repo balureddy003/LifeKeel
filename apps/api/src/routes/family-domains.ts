@@ -37,6 +37,20 @@ export function registerFamilyDomainRoutes(
   domains: readonly DomainPack[] = DOMAINS,
 ) {
   const find = (id: string) => domains.find((d) => d.id === id)
+
+  /** The view plus what a generic page needs to draw it: the pack's shape, the roster, edit rights. */
+  async function respond(
+    ctx: { tenant_id: string; user_id: string; roles?: readonly string[] },
+    pack: DomainPack,
+  ) {
+    const [view, canEdit, { roster }] = await Promise.all([
+      buildDomainView(db, ctx.tenant_id, pack, ctx.user_id),
+      isHouseholdEditor(db, ctx.tenant_id, ctx.user_id, ctx.roles),
+      loadDomainRows(db, ctx.tenant_id, pack),
+    ])
+    const { external: _external, ...publicPack } = pack
+    return { ...view, pack: publicPack, can_edit: canEdit, roster }
+  }
   const records = (tenantId: string) =>
     getTenantCollection<DomainRecordDoc>(db, 'domain_records', tenantId)
 
@@ -57,7 +71,7 @@ export function registerFamilyDomainRoutes(
     const pack = find(req.params.id)
     if (!pack) return reply.code(404).send({ error: 'Not found' })
     reply.header('Cache-Control', 'private, no-store')
-    return buildDomainView(db, ctx.tenant_id, pack, ctx.user_id)
+    return respond(ctx, pack)
   })
 
   app.get<{ Params: { id: string }; Querystring: { member?: string } }>(
@@ -170,6 +184,6 @@ export function registerFamilyDomainRoutes(
       pack.id,
       {},
     )
-    return buildDomainView(db, ctx.tenant_id, pack, ctx.user_id)
+    return respond(ctx, pack)
   })
 }

@@ -6572,6 +6572,27 @@ export interface DomainView {
     rows: Array<{ id: string; label: string; cells: Record<string, DomainCell> }>
   } | null
   gaps: Array<{ row_id: string; note: string }>
+  /** The pack's shape, so one page can draw any domain. */
+  pack: {
+    id: string
+    title: string
+    summary: string
+    records: Array<{
+      key: string
+      label: string
+      person_attribution: 'holder' | 'subject' | 'none'
+      source: { kind: 'store' } | { kind: 'adapter'; adapter: string }
+      fields: Array<{
+        key: string
+        label: string
+        kind: 'text' | 'date' | 'money' | 'choice' | 'member'
+        choices?: string[]
+      }>
+    }>
+    playbook?: { playbook: string; label: string }
+  }
+  can_edit: boolean
+  roster: Array<{ id: string; name: string }>
   upcoming: Array<{
     trigger: string
     label: string
@@ -6614,6 +6635,23 @@ export function getDomainPlaybook(id: string, memberId: string) {
   return apiFetch<DomainPlaybook | null>(
     `/family/domains/${encodeURIComponent(id)}/playbook?member=${encodeURIComponent(memberId)}`,
     null,
+  )
+}
+export function addDomainRecord(
+  id: string,
+  record: string,
+  body: { holder_member_id?: string | null; values: Record<string, string> },
+) {
+  return briefPost<{ id: string }>(
+    `/family/domains/${encodeURIComponent(id)}/records/${encodeURIComponent(record)}`,
+    body,
+  )
+}
+export function deleteDomainRecord(id: string, rowId: string) {
+  return briefPost<unknown>(
+    `/family/domains/${encodeURIComponent(id)}/records/${encodeURIComponent(rowId)}`,
+    {},
+    'DELETE',
   )
 }
 export function confirmDomain(id: string, resultVersion: string) {

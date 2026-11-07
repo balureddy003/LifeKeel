@@ -12,12 +12,16 @@ const getDomains = vi.fn()
 const getDomainView = vi.fn()
 const confirmDomain = vi.fn()
 const getDomainPlaybook = vi.fn()
+const addDomainRecord = vi.fn()
+const deleteDomainRecord = vi.fn()
 const toast = vi.fn()
 vi.mock('@/lib/api', async (orig) => ({
   ...(await orig<typeof import('@/lib/api')>()),
   getDomains: () => getDomains(),
   getDomainView: (id: string) => getDomainView(id),
   getDomainPlaybook: (id: string, m: string) => getDomainPlaybook(id, m),
+  addDomainRecord: (id: string, r: string, b: unknown) => addDomainRecord(id, r, b),
+  deleteDomainRecord: (id: string, r: string) => deleteDomainRecord(id, r),
   confirmDomain: (id: string, v: string) => confirmDomain(id, v),
 }))
 vi.mock('@/components/Toast', () => ({ useToast: () => toast }))
@@ -28,7 +32,35 @@ const view = (
   gaps: DomainView['gaps'] = [],
 ): DomainView => ({
   domain_id: 'life_protection',
-  rows: [],
+  can_edit: true,
+  roster: [
+    { id: 'sam', name: 'Sam' },
+    { id: 'alex', name: 'Alex' },
+  ],
+  pack: {
+    id: 'life_protection',
+    title: 'Life and income protection',
+    summary: 'Which policies are on file.',
+    records: [
+      {
+        key: 'policy',
+        label: 'Policy',
+        person_attribution: 'holder',
+        source: { kind: 'adapter', adapter: 'financial_profile_policies' },
+        fields: [{ key: 'provider', label: 'Provider', kind: 'text' }],
+      },
+    ],
+    playbook: { playbook: 'bereavement', label: 'If someone dies: what is on file' },
+  },
+  rows: [
+    {
+      id: 'p1',
+      record: 'policy',
+      holder_member_id: 'sam',
+      covers_member_id: 'alex',
+      values: { provider: 'Provider A' },
+    },
+  ],
   matrix: {
     label: 'Who is covered by what',
     columns: [
@@ -134,7 +166,11 @@ describe('domains page', () => {
   })
 
   it('says so, without a button, when nothing is on file or it cannot load', async () => {
-    getDomainView.mockResolvedValue({ ...view(), matrix: { label: 'x', columns: [], rows: [] } })
+    getDomainView.mockResolvedValue({
+      ...view(),
+      rows: [],
+      matrix: { label: 'x', columns: [], rows: [] },
+    })
     render(<DomainsPage />)
     expect(await screen.findByText(/Nothing on file yet/)).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'I have seen this' })).toBeNull()
@@ -163,7 +199,7 @@ describe('planning and first steps', () => {
     render(<DomainsPage />)
     expect(
       await screen.findByText(
-        /Policy · Provider A: a policy renewal date is coming up, in 12 days \(2026-12-01\)/,
+        /Policy · Provider A: A policy renewal date is coming up, in 12 days \(2026-12-01\)/,
       ),
     ).toBeTruthy()
   })
@@ -213,6 +249,89 @@ describe('planning and first steps', () => {
     render(<DomainsPage />)
     fireEvent.click(await screen.findByRole('button', { name: 'Alex' }))
     expect(await screen.findByText('This could not be loaded.')).toBeTruthy()
+  })
+})
+
+const carView = (rows: DomainView['rows'] = []): DomainView => ({
+  ...view(),
+  domain_id: 'car',
+  matrix: null,
+  rows,
+  pack: {
+    id: 'car',
+    title: 'Car and transport',
+    summary: 'Which vehicles are on file.',
+    records: [
+      {
+        key: 'vehicle',
+        label: 'Vehicle',
+        person_attribution: 'holder',
+        source: { kind: 'store' },
+        fields: [
+          { key: 'reg', label: 'Registration', kind: 'text' },
+          { key: 'mot_due', label: 'MOT due', kind: 'date' },
+        ],
+      },
+    ],
+    playbook: { playbook: 'car', label: 'If there is an accident or breakdown: what is on file' },
+  },
+})
+
+describe('a second domain drawn by the same page', () => {
+  beforeEach(() => {
+    window.history.pushState({}, '', '/domains?d=car')
+  })
+
+  it('takes its title and first-steps heading from the pack, and says when nothing is on file', async () => {
+    getDomainView.mockResolvedValue(carView())
+    render(<DomainsPage />)
+    expect(await screen.findByText('Car and transport')).toBeTruthy()
+    expect(screen.getByText(/Nothing on file yet/)).toBeTruthy()
+    expect(screen.queryByText(/financial profile/)).toBeNull()
+    expect(screen.queryByText('If someone dies: what is on file')).toBeNull()
+  })
+
+  it('lists the records when there is no matrix, and removes one', async () => {
+    getDomainView.mockResolvedValue(
+      carView([
+        {
+          id: 'v1',
+          record: 'vehicle',
+          holder_member_id: null,
+          covers_member_id: null,
+          values: { reg: 'AB12 CDE', mot_due: '2027-02-01' },
+        },
+      ]),
+    )
+    deleteDomainRecord.mockResolvedValue({ ok: true, status: 204 })
+    render(<DomainsPage />)
+    expect(await screen.findByText('AB12 CDE')).toBeTruthy()
+    expect(screen.getByText('If there is an accident or breakdown: what is on file')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Vehicle' }))
+    await waitFor(() => expect(deleteDomainRecord).toHaveBeenCalledWith('car', 'v1'))
+  })
+
+  it('adds a record from a form drawn from the pack, sending only what was filled in', async () => {
+    getDomainView.mockResolvedValue(carView())
+    addDomainRecord.mockResolvedValue({ ok: true, status: 201, data: { id: 'x' } })
+    render(<DomainsPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /Add a vehicle/ }))
+    fireEvent.change(screen.getByLabelText(/Registration/), { target: { value: 'AB12 CDE' } })
+    fireEvent.change(screen.getByLabelText(/Whose is it/), { target: { value: 'sam' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() =>
+      expect(addDomainRecord).toHaveBeenCalledWith('car', 'vehicle', {
+        holder_member_id: 'sam',
+        values: { reg: 'AB12 CDE' },
+      }),
+    )
+  })
+
+  it('offers no add form to a read-only adult', async () => {
+    getDomainView.mockResolvedValue({ ...carView(), can_edit: false })
+    render(<DomainsPage />)
+    await screen.findByText('Car and transport')
+    expect(screen.queryByRole('button', { name: /Add a vehicle/ })).toBeNull()
   })
 })
 

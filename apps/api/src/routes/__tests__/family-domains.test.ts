@@ -8,7 +8,6 @@ import { MongoClient, type Db } from 'mongodb'
 import { MongoMemoryServer } from 'mongodb-memory-server'
 import { registerFamilyDomainRoutes } from '../family-domains.js'
 import { DOMAINS } from '../../domains/registry.js'
-import { DomainPackSchema } from '../../domains/types.js'
 
 const TENANT = 't-dom'
 const SAM = 'user-sam'
@@ -20,26 +19,6 @@ let db: Db
 let app: FastifyInstance
 let currentUser: string | null = SAM
 let currentRoles: string[] = ['admin']
-
-const carPack = DomainPackSchema.parse({
-  id: 'car',
-  title: 'Car and transport',
-  summary: 'Which vehicles are on file.',
-  records: [
-    {
-      key: 'vehicle',
-      label: 'Vehicle',
-      person_attribution: 'holder',
-      source: { kind: 'store' },
-      fields: [
-        { key: 'reg', label: 'Registration', kind: 'text' },
-        { key: 'mot_due', label: 'MOT due', kind: 'date' },
-      ],
-    },
-  ],
-  confirm: 'both_adults',
-  external: { enabled: false, permitted: { vehicle: ['reg'] } },
-})
 
 beforeAll(async () => {
   mongod = await MongoMemoryServer.create()
@@ -55,7 +34,7 @@ beforeAll(async () => {
         roles: currentRoles,
       }
   })
-  registerFamilyDomainRoutes(app, db, [...DOMAINS, carPack])
+  registerFamilyDomainRoutes(app, db, DOMAINS)
   await app.ready()
 })
 afterAll(async () => {
@@ -338,11 +317,65 @@ describe('bereavement playbook binding', () => {
     expect((await pb('sam')).statusCode).toBe(401)
   })
 
-  it('is not offered for a pack without a playbook', async () => {
+  it('is not offered for an unknown domain', async () => {
     expect(
-      (await app.inject({ method: 'GET', url: '/family/domains/car/playbook?member=sam' }))
+      (await app.inject({ method: 'GET', url: '/family/domains/nope/playbook?member=sam' }))
         .statusCode,
     ).toBe(404)
+  })
+})
+
+describe('car and transport: a second domain added as data only', () => {
+  const car = async () => (await app.inject({ method: 'GET', url: '/family/domains/car' })).json()
+
+  it('reads car policies from the profile, takes vehicles from the household, and has no matrix', async () => {
+    await app.inject({
+      method: 'POST',
+      url: '/family/domains/car/records/vehicle',
+      payload: { holder_member_id: 'sam', values: { reg: 'AB12 CDE', mot_due: daysFromNow(12) } },
+    })
+    const v = await car()
+    expect(v.matrix).toBeNull()
+    expect(v.rows.map((r: { id: string }) => r.id)).toContain('pol_3')
+    expect(v.rows.map((r: { id: string }) => r.id)).not.toContain('pol_1')
+    expect(v.upcoming).toHaveLength(1)
+    expect(v.upcoming[0]).toMatchObject({ trigger: 'mot', days: 12 })
+  })
+
+  it('tells a generic page what to draw: the pack, the roster and edit rights', async () => {
+    const v = await car()
+    expect(v.pack.title).toBe('Car and transport')
+    expect(v.pack.records.map((r: { key: string }) => r.key)).toEqual(['vehicle', 'policy'])
+    expect(v.pack.external).toBeUndefined()
+    expect(v.roster.map((r: { id: string }) => r.id)).toContain('sam')
+    expect(v.can_edit).toBe(true)
+    currentRoles = ['viewer']
+    expect((await car()).can_edit).toBe(false)
+  })
+
+  it('confirms like any pack, and the vehicle list is part of the version', async () => {
+    const v1 = await car()
+    await app.inject({
+      method: 'POST',
+      url: '/family/domains/car/records/vehicle',
+      payload: { values: { reg: 'ZZ99 ZZZ' } },
+    })
+    const v2 = await car()
+    expect(v2.result_version).not.toBe(v1.result_version)
+    const done = await app.inject({
+      method: 'POST',
+      url: '/family/domains/car/confirm',
+      payload: { result_version: v2.result_version },
+    })
+    expect(done.json().confirmation.viewer_confirmed).toBe(true)
+    expect(done.json().pack.id).toBe('car')
+  })
+
+  it('binds its own first-steps label and records for a named person', async () => {
+    const r = await app.inject({ method: 'GET', url: '/family/domains/car/playbook?member=sam' })
+    expect(r.statusCode).toBe(200)
+    expect(r.json().playbook).toBe('car')
+    expect(r.json().groups[0].rows.map((x: { id: string }) => x.id)).toContain('pol_3')
   })
 })
 
@@ -358,13 +391,13 @@ describe('store-backed records (extension proof: a pack added as data)', () => {
     const r = await add({ reg: 'AB12 CDE', mot_due: '2027-02-01' })
     expect(r.statusCode).toBe(201)
     const v = (await app.inject({ method: 'GET', url: '/family/domains/car' })).json()
-    expect(v.rows).toHaveLength(1)
-    expect(v.rows[0].values.reg).toBe('AB12 CDE')
+    const vehicles = v.rows.filter((r: { record: string }) => r.record === 'vehicle')
+    expect(vehicles).toHaveLength(1)
+    expect(vehicles[0].values.reg).toBe('AB12 CDE')
     expect(v.matrix).toBeNull()
     await app.inject({ method: 'DELETE', url: `/family/domains/car/records/${r.json().id}` })
-    expect((await app.inject({ method: 'GET', url: '/family/domains/car' })).json().rows).toEqual(
-      [],
-    )
+    const after = (await app.inject({ method: 'GET', url: '/family/domains/car' })).json()
+    expect(after.rows.filter((x: { record: string }) => x.record === 'vehicle')).toEqual([])
   })
 
   it('rejects unknown fields, secret-shaped text and read-only records; viewers cannot write', async () => {
