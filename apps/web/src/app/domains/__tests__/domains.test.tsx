@@ -335,6 +335,25 @@ describe('a second domain drawn by the same page', () => {
   })
 })
 
+describe('keyboard and touch access', () => {
+  it('makes the matrix a labelled, focusable scroll region', async () => {
+    getDomainView.mockResolvedValue(view())
+    render(<DomainsPage />)
+    const region = await screen.findByRole('region', { name: 'Who is covered by what' })
+    expect(region.getAttribute('tabindex')).toBe('0')
+  })
+
+  it('gives the person chips and the confirm button a 48px touch target', async () => {
+    getDomainView.mockResolvedValue(view())
+    render(<DomainsPage />)
+    const chip = await screen.findByRole('button', { name: 'Sam' })
+    expect(chip.className).toContain('min-h-[48px]')
+    expect(screen.getByRole('button', { name: 'I have seen this' }).className).toContain(
+      'min-h-[48px]',
+    )
+  })
+})
+
 describe('domain copy', () => {
   it('words a date relative to today', () => {
     expect(daysText(0)).toBe('today')

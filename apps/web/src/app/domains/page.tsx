@@ -147,42 +147,49 @@ export default function DomainsPage() {
       {view && (
         <>
           {view.matrix && view.matrix.rows.length > 0 ? (
-            <GlassCard className="mt-6 overflow-x-auto p-0">
-              <table className="w-full min-w-[520px] text-left text-sm">
-                <caption className="sr-only">{view.matrix.label}</caption>
-                <thead>
-                  <tr className="border-b border-haze text-ink-tertiary">
-                    <th scope="col" className="min-w-[10rem] break-normal p-3 font-medium">
-                      Policy
-                    </th>
-                    {view.matrix.columns.map((c) => (
-                      <th key={c.id} scope="col" className="p-3 font-medium">
-                        {c.name}
+            <GlassCard className="mt-6 p-0">
+              <div
+                role="region"
+                aria-label={view.matrix.label}
+                tabIndex={0}
+                className="overflow-x-auto rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-family-500"
+              >
+                <table className="w-full min-w-[520px] text-left text-sm">
+                  <caption className="sr-only">{view.matrix.label}</caption>
+                  <thead>
+                    <tr className="border-b border-haze text-ink-tertiary">
+                      <th scope="col" className="min-w-[10rem] break-normal p-3 font-medium">
+                        Policy
                       </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {view.matrix.rows.map((r) => (
-                    <tr key={r.id} className="border-b border-haze last:border-0">
-                      <th
-                        scope="row"
-                        className="min-w-[10rem] break-normal p-3 font-medium text-ink-primary"
-                      >
-                        {r.label}
-                      </th>
-                      {view.matrix!.columns.map((c) => (
-                        <td
-                          key={c.id}
-                          className="whitespace-nowrap break-normal p-3 text-ink-secondary"
-                        >
-                          {cellText(r.cells[c.id] ?? null)}
-                        </td>
+                      {view.matrix.columns.map((c) => (
+                        <th key={c.id} scope="col" className="p-3 font-medium">
+                          {c.name}
+                        </th>
                       ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {view.matrix.rows.map((r) => (
+                      <tr key={r.id} className="border-b border-haze last:border-0">
+                        <th
+                          scope="row"
+                          className="min-w-[10rem] break-normal p-3 font-medium text-ink-primary"
+                        >
+                          {r.label}
+                        </th>
+                        {view.matrix!.columns.map((c) => (
+                          <td
+                            key={c.id}
+                            className="whitespace-nowrap break-normal p-3 text-ink-secondary"
+                          >
+                            {cellText(r.cells[c.id] ?? null)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </GlassCard>
           ) : view.rows.length === 0 ? (
             <GlassCard className="mt-6 p-5">
@@ -272,7 +279,7 @@ export default function DomainsPage() {
                     type="button"
                     onClick={() => openPlaybook(p.id)}
                     aria-pressed={pb?.member.id === p.id}
-                    className="inline-flex min-h-[40px] items-center rounded-full border border-haze px-4 text-sm font-medium text-ink-primary aria-pressed:bg-family-500 aria-pressed:text-white"
+                    className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full border border-haze px-4 text-sm font-medium text-ink-primary aria-pressed:bg-family-500 aria-pressed:text-white"
                   >
                     {p.name}
                   </button>
