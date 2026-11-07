@@ -2,7 +2,7 @@
 
 Tracks the rounds in `docs/reviews/ux-journey-notifications-review-2026-11-07.md` (section 4; added in PR 379). One row per round. "Production-ready" here means ready for the owner to merge and deploy. Nothing in this loop merges or deploys.
 
-Updated: 2026-11-07 (loop iteration 5: PRs 378-384 CI green; shipped round (a) as the next PR. Iteration 4: critic pass 2 folded in, report in `docs/reviews/critic-pass-2-2026-11-07.md`; its three High findings fixed on their own PRs).
+Updated: 2026-11-07 (loop iteration 6: PRs 378-385 CI green; shipped round (b) as PR 386. Iteration 5: PRs 378-384 CI green; shipped round (a) as the next PR. Iteration 4: critic pass 2 folded in, report in `docs/reviews/critic-pass-2-2026-11-07.md`; its three High findings fixed on their own PRs).
 
 | Round | What | Status | PR | Acceptance check |
 |---|---|---|---|---|
@@ -31,7 +31,7 @@ Updated: 2026-11-07 (loop iteration 5: PRs 378-384 CI green; shipped round (a) a
 | High: sticky matrix column claimed in #379 but never applied | fixed on #379, measured in browser (row header stays at offset 0 after a 200px scroll); control text raised to 16px |
 | Med: vault reminder emails the other adults naming reporter and event type; catalogue said reporter only | fixed on #381: split into checklist (reporter) and vault (other adults, safeguarding) kinds |
 | Med: catalogue is not a gate (checklist, vault, continuity, low-credit, lifecycle senders bypass it); budget ledger id `renewal_reminder` vs catalogue `policy_renewal_reminder` | open: [PR 385](https://github.com/balureddy003/LifeKeel/pull/385) sender allow-list tripwire + ledger-kind mapping; continuity emails still uncatalogued (stated in the test) |
-| Med: join creates an `email_verified` account without mailbox proof; the new email goes to that unverified address | todo (security fix, no decision needed) |
+| Med: join creates an `email_verified` account without mailbox proof; the new email goes to that unverified address | open: [PR 386](https://github.com/balureddy003/LifeKeel/pull/386) unverified account + confirm link when verification is on (same switch as signup) + 14-day request expiry; owner: turning `EMAIL_VERIFICATION_ENABLED` on is a deployment call |
 | Med: domains delete is one tap with no undo; focus lost after "I have seen this"; second adult has `viewer` role and cannot add records, with no explanation | todo (domains hardening) |
 | Med: mute is API-only, organizer-only, silent to the second adult | todo: settings list for kinds (owner: per-adult or organizer-only?) |
 | Med: digest repeats "not yet seen by every adult" monthly with no ceiling; "family list" means two things | todo (vocabulary needs an owner choice of noun) |
