@@ -494,7 +494,7 @@ describe('runFamilyHeartbeat', () => {
     })
     await runFamilyHeartbeat(db, { cadence: 'monthly', now: new Date('2026-03-01T08:00:00Z') })
     expect((sendMock.mock.calls.at(-1)![2] as { text: string }).text).toContain(
-      "You haven't opened the last two alerts.",
+      'Two recent alerts had no response.',
     )
   })
 })

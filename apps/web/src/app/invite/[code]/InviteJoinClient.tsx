@@ -111,7 +111,7 @@ function AcceptMemberInvite({ token }: { token: string }) {
         <h1 className="text-2xl font-bold">You're invited, {info.memberName}</h1>
         <p className="text-sm text-ink-tertiary mt-1">
           {info.familyName} set you up on LifeKeel. Set a password to finish joining — you'll be
-          signed in right away. If you already have an Keel account for this family, use that
+          signed in right away. If you already have a LifeKeel account for this family, use that
           password to link it instead.
         </p>
       </div>
@@ -213,7 +213,7 @@ function RequestJoin({ code }: { code: string }) {
           <Users size={32} className="text-family-400" />
         </div>
         <h1 className="text-2xl font-bold">
-          {from ? `${from} invited you to see your family's plan` : 'Join your family on Keel'}
+          {from ? `${from} invited you to see your family's plan` : 'Join your family on LifeKeel'}
         </h1>
         <p className="text-sm text-ink-tertiary mt-1">
           {from
