@@ -1,5 +1,5 @@
 /**
- * The cover page states what is on file and who has seen it. Confirm is offered
+ * The cover page states what is on the family list and who has seen it. Confirm is offered
  * only until this adult has confirmed, and a stale version reloads the page.
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
@@ -40,7 +40,7 @@ const view = (
   pack: {
     id: 'life_protection',
     title: 'Life and income protection',
-    summary: 'Which policies are on file.',
+    summary: 'Which policies are on the family list.',
     records: [
       {
         key: 'policy',
@@ -50,7 +50,7 @@ const view = (
         fields: [{ key: 'provider', label: 'Provider', kind: 'text' }],
       },
     ],
-    playbook: { playbook: 'bereavement', label: 'If someone dies: what is on file' },
+    playbook: { playbook: 'bereavement', label: 'If someone dies: what is on the family list' },
   },
   rows: [
     {
@@ -100,7 +100,7 @@ describe('domains page', () => {
         {
           id: 'life_protection',
           title: 'Life and income protection',
-          summary: 'Which policies are on file.',
+          summary: 'Which policies are on the family list.',
           confirm: 'both_adults',
         },
       ],
@@ -165,14 +165,14 @@ describe('domains page', () => {
     expect(toast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'error' }))
   })
 
-  it('says so, without a button, when nothing is on file or it cannot load', async () => {
+  it('says so, without a button, when nothing is on the family list or it cannot load', async () => {
     getDomainView.mockResolvedValue({
       ...view(),
       rows: [],
       matrix: { label: 'x', columns: [], rows: [] },
     })
     render(<DomainsPage />)
-    expect(await screen.findByText(/Nothing on file yet/)).toBeTruthy()
+    expect(await screen.findByText(/Nothing on the family list yet/)).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'I have seen this' })).toBeNull()
     cleanup()
     getDomainView.mockResolvedValue(null)
@@ -213,7 +213,7 @@ describe('planning and first steps', () => {
       groups: [
         {
           key: 'theirs',
-          label: 'On file for Sam',
+          label: 'On the family list for Sam',
           rows: [
             {
               id: 'p1',
@@ -234,7 +234,7 @@ describe('planning and first steps', () => {
     })
     render(<DomainsPage />)
     fireEvent.click(await screen.findByRole('button', { name: 'Sam' }))
-    expect(await screen.findByText('On file for Sam')).toBeTruthy()
+    expect(await screen.findByText('On the family list for Sam')).toBeTruthy()
     expect(getDomainPlaybook).toHaveBeenCalledWith('life_protection', 'sam')
     expect(screen.getByText(/claims contact: 0800 111/)).toBeTruthy()
     expect(screen.getByText('Held by other family members, not part of this')).toBeTruthy()
@@ -260,7 +260,7 @@ const carView = (rows: DomainView['rows'] = []): DomainView => ({
   pack: {
     id: 'car',
     title: 'Car and transport',
-    summary: 'Which vehicles are on file.',
+    summary: 'Which vehicles are on the family list.',
     records: [
       {
         key: 'vehicle',
@@ -273,7 +273,10 @@ const carView = (rows: DomainView['rows'] = []): DomainView => ({
         ],
       },
     ],
-    playbook: { playbook: 'car', label: 'If there is an accident or breakdown: what is on file' },
+    playbook: {
+      playbook: 'car',
+      label: 'If there is an accident or breakdown: what is on the family list',
+    },
   },
 })
 
@@ -282,13 +285,13 @@ describe('a second domain drawn by the same page', () => {
     window.history.pushState({}, '', '/domains?d=car')
   })
 
-  it('takes its title and first-steps heading from the pack, and says when nothing is on file', async () => {
+  it('takes its title and first-steps heading from the pack, and says when nothing is on the family list', async () => {
     getDomainView.mockResolvedValue(carView())
     render(<DomainsPage />)
     expect(await screen.findByText('Car and transport')).toBeTruthy()
-    expect(screen.getByText(/Nothing on file yet/)).toBeTruthy()
+    expect(screen.getByText(/Nothing on the family list yet/)).toBeTruthy()
     expect(screen.queryByText(/financial profile/)).toBeNull()
-    expect(screen.queryByText('If someone dies: what is on file')).toBeNull()
+    expect(screen.queryByText('If someone dies: what is on the family list')).toBeNull()
   })
 
   it('lists the records when there is no matrix, and removes one', async () => {
@@ -306,7 +309,9 @@ describe('a second domain drawn by the same page', () => {
     deleteDomainRecord.mockResolvedValue({ ok: true, status: 204 })
     render(<DomainsPage />)
     expect(await screen.findByText('AB12 CDE')).toBeTruthy()
-    expect(screen.getByText('If there is an accident or breakdown: what is on file')).toBeTruthy()
+    expect(
+      screen.getByText('If there is an accident or breakdown: what is on the family list'),
+    ).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Remove Vehicle' }))
     expect(deleteDomainRecord).not.toHaveBeenCalled() // asks first
     fireEvent.click(screen.getByRole('button', { name: 'Yes, remove' }))

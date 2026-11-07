@@ -79,7 +79,7 @@ describe('domain registry', () => {
     const extra = DomainPackSchema.parse({
       id: 'pets',
       title: 'Pets',
-      summary: 'Which pets and vets are on file.',
+      summary: 'Which pets and vets are on the family list.',
       records: [
         {
           key: 'vehicle',

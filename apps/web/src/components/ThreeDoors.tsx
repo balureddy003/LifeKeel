@@ -35,7 +35,7 @@ export const DOORS: Door[] = [
   {
     href: '/life-events',
     title: 'See first steps if something happens',
-    description: 'A short list for the first hours, using what is on file.',
+    description: 'A short list for the first hours, using the family list.',
     icon: LifeBuoy,
   },
 ]

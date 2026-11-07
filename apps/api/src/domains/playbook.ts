@@ -57,7 +57,7 @@ export function buildDomainPlaybook(
     groups: [
       {
         key: 'theirs',
-        label: `On file for ${member.name}`,
+        label: `On the family list for ${member.name}`,
         rows: theirs.map((r) => asRow(pack, r)),
       },
       {

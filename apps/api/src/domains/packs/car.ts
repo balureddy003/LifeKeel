@@ -3,13 +3,13 @@ import type { DomainPack } from '../types.js'
 /**
  * Car and transport. Added as data alone: vehicles are household-entered
  * (generic store) and car policies are read from the financial profile. It
- * states what is on file and which dates are coming; it never compares
+ * states what is on the family list and which dates are coming; it never compares
  * insurers or says what to buy.
  */
 export const car: DomainPack = {
   id: 'car',
   title: 'Car and transport',
-  summary: 'Which vehicles and car policies are on file, and when the next dates fall.',
+  summary: 'Which vehicles and car policies are on the family list, and when the next dates fall.',
   records: [
     {
       key: 'vehicle',
@@ -40,7 +40,7 @@ export const car: DomainPack = {
   playbook: {
     playbook: 'car',
     show_records: ['vehicle', 'policy'],
-    label: 'If there is an accident or breakdown: what is on file',
+    label: 'If there is an accident or breakdown: what is on the family list',
   },
   planning: [
     {

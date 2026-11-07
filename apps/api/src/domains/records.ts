@@ -15,14 +15,14 @@ export function checkRecordValues(
   covers: string | null | undefined,
 ): string | null {
   for (const id of [holder, covers])
-    if (id && !rosterIds.has(id)) return 'Choose a person on the family list'
+    if (id && !rosterIds.has(id)) return 'Choose a person in the family'
   for (const f of rec.fields) {
     const v = values[f.key]
     if (v === undefined || v === '') continue
     if (f.kind === 'choice' && !f.choices?.includes(v))
       return `Choose one of the options for ${f.label}`
     if (f.kind === 'member' && !rosterIds.has(v))
-      return `Choose a person on the family list for ${f.label}`
+      return `Choose a person in the family for ${f.label}`
     if (f.kind === 'date') {
       const ok =
         /^\d{4}-\d{2}-\d{2}$/.test(v) && new Date(`${v}T00:00:00Z`).toISOString().startsWith(v)

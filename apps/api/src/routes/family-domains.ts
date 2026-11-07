@@ -85,7 +85,7 @@ export function registerFamilyDomainRoutes(
       if (!pack?.playbook) return reply.code(404).send({ error: 'Not found' })
       const { roster, rows } = await loadDomainRows(db, ctx.tenant_id, pack)
       const member = roster.find((m) => m.id === req.query.member)
-      if (!member) return reply.code(400).send({ error: 'Choose a person on the family list' })
+      if (!member) return reply.code(400).send({ error: 'Choose a person in the family' })
       reply.header('Cache-Control', 'private, no-store')
       return { ...buildDomainPlaybook(pack, rows, member), roster }
     },
