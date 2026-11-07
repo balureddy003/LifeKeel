@@ -89,6 +89,8 @@ function webCopyFiles(): string[] {
     // Intent 80: catalogue titles, field labels and the generated-sentence
     // template text all pass the same banned-pattern scan.
     'apps/api/src/briefs/catalogue.ts',
+    // Domain packs: titles, summaries, field labels and trigger labels are copy.
+    ...walk('apps/api/src/domains/packs'),
     // Keel inline agent panel: help text, presets, setup step titles and fixed replies.
     'apps/api/src/keel-agent/help.ts',
     'apps/api/src/keel-agent/presets.ts',
