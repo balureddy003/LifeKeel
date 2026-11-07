@@ -13,7 +13,9 @@ describe('PendingApproval', () => {
   it('names the organizer step and promises the email, not a notification', () => {
     render(<PendingApproval familyName="The Reddys" />)
     expect(screen.getByText(/Your request is with The Reddys.s organizer/)).toBeTruthy()
-    expect(screen.getByText(/we will email you/)).toBeTruthy()
+    expect(screen.getByText(/we will email the address you gave/)).toBeTruthy()
+    expect(screen.getByText(/stays open for 14 days/)).toBeTruthy()
+    expect(screen.getByText(/send a new request/)).toBeTruthy()
     expect(document.body.textContent).not.toMatch(/let .* know|notified|we.ve told/i)
   })
 

@@ -15,8 +15,9 @@ export function PendingApproval({ familyName }: { familyName: string }) {
       </div>
       <h1 className="text-2xl font-bold mb-2">Waiting for approval</h1>
       <p className="text-sm text-ink-secondary leading-relaxed max-w-xs mx-auto">
-        Your request is with {familyName}&apos;s organizer. When they approve it, we will email you,
-        and you can sign in with the email and password you just set.
+        Your request is with {familyName}&apos;s organizer and stays open for 14 days. If they
+        approve it, we will email the address you gave, so check you typed it correctly. If nothing
+        arrives, ask the organizer or send a new request.
       </p>
       <Link
         href="/login"

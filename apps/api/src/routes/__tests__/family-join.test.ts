@@ -79,6 +79,8 @@ function match(doc: Record<string, unknown>, filter: Record<string, unknown>): b
     if (k === 'members.id') return (doc['members'] as { id: string }[]).some((m) => m.id === v)
     if (v && typeof v === 'object' && '$in' in (v as Record<string, unknown>))
       return (v as { $in: unknown[] }).$in.includes(doc[k])
+    if (v && typeof v === 'object' && '$lt' in (v as Record<string, unknown>))
+      return (doc[k] as Date) < (v as { $lt: Date }).$lt
     if (v && typeof v === 'object' && '$gte' in (v as Record<string, unknown>))
       return (doc[k] as Date) >= (v as { $gte: Date }).$gte
     return doc[k] === v
@@ -142,6 +144,11 @@ function makeFakeDb(state: FakeState) {
       if (idx === -1) return { deletedCount: 0 }
       state.joinRequests.splice(idx, 1)
       return { deletedCount: 1 }
+    },
+    deleteMany: async (filter: Record<string, unknown>) => {
+      const before = state.joinRequests.length
+      state.joinRequests = state.joinRequests.filter((r) => !match(r, filter))
+      return { deletedCount: before - state.joinRequests.length }
     },
     find: (filter: Record<string, unknown>) => {
       const results = state.joinRequests.filter((r) => match(r, filter))
@@ -533,6 +540,8 @@ describe('POST /family/access-requests/:id/approve', () => {
       const org = await buildApp(ORGANIZER_ID)
       const list = await org.inject({ method: 'GET', url: '/family/access-requests' })
       expect(list.json().requests).toEqual([])
+      // ...and the expired request, with its password hash, is gone, not just hidden.
+      expect(state.joinRequests).toHaveLength(0)
       const anon = await buildApp(null)
       const again = await anon.inject({
         method: 'POST',

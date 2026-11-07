@@ -223,6 +223,12 @@ export function registerFamilyJoinRoutes(
     if (!family)
       return reply.status(403).send({ error: 'Only the organizer can view join requests' })
 
+    // Expired requests hold a password hash; clear them rather than keep them forever.
+    await requests.deleteMany({
+      tenant_id,
+      status: 'pending',
+      requested_at: { $lt: requestCutoff() },
+    })
     const pending = await requests
       .find({ tenant_id, status: 'pending', requested_at: { $gte: requestCutoff() } })
       .sort({ requested_at: -1 })
@@ -290,6 +296,10 @@ export function registerFamilyJoinRoutes(
         // the organizer shares one invite code and the joiner types any address.
         // So, exactly as signup does, the address stays unverified until the
         // emailed link is used (when verification is on for the platform).
+        // LIMIT: this does not stop someone who types another person's address
+        // from choosing the password: sign-in does not block on email_verified,
+        // and the real owner confirming the link would verify that account. A
+        // set-password-by-emailed-link model would close it (owner decision).
         email_verified: !verification,
         email_verification_token: undefined,
         email_verification_expires: verification?.expires,
