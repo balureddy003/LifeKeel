@@ -38,6 +38,7 @@ import { ReadinessFeed } from '@/components/ReadinessFeed'
 import { PerceivedProtectionCard } from '@/components/PerceivedProtectionCard'
 import { TodayCard } from '@/components/TodayCard'
 import { MoreOnHome } from '@/components/MoreOnHome'
+import { ThreeDoors } from '@/components/ThreeDoors'
 import { PartnerCard } from '@/components/InvitePartnerPrompt'
 import { BriefWaitingCard } from '@/components/BriefWaitingCard'
 import CrisisMode, { CRISIS_EVENT_KEY } from '@/components/CrisisMode'
@@ -1013,6 +1014,8 @@ export default function HomePage() {
           dismissing this card's separate snooze key never stopped the
           other — which is exactly the "keeps reappearing" experience it
           was supposed to avoid. */}
+
+      <ThreeDoors />
 
       {!hasLiveData && !scoreLoading && <GettingStarted />}
 
