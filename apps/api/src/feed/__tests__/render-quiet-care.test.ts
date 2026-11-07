@@ -147,3 +147,43 @@ describe('renderQuietCareDigest', () => {
     expect(r.html).toContain('choose digest only')
   })
 })
+
+describe('domain lines in the monthly digest (round 5b)', () => {
+  const lists = [
+    {
+      title: 'Life and income protection',
+      records: 3,
+      seen_by_all: false,
+      next: { label: 'A policy renewal date is coming up', date: '2026-12-14' },
+    },
+    { title: 'Car and transport', records: 1, seen_by_all: true, next: null },
+  ]
+
+  it('adds one factual section: counts, who has seen it, the soonest date', () => {
+    const r = renderQuietCareDigest({ ...base, lists })
+    expect(r.text).toContain('On your family list')
+    expect(r.text).toContain(
+      'Life and income protection: 3 records on the family list, not yet seen by every adult.',
+    )
+    expect(r.text).toContain('A policy renewal date is coming up (14 December).')
+    expect(r.text).toContain('Car and transport: 1 record on the family list, seen by every adult.')
+    expect(r.html).toContain('On your family list')
+  })
+
+  it('adds nothing when no domain has records, and a missed month never claims these lines', () => {
+    expect(renderQuietCareDigest({ ...base, lists: [] }).text).not.toContain('On your family list')
+    expect(renderQuietCareDigest(base).text).not.toContain('On your family list')
+    const missed = renderQuietCareDigest({
+      ...base,
+      lists,
+      check: { status: 'missed', last_check: null },
+    })
+    expect(missed.text).not.toContain('On your family list')
+  })
+
+  it('keeps the push generic and the copy free of names, amounts and advice', () => {
+    const r = renderQuietCareDigest({ ...base, lists })
+    expect(r.push_body).toBe('Your monthly Quiet Care digest is ready.')
+    expect(r.text).not.toMatch(/£|\$|you should|we recommend|buy|switch/i)
+  })
+})

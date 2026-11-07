@@ -95,6 +95,8 @@ function webCopyFiles(): string[] {
     ...walk('apps/api/src/domains/packs'),
     'apps/api/src/domains/view.ts',
     'apps/api/src/domains/playbook.ts',
+    // The monthly digest renderer, now carrying one factual line per domain.
+    'apps/api/src/feed/render-quiet-care.ts',
     'apps/api/src/routes/family-domains.ts',
     // Domain pages state what is on file and who has seen it.
     'apps/web/src/app/domains/page.tsx',
