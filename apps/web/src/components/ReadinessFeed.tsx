@@ -222,7 +222,7 @@ export function ReadinessFeed({ members = [], mode }: ReadinessFeedProps) {
                       </details>
                     )}
                     {evt.next_check_at && (
-                      <p className="text-footnote text-ink-tertiary/70 mt-1.5">
+                      <p className="text-footnote text-ink-tertiary mt-1.5">
                         Keel checks again tomorrow
                       </p>
                     )}

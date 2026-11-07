@@ -25,9 +25,7 @@ export function DisclaimerBanner({ compact = false }: { compact?: boolean }) {
 export function DisclaimerFooter() {
   return (
     <footer className="px-4 py-3 text-center safe-area-bottom">
-      <p className="text-caption leading-relaxed text-ink-tertiary/60">
-        {DISCLAIMER_TEXT}
-      </p>
+      <p className="text-caption leading-relaxed text-ink-tertiary">{DISCLAIMER_TEXT}</p>
     </footer>
   )
 }
