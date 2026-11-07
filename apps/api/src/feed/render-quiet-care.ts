@@ -37,6 +37,13 @@ export interface QuietCareData {
   new_insights: number
   resolved_insights: number
   renewals: { type: string; renewal_date: string }[]
+  /** One factual line per domain with records on file (counts and dates only). */
+  lists?: Array<{
+    title: string
+    records: number
+    seen_by_all: boolean
+    next: { label: string; date: string } | null
+  }>
   /** The single highest-confidence open item, or null. */
   worth_a_look: { text: string; href: string } | null
   /** Plain-language notes for checks running on older figures. */
@@ -61,6 +68,15 @@ export function formatDay(d: Date): string {
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+
+function listLines(d: QuietCareData): string[] {
+  return (d.lists ?? []).flatMap((l) => {
+    const seen = l.seen_by_all ? 'seen by every adult' : 'not yet seen by every adult'
+    const lines = [`${l.title}: ${plural(l.records, 'record', 'records')} on file, ${seen}.`]
+    if (l.next) lines.push(`${l.next.label} (${formatDay(new Date(l.next.date))}).`)
+    return lines
+  })
+}
 
 function changedLines(d: QuietCareData): string[] {
   const lines: string[] = []
@@ -147,6 +163,8 @@ export function renderQuietCareDigest(
       { title: 'What we checked', lines: checked },
       { title: 'What changed', lines: changedLines(d) },
     ]
+    const lists = listLines(d)
+    if (lists.length > 0) sections.push({ title: 'On your family list', lines: lists })
     if (note) sections.push({ title: 'Worth a look', lines: [note.text] })
     if (d.paused.length > 0) sections.push({ title: 'Paused', lines: d.paused })
   }

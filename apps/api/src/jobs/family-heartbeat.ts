@@ -35,6 +35,7 @@ import { maybeOfferDigestOnly, recordSent } from '../delivery/notification-budge
 import { SWEEP_JOB } from './stale-profile-evaluation.js'
 import type { FamilyGroupDoc } from '../routes/family-group.js'
 import type { DeliveryPreferences } from '../delivery/delivery-router.js'
+import { summariseDomains } from '../domains/summary.js'
 import { renderPlaybook, type LifeEventType } from '../life-events/render-playbook.js'
 import type { FinancialProfile } from '../routes/family-financial-profile.js'
 
@@ -332,6 +333,7 @@ export async function runFamilyHeartbeat(
         new_insights: data.new_insights,
         resolved_insights: data.resolved_insights,
         renewals: data.renewals,
+        lists: await safe(summariseDomains(db, tenantId, now), []),
         worth_a_look: topInsight
           ? {
               text: String(topInsight['hypothesis'] ?? 'An item on file needs a look.'),
