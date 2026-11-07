@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useRouteParam } from '@/lib/useRouteParam'
 import Link from 'next/link'
+import { PendingApproval } from './PendingApproval'
 import { motion } from 'framer-motion'
-import { Users, Check, X, Clock, Mail } from 'lucide-react'
+import { Users, Check, X, Mail } from 'lucide-react'
 import { PasswordInput } from '@/components/PasswordInput'
 import { joinFamily, fetchFamilyInvite, type FamilyInviteInfo } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
@@ -203,25 +204,7 @@ function RequestJoin({ code }: { code: string }) {
     }
   }
 
-  if (submitted) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
-        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}>
-          <div className="w-16 h-16 rounded-3xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-4 mx-auto">
-            <Clock size={32} className="text-family-400" />
-          </div>
-          <h1 className="text-2xl font-bold mb-2">Waiting for approval</h1>
-          <p className="text-sm text-ink-secondary leading-relaxed max-w-xs mx-auto">
-            We've let {submitted.familyName} know you'd like to join. Once they approve your
-            request, sign in with the email and password you just set.
-          </p>
-          <Link href="/login" className="inline-block mt-6 text-sm font-semibold text-family-400">
-            Go to sign in
-          </Link>
-        </motion.div>
-      </div>
-    )
-  }
+  if (submitted) return <PendingApproval familyName={submitted.familyName} />
 
   return (
     <div className="min-h-screen flex flex-col px-6 pt-12 pb-8">

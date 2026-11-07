@@ -1,0 +1,29 @@
+import Link from 'next/link'
+import { Clock } from 'lucide-react'
+
+/**
+ * Shown after someone asks to join a family. It says only what is true: the
+ * request is waiting, the organizer decides, and an email follows approval.
+ * (The organizer sees the request when they open the app; nothing is pushed to
+ * them, so this does not claim they were told.)
+ */
+export function PendingApproval({ familyName }: { familyName: string }) {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
+      <div className="w-16 h-16 rounded-3xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-4 mx-auto">
+        <Clock size={32} className="text-family-400" aria-hidden="true" />
+      </div>
+      <h1 className="text-2xl font-bold mb-2">Waiting for approval</h1>
+      <p className="text-sm text-ink-secondary leading-relaxed max-w-xs mx-auto">
+        Your request is with {familyName}&apos;s organizer. When they approve it, we will email you,
+        and you can sign in with the email and password you just set.
+      </p>
+      <Link
+        href="/login"
+        className="mt-6 inline-flex min-h-[48px] items-center text-sm font-semibold text-family-400"
+      >
+        Already approved? Sign in
+      </Link>
+    </div>
+  )
+}
