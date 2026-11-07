@@ -2,7 +2,7 @@
 
 Tracks the rounds in `docs/reviews/ux-journey-notifications-review-2026-11-07.md` (section 4; added in PR 379). One row per round. "Production-ready" here means ready for the owner to merge and deploy. Nothing in this loop merges or deploys.
 
-Updated: 2026-11-07.
+Updated: 2026-11-07 (loop iteration 2: PRs 378-382 CI green, no review comments; shipped 383).
 
 | Round | What | Status | PR | Acceptance check |
 |---|---|---|---|---|
@@ -14,9 +14,9 @@ Updated: 2026-11-07.
 | 4a/4b | Closed lock-screen words, catalogue, mute per kind | open | [381](https://github.com/balureddy003/LifeKeel/pull/381) | 3 mutations red; web settings list not built |
 | 4c | Family time zone for quiet hours | blocked-on-owner | | Where the time zone is collected |
 | 5a | Dated-obligation sweep for packs | blocked-on-owner | | Whether pack dates reuse the renewal-reminder scope grant |
-| 5b | Domain lines in the monthly digest | open | (this PR) | Renderer mutation red; job wiring not covered end to end |
+| 5b | Domain lines in the monthly digest | open | [382](https://github.com/balureddy003/LifeKeel/pull/382) | Renderer mutation red; job wiring not covered end to end |
 | 6a | Shortened first value | blocked-on-owner | | Whether to drop the welcome carousel |
-| 6b | Neutral copy pass | todo | | |
+| 6b | Neutral copy pass | open | [383](https://github.com/balureddy003/LifeKeel/pull/383) | Copy-pressure test red on old wording; tone is a human judgement |
 | 7 | Document-ready draft | blocked-on-owner | | Privacy review + registered gateway task |
 | 8 | Holder changed | blocked-on-owner | | Safeguarding review |
 | 9 | Primitives migration | todo | | |
