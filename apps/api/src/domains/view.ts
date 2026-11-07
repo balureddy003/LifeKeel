@@ -125,9 +125,9 @@ export async function buildDomainView(
     if (rec.person_attribution === 'holder' && !r.holder_member_id)
       gaps.push({ row_id: r.id, note: 'Not yet matched to a family member' })
     else if (r.holder_member_id && !rosterIds.has(r.holder_member_id))
-      gaps.push({ row_id: r.id, note: 'Held by someone no longer on the family list' })
+      gaps.push({ row_id: r.id, note: 'Held by someone no longer in the family' })
     if (r.covers_member_id && !rosterIds.has(r.covers_member_id))
-      gaps.push({ row_id: r.id, note: 'Covers someone no longer on the family list' })
+      gaps.push({ row_id: r.id, note: 'Covers someone no longer in the family' })
   }
 
   const matrix = pack.matrix

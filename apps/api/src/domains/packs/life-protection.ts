@@ -2,13 +2,13 @@ import type { DomainPack } from '../types.js'
 
 /**
  * Life & income protection: which policies exist, whom each one covers, and
- * what the employer provides. States what is on file. It never judges whether
+ * what the employer provides. States what is on the family list. It never judges whether
  * the cover is enough, and never names a product to buy.
  */
 export const lifeProtection: DomainPack = {
   id: 'life_protection',
   title: 'Life and income protection',
-  summary: 'Which policies are on file, who each one covers, and who is named on them.',
+  summary: 'Which policies are on the family list, who each one covers, and who is named on them.',
   records: [
     {
       key: 'policy',
@@ -55,7 +55,7 @@ export const lifeProtection: DomainPack = {
   playbook: {
     playbook: 'bereavement',
     show_records: ['policy', 'employer_cover'],
-    label: 'If someone dies: what is on file',
+    label: 'If someone dies: what is on the family list',
   },
   planning: [
     {

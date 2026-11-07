@@ -24,10 +24,10 @@ describe('checkRecordValues', () => {
     )
   })
 
-  it('refuses people who are not on the family list', () => {
-    expect(checkRecordValues(vehicle, {}, ROSTER, 'ghost', null)).toMatch(/family list/)
+  it('refuses people who are not in the family', () => {
+    expect(checkRecordValues(vehicle, {}, ROSTER, 'ghost', null)).toMatch(/in the family/)
     expect(checkRecordValues(policy, { holder: 'ghost' }, ROSTER, null, null)).toMatch(
-      /family list/,
+      /in the family/,
     )
   })
 

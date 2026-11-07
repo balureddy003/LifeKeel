@@ -90,8 +90,12 @@ export const DomainPackSchema = z
       .object({
         playbook: Slug,
         show_records: z.array(Slug).min(1),
-        /** Heading above the person picker, e.g. 'If someone dies: what is on file'. */
-        label: z.string().min(1).max(100).default('If something happens: what is on file'),
+        /** Heading above the person picker, e.g. 'If someone dies: what is on the family list'. */
+        label: z
+          .string()
+          .min(1)
+          .max(100)
+          .default('If something happens: what is on the family list'),
       })
       .strict()
       .optional(),

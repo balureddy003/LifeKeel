@@ -16,7 +16,7 @@ export function cellText(cell: DomainCell): string {
 
 /** One sentence on who has seen the current version. */
 export function confirmSummary(c: DomainView['confirmation']): string {
-  if (c.required.length === 0) return 'No adults on the family list yet.'
+  if (c.required.length === 0) return 'No adults in the family yet.'
   if (c.both_confirmed)
     return c.required.length === 1
       ? 'You have seen this.'

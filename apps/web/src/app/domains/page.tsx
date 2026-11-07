@@ -117,7 +117,10 @@ export default function DomainsPage() {
   if (!id) {
     return (
       <main className="mx-auto max-w-2xl px-4 pb-16">
-        <PageHeader title="What is on file" subtitle="Each area of family life, in one place." />
+        <PageHeader
+          title="What is on the family list"
+          subtitle="Each area of family life, in one place."
+        />
         {!packs ? (
           <Skeleton className="mt-6 h-20 w-full" />
         ) : (
@@ -139,7 +142,7 @@ export default function DomainsPage() {
   return (
     <main className="mx-auto max-w-2xl px-4 pb-16">
       <PageHeader
-        title={view?.pack.title ?? 'What is on file'}
+        title={view?.pack.title ?? 'What is on the family list'}
         subtitle={view?.pack.summary ?? 'Each area of family life, in one place.'}
       />
       {view === undefined && (
@@ -151,7 +154,7 @@ export default function DomainsPage() {
       {view === null && (
         <GlassCard className="mt-6 p-5">
           <p className="text-ink-secondary">
-            This could not be loaded. Only adults on the family list can see it.
+            This could not be loaded. Only adults in the family can see it.
           </p>
           <button type="button" onClick={retry} className={`${primaryBtn} mt-4`}>
             Try again
@@ -214,7 +217,7 @@ export default function DomainsPage() {
           ) : view.rows.length === 0 ? (
             <GlassCard className="mt-6 p-5">
               <p className="text-ink-secondary">
-                Nothing on file yet.
+                Nothing on the family list yet.
                 {view.pack.records.some((r) => r.source.kind === 'adapter') && (
                   <>
                     {' '}
@@ -319,7 +322,7 @@ export default function DomainsPage() {
                 <div className="mt-4 space-y-4">
                   {pb.groups.length === 0 && (
                     <p className="text-sm text-ink-secondary">
-                      Nothing on file for {pb.member.name}.
+                      Nothing on the family list for {pb.member.name}.
                     </p>
                   )}
                   {pb.groups.map((g) => (
