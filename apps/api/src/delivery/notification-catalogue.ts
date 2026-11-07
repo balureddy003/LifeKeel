@@ -40,6 +40,8 @@ export interface NotificationKind {
   safeguarding?: boolean
   /** Who receives it. Defaults to the family's adults. */
   audience?: 'adults' | 'requester'
+  /** The `kind` strings the notification budget ledger records for this kind (notification-budget.ts). */
+  ledger_kinds?: string[]
 }
 
 export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
@@ -54,6 +56,7 @@ export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
       normal: 'You have a new update in LifeKeel.',
     },
     mutable: true,
+    ledger_kinds: ['insight_alert'],
   },
   {
     id: 'policy_renewal_reminder',
@@ -65,6 +68,7 @@ export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
     push_bodies: {},
     mutable: false,
     fixed_because: 'You control these with the renewal-reminder permission, not a mute switch.',
+    ledger_kinds: ['renewal_reminder'],
   },
   {
     id: 'quiet_care_digest',
@@ -77,6 +81,7 @@ export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
       missed: 'There is an update about this month’s checks.',
     },
     mutable: true,
+    ledger_kinds: ['quiet_care_digest'],
   },
   {
     id: 'weekly_heartbeat',
@@ -86,6 +91,7 @@ export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
     channels: ['email'],
     push_bodies: { ready: 'Your weekly family update is ready.' },
     mutable: true,
+    ledger_kinds: ['weekly_heartbeat'],
   },
   {
     id: 'life_event_checklist_reminder',
