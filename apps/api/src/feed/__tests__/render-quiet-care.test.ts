@@ -181,6 +181,15 @@ describe('domain lines in the monthly digest (round 5b)', () => {
     expect(missed.text).not.toContain('On your family list')
   })
 
+  it('stops saying "not yet seen" once the reminder is spent, but still shows the count and date', () => {
+    const quiet = [{ ...lists[0]!, quiet: true }, lists[1]!]
+    const r = renderQuietCareDigest({ ...base, lists: quiet })
+    expect(r.text).not.toContain('not yet seen')
+    expect(r.html).not.toContain('not yet seen')
+    expect(r.text).toContain('Life and income protection: 3 records on the family list.')
+    expect(r.text).toContain('A policy renewal date is coming up (14 December).')
+  })
+
   it('keeps the push generic and the copy free of names, amounts and advice', () => {
     const r = renderQuietCareDigest({ ...base, lists })
     expect(r.push_body).toBe('Your monthly Quiet Care digest is ready.')

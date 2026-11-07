@@ -46,6 +46,7 @@ export const DELETABLE_COLLECTIONS = [
   'employer_cover_facts', // PRD-232
   'domain_records', // domain packs: household-entered records
   'domain_confirmations', // domain packs: per-adult seen stamps
+  'digest_unseen_mentions', // digest: how often "not yet seen" was said per list version
   'family_continuity_state',
   'rehearsal_records', // PRD-214 M3 — dated continuity rehearsals
   'life_change_calibration', // PRD-213 M4 — shadow-only drift-sentinel rows

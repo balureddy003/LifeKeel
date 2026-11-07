@@ -35,7 +35,11 @@ import { maybeOfferDigestOnly, recordSent } from '../delivery/notification-budge
 import { SWEEP_JOB } from './stale-profile-evaluation.js'
 import type { FamilyGroupDoc } from '../routes/family-group.js'
 import type { DeliveryPreferences } from '../delivery/delivery-router.js'
-import { summariseDomains } from '../domains/summary.js'
+import {
+  recordUnseenMentions,
+  summariseDomains,
+  type DomainDigestLine,
+} from '../domains/summary.js'
 import { isKindMuted } from '../delivery/notification-catalogue.js'
 import { renderPlaybook, type LifeEventType } from '../life-events/render-playbook.js'
 import type { FinancialProfile } from '../routes/family-financial-profile.js'
@@ -295,6 +299,7 @@ export async function runFamilyHeartbeat(
         ? await maybeOfferDigestOnly(db, tenantId, now).catch(() => false)
         : false
     let rendered: ReturnType<typeof renderHeartbeat> & { variant?: string } = renderHeartbeat(data)
+    let domainLines: DomainDigestLine[] = []
     if (opts.cadence === 'monthly' && windowEnd) {
       const monthName = (d: Date) =>
         d.toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' })
@@ -323,6 +328,7 @@ export async function runFamilyHeartbeat(
             'Some details on file are over six months old, so checks that use them reflect older figures.',
           )
       }
+      domainLines = await safe(summariseDomains(db, tenantId, now, undefined, windowStartIso), [])
       rendered = renderQuietCareDigest({
         period_label: windowStart.toLocaleDateString('en-GB', {
           month: 'long',
@@ -339,7 +345,7 @@ export async function runFamilyHeartbeat(
         new_insights: data.new_insights,
         resolved_insights: data.resolved_insights,
         renewals: data.renewals,
-        lists: await safe(summariseDomains(db, tenantId, now), []),
+        lists: domainLines,
         worth_a_look: topInsight
           ? {
               text: String(topInsight['hypothesis'] ?? 'An item on file needs a look.'),
@@ -356,6 +362,7 @@ export async function runFamilyHeartbeat(
     }
 
     const sends = getTenantCollection<AnyDoc>(db, 'heartbeat_sends', tenantId)
+    const sentBefore = result.sent
     for (const member of adults) {
       try {
         const already =
@@ -411,6 +418,12 @@ export async function runFamilyHeartbeat(
           'Heartbeat send failed for member — continuing',
         )
       }
+    }
+    // The "not yet seen" reminder counts only when an adult was actually emailed.
+    if (result.sent > sentBefore && domainLines.length > 0) {
+      await recordUnseenMentions(db, tenantId, domainLines, windowStartIso).catch((err) =>
+        log.warn({ err, tenant_id: tenantId }, 'Could not note digest reminders — continuing'),
+      )
     }
   }
 

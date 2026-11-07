@@ -42,6 +42,8 @@ export interface QuietCareData {
     title: string
     records: number
     seen_by_all: boolean
+    /** The "not yet seen" reminder has run its course for this version. */
+    quiet?: boolean
     next: { label: string; date: string } | null
   }>
   /** The single highest-confidence open item, or null. */
@@ -71,9 +73,13 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 function listLines(d: QuietCareData): string[] {
   return (d.lists ?? []).flatMap((l) => {
-    const seen = l.seen_by_all ? 'seen by every adult' : 'not yet seen by every adult'
+    const seen = l.seen_by_all
+      ? ', seen by every adult'
+      : l.quiet
+        ? ''
+        : ', not yet seen by every adult'
     const lines = [
-      `${l.title}: ${plural(l.records, 'record', 'records')} on the family list, ${seen}.`,
+      `${l.title}: ${plural(l.records, 'record', 'records')} on the family list${seen}.`,
     ]
     if (l.next) lines.push(`${l.next.label} (${formatDay(new Date(l.next.date))}).`)
     return lines
