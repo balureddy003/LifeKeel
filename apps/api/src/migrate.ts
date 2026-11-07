@@ -397,6 +397,14 @@ export const migrations: Migration[] = [
         db.collection('household_obligations').createIndex({ id: 1 }),
         db.collection('employer_cover_facts').createIndex({ tenant_id: 1, created_at: 1 }),
         db.collection('employer_cover_facts').createIndex({ id: 1 }),
+        db.collection('domain_records').createIndex({ tenant_id: 1, domain_id: 1, created_at: 1 }),
+        db.collection('domain_records').createIndex({ id: 1 }),
+        db
+          .collection('domain_confirmations')
+          .createIndex(
+            { tenant_id: 1, domain_id: 1, user_id: 1, result_version: 1 },
+            { unique: true },
+          ),
       ])
     },
   },

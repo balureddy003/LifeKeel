@@ -163,6 +163,13 @@ export function CommandPalette() {
       action: () => router.push('/map'),
     },
     {
+      id: 'domains',
+      label: 'Who is covered',
+      icon: Map,
+      section: 'navigate',
+      action: () => router.push('/domains?d=life_protection'),
+    },
+    {
       id: 'legacy',
       label: 'Legacy Register',
       icon: Landmark,

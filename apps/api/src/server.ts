@@ -211,6 +211,7 @@ import { registerFamilyBriefRoutes } from './routes/family-briefs.js'
 import { registerHouseholdObligationRoutes } from './routes/household-obligations.js'
 import { registerClaimPacketRoutes } from './routes/family-claim-packet.js'
 import { registerEmployerCoverRoutes } from './routes/family-employer-cover.js'
+import { registerFamilyDomainRoutes } from './routes/family-domains.js'
 import { registerFamilyFeedRoutes } from './routes/family-feed.js'
 import { registerFamilyNotificationRoutes } from './routes/family-notifications.js'
 import { runScenarioWatchlist } from './jobs/scenario-watchlist.js'
@@ -2324,6 +2325,7 @@ if (workflowDb) {
   registerHouseholdObligationRoutes(app, workflowDb)
   registerClaimPacketRoutes(app, workflowDb)
   registerEmployerCoverRoutes(app, workflowDb)
+  registerFamilyDomainRoutes(app, workflowDb)
   registerFamilyFeedRoutes(app, workflowDb)
   registerFamilyNotificationRoutes(app, workflowDb)
   registerMemberTwinRoutes(app, workflowDb)

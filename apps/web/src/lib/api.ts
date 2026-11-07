@@ -6546,6 +6546,120 @@ export function confirmObligation(id: string) {
   return briefPost<{ obligation: Obligation }>(`/family/obligations/${id}/confirm`, {})
 }
 
+// ─── Domain packs (life & income protection pilot) ──────────────────────────
+
+export interface DomainPackInfo {
+  id: string
+  title: string
+  summary: string
+  confirm: 'both_adults' | 'organiser'
+}
+
+export type DomainCell = 'holds' | 'covers' | 'holds_and_covers' | null
+
+export interface DomainView {
+  domain_id: string
+  rows: Array<{
+    id: string
+    record: string
+    holder_member_id: string | null
+    covers_member_id: string | null
+    values: Record<string, string>
+  }>
+  matrix: {
+    label: string
+    columns: Array<{ id: string; name: string }>
+    rows: Array<{ id: string; label: string; cells: Record<string, DomainCell> }>
+  } | null
+  gaps: Array<{ row_id: string; note: string }>
+  /** The pack's shape, so one page can draw any domain. */
+  pack: {
+    id: string
+    title: string
+    summary: string
+    records: Array<{
+      key: string
+      label: string
+      person_attribution: 'holder' | 'subject' | 'none'
+      source: { kind: 'store' } | { kind: 'adapter'; adapter: string }
+      fields: Array<{
+        key: string
+        label: string
+        kind: 'text' | 'date' | 'money' | 'choice' | 'member'
+        choices?: string[]
+      }>
+    }>
+    playbook?: { playbook: string; label: string }
+  }
+  can_edit: boolean
+  roster: Array<{ id: string; name: string }>
+  upcoming: Array<{
+    trigger: string
+    label: string
+    row_id: string
+    row_label: string
+    date: string
+    days: number
+  }>
+  result_version: string
+  confirmation: {
+    required: Array<{ id: string; name: string }>
+    confirmed: Array<{ id: string; name: string; confirmed_at: string }>
+    both_confirmed: boolean
+    viewer_confirmed: boolean
+  }
+}
+
+export function getDomains() {
+  return apiFetch<{ domains: DomainPackInfo[] }>('/family/domains', { domains: [] })
+}
+export function getDomainView(id: string) {
+  return apiFetch<DomainView | null>(`/family/domains/${encodeURIComponent(id)}`, null)
+}
+export interface DomainPlaybook {
+  playbook: string
+  member: { id: string; name: string }
+  groups: Array<{
+    key: 'theirs' | 'covers' | 'to_check' | 'others'
+    label: string
+    rows: Array<{
+      id: string
+      label: string
+      claims_contact: string | null
+      renewal_date: string | null
+    }>
+  }>
+  roster: Array<{ id: string; name: string }>
+}
+export function getDomainPlaybook(id: string, memberId: string) {
+  return apiFetch<DomainPlaybook | null>(
+    `/family/domains/${encodeURIComponent(id)}/playbook?member=${encodeURIComponent(memberId)}`,
+    null,
+  )
+}
+export function addDomainRecord(
+  id: string,
+  record: string,
+  body: { holder_member_id?: string | null; values: Record<string, string> },
+) {
+  return briefPost<{ id: string }>(
+    `/family/domains/${encodeURIComponent(id)}/records/${encodeURIComponent(record)}`,
+    body,
+  )
+}
+export function deleteDomainRecord(id: string, rowId: string) {
+  return briefPost<unknown>(
+    `/family/domains/${encodeURIComponent(id)}/records/${encodeURIComponent(rowId)}`,
+    {},
+    'DELETE',
+  )
+}
+export function confirmDomain(id: string, resultVersion: string) {
+  return briefPost<DomainView>(`/family/domains/${encodeURIComponent(id)}/confirm`, {
+    result_version: resultVersion,
+  })
+}
+
 export function deleteBrief(id: string) {
   return credFetch(`${getApiBase()}/family/briefs/${id}`, {
     method: 'DELETE',

@@ -89,6 +89,16 @@ function webCopyFiles(): string[] {
     // Intent 80: catalogue titles, field labels and the generated-sentence
     // template text all pass the same banned-pattern scan.
     'apps/api/src/briefs/catalogue.ts',
+    // Domain packs: titles, summaries, field labels and trigger labels are copy.
+    ...walk('apps/api/src/domains/packs'),
+    'apps/api/src/domains/view.ts',
+    'apps/api/src/domains/playbook.ts',
+    'apps/api/src/routes/family-domains.ts',
+    // Domain pages state what is on file and who has seen it.
+    'apps/web/src/app/domains/page.tsx',
+    // The three doors on the home page: what each gives you, never what to do with money.
+    'apps/web/src/components/ThreeDoors.tsx',
+    'apps/web/src/app/domains/domain-copy.ts',
     // Keel inline agent panel: help text, presets, setup step titles and fixed replies.
     'apps/api/src/keel-agent/help.ts',
     'apps/api/src/keel-agent/presets.ts',

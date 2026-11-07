@@ -44,6 +44,8 @@ export const DELETABLE_COLLECTIONS = [
   'household_briefs', // PRD-222
   'household_obligations', // PRD-231
   'employer_cover_facts', // PRD-232
+  'domain_records', // domain packs: household-entered records
+  'domain_confirmations', // domain packs: per-adult seen stamps
   'family_continuity_state',
   'rehearsal_records', // PRD-214 M3 — dated continuity rehearsals
   'life_change_calibration', // PRD-213 M4 — shadow-only drift-sentinel rows
