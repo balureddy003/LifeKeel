@@ -247,10 +247,39 @@ describe('touch targets and motion (what jsdom can check)', () => {
   // jsdom has no layout, so this checks the 48px class contract on buttons; the
   // measured 375px pass (axe + bounding boxes) is done in a browser, see
   // docs/reviews/ship-loop-ledger.md.
+  // Tailwind: h-10 is 40px, h-11 is 44px, h-12 is 48px. Only 48px and up counts.
+  const TAP_SIZED =
+    /min-h-\[(4[89]|[5-9]\d|\d{3,})px\]|\bmin-h-(1[2-9]|[2-9]\d)\b|\bh-(1[2-9]|[2-9]\d)\b/
+  const isTapSized = (className: string) => TAP_SIZED.test(className)
+  // Buttons, and links that are styled as buttons (inline text links are exempt).
   const small = (c: HTMLElement) =>
-    [...c.querySelectorAll('button')]
-      .filter((b) => !/min-h-\[(48|56)px\]|\bh-1[2-9]\b|\bh-\d{2,}\b/.test(b.className))
+    [...c.querySelectorAll('button, a.inline-flex')]
+      .filter((b) => !isTapSized(b.className))
       .map((b) => (b.getAttribute('aria-label') ?? b.textContent ?? '').trim().slice(0, 30))
+
+  it('treats 40px and 44px as too small, and 48px and up as fine', () => {
+    for (const c of ['h-10', 'h-11', 'min-h-[40px]', 'min-h-[44px]', 'min-h-11', 'p-3'])
+      expect(isTapSized(c), c).toBe(false)
+    for (const c of ['h-12', 'h-14', 'min-h-12', 'min-h-[48px]', 'min-h-[56px]', 'min-h-[64px]'])
+      expect(isTapSized(c), c).toBe(true)
+  })
+
+  it('flags a button-styled link that is too small', () => {
+    const { container } = render(
+      <div>
+        <a href="/x" className="inline-flex h-11 items-center">
+          small link
+        </a>
+        <a href="/y" className="inline-flex min-h-[48px] items-center">
+          ok link
+        </a>
+        <button type="button" className="h-10">
+          small button
+        </button>
+      </div>,
+    )
+    expect(small(container)).toEqual(['small link', 'small button'])
+  })
 
   it('every button on the domains pages is at least 48px tall', async () => {
     for (const d of ['life_protection', 'car']) {
