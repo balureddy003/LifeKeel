@@ -62,12 +62,12 @@ export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
     id: 'policy_renewal_reminder',
     label: 'Policy renewal reminders',
     reason:
-      'You turned on renewal reminders, so LifeKeel tells you before a renewal date on the family list.',
+      'You turned on renewal reminders. LifeKeel tells you before a renewal date on the family list.',
     status: 'live',
     channels: ['push'],
     push_bodies: {},
     mutable: false,
-    fixed_because: 'You control these with the renewal-reminder permission, not a mute switch.',
+    fixed_because: 'A reminder permission controls these. A mute switch does not.',
     ledger_kinds: ['renewal_reminder'],
   },
   {
@@ -108,7 +108,7 @@ export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
     id: 'life_event_vault_reminder',
     label: 'A family member reported a life event',
     reason:
-      'Another adult reported a life event, so LifeKeel reminds you that the family vault exists and has documents.',
+      'Another adult reported a life event. LifeKeel reminds you that the family vault has documents.',
     status: 'live',
     channels: ['email'],
     push_bodies: {},
@@ -141,7 +141,7 @@ export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
   {
     id: 'adult_action_needed',
     label: 'Waiting for you to look',
-    reason: 'Another adult changed something that needs your confirmation.',
+    reason: 'Another adult changed something. It needs your confirmation.',
     status: 'planned',
     channels: ['email', 'in_app'],
     push_bodies: { ready: 'Something on the family list is waiting for you.' },
