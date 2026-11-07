@@ -49,6 +49,24 @@
         {
           "source": "/b/**",
           "headers": [{ "key": "Referrer-Policy", "value": "no-referrer" }]
+        },
+        {
+          "source": "/domains",
+          "headers": [
+            {
+              "key": "Permissions-Policy",
+              "value": "geolocation=(), camera=(), microphone=(self), payment=(), usb=(), interest-cohort=()"
+            }
+          ]
+        },
+        {
+          "source": "/domains/**",
+          "headers": [
+            {
+              "key": "Permissions-Policy",
+              "value": "geolocation=(), camera=(), microphone=(self), payment=(), usb=(), interest-cohort=()"
+            }
+          ]
         }
       ]
     },

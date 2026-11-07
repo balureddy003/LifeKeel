@@ -5,6 +5,7 @@ import { GlassCard } from '@/components/Glass'
 import type { DomainView } from '@/lib/api'
 import { parseSentence, type Draft } from '@/lib/capture/parse-sentence'
 import { DICTATION_TIP } from './domain-copy'
+import { VoiceInput } from './VoiceInput'
 
 /** "2027-05-09" as "9 May 2027", the way people say it. */
 function niceDate(iso: string): string {
@@ -63,6 +64,7 @@ export function SentenceCapture({
       <p className="text-sm text-ink-secondary">
         For example: &quot;MOT due 9 May on AB12 CDE, Sam&apos;s car.&quot; {DICTATION_TIP}
       </p>
+      <VoiceInput onText={(t) => setText(t)} />
       <textarea
         id="sentence"
         value={text}
