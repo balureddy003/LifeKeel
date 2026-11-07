@@ -304,6 +304,12 @@ jobs:
         run: |
           set -euo pipefail
           gcloud run services describe "$SERVICE" --region "$REGION" --project "$PROJECT" --format=export > "$RUNNER_TEMP/jobs.yaml"
+          # `--format=export` leaves string values like `off`/`on`/`yes`/`no` bare, and the
+          # `services replace` parser reads YAML 1.1 — so AUTH_OTP_MODE=off comes back as a
+          # boolean and fails protobuf validation ("Expected type str for field value").
+          # Quote them while the file is still text; after yq parses them the original
+          # string ("off") is unrecoverable (it would re-emit as `false`).
+          sed -i.bak -E 's/(:[[:space:]]+)(on|off|yes|no|y|n)$/\1"\2"/I' "$RUNNER_TEMP/jobs.yaml"
           IMAGE=$(yq '.spec.template.spec.containers[0].image' "$RUNNER_TEMP/jobs.yaml")
           if [ "$IMAGE" != "$IMAGE_REF" ]; then
             echo "::error::The API service template is $IMAGE, expected $IMAGE_REF. Not deploying the jobs service."
