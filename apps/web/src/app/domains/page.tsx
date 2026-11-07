@@ -19,7 +19,7 @@ import { haptic } from '@/lib/haptics'
 import { useToast } from '@/components/Toast'
 import { AddRecordForm } from './AddRecordForm'
 import { RecordList } from './RecordList'
-import { cellText, confirmSummary, daysText, rowLabel } from './domain-copy'
+import { adapterSources, cellText, confirmSummary, daysText, rowLabel } from './domain-copy'
 
 const primaryBtn =
   'inline-flex min-h-[48px] items-center justify-center rounded-full bg-family-500 px-5 text-base font-semibold text-white disabled:opacity-50'
@@ -234,7 +234,36 @@ export default function DomainsPage() {
             <RecordList view={view} onRemove={remove} />
           )}
 
+          {view.rows.length > 0 && adapterSources(view.pack).length > 0 && (
+            <p className="mt-4 text-sm text-ink-secondary">
+              Some of this comes from your{' '}
+              {adapterSources(view.pack).map((s, i, all) => (
+                <span key={s.href}>
+                  <Link href={s.href} className="underline">
+                    {s.label}
+                  </Link>
+                  {i < all.length - 1 ? ' and ' : ''}
+                </span>
+              ))}
+              . Change it there.
+            </p>
+          )}
+
           <AddRecordForm view={view} busy={busy} onAdd={add} />
+
+          {view.can_edit && (
+            <Link href="/upload" className="mt-4 block">
+              <GlassCard className="p-4" interactive>
+                <span className="inline-flex min-h-[48px] items-center text-base font-medium text-ink-primary">
+                  Photograph a letter or policy
+                </span>
+                <p className="text-sm text-ink-secondary">
+                  Take a photo or choose a file. Nothing is added to the family list until you
+                  confirm it.
+                </p>
+              </GlassCard>
+            </Link>
+          )}
 
           {view.gaps.length > 0 && (
             <GlassCard className="mt-4 p-5">

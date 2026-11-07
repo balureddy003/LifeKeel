@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Plus } from 'lucide-react'
 import { GlassCard } from '@/components/Glass'
 import type { DomainView } from '@/lib/api'
+import { DICTATION_TIP } from './domain-copy'
 
 const inputCls =
   'mt-1 w-full min-h-[48px] rounded-xl border border-haze bg-surface-1 px-3 text-ink-primary focus:outline-none focus:ring-2 focus:ring-family-500'
@@ -40,6 +41,9 @@ export function AddRecordForm({
   return (
     <GlassCard className="mt-6 space-y-4 p-5">
       <h2 className="font-medium text-ink-primary">Add a {rec.label.toLowerCase()}</h2>
+      {rec.fields.some((f) => f.kind === 'text') && (
+        <p className="text-sm text-ink-secondary">{DICTATION_TIP}</p>
+      )}
       {rec.person_attribution === 'holder' && (
         <div>
           <label htmlFor="d-holder" className="block text-sm font-medium text-ink-primary">
@@ -86,6 +90,9 @@ export function AddRecordForm({
             <input
               id={`d-${f.key}`}
               type={f.kind === 'date' ? 'date' : 'text'}
+              autoComplete="off"
+              autoCapitalize={f.kind === 'text' ? 'sentences' : 'none'}
+              enterKeyHint="next"
               className={inputCls}
               value={values[f.key] ?? ''}
               onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}

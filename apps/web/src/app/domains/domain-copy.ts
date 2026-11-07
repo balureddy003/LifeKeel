@@ -43,3 +43,27 @@ export function rowLabel(pack: Pack, row: Row): string {
   const detail = first ? (row.values[first.key] ?? '') : ''
   return [rec?.label ?? row.record, detail.replace(/_/g, ' ')].filter(Boolean).join(' · ')
 }
+
+/** Said once on forms with free-text fields. True and modest: the phone does the dictating, not LifeKeel. */
+export const DICTATION_TIP =
+  "Tip: your phone's keyboard can type what you say. That is a feature of your phone."
+
+const ADAPTER_SOURCES: Record<string, { label: string; href: string }> = {
+  financial_profile_policies: { label: 'financial profile', href: '/financial-profile' },
+  employer_cover_facts: { label: 'employer cover', href: '/cover' },
+}
+
+/** Where rows that are read from elsewhere are changed, so "why can't I edit this?" has an answer. */
+export function adapterSources(pack: DomainView['pack']): Array<{ label: string; href: string }> {
+  const seen = new Set<string>()
+  const out: Array<{ label: string; href: string }> = []
+  for (const r of pack.records) {
+    if (r.source.kind !== 'adapter') continue
+    const s = ADAPTER_SOURCES[r.source.adapter]
+    if (s && !seen.has(s.href)) {
+      seen.add(s.href)
+      out.push(s)
+    }
+  }
+  return out
+}
