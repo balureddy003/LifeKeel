@@ -2,7 +2,7 @@
 
 Tracks the rounds in `docs/reviews/ux-journey-notifications-review-2026-11-07.md` (section 4; added in PR 379). One row per round. "Production-ready" here means ready for the owner to merge and deploy. Nothing in this loop merges or deploys.
 
-Updated: 2026-11-07 (loop iteration 8: critic pass 3 folded in and its confirmed findings fixed on 384, 386, 387. Iteration 7: PRs 378-386 CI green; shipped round (c) as PR 387; critic pass 3 running, report will be docs/reviews/critic-pass-3-2026-11-07.md. Iteration 6: PRs 378-385 CI green; shipped round (b) as PR 386. Iteration 5: PRs 378-384 CI green; shipped round (a) as the next PR. Iteration 4: critic pass 2 folded in, report in `docs/reviews/critic-pass-2-2026-11-07.md`; its three High findings fixed on their own PRs).
+Updated: 2026-11-07 (loop stopped at iteration 9: all 10 PRs green, no human review comments, round 9 deferred. Iteration 8: critic pass 3 folded in and its confirmed findings fixed on 384, 386, 387. Iteration 7: PRs 378-386 CI green; shipped round (c) as PR 387; critic pass 3 running, report will be docs/reviews/critic-pass-3-2026-11-07.md. Iteration 6: PRs 378-385 CI green; shipped round (b) as PR 386. Iteration 5: PRs 378-384 CI green; shipped round (a) as the next PR. Iteration 4: critic pass 2 folded in, report in `docs/reviews/critic-pass-2-2026-11-07.md`; its three High findings fixed on their own PRs).
 
 | Round | What | Status | PR | Acceptance check |
 |---|---|---|---|---|
@@ -19,7 +19,7 @@ Updated: 2026-11-07 (loop iteration 8: critic pass 3 folded in and its confirmed
 | 6b | Neutral copy pass | open | [383](https://github.com/balureddy003/LifeKeel/pull/383) | Copy-pressure test red on old wording; tone is a human judgement |
 | 7 | Document-ready draft | blocked-on-owner | | Privacy review + registered gateway task |
 | 8 | Holder changed | blocked-on-owner | | Safeguarding review |
-| 9 | Primitives migration | todo | | |
+| 9 | Primitives migration of invite, signup and welcome | deferred by the loop | | Touches signup, which drives conversion, and there is no visual-regression harness to prove it safe; needs the owner's go-ahead |
 | 10 | Measured a11y gate in CI | open (jsdom half) | [384](https://github.com/balureddy003/LifeKeel/pull/384) | axe + 48px + reduced-motion checks, 3 regressions red; 375px browser gate (Playwright) not built: needs live-stack harness |
 
 ## Critic pass 2 (read-only agent; all claims below checked in code before acting)
