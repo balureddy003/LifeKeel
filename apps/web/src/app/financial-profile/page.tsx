@@ -391,7 +391,7 @@ function Field({
   return (
     <label className="block">
       <div className="text-xs text-ink-tertiary mb-1.5">{label}</div>
-      {hint && <div className="text-xs text-ink-tertiary/70 mb-1.5 -mt-1">{hint}</div>}
+      {hint && <div className="text-xs text-ink-tertiary mb-1.5 -mt-1">{hint}</div>}
       <div className="relative">
         {prefix && (
           <span className="absolute left-4 top-1/2 -translate-y-1/2 text-base text-ink-tertiary">
