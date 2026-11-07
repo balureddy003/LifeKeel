@@ -98,6 +98,7 @@ export type AuditAction =
   | 'domain_record.created'
   | 'domain_record.deleted'
   | 'domain.confirmed'
+  | 'family.edit_access_changed'
   | 'life_event.nudge_shown'
   | 'life_event.nudge_dismissed'
   | 'life_event.nudge_acted_on'

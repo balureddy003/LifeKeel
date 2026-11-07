@@ -436,8 +436,9 @@ describe('hardening (critic pass 2)', () => {
     getDomainView.mockResolvedValue({ ...view(), can_edit: false })
     render(<DomainsPage />)
     expect(
-      await screen.findByText(/This account cannot add or remove what is on file/),
+      await screen.findByText(/This account cannot add or remove what is on the family list/),
     ).toBeTruthy()
+    expect(screen.getByText(/The organizer can change that in Settings, under Family/)).toBeTruthy()
     cleanup()
     getDomainView.mockResolvedValue(view())
     render(<DomainsPage />)

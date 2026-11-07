@@ -36,6 +36,8 @@ export interface FamilyMemberUser {
   joinedAt: string
   /** The `users.id` this entry binds to after invite acceptance (PRD-123) — id stays the roster identity. */
   userId?: string
+  /** The organizer let this adult add and edit family list records. */
+  canEdit?: boolean
   /** Intent 25: blended-family relationship on child members — display-only. */
   relationshipLabel?: RelationshipLabel
   /** ISO 'YYYY-MM-DD', optional — see apps/web/src/lib/age.ts for deriving age/years-until from it. */

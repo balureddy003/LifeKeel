@@ -2363,6 +2363,8 @@ export interface ApiFamilyMember {
   dateOfBirth?: string
   /** Intent 25: blended-family relationship on child members — display-only. */
   relationshipLabel?: 'my_child' | 'partners_child' | 'shared_child' | 'other_child'
+  /** The organizer let this adult add and edit family list records. */
+  canEdit?: boolean
 }
 
 export interface ApiFamilyGroup {
@@ -2376,7 +2378,7 @@ export interface ApiFamilyGroup {
 
 async function familyGroupRequest(
   path: string,
-  method: 'POST' | 'PATCH' | 'DELETE',
+  method: 'POST' | 'PATCH' | 'PUT' | 'DELETE',
   body?: Record<string, unknown>,
 ): Promise<ApiFamilyGroup> {
   const base = getApiBase()
@@ -2468,6 +2470,14 @@ export async function updateFamilyGroupMemberDateOfBirth(
   dateOfBirth: string,
 ): Promise<ApiFamilyGroup> {
   return familyGroupRequest(`/family/members/${id}`, 'PATCH', { date_of_birth: dateOfBirth })
+}
+
+/** Organizer only: let an adult add and edit family list records, or take it back. */
+export async function setFamilyGroupMemberEditAccess(
+  id: string,
+  enabled: boolean,
+): Promise<ApiFamilyGroup> {
+  return familyGroupRequest(`/family/members/${id}/edit-access`, 'PUT', { enabled })
 }
 
 export async function removeFamilyGroupMember(id: string): Promise<ApiFamilyGroup> {
