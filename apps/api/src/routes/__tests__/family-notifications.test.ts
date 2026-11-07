@@ -213,3 +213,65 @@ describe('digest-only offer (PRD-139)', () => {
     expect(store[0]).not.toHaveProperty('digest_offer')
   })
 })
+
+describe('notification kinds: why you got this, and one mute per kind', () => {
+  it('lists live kinds with a reason, hides planned ones and the requester-only one', async () => {
+    const { db } = makeDb()
+    const res = await (await build(db)).inject({ method: 'GET', url: '/family/notifications' })
+    const kinds = res.json().kinds as Array<{
+      id: string
+      reason: string
+      mutable: boolean
+      muted: boolean
+      fixed_because: string | null
+    }>
+    const ids = kinds.map((k) => k.id)
+    expect(ids).toEqual(
+      expect.arrayContaining([
+        'insight_alert',
+        'quiet_care_digest',
+        'weekly_heartbeat',
+        'policy_renewal_reminder',
+      ]),
+    )
+    expect(ids).not.toContain('date_upcoming')
+    expect(ids).not.toContain('join_approved')
+    for (const k of kinds) expect(k.reason.length).toBeGreaterThan(10)
+    const renewal = kinds.find((k) => k.id === 'policy_renewal_reminder')!
+    expect(renewal.mutable).toBe(false)
+    expect(renewal.fixed_because).toMatch(/permission/)
+  })
+
+  it('the organizer mutes a kind and it shows as muted; an adult cannot', async () => {
+    const { db, store } = makeDb()
+    const ok = await (
+      await build(db)
+    ).inject({
+      method: 'PATCH',
+      url: '/family/notifications',
+      payload: { kinds_muted: ['quiet_care_digest'] },
+    })
+    expect(ok.statusCode).toBe(200)
+    expect(store[0]!['kinds_muted']).toEqual(['quiet_care_digest'])
+    expect(ok.json().kinds.find((k: { id: string }) => k.id === 'quiet_care_digest').muted).toBe(
+      true,
+    )
+    const no = await (
+      await build(db, 'u2')
+    ).inject({ method: 'PATCH', url: '/family/notifications', payload: { kinds_muted: [] } })
+    expect(no.statusCode).toBe(403)
+  })
+
+  it('refuses to mute a kind that is not mutable or does not exist', async () => {
+    const { db } = makeDb()
+    const app = await build(db)
+    for (const bad of ['policy_renewal_reminder', 'life_event_reminder', 'date_upcoming', 'nope']) {
+      const r = await app.inject({
+        method: 'PATCH',
+        url: '/family/notifications',
+        payload: { kinds_muted: [bad] },
+      })
+      expect(r.statusCode).toBe(400)
+    }
+  })
+})

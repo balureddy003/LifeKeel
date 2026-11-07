@@ -3,9 +3,11 @@
  * devices, so it carries a generic title, a generic body and a deep link, and
  * nothing else: no amounts, no names of people or policies, no provider names,
  * no confidence figures, and never an approve or dismiss link. The detail is
- * behind the deep link, after sign-in.
+ * behind the deep link, after sign-in. The words live only in
+ * notification-catalogue.ts, which is the closed set a test holds them to.
  */
 import type { InsightNotification } from './channels.js'
+import { pushBodyFor } from './notification-catalogue.js'
 
 export interface PushPayload {
   title: string
@@ -22,10 +24,7 @@ export function buildAlertPushPayload(
 ): PushPayload {
   return {
     title: TITLE,
-    body:
-      n.urgency === 'critical'
-        ? 'An important update needs your attention.'
-        : 'You have a new update in LifeKeel.',
+    body: pushBodyFor('insight_alert', n.urgency === 'critical' ? 'critical' : 'normal'),
     url: n.action_url,
   }
 }
@@ -37,9 +36,9 @@ export function buildDigestPushPayload(
 ): PushPayload {
   const body =
     kind === 'quiet_care_digest'
-      ? 'Your monthly Quiet Care digest is ready.'
+      ? pushBodyFor('quiet_care_digest', 'ready')
       : kind === 'quiet_care_digest_missed'
-        ? 'There is an update about this month’s checks.'
-        : 'Your weekly family update is ready.'
+        ? pushBodyFor('quiet_care_digest', 'missed')
+        : pushBodyFor('weekly_heartbeat', 'ready')
   return { title: TITLE, body, url: appUrl }
 }

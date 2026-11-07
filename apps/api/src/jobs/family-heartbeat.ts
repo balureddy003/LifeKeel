@@ -35,6 +35,7 @@ import { maybeOfferDigestOnly, recordSent } from '../delivery/notification-budge
 import { SWEEP_JOB } from './stale-profile-evaluation.js'
 import type { FamilyGroupDoc } from '../routes/family-group.js'
 import type { DeliveryPreferences } from '../delivery/delivery-router.js'
+import { isKindMuted } from '../delivery/notification-catalogue.js'
 import { renderPlaybook, type LifeEventType } from '../life-events/render-playbook.js'
 import type { FinancialProfile } from '../routes/family-financial-profile.js'
 
@@ -164,7 +165,12 @@ export async function runFamilyHeartbeat(
     )) as DeliveryPreferences | null
     // PRD-138 amendment 7: tenants who never chose a cadence get the monthly digest.
     const cadence = prefs?.heartbeat_cadence ?? 'monthly'
-    if (cadence === 'off' || cadence !== opts.cadence) {
+    // A muted kind is treated as "off" for the cadence it belongs to.
+    const muted = isKindMuted(
+      prefs,
+      cadence === 'weekly' ? 'weekly_heartbeat' : 'quiet_care_digest',
+    )
+    if (cadence === 'off' || muted || cadence !== opts.cadence) {
       result.skipped_off++
       continue
     }

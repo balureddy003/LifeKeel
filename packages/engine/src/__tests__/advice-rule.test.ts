@@ -86,6 +86,8 @@ function webCopyFiles(): string[] {
     'apps/web/src/components/ChannelsCard.tsx',
     'apps/web/src/lib/channel-explain.ts',
     'apps/api/src/delivery/push-payload.ts',
+    // The notification catalogue: every kind's label, reason and lock-screen words.
+    'apps/api/src/delivery/notification-catalogue.ts',
     // Intent 80: catalogue titles, field labels and the generated-sentence
     // template text all pass the same banned-pattern scan.
     'apps/api/src/briefs/catalogue.ts',
