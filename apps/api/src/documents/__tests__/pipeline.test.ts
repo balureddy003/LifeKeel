@@ -461,7 +461,11 @@ describe('quota reservations', () => {
         init('t-a', { filename: `f${i}.pdf`, mime: 'application/pdf', size: 100 }),
       ),
     )
-    expect(results.filter((r) => r.statusCode === 201)).toHaveLength(MAX_INFLIGHT)
+    const seen = results.map((r) => `${r.statusCode} ${r.body.slice(0, 120)}`)
+    expect(
+      results.filter((r) => r.statusCode === 201),
+      seen.join(' | '),
+    ).toHaveLength(MAX_INFLIGHT)
     expect(
       results
         .filter((r) => r.statusCode === 429)

@@ -121,17 +121,36 @@ export async function reserveUpload(
     }
   }
   const now = new Date()
-  try {
-    await days(db).updateOne(
-      { _id: `${tenantId}:${dayKey(now)}`, uploads: { $lt: MAX_UPLOADS_PER_DAY() } },
+  const dayId = `${tenantId}:${dayKey(now)}`
+  const limitPerDay = MAX_UPLOADS_PER_DAY()
+  const countToday = () =>
+    days(db).updateOne(
+      { _id: dayId, uploads: { $lt: limitPerDay } },
       {
         $inc: { uploads: 1 },
         $setOnInsert: { expires_at: new Date(now.getTime() + 48 * 3600_000) },
       },
       { upsert: true },
     )
-  } catch (err) {
-    if ((err as { code?: number })?.code !== 11000) throw err
+  // A duplicate-key error means one of two things: the counter exists and is at
+  // the limit (the filter missed, so the upsert tried to insert), or another
+  // upload created it a moment ago (a burst of files on the first upload of the
+  // day). Only the first is "daily limit". Look at the counter to tell them
+  // apart, and retry the second, where a plain update now succeeds.
+  let atLimit = false
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await countToday()
+      atLimit = false
+      break
+    } catch (err) {
+      if ((err as { code?: number })?.code !== 11000) throw err
+      const today = await days(db).findOne({ _id: dayId })
+      atLimit = (today?.uploads ?? 0) >= limitPerDay
+      if (atLimit) break
+    }
+  }
+  if (atLimit) {
     await quotas(db).updateOne(
       { tenant_id: tenantId },
       { $inc: { bytes_reserved: -size, ...(inflight ? { inflight: -1 } : {}) } },
