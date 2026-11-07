@@ -91,6 +91,8 @@ function webCopyFiles(): string[] {
     'apps/api/src/briefs/catalogue.ts',
     // Domain packs: titles, summaries, field labels and trigger labels are copy.
     ...walk('apps/api/src/domains/packs'),
+    'apps/api/src/domains/view.ts',
+    'apps/api/src/routes/family-domains.ts',
     // Keel inline agent panel: help text, presets, setup step titles and fixed replies.
     'apps/api/src/keel-agent/help.ts',
     'apps/api/src/keel-agent/presets.ts',
