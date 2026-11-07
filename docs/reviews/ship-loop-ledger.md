@@ -2,7 +2,7 @@
 
 Tracks the rounds in `docs/reviews/ux-journey-notifications-review-2026-11-07.md` (section 4; added in PR 379). One row per round. "Production-ready" here means ready for the owner to merge and deploy. Nothing in this loop merges or deploys.
 
-Updated: 2026-11-07 (loop iteration 7: PRs 378-386 CI green; shipped round (c) as PR 387; critic pass 3 running, report will be docs/reviews/critic-pass-3-2026-11-07.md. Iteration 6: PRs 378-385 CI green; shipped round (b) as PR 386. Iteration 5: PRs 378-384 CI green; shipped round (a) as the next PR. Iteration 4: critic pass 2 folded in, report in `docs/reviews/critic-pass-2-2026-11-07.md`; its three High findings fixed on their own PRs).
+Updated: 2026-11-07 (loop iteration 8: critic pass 3 folded in and its confirmed findings fixed on 384, 386, 387. Iteration 7: PRs 378-386 CI green; shipped round (c) as PR 387; critic pass 3 running, report will be docs/reviews/critic-pass-3-2026-11-07.md. Iteration 6: PRs 378-385 CI green; shipped round (b) as PR 386. Iteration 5: PRs 378-384 CI green; shipped round (a) as the next PR. Iteration 4: critic pass 2 folded in, report in `docs/reviews/critic-pass-2-2026-11-07.md`; its three High findings fixed on their own PRs).
 
 | Round | What | Status | PR | Acceptance check |
 |---|---|---|---|---|
@@ -40,6 +40,22 @@ Updated: 2026-11-07 (loop iteration 7: PRs 378-386 CI green; shipped round (c) a
 Verified clean by the critic: new domain routes are tenant-scoped, adult/editor-gated, strictly validated, no cross-tenant read found; join-approved email is sent at most once per request and only after organizer approval.
 
 New rounds from the critic, in order: (a) catalogue truthfulness (inventory + tripwire + ids), (b) join mailbox proof + expiring requests, (c) domains page hardening, (d) settings list for kinds [owner: per-adult mute?], (e) digest cadence cap + vocabulary [owner: noun], (f) generic SMS/WhatsApp/chat bodies [owner: does any family rely on the detail?], (g) organizer join-request notice email/in-app only [owner: safeguarding sign-off], (h) decline notice to joiner [owner: silence may be safer in separation cases]. Recommended for 5a: a separate consent grant for pack dates (the renewal-reminder consent does not cover MOT or other pack dates).
+
+## Critic pass 3 (read-only agent; every claim below checked in code before acting; report: `docs/reviews/critic-pass-3-2026-11-07.md`)
+
+| Finding | Status |
+|---|---|
+| Pass-2 Highs: join waiting screen true; sticky column and 16px controls exist; catalogue closed only as documentation | confirmed closed, except the catalogue: SMS/WhatsApp/chat alerts still carry confidence, impact and signed approve/dismiss links, and email subjects carry the finding (**owner decision**) |
+| High (386): "mailbox proof" gates nothing: sign-in never checks `email_verified` (the flag is returned only in the signup response; no web code reads it); with `EMAIL_VERIFICATION_ENABLED` unset the squatting weakness is unchanged; with it on, the real owner clicking the link verifies the squatter's account | confirmed. Fixed the claim, not the design: PR 386 title/body and code comment now state the limit. The real fix (account with no usable password + emailed set-password link) changes the join form and account model: **owner decision** |
+| Med (387): read-only line promised an organizer path that does not exist (joiners get `viewer`; only operators change roles); focus dropped after remove and Keep it | fixed on 387 (copy now says this account cannot add or remove; focus restored, tested with mutations). **Owner decision:** should the organizer be able to grant edit rights? |
+| Med (384): touch-target regex counted h-10 (40px) and h-11 (44px) as 48px and only scanned buttons | fixed on 384 (explicit helper with its own tests, scans button-styled links, mutation red) |
+| Med (386/380): waiting screen silent on the 14-day expiry; "we will email you" false if mail is unconfigured or mistyped; expired requests kept password hashes | fixed on 386: screen says 14 days, address check and what to do; expired requests are deleted when the organizer opens the list (mutation red) |
+| Med: checklist email subject names the event type (to the reporter only; the vault reminder subject is generic) | not changed: **owner decision** on the safeguarding default for subjects |
+| Low (385): allow-list is file-level; `auth-email.ts` is a blanket entry; "every live kind has a sender" is satisfied by the list, not the code | accepted; stated in the PR |
+
+**Merge order recommended by the critic** (git merge-tree found no conflicts between PR heads): 378, 379, 380 (before 381, because the catalogue lists `join_approved` as live), 381, 383, 382, 384, 385, 387, 386. Stacked: 384 and 387 on 379, 385 on 381, 386 on 380, 382 on 378. Merging is yours; nothing here merges.
+
+Owner decisions collected so far: SMS/WhatsApp detail and approve links; join account model (set-password link); whether production has `EMAIL_VERIFICATION_ENABLED` or OTP login on; organizer-granted edit rights; safeguarding default for email subjects; noun for "family list" vs "on file"; per-adult or organizer-only mute; plus 2c, 3b, 4c, 5a, 6a, 7, 8, (g), (h).
 
 Also blocked: anything serving the external-person view (PRD-229); the shell footer contrast token (shell-wide).
 
