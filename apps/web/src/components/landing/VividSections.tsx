@@ -23,7 +23,7 @@ import {
 import { appUrl } from '@/lib/region'
 import { track } from '@/lib/growth-track'
 import { haptic } from '@/lib/haptics'
-import { CAPABILITIES, CHAPTERS, type Chapter } from './capabilities'
+import { CAPABILITIES, CHAPTERS, type Capability, type Chapter } from './capabilities'
 import { PROMISES } from './Promises'
 import { SECURITY } from './Security'
 import { FREE_ROWS, PLUS_ROWS } from './Pricing'
@@ -218,22 +218,44 @@ export function Features() {
                   <p>{ch.line}</p>
                 </div>
               </header>
-              <ul>
-                {CAPABILITIES.filter((c) => c.chapter === ch.id && c.live).map((c) => (
-                  <li key={c.claim}>
-                    <Check size={16} aria-hidden="true" />
-                    <span>
-                      {c.text}
-                      <small>{c.qualifier}</small>
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <SceneList
+                scenes={CAPABILITIES.filter((c) => c.chapter === ch.id && c.live)}
+                chapterName={ch.name}
+              />
             </article>
           )
         })}
       </div>
     </section>
+  )
+}
+
+const SHOWN_SCENES = 3
+
+/** The first few scenes show; the rest sit behind a plain "more" so no card is a wall of bullets. */
+function SceneList({ scenes, chapterName }: { scenes: Capability[]; chapterName: string }) {
+  const item = (c: Capability) => (
+    <li key={c.claim}>
+      <Check size={16} aria-hidden="true" />
+      <span>
+        {c.text}
+        <small>{c.qualifier}</small>
+      </span>
+    </li>
+  )
+  const rest = scenes.slice(SHOWN_SCENES)
+  return (
+    <>
+      <ul>{scenes.slice(0, SHOWN_SCENES).map(item)}</ul>
+      {rest.length > 0 && (
+        <details className="vv-more">
+          <summary>
+            {rest.length} more in {chapterName}
+          </summary>
+          <ul>{rest.map(item)}</ul>
+        </details>
+      )}
+    </>
   )
 }
 

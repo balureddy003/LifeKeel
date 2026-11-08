@@ -593,11 +593,24 @@
 /* Before / during / after */
 .vv-moments {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
+  align-items: start;
 }
-.vv-moment:first-child {
-  grid-row: span 2;
+.vv-more {
+  margin-top: 16px;
+}
+.vv-more summary {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  color: var(--vv-brand-text);
+}
+.vv-more ul {
+  margin-top: 6px;
 }
 .vv-moment {
   padding: 28px;
