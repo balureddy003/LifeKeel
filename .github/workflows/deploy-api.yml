@@ -17,6 +17,8 @@ env:
   REGISTRY_HOST: ${{ secrets.GCP_REGION || 'us-central1' }}-docker.pkg.dev
   API_IMAGE: ${{ secrets.GCP_ARTIFACT_REGISTRY || format('{0}-docker.pkg.dev/{1}/lifekeel-docker', secrets.GCP_REGION || 'us-central1', secrets.GCP_PROJECT_ID) }}/api
   API_SERVICE: ${{ secrets.CLOUD_RUN_SERVICE_NAME || 'lifekeel-api' }}
+  # No JOBS_SERVICE: the always-on jobs service was removed (intent 92) —
+  # crons are driven by Cloud Scheduler hitting /internal/cron/* on the API.
 
 # One deploy at a time: two runs must not race each other's traffic shift. Never cancel one mid-flight.
 concurrency:
@@ -116,7 +118,7 @@ jobs:
       - name: Record the image digest
         run: echo "IMAGE_REF=${{ env.API_IMAGE }}@${{ steps.build.outputs.digest }}" >> "$GITHUB_ENV"
       - name: Scan the image for vulnerabilities
-        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ env.IMAGE_REF }}
           # The action's default (v0.65.0) no longer resolves to a real
@@ -180,6 +182,7 @@ jobs:
           flags: --port=3001 --allow-unauthenticated --cpu=1 --memory=512Mi --max-instances=4 --concurrency=80 --min-instances=0 --update-env-vars=^@^CORS_ORIGIN=${{ vars.CORS_ORIGIN || vars.LIFEKEEL_URL || secrets.LIFEKEEL_URL }}@LIFEKEEL_APP_HOSTS=${{ vars.LIFEKEEL_APP_HOSTS || 'app.lifekeel.co.uk,app.lifekeel.si' }}@TURNSTILE_ALLOWED_HOSTNAMES=${{ vars.TURNSTILE_ALLOWED_HOSTNAMES }} ${{ steps.pre.outputs.exists == 'true' && format('--no-traffic --tag={0}', steps.pre.outputs.tag) || '' }}
           env_vars: |
             NODE_ENV=production
+            SERVICE_ROLE=api
             LIFEKEEL_DEPLOYMENT_MODE=cloud
             LOG_LEVEL=info
             LIFEKEEL_URL=${{ vars.LIFEKEEL_URL || secrets.LIFEKEEL_URL }}
@@ -233,6 +236,7 @@ jobs:
             VAPID_PRIVATE_KEY=lifekeel-vapid-private-key:latest
             VAPID_SUBJECT=lifekeel-vapid-subject:latest
             METRICS_SCRAPE_TOKEN=lifekeel-metrics-scrape-token:latest
+            CRON_TRIGGER_TOKEN=lifekeel-cron-trigger-token:latest
             OTP_PEPPER=lifekeel-otp-pepper:latest
             TURNSTILE_SECRET_KEY=lifekeel-turnstile-secret-key:latest
             RESEND_API_KEY=lifekeel-resend-api-key:latest

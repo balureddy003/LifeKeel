@@ -9,3 +9,4 @@ coverage
 pnpm-lock.yaml
 *.md
 docs/prd/*.md
+apps/web/firebase.json

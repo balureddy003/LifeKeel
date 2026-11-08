@@ -6,6 +6,7 @@
  * New briefs are addressed to a named adult; the creator and that adult each
  * confirm the same stored result.
  */
+import { useAuth } from '@/lib/auth-context'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
@@ -75,7 +76,7 @@ const inputCls =
 const primaryBtn =
   'inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-full bg-family-500 px-6 text-base font-semibold text-white disabled:opacity-50'
 const ghostBtn =
-  'inline-flex min-h-[44px] items-center gap-2 rounded-full border border-haze px-4 text-sm font-medium text-ink-secondary'
+  'inline-flex min-h-[48px] items-center gap-2 rounded-full border border-haze px-4 text-sm font-medium text-ink-secondary'
 
 function Field({
   id,
@@ -248,7 +249,7 @@ function StepRows({
           <button
             type="button"
             onClick={() => remove(i)}
-            className="mt-2 min-h-[44px] text-sm text-ink-secondary underline"
+            className="mt-2 min-h-[48px] text-sm text-ink-secondary underline"
           >
             Remove this change
           </button>
@@ -258,7 +259,7 @@ function StepRows({
         <button
           type="button"
           onClick={() => set({ ...f, steps_n: String(n + 1) })}
-          className="mt-3 inline-flex min-h-[44px] items-center rounded-full border border-haze px-4 text-sm font-medium text-ink-secondary"
+          className="mt-3 inline-flex min-h-[48px] items-center rounded-full border border-haze px-4 text-sm font-medium text-ink-secondary"
         >
           + Add a later change
         </button>
@@ -582,21 +583,21 @@ function ResultCard({
     <GlassCard className="space-y-5 p-6">
       <div>
         <p className="text-sm font-medium text-ink-tertiary">{brief.title}</p>
+        <p className="mt-2 text-2xl font-semibold leading-snug text-ink-primary">
+          {briefHeadline(main)}
+        </p>
         {typeof runway === 'number' && (
           <p className="mt-2 text-ink-primary">
-            <span className="text-5xl font-semibold tracking-tight">
+            <span className="text-3xl font-semibold tracking-tight">
               <CountUp value={runway} decimals={runway % 1 === 0 ? 0 : 1} />
             </span>
-            <span className="ml-2 text-lg text-ink-secondary">
+            <span className="ml-2 text-base text-ink-secondary">
               months of savings after the change
             </span>
           </p>
         )}
-        <p className="mt-3 text-xl font-medium leading-snug text-ink-primary">
-          {briefHeadline(main)}
-        </p>
         <details className="mt-2">
-          <summary className="min-h-[44px] cursor-pointer py-2 text-sm font-medium text-family-400">
+          <summary className="min-h-[48px] cursor-pointer py-2 text-sm font-medium text-family-400">
             How this was worked out
           </summary>
           <p className="text-ink-secondary">{main}</p>
@@ -942,7 +943,16 @@ export default function BriefsPage() {
 
   // ?start=<id>: the question picked on the landing page opens straight into
   // its form, once, instead of asking the person to pick again.
+  const { family } = useAuth()
+  const waitingAdult = (family?.members ?? []).some(
+    (m) => m.role !== 'child' && (m as { status?: string }).status === 'pending',
+  )
   const startedRef = useRef(false)
+  const [wantsStart, setWantsStart] = useState(false)
+  const [startMissing, setStartMissing] = useState(false)
+  useEffect(() => {
+    setWantsStart(!!new URLSearchParams(window.location.search).get('start'))
+  }, [])
   useEffect(() => {
     if (startedRef.current || !loaded || !canCreate) return
     const id = new URLSearchParams(window.location.search).get('start')
@@ -950,6 +960,7 @@ export default function BriefsPage() {
     startedRef.current = true
     const e = byId.get(id)
     if (e) choose(e)
+    else setStartMissing(true)
   }, [loaded, canCreate, byId])
 
   function choose(e: BriefCatalogueEntry, prefill?: FormValues, from?: string) {
@@ -1213,6 +1224,7 @@ export default function BriefsPage() {
 
       {!loaded && (
         <div className="mt-6 space-y-3" role="status" aria-label="Loading">
+          {wantsStart && <p className="text-sm text-ink-secondary">Opening your brief…</p>}
           <Skeleton className="h-24 w-full" />
           <Skeleton className="h-24 w-full" />
         </div>
@@ -1232,8 +1244,9 @@ export default function BriefsPage() {
         <GlassCard className="mt-6 p-5">
           <p className="font-medium text-ink-primary">This one is just for you</p>
           <p className="mt-1 text-sm text-ink-secondary">
-            You are the only adult here, so your brief is saved for you. Add another adult in Family
-            when you want to share it and confirm it together.
+            {waitingAdult
+              ? 'The other adult has not joined yet, so your brief is saved for you. It can be shared and confirmed together once they have.'
+              : 'You are the only adult here, so your brief is saved for you. Add another adult in Family when you want to share it and confirm it together.'}
           </p>
           <Link href="/family" className={`${ghostBtn} mt-4`}>
             Go to Family <ChevronRight size={16} aria-hidden="true" />
@@ -1290,6 +1303,12 @@ export default function BriefsPage() {
             )
           }}
         />
+      )}
+
+      {loaded && canCreate && startMissing && !entry && !created && (
+        <p className="mt-6 text-sm text-ink-secondary" role="status">
+          We could not open that brief. Pick the closest one below.
+        </p>
       )}
 
       {loaded && canCreate && !entry && !created && (
@@ -1422,7 +1441,7 @@ export default function BriefsPage() {
           <button
             type="button"
             onClick={back}
-            className="inline-flex min-h-[44px] items-center gap-1 text-sm text-ink-tertiary"
+            className="inline-flex min-h-[48px] items-center gap-1 text-sm text-ink-tertiary"
           >
             <ArrowLeft size={16} aria-hidden="true" /> Choose something else
           </button>
@@ -1489,7 +1508,7 @@ export default function BriefsPage() {
                       50,
                     )
                   }}
-                  className="mt-1 inline-flex min-h-[44px] items-center gap-1 text-sm text-ink-secondary"
+                  className="mt-1 inline-flex min-h-[48px] items-center gap-1 text-sm text-ink-secondary"
                 >
                   <ArrowLeft size={16} aria-hidden="true" /> Back to today and when
                 </button>
@@ -1702,7 +1721,7 @@ export default function BriefsPage() {
                           onClick={() =>
                             void confirmBrief(b.id, b.result_version!).then(() => refresh())
                           }
-                          className="min-h-[44px] rounded-full bg-family-500 px-4 text-sm font-semibold text-white"
+                          className="min-h-[48px] rounded-full bg-family-500 px-4 text-sm font-semibold text-white"
                         >
                           I have read this
                         </button>
@@ -1713,7 +1732,7 @@ export default function BriefsPage() {
                             <button
                               type="button"
                               onClick={() => startUpdate(b)}
-                              className="inline-flex min-h-[44px] items-center gap-1 font-medium text-family-400 underline"
+                              className="inline-flex min-h-[48px] items-center gap-1 font-medium text-family-400 underline"
                             >
                               <Pencil size={14} aria-hidden="true" /> Update these figures
                             </button>
@@ -1728,7 +1747,7 @@ export default function BriefsPage() {
                                 return refresh()
                               })
                             }
-                            className="min-h-[44px] text-ink-secondary underline"
+                            className="min-h-[48px] text-ink-secondary underline"
                           >
                             Turn off the link
                           </button>
@@ -1737,7 +1756,7 @@ export default function BriefsPage() {
                           <button
                             type="button"
                             onClick={() => void newLink(b, other)}
-                            className="min-h-[44px] text-ink-secondary underline"
+                            className="min-h-[48px] text-ink-secondary underline"
                           >
                             {b.share && !b.share.revoked
                               ? 'Get a new link'
@@ -1749,7 +1768,7 @@ export default function BriefsPage() {
                         <button
                           type="button"
                           onClick={() => void remove(b)}
-                          className="min-h-[44px] text-red-500 underline"
+                          className="min-h-[48px] text-red-500 underline"
                         >
                           Delete
                         </button>

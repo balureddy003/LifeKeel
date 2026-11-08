@@ -77,3 +77,44 @@ export function countdownText(days: number): string {
   if (days === -1) return 'started yesterday'
   return `started ${Math.abs(days)} days ago`
 }
+
+/** Which way a figure helps the answer: more coming in or saved lasts longer, more going out does not. */
+export const HELPFUL_DIRECTION: Record<SliderKey, 1 | -1> = {
+  new_income_minor: 1,
+  new_essentials_minor: -1,
+  monthly_essentials_minor: -1,
+  liquid_savings_minor: 1,
+}
+
+/** The small move used to compare figures against each other: 10% of what was entered, on the helpful side. */
+export function leverNudge(s: Slider): number {
+  const moved = s.base + HELPFUL_DIRECTION[s.key] * Math.round(s.base * 0.1)
+  return Math.min(s.max, Math.max(s.min, moved))
+}
+
+/** Runway in months from a solver result; a result with no run-out date counts as "does not run out". */
+export function runwayOf(result: Record<string, unknown> | null | undefined): number {
+  const v = result?.['projectedRunwayMonths']
+  return typeof v === 'number' ? v : Number.POSITIVE_INFINITY
+}
+
+/**
+ * The figure whose 10% move changes the answer most, given the answer each move
+ * produced. Information about the household's own numbers, not a suggestion to
+ * change them. Undefined when no move changes anything.
+ */
+export function biggestLever(
+  baseRunway: number,
+  moved: Array<{ key: SliderKey; runway: number }>,
+): SliderKey | undefined {
+  let best: SliderKey | undefined
+  let bestGain = 0
+  for (const m of moved) {
+    const gain = Number.isFinite(m.runway) ? m.runway - baseRunway : 0
+    if (Math.abs(gain) > bestGain) {
+      bestGain = Math.abs(gain)
+      best = m.key
+    }
+  }
+  return best
+}

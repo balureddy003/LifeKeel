@@ -57,7 +57,8 @@ export async function buildJourneys(db: Db, range: { $gte: Date; $lte: Date }): 
     .find(
       {
         created_at: range,
-        status: 'active',
+        // Password signups never write `status`; missing means active.
+        status: { $in: ['active', null] },
         registration_status: { $ne: 'pending' },
       },
       {

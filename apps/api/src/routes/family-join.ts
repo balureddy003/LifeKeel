@@ -47,7 +47,8 @@ import {
   EMAIL_FORMAT_RE,
   type User,
 } from './auth-users.js'
-import { sendFamilyInviteEmail } from '../auth-email.js'
+import { sendFamilyInviteEmail, sendJoinApprovedEmail } from '../auth-email.js'
+import { emailVerificationEnabled, issueEmailVerification } from './auth-users.js'
 import { emailConfigured } from '../email/transport.js'
 import { isMinorMember, memberMatchesUser } from '../family/family-permissions.js'
 import { generateInviteCode, type FamilyGroupDoc, type FamilyMemberDoc } from './family-group.js'
@@ -80,6 +81,8 @@ interface FamilyMemberInviteDoc extends Record<string, unknown> {
   token: string
   expires_at: Date
   created_at: Date
+  /** First name of the organizer who sent it. The email and the accept page say this instead of the family's name. */
+  invited_by_first_name?: string
 }
 
 function inviteTokenHash(token: string): string {
@@ -99,6 +102,18 @@ const MAX_INVITES_PER_DAY = 20
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
+/** A join request nobody answers stops being valid, and stops blocking a fresh one. */
+export const JOIN_REQUEST_TTL_DAYS = 14
+const requestCutoff = () => new Date(Date.now() - JOIN_REQUEST_TTL_DAYS * 86_400_000)
+
+/**
+ * After an organizer declines a request, that person cannot put another in front of them
+ * for this long. The person is not told: the reply looks like any waiting request, because
+ * telling someone the family is avoiding them could provoke them. A request that merely
+ * lapsed is not a decline. The organizer can still bring someone in by inviting them by name.
+ */
+export const DECLINE_BLOCK_DAYS = 90
+
 interface JoinBody {
   invite_code?: string
   name?: string
@@ -112,6 +127,10 @@ export function registerFamilyJoinRoutes(
   auth?: AuthService,
 ): void {
   const requests = getFamilyJoinRequestsCollection(db)
+  const blocks = db.collection<{ tenant_id: string; email: string; until: Date }>(
+    'family_join_blocks',
+  )
+  blocks.createIndex({ tenant_id: 1, email: 1 }).catch(() => {})
   requests.createIndex({ tenant_id: 1, status: 1 }).catch(() => {})
   const invites = getFamilyMemberInvitesCollection(db)
   invites.createIndex({ token: 1 }, { unique: true }).catch(() => {})
@@ -164,6 +183,16 @@ export function registerFamilyJoinRoutes(
       })) as FamilyGroupDoc | null
       if (!family) return reply.status(400).send({ error: 'Invalid invite code' })
 
+      // Declined before: say nothing different, and put nothing in front of the organizer.
+      if (
+        await blocks.findOne({
+          tenant_id: family.tenant_id,
+          email: normalizedEmail,
+          until: { $gt: new Date() },
+        })
+      )
+        return reply.status(201).send({ status: 'pending' })
+
       const users = await getUsersCollection()
       const existingUser = await users.findOne({ email: normalizedEmail })
       if (existingUser) return reply.status(409).send({ error: 'Email already registered' })
@@ -173,7 +202,9 @@ export function registerFamilyJoinRoutes(
         email: normalizedEmail,
         status: 'pending',
       })
-      if (existingRequest)
+      if (existingRequest && (existingRequest['requested_at'] as Date) < requestCutoff()) {
+        await requests.deleteOne({ id: existingRequest['id'] })
+      } else if (existingRequest)
         return reply.status(409).send({ error: 'A request for this email is already pending' })
 
       const salt = randomBytes(16).toString('hex')
@@ -205,7 +236,9 @@ export function registerFamilyJoinRoutes(
       })
 
       log.info({ tenantId: family.tenant_id, requestId: doc.id }, 'Family join request submitted')
-      return reply.status(201).send({ status: 'pending', family_name: family.name })
+      // Nothing about the family goes back to the person asking. They hold only a
+      // code, and may be someone the family is avoiding; the organizer decides.
+      return reply.status(201).send({ status: 'pending' })
     },
   )
 
@@ -216,8 +249,14 @@ export function registerFamilyJoinRoutes(
     if (!family)
       return reply.status(403).send({ error: 'Only the organizer can view join requests' })
 
+    // Expired requests hold a password hash; clear them rather than keep them forever.
+    await requests.deleteMany({
+      tenant_id,
+      status: 'pending',
+      requested_at: { $lt: requestCutoff() },
+    })
     const pending = await requests
-      .find({ tenant_id, status: 'pending' })
+      .find({ tenant_id, status: 'pending', requested_at: { $gte: requestCutoff() } })
       .sort({ requested_at: -1 })
       .toArray()
     return {
@@ -245,6 +284,12 @@ export function registerFamilyJoinRoutes(
         status: 'pending',
       })) as FamilyJoinRequestDoc | null
       if (!request) return reply.status(404).send({ error: 'Join request not found' })
+      if (request.requested_at < requestCutoff()) {
+        await requests.deleteOne({ id: request.id })
+        return reply
+          .status(410)
+          .send({ error: 'This request expired. Ask them to send a new one.' })
+      }
 
       const users = await getUsersCollection()
       // Re-check at approval time, not just at request time — someone else
@@ -257,6 +302,7 @@ export function registerFamilyJoinRoutes(
           .send({ error: 'This email was registered elsewhere since the request was made' })
       }
 
+      const verification = emailVerificationEnabled() ? issueEmailVerification() : null
       const newUser: User = {
         id: randomUUID(),
         email: request.email,
@@ -272,11 +318,18 @@ export function registerFamilyJoinRoutes(
         locked_until: undefined,
         external_id: undefined,
         external_provider: undefined,
-        // The invite link itself proves mailbox ownership — it only reached
-        // this address because the organizer's invite email landed there.
-        email_verified: true,
+        // A per-member invite email proves the mailbox; a join request does not:
+        // the organizer shares one invite code and the joiner types any address.
+        // So, exactly as signup does, the address stays unverified until the
+        // emailed link is used (when verification is on for the platform).
+        // LIMIT: this does not stop someone who types another person's address
+        // from choosing the password: sign-in does not block on email_verified,
+        // and the real owner confirming the link would verify that account. A
+        // set-password-by-emailed-link model would close it (owner decision).
+        email_verified: !verification,
         email_verification_token: undefined,
-        email_verification_expires: undefined,
+        email_verification_expires: verification?.expires,
+        ...(verification ? { email_verification_token_hash: verification.hash } : {}),
         password_reset_token: undefined,
         password_reset_expires: undefined,
         updated_at: undefined,
@@ -339,6 +392,16 @@ export function registerFamilyJoinRoutes(
       )
       log.info({ tenantId: tenant_id, newUserId: newUser.id }, 'Family join request approved')
 
+      // The joiner has no other signal that it is time to sign in.
+      const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
+      await sendJoinApprovedEmail(
+        newUser.email,
+        newUser.name,
+        family.name,
+        `${appUrl}/login`,
+        verification?.url,
+      )
+
       return { approved: true, name: newUser.name, email: newUser.email }
     },
   )
@@ -352,9 +415,16 @@ export function registerFamilyJoinRoutes(
       if (!family)
         return reply.status(403).send({ error: 'Only the organizer can deny join requests' })
 
+      const declined = await requests.findOne({ id: req.params.id, tenant_id, status: 'pending' })
       const result = await requests.deleteOne({ id: req.params.id, tenant_id, status: 'pending' })
       if (result.deletedCount === 0)
         return reply.status(404).send({ error: 'Join request not found' })
+      if (declined?.['email'])
+        await blocks.updateOne(
+          { tenant_id, email: String(declined['email']).toLowerCase() },
+          { $set: { until: new Date(Date.now() + DECLINE_BLOCK_DAYS * 86_400_000) } },
+          { upsert: true },
+        )
 
       getAuditLogger()?.fromRequest(
         req,
@@ -457,11 +527,16 @@ export function registerFamilyJoinRoutes(
       // rather than leaving multiple live claims on the same roster entry.
       await invites.deleteMany({ tenant_id, member_id: member.id })
       const token = randomBytes(24).toString('hex')
+      // An invite can reach the wrong person (a mistyped address). It says who sent it, so
+      // the right person recognises it, and not which family: that is not for a stranger.
+      const sender = family.members.find((m) => memberMatchesUser(m, user_id))
+      const inviterFirstName = sender?.name.trim().split(/\s+/)[0] || ''
       const invite: FamilyMemberInviteDoc = {
         id: randomUUID(),
         tenant_id,
         member_id: member.id,
         email,
+        ...(inviterFirstName ? { invited_by_first_name: inviterFirstName } : {}),
         token: inviteTokenHash(token),
         expires_at: new Date(Date.now() + INVITE_TTL_MS),
         created_at: new Date(),
@@ -478,7 +553,7 @@ export function registerFamilyJoinRoutes(
 
       const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
       const inviteUrl = `${appUrl}/invite/${token}`
-      await sendFamilyInviteEmail(email, member.name, family.name, inviteUrl)
+      await sendFamilyInviteEmail(email, member.name, inviterFirstName, inviteUrl)
 
       // Token deliberately absent from audit metadata — it's a live credential.
       getAuditLogger()?.fromRequest(req, 'family.member_invited', 'family_member', member.id, {
@@ -497,8 +572,8 @@ export function registerFamilyJoinRoutes(
   )
 
   // ── GET /family/invite/:token (PRD-123, public) ─────────────────────────
-  // Lets the accept page render "X invited you to join Y" before the
-  // recipient commits a password. Reveals only names — never whether the
+  // Lets the accept page say who invited them before the recipient commits a
+  // password. Reveals only first names — never the family, whether the
   // email is registered, never any financial detail.
   fastify.get<{ Params: { token: string } }>(
     '/family/invite/:token',
@@ -534,7 +609,8 @@ export function registerFamilyJoinRoutes(
       }
       return {
         member_name: member.name,
-        family_name: family.name,
+        // Who invited them, never which family: whoever holds the link may be the wrong person.
+        inviter_name: invite.invited_by_first_name ?? null,
         expires_at: invite.expires_at.toISOString(),
       }
     },

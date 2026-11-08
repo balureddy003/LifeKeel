@@ -1,0 +1,157 @@
+/*
+ * "Marcia's Tuesday": a calm six-beat story. Only transform and opacity move. Loops run only while the
+ * landing page says motion is on (html[data-motion='on'], see motion.ts); the visitor can pause, and
+ * reduced motion stops everything. Nothing flashes.
+ */
+.fs {
+  --fs-wall: #efe7d8;
+  --fs-floor: #d9ccb4;
+  --fs-line: #b9a98a;
+  --fs-wood: #a98a5e;
+  --fs-keyblue: #1f5f66;
+  --fs-ochre: #d99a2b;
+  --fs-fridge: #f7f3ea;
+  --fs-window: #cfe3e6;
+  --fs-ink: #33302a;
+}
+
+.fs-stage {
+  position: relative;
+  max-width: 760px;
+  margin: 0 auto;
+  border: 1px solid var(--fs-line);
+  border-radius: 20px;
+  overflow: hidden;
+  background: var(--fs-floor);
+}
+.fs-svg { width: 100%; aspect-ratio: 16 / 9; display: block; }
+
+.fs-wall { fill: var(--fs-wall); }
+.fs-floor { fill: var(--fs-floor); }
+.fs-window { fill: var(--fs-window); stroke: var(--fs-line); stroke-width: 3; transition: fill 0.6s ease; }
+.fs-frame { stroke: var(--fs-line); stroke-width: 3; fill: none; }
+.fs-board { fill: var(--fs-wood); }
+.fs-hook { fill: var(--fs-ink); }
+.fs-keyline { stroke: var(--fs-ink); stroke-width: 3; fill: none; stroke-linecap: round; }
+.fs-keyhead { fill: none; stroke: var(--fs-ochre); stroke-width: 4; }
+.fs-fridge { fill: var(--fs-fridge); stroke: var(--fs-line); stroke-width: 3; }
+.fs-fridge-line { stroke: var(--fs-line); stroke-width: 3; }
+.fs-letter { fill: #fff; stroke: var(--fs-line); }
+.fs-calendar { fill: #fff; stroke: var(--fs-line); }
+.fs-letter-lines { stroke: var(--fs-line); stroke-width: 2; fill: none; }
+.fs-circled { fill: none; stroke: var(--fs-ochre); stroke-width: 3; }
+.fs-table { fill: var(--fs-wood); }
+.fs-leg { stroke: var(--fs-wood); stroke-width: 8; }
+.fs-mug { fill: var(--fs-keyblue); }
+.fs-steam path, .fs-rain path { stroke: #fff; stroke-width: 3; fill: none; stroke-linecap: round; opacity: 0.8; }
+
+/* People: simple shapes. Children have no face. */
+.fs-skin-a { fill: #c58b5a; }
+.fs-asha-body { fill: var(--fs-keyblue); }
+.fs-bag { fill: var(--fs-ochre); }
+.fs-skin-d { fill: #8a5a3c; }
+.fs-hair-d { fill: #2b221c; }
+.fs-dev-body { fill: #4a6a8a; }
+.fs-phone-dev { fill: var(--fs-ink); }
+.fs-skin-m { fill: #6e4630; }
+.fs-hair-m { fill: #cfcac1; }
+.fs-glass { fill: none; stroke: var(--fs-ink); stroke-width: 2; }
+.fs-marcia-body { fill: var(--fs-ochre); }
+.fs-coat { stroke: rgba(0, 0, 0, 0.18); stroke-width: 2; }
+
+/* Who is on stage, and where, in each beat. Opacity and transform only. */
+.fs-asha, .fs-dev, .fs-marcia, .fs-mugs, .fs-steam, .fs-rain, .fs-key {
+  opacity: 0;
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.fs-asha { transform: translate(250px, 176px); }
+.fs-dev { transform: translate(330px, 120px); }
+.fs-marcia { transform: translate(380px, 122px); }
+
+.fs-stage[data-beat='1'] .fs-asha, .fs-stage[data-beat='1'] .fs-dev, .fs-stage[data-beat='1'] .fs-steam { opacity: 1; }
+.fs-stage[data-beat='2'] .fs-dev { opacity: 1; transform: translate(300px, 120px); }
+.fs-stage[data-beat='2'] .fs-phone-dev { transform: translate(-4px, -10px); }
+.fs-stage[data-beat='3'] .fs-dev { opacity: 1; transform: translate(270px, 120px); }
+.fs-stage[data-beat='3'] .fs-marcia { opacity: 1; transform: translate(380px, 122px); }
+.fs-stage[data-beat='3'] .fs-mugs, .fs-stage[data-beat='3'] .fs-steam { opacity: 1; }
+.fs-stage[data-beat='4'] .fs-window { fill: #8fa7ad; }
+.fs-stage[data-beat='4'] .fs-rain { opacity: 1; }
+.fs-stage[data-beat='4'] .fs-marcia { opacity: 1; transform: translate(230px, 122px); }
+.fs-stage[data-beat='4'] .fs-asha { opacity: 1; transform: translate(290px, 182px); }
+.fs-stage[data-beat='5'] .fs-marcia { opacity: 1; transform: translate(330px, 122px); }
+.fs-stage[data-beat='6'] .fs-asha { opacity: 1; transform: translate(150px, 168px); }
+.fs-stage[data-beat='6'] .fs-marcia { opacity: 1; transform: translate(360px, 122px); }
+.fs-stage[data-beat='6'] .fs-key { opacity: 1; }
+
+/* The list on the phone: a card under the picture, so it never covers the people. */
+.fs-phone {
+  width: min(calc(100% - 32px), 340px);
+  min-height: 118px;
+  margin: 0 auto 16px;
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: #fff;
+  color: var(--fs-ink);
+  border: 1px solid var(--fs-line);
+  font-size: 15px;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+.fs-phone p { margin: 0; }
+.fs-phone-h { font-weight: 700; margin-bottom: 6px !important; }
+.fs-row, .fs-seen { display: none; padding: 2px 0; }
+.fs-stage[data-beat='2'] .fs-phone, .fs-stage[data-beat='3'] .fs-phone, .fs-stage[data-beat='5'] .fs-phone { opacity: 1; }
+.fs-stage[data-beat='2'] .fs-row-car, .fs-stage[data-beat='3'] .fs-row-car, .fs-stage[data-beat='5'] .fs-row-car { display: block; }
+.fs-stage[data-beat='5'] .fs-row-call { display: block; color: var(--fs-keyblue); font-weight: 600; }
+.fs-stage[data-beat='3'] .fs-seen { display: block; color: var(--fs-keyblue); font-weight: 600; }
+
+/* Controls: always reachable, 48px */
+.fs-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin: 18px 0 8px;
+}
+.fs-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  min-width: 48px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 1px solid var(--fs-line);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.fs-btn:disabled { opacity: 0.45; cursor: default; }
+
+/* Every beat as text. The current one is marked. */
+.fs-beats {
+  max-width: 560px;
+  margin: 12px auto 0;
+  padding-left: 1.4em;
+  display: grid;
+  gap: 6px;
+}
+.fs-beats li { opacity: 0.7; }
+.fs-beats li[aria-current='step'] { opacity: 1; font-weight: 700; }
+
+.fs-end { text-align: center; margin-top: 22px; display: grid; gap: 10px; justify-items: center; }
+.fs-end-line { font-size: clamp(22px, 5vw, 32px); font-weight: 800; margin: 0; }
+
+/* Loops: only while the landing page says motion is on. Small and slow, never flashing. */
+@keyframes fs-steam { 0%, 100% { transform: translateY(0); opacity: 0.8; } 50% { transform: translateY(-6px); opacity: 0.45; } }
+@keyframes fs-rain { from { transform: translateY(-8px); } to { transform: translateY(14px); } }
+@keyframes fs-swing { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+html[data-motion='on'] .fs-stage .fs-steam path { animation: fs-steam 4s ease-in-out infinite; }
+html[data-motion='on'] .fs-stage .fs-rain path { animation: fs-rain 1.6s linear infinite; }
+html[data-motion='on'] .fs-stage[data-beat='6'] .fs-key { transform-origin: 37px 25px; animation: fs-swing 4s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .fs-stage *, .fs-phone { transition: none !important; animation: none !important; }
+}

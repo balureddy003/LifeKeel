@@ -2363,6 +2363,10 @@ export interface ApiFamilyMember {
   dateOfBirth?: string
   /** Intent 25: blended-family relationship on child members — display-only. */
   relationshipLabel?: 'my_child' | 'partners_child' | 'shared_child' | 'other_child'
+  /** The organizer let this adult add and edit family list records. */
+  canEdit?: boolean
+  /** The organizer said this adult does not need to confirm the family list. */
+  confirmExempt?: boolean
 }
 
 export interface ApiFamilyGroup {
@@ -2376,7 +2380,7 @@ export interface ApiFamilyGroup {
 
 async function familyGroupRequest(
   path: string,
-  method: 'POST' | 'PATCH' | 'DELETE',
+  method: 'POST' | 'PATCH' | 'PUT' | 'DELETE',
   body?: Record<string, unknown>,
 ): Promise<ApiFamilyGroup> {
   const base = getApiBase()
@@ -2470,6 +2474,22 @@ export async function updateFamilyGroupMemberDateOfBirth(
   return familyGroupRequest(`/family/members/${id}`, 'PATCH', { date_of_birth: dateOfBirth })
 }
 
+/** Organizer only: let an adult add and edit family list records, or take it back. */
+export async function setFamilyGroupMemberEditAccess(
+  id: string,
+  enabled: boolean,
+): Promise<ApiFamilyGroup> {
+  return familyGroupRequest(`/family/members/${id}/edit-access`, 'PUT', { enabled })
+}
+
+/** Organizer only: say an adult does not need to confirm the family list, or ask them to again. */
+export async function setFamilyGroupMemberConfirmExempt(
+  id: string,
+  exempt: boolean,
+): Promise<ApiFamilyGroup> {
+  return familyGroupRequest(`/family/members/${id}/confirm-exempt`, 'PUT', { exempt })
+}
+
 export async function removeFamilyGroupMember(id: string): Promise<ApiFamilyGroup> {
   return familyGroupRequest(`/family/members/${id}`, 'DELETE')
 }
@@ -2494,7 +2514,7 @@ export async function joinFamily(
   email: string,
   password: string,
   turnstileToken?: string | null,
-): Promise<{ familyName: string }> {
+): Promise<void> {
   const base = getApiBase()
   const res = await credFetch(`${base}/family/join`, {
     method: 'POST',
@@ -2506,7 +2526,6 @@ export async function joinFamily(
     throw new Error(
       turnstileErrorMessage(data.error) ?? (data.error || "Couldn't submit your request"),
     )
-  return { familyName: data.family_name as string }
 }
 
 export async function fetchAccessRequests(): Promise<AccessRequest[]> {
@@ -2549,7 +2568,8 @@ export async function inviteFamilyMember(
 
 export interface FamilyInviteInfo {
   memberName: string
-  familyName: string
+  /** First name of whoever sent the invite; null for invites sent before the family name was dropped. */
+  inviterName: string | null
   expiresAt: string
 }
 
@@ -2559,7 +2579,11 @@ export async function fetchFamilyInvite(token: string): Promise<FamilyInviteInfo
   const res = await credFetch(`${base}/family/invite/${encodeURIComponent(token)}`)
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'This invite link is invalid or has expired')
-  return { memberName: data.member_name, familyName: data.family_name, expiresAt: data.expires_at }
+  return {
+    memberName: data.member_name,
+    inviterName: (data.inviter_name as string | null) ?? null,
+    expiresAt: data.expires_at,
+  }
 }
 
 // Public — accepting both verifies the token AND proves ownership of the
@@ -3482,6 +3506,31 @@ export async function reportLifeEvent(
     return data as LifeEvent
   } catch (err) {
     reportError(err, { eventType })
+    return null
+  }
+}
+
+// Add who it affects and a note after the first steps are already showing
+// (Emergency Mode asks for neither up front). Null clears a field.
+export async function updateLifeEventDetails(
+  id: string,
+  details: { affected_member_id?: string | null; context?: string },
+): Promise<LifeEvent | null> {
+  try {
+    const base = getApiBase()
+    const token = getAuthToken()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    const res = await credFetch(`${base}/family/life-events/${encodeURIComponent(id)}/details`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(details),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || 'Request failed')
+    return data as LifeEvent
+  } catch (err) {
+    reportError(err, { lifeEventId: id })
     return null
   }
 }
@@ -6189,7 +6238,10 @@ export async function previewEmergencySheet(
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAuthToken()}` },
     body: JSON.stringify({ sections }),
   })
-  if (!res.ok) throw new Error('Could not build the sheet')
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(body.error ?? 'Could not build the sheet')
+  }
   return res.json()
 }
 
@@ -6516,6 +6568,120 @@ export function deleteObligation(id: string) {
 }
 export function confirmObligation(id: string) {
   return briefPost<{ obligation: Obligation }>(`/family/obligations/${id}/confirm`, {})
+}
+
+// ─── Domain packs (life & income protection pilot) ──────────────────────────
+
+export interface DomainPackInfo {
+  id: string
+  title: string
+  summary: string
+  confirm: 'both_adults' | 'organiser'
+}
+
+export type DomainCell = 'holds' | 'covers' | 'holds_and_covers' | null
+
+export interface DomainView {
+  domain_id: string
+  rows: Array<{
+    id: string
+    record: string
+    holder_member_id: string | null
+    covers_member_id: string | null
+    values: Record<string, string>
+  }>
+  matrix: {
+    label: string
+    columns: Array<{ id: string; name: string }>
+    rows: Array<{ id: string; label: string; cells: Record<string, DomainCell> }>
+  } | null
+  gaps: Array<{ row_id: string; note: string }>
+  /** The pack's shape, so one page can draw any domain. */
+  pack: {
+    id: string
+    title: string
+    summary: string
+    records: Array<{
+      key: string
+      label: string
+      person_attribution: 'holder' | 'subject' | 'none'
+      source: { kind: 'store' } | { kind: 'adapter'; adapter: string }
+      fields: Array<{
+        key: string
+        label: string
+        kind: 'text' | 'date' | 'money' | 'choice' | 'member'
+        choices?: string[]
+      }>
+    }>
+    playbook?: { playbook: string; label: string }
+  }
+  can_edit: boolean
+  roster: Array<{ id: string; name: string }>
+  upcoming: Array<{
+    trigger: string
+    label: string
+    row_id: string
+    row_label: string
+    date: string
+    days: number
+  }>
+  result_version: string
+  confirmation: {
+    required: Array<{ id: string; name: string }>
+    confirmed: Array<{ id: string; name: string; confirmed_at: string }>
+    both_confirmed: boolean
+    viewer_confirmed: boolean
+  }
+}
+
+export function getDomains() {
+  return apiFetch<{ domains: DomainPackInfo[] }>('/family/domains', { domains: [] })
+}
+export function getDomainView(id: string) {
+  return apiFetch<DomainView | null>(`/family/domains/${encodeURIComponent(id)}`, null)
+}
+export interface DomainPlaybook {
+  playbook: string
+  member: { id: string; name: string }
+  groups: Array<{
+    key: 'theirs' | 'covers' | 'to_check' | 'others'
+    label: string
+    rows: Array<{
+      id: string
+      label: string
+      claims_contact: string | null
+      renewal_date: string | null
+    }>
+  }>
+  roster: Array<{ id: string; name: string }>
+}
+export function getDomainPlaybook(id: string, memberId: string) {
+  return apiFetch<DomainPlaybook | null>(
+    `/family/domains/${encodeURIComponent(id)}/playbook?member=${encodeURIComponent(memberId)}`,
+    null,
+  )
+}
+export function addDomainRecord(
+  id: string,
+  record: string,
+  body: { holder_member_id?: string | null; values: Record<string, string> },
+) {
+  return briefPost<{ id: string }>(
+    `/family/domains/${encodeURIComponent(id)}/records/${encodeURIComponent(record)}`,
+    body,
+  )
+}
+export function deleteDomainRecord(id: string, rowId: string) {
+  return briefPost<unknown>(
+    `/family/domains/${encodeURIComponent(id)}/records/${encodeURIComponent(rowId)}`,
+    {},
+    'DELETE',
+  )
+}
+export function confirmDomain(id: string, resultVersion: string) {
+  return briefPost<DomainView>(`/family/domains/${encodeURIComponent(id)}/confirm`, {
+    result_version: resultVersion,
+  })
 }
 
 export function deleteBrief(id: string) {

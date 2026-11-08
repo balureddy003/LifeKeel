@@ -4,10 +4,24 @@ import { FormEvent, useEffect, useState } from 'react'
 import { ShieldCheck, UserPlus } from 'lucide-react'
 import { GlassCard, GlassButton } from '@/components/Glass'
 import { useToast } from '@/components/Toast'
-import { createOperator, fetchOperators, suspendOperator, reactivateOperator, type OperatorRecord } from '@/lib/api'
+import {
+  createOperator,
+  fetchOperators,
+  suspendOperator,
+  reactivateOperator,
+  type OperatorRecord,
+} from '@/lib/api'
 import { ReasonAction } from '../_components/ReasonAction'
+import { useHasPermission } from '../_components/OperatorSession'
 
-const ROLE_CHOICES = ['support', 'marketing_operator', 'finance_operator', 'operations', 'platform_admin', 'super_admin']
+const ROLE_CHOICES = [
+  'support',
+  'marketing_operator',
+  'finance_operator',
+  'operations',
+  'platform_admin',
+  'super_admin',
+]
 
 export default function OperatorsPage() {
   const toast = useToast()
@@ -18,6 +32,7 @@ export default function OperatorsPage() {
   const [reason, setReason] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const canManage = useHasPermission('operators.manage')
 
   async function load() {
     try {
@@ -29,7 +44,9 @@ export default function OperatorsPage() {
       setError(err instanceof Error ? err.message : 'Could not load operators')
     }
   }
-  useEffect(() => { void load() }, [])
+  useEffect(() => {
+    if (canManage) void load()
+  }, [canManage])
 
   async function add(event: FormEvent) {
     event.preventDefault()
@@ -37,39 +54,82 @@ export default function OperatorsPage() {
     try {
       await createOperator(userId.trim(), roles, reason.trim())
       toast({ message: 'Operator granted' })
-      setUserId(''); setReason('')
+      setUserId('')
+      setReason('')
       await load()
     } catch (err) {
-      toast({ message: err instanceof Error ? err.message : 'Could not add operator', variant: 'error' })
+      toast({
+        message: err instanceof Error ? err.message : 'Could not add operator',
+        variant: 'error',
+      })
     } finally {
       setBusy(false)
     }
   }
 
+  if (!canManage) {
+    return (
+      <div>
+        <h1 className="text-2xl font-semibold">Operators</h1>
+        <GlassCard className="mt-5 p-4">
+          <p className="text-sm text-ink-secondary">
+            Managing operators needs the operators.manage permission (super_admin). Ask a super
+            admin to change your roles.
+          </p>
+        </GlassCard>
+      </div>
+    )
+  }
+
   return (
     <div>
       <h1 className="text-2xl font-semibold">Operators</h1>
-      <p className="mt-1 text-sm text-ink-tertiary">Platform-level access, separate from tenant roles. super_admin only.</p>
-      {error && <GlassCard className="mt-4 p-4"><p className="text-sm text-danger">{error}</p></GlassCard>}
+      <p className="mt-1 text-sm text-ink-tertiary">
+        Platform-level access, separate from tenant roles. super_admin only.
+      </p>
+      {error && (
+        <GlassCard className="mt-4 p-4">
+          <p className="text-sm text-danger">{error}</p>
+        </GlassCard>
+      )}
 
       <GlassCard className="mt-5 p-4">
-        <h2 className="flex items-center gap-2 font-semibold"><UserPlus size={16} className="text-family-400" /> Grant access</h2>
+        <h2 className="flex items-center gap-2 font-semibold">
+          <UserPlus size={16} className="text-family-400" /> Grant access
+        </h2>
         <form onSubmit={add} className="mt-3 space-y-3">
-          <input value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="LifeKeel user ID" className="glass-input w-full rounded-xl px-3 py-2.5 text-sm" required />
+          <input
+            value={userId}
+            onChange={(e) => setUserId(e.target.value)}
+            placeholder="LifeKeel user ID"
+            className="glass-input w-full rounded-xl px-3 py-2.5 text-sm"
+            required
+          />
           <div className="flex flex-wrap gap-2">
             {ROLE_CHOICES.map((role) => (
               <button
                 key={role}
                 type="button"
-                onClick={() => setRoles((r) => r.includes(role) ? r.filter((x) => x !== role) : [...r, role])}
+                onClick={() =>
+                  setRoles((r) => (r.includes(role) ? r.filter((x) => x !== role) : [...r, role]))
+                }
                 className={`rounded-full border px-3 py-1 text-xs ${roles.includes(role) ? 'border-family-500/40 bg-family-500/15 text-family-400' : 'border-tint/[0.08] text-ink-tertiary'}`}
               >
                 {role}
               </button>
             ))}
           </div>
-          <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason (required, audited)" className="glass-input w-full rounded-xl px-3 py-2.5 text-sm" required minLength={5} />
-          <GlassButton disabled={busy || roles.length === 0 || reason.trim().length < 5}>{busy ? 'Granting…' : 'Grant operator access'}</GlassButton>
+          <input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Reason (required, audited)"
+            className="glass-input w-full rounded-xl px-3 py-2.5 text-sm"
+            required
+            minLength={5}
+          />
+          <GlassButton disabled={busy || roles.length === 0 || reason.trim().length < 5}>
+            {busy ? 'Granting…' : 'Grant operator access'}
+          </GlassButton>
         </form>
       </GlassCard>
 
@@ -81,15 +141,41 @@ export default function OperatorsPage() {
                 <div className="font-medium">{op.user?.name ?? op.user_id}</div>
                 <div className="text-sm text-ink-secondary">{op.user?.email ?? ''}</div>
                 <div className="mt-1 flex flex-wrap gap-1">
-                  {op.roles.map((r) => <span key={r} className="rounded-full bg-family-500/10 px-2 py-0.5 text-xs text-family-400">{r}</span>)}
+                  {op.roles.map((r) => (
+                    <span
+                      key={r}
+                      className="rounded-full bg-family-500/10 px-2 py-0.5 text-xs text-family-400"
+                    >
+                      {r}
+                    </span>
+                  ))}
                 </div>
               </div>
               <div className="flex flex-col items-end gap-1">
-                <span className={`rounded-full border px-2 py-0.5 text-xs ${op.status === 'suspended' ? 'border-danger/25 text-danger' : 'border-success/25 text-success'}`}>{op.status}</span>
+                <span
+                  className={`rounded-full border px-2 py-0.5 text-xs ${op.status === 'suspended' ? 'border-danger/25 text-danger' : 'border-success/25 text-success'}`}
+                >
+                  {op.status}
+                </span>
                 {op.status === 'suspended' ? (
-                  <ReasonAction label="Reactivate" onConfirm={async (r) => { await reactivateOperator(op.user_id, r); toast({ message: 'Operator reactivated' }); await load() }} />
+                  <ReasonAction
+                    label="Reactivate"
+                    onConfirm={async (r) => {
+                      await reactivateOperator(op.user_id, r)
+                      toast({ message: 'Operator reactivated' })
+                      await load()
+                    }}
+                  />
                 ) : (
-                  <ReasonAction label="Suspend" destructive onConfirm={async (r) => { await suspendOperator(op.user_id, r); toast({ message: 'Operator suspended' }); await load() }} />
+                  <ReasonAction
+                    label="Suspend"
+                    destructive
+                    onConfirm={async (r) => {
+                      await suspendOperator(op.user_id, r)
+                      toast({ message: 'Operator suspended' })
+                      await load()
+                    }}
+                  />
                 )}
               </div>
             </div>
@@ -97,13 +183,22 @@ export default function OperatorsPage() {
         ))}
         {bootstrap.map((op) => (
           <GlassCard key={`bootstrap-${op.user_id}`} className="p-4 opacity-70">
-            <div className="flex items-center gap-2"><ShieldCheck size={15} className="text-family-400" /><span className="font-medium">{op.user?.name ?? op.user_id}</span><span className="text-xs text-ink-tertiary">env bootstrap · super_admin</span></div>
+            <div className="flex items-center gap-2">
+              <ShieldCheck size={15} className="text-family-400" />
+              <span className="font-medium">{op.user?.name ?? op.user_id}</span>
+              <span className="text-xs text-ink-tertiary">env bootstrap · super_admin</span>
+            </div>
             {op.effective === false && (
-              <p className="mt-1 text-xs text-ink-tertiary">Dormant — DB super_admin exists. Remove PLATFORM_OPERATOR_USER_IDS once all break-glass users are DB-managed.</p>
+              <p className="mt-1 text-xs text-ink-tertiary">
+                Dormant — DB super_admin exists. Remove PLATFORM_OPERATOR_USER_IDS once all
+                break-glass users are DB-managed.
+              </p>
             )}
           </GlassCard>
         ))}
-        {operators.length === 0 && bootstrap.length === 0 && !error && <p className="text-sm text-ink-tertiary">No operators configured.</p>}
+        {operators.length === 0 && bootstrap.length === 0 && !error && (
+          <p className="text-sm text-ink-tertiary">No operators configured.</p>
+        )}
       </div>
     </div>
   )

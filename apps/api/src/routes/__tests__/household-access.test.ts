@@ -151,6 +151,85 @@ describe('R05: export', () => {
   })
 })
 
+describe('export applies the same read rules as the app (review F02)', () => {
+  beforeEach(async () => {
+    const doc = (id: string, visibility: string, extra: Record<string, unknown> = {}) => ({
+      tenant_id: TENANT,
+      id,
+      title: id,
+      category: 'will',
+      visibility,
+      roles: [],
+      verification: 'user_declared',
+      ...extra,
+    })
+    await db.collection('legacy_documents').insertMany([
+      doc('ORG-ONLY-WILL', 'organizer'),
+      doc('ADULTS-DOC', 'adults'),
+      doc('NAMED-FOR-MEM', 'named_roles', {
+        roles: [{ role: 'executor', member_id: MEMBER.id }],
+      }),
+    ])
+    const brief = (id: string, created_by: string, extra: Record<string, unknown> = {}) => ({
+      tenant_id: TENANT,
+      id,
+      contract_version: 2,
+      problem_type: 'income_stops',
+      inputs: {},
+      created_by,
+      share: null,
+      ...extra,
+    })
+    await db.collection('household_briefs').insertMany([
+      brief('ORG-PRIVATE-BRIEF', ORGANIZER.id),
+      brief('SHARED-WITH-MEM', ORGANIZER.id, { share: { for_user_id: MEMBER.id } }),
+      brief('MEM-SENSITIVE', MEMBER.id, {
+        problem_type: 'medical_contacts',
+        sensitive: true,
+        inputs: { change_date: '2026-01-01', facts: { Allergies: 'PLAINTEXT-ALLERGY' } },
+        facts: [],
+        facts_encrypted: 'dek:unreadable',
+        facts_expire_at: new Date(Date.now() - 1000),
+      }),
+    ])
+    await db.collection('keel_proposals').insertMany([
+      { tenant_id: TENANT, user_id: ORGANIZER.id, id: 'ORG-PROPOSAL' },
+      { tenant_id: TENANT, user_id: MEMBER.id, id: 'MEM-PROPOSAL' },
+    ])
+  })
+
+  it('an editor who is not the organizer gets only what they can read in the app', async () => {
+    const app = await appAs(MEMBER.id, ['admin'])
+    const res = await app.inject({ method: 'GET', url: '/account/export' })
+    expect(res.json().scope).toBe('household')
+    for (const visible of [
+      'ADULTS-DOC',
+      'NAMED-FOR-MEM',
+      'SHARED-WITH-MEM',
+      'MEM-SENSITIVE',
+      'MEM-PROPOSAL',
+    ])
+      expect(res.body, visible).toContain(visible)
+    for (const hidden of [
+      'ORG-ONLY-WILL',
+      'ORG-PRIVATE-BRIEF',
+      'ORG-PROPOSAL',
+      'PLAINTEXT-ALLERGY',
+      'dek:unreadable',
+    ])
+      expect(res.body, hidden).not.toContain(hidden)
+  })
+
+  it('the organizer sees organizer-only legacy documents but not another adult’s brief', async () => {
+    const app = await appAs(ORGANIZER.id, ['admin'])
+    const res = await app.inject({ method: 'GET', url: '/account/export' })
+    expect(res.body).toContain('ORG-ONLY-WILL')
+    expect(res.body).toContain('ORG-PRIVATE-BRIEF')
+    expect(res.body).not.toContain('MEM-SENSITIVE')
+    expect(res.body).not.toContain('MEM-PROPOSAL')
+  })
+})
+
 describe('deleting the household', () => {
   it('is refused for a viewer, even with the right confirmation', async () => {
     const app = await appAs(MEMBER.id, ['viewer'])

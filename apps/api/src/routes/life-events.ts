@@ -95,6 +95,18 @@ const ReportLifeEventSchema = z.object({
   context: z.string().max(2000).optional(),
 })
 
+// A household that has not filled in a profile yet still has a bad day. The
+// playbook renderers already say "we don't have X on file" for anything
+// missing (documents.ts has long written bare, partial profiles), so an empty
+// profile gives honest generic steps instead of a refusal.
+const EMPTY_PROFILE = {} as FinancialProfile
+
+const UpdateLifeEventDetailsSchema = z.object({
+  // null clears it back to "the household overall"
+  affected_member_id: z.string().min(1).nullable().optional(),
+  context: z.string().max(2000).optional(),
+})
+
 interface LifeEventSignalDoc {
   id: string
   tenant_id: string
@@ -149,7 +161,7 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
       .sort({ created_at: -1 })
       .toArray()) as unknown as LifeEventSignalDoc[]
 
-    const profile = await profileFor(tenant_id).findOne({})
+    const profile = (await profileFor(tenant_id).findOne({})) ?? EMPTY_PROFILE
 
     const memberNames = new Map<string, string>()
     for (const doc of docs) {
@@ -216,12 +228,7 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
       const { tenant_id } = req.authContext
       const { event_type, affected_member_id, context } = parsed.data
 
-      const profile = await profileFor(tenant_id).findOne({})
-      if (!profile) {
-        return reply
-          .status(400)
-          .send({ error: 'Submit a financial profile before reporting a life event' })
-      }
+      const profile = (await profileFor(tenant_id).findOne({})) ?? EMPTY_PROFILE
 
       // Intent 49: an event "for" a member that isn't on the roster is a
       // client mistake, not data — reject it rather than storing an
@@ -415,6 +422,80 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
    * stored, so a client can't write completion state for a step that
    * doesn't exist.
    */
+  /**
+   * Add who it affects, or notes, after the event is reported. Reporting is
+   * one tap from Emergency Mode, so the questions that used to come first
+   * (who, and anything the family should know) come after, optionally.
+   */
+  app.post<{
+    Params: { id: string }
+    Body: { affected_member_id?: string | null; context?: string }
+  }>('/family/life-events/:id/details', async (req, reply) => {
+    const parsed = UpdateLifeEventDetailsSchema.safeParse(req.body ?? {})
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid details', issues: parsed.error.issues })
+    }
+    const { tenant_id } = req.authContext
+    const { id } = req.params
+    const { affected_member_id, context } = parsed.data
+
+    const col = await getSignalsCollection()
+    const doc = (await col.findOne({
+      tenant_id,
+      signal_type: 'family.life_event',
+      id,
+    })) as LifeEventSignalDoc | null
+    if (!doc) return reply.status(404).send({ error: 'Life event not found' })
+
+    if (affected_member_id) {
+      const group = await getTenantCollection<{ members?: { id?: string }[] }>(
+        db,
+        'family_groups',
+        tenant_id,
+      ).findOne({})
+      if (!(group?.members ?? []).some((m) => m.id === affected_member_id)) {
+        return reply.status(404).send({ error: 'Member not found' })
+      }
+    }
+
+    const set: Record<string, unknown> = {}
+    const unset: Record<string, ''> = {}
+    if (affected_member_id) set['data.affected_member_id'] = affected_member_id
+    else if (affected_member_id === null) unset['data.affected_member_id'] = ''
+    if (context !== undefined) {
+      if (context.trim()) set['data.context'] = context.trim()
+      else unset['data.context'] = ''
+    }
+    const update: Record<string, unknown> = {}
+    if (Object.keys(set).length) update['$set'] = set
+    if (Object.keys(unset).length) update['$unset'] = unset
+    if (Object.keys(update).length) {
+      await col.updateOne({ tenant_id, signal_type: 'family.life_event', id }, update)
+      getAuditLogger()?.fromRequest(req, 'life_event.details_updated', 'life_event', id)
+    }
+
+    const nextMember =
+      affected_member_id === null ? undefined : (affected_member_id ?? doc.data.affected_member_id)
+    const nextContext =
+      context === undefined ? doc.data.context : context.trim() ? context.trim() : undefined
+    const profile = (await profileFor(tenant_id).findOne({})) ?? EMPTY_PROFILE
+    const playbook = renderPlaybook(
+      doc.data.event_type,
+      profile,
+      nextMember,
+      await memberNameFor(db, tenant_id, nextMember),
+    )
+    return {
+      id,
+      event_type: doc.data.event_type,
+      affected_member_id: nextMember ?? null,
+      reported_at: doc.data.reported_at,
+      completed_step_ids: validCompletedIds(doc, playbook),
+      context: nextContext ?? null,
+      playbook,
+    }
+  })
+
   app.post<{ Params: { id: string; stepId: string }; Body: { done?: boolean } }>(
     '/family/life-events/:id/steps/:stepId/complete',
     async (req, reply) => {
@@ -433,8 +514,7 @@ export function registerLifeEventRoutes(app: FastifyInstance, db: Db): void {
       })) as LifeEventSignalDoc | null
       if (!doc) return reply.status(404).send({ error: 'Life event not found' })
 
-      const profile = await profileFor(tenant_id).findOne({})
-      if (!profile) return reply.status(404).send({ error: 'No financial profile on file' })
+      const profile = (await profileFor(tenant_id).findOne({})) ?? EMPTY_PROFILE
 
       const playbook = renderPlaybook(doc.data.event_type, profile, doc.data.affected_member_id)
       if (!playbook.steps.some((s) => s.id === stepId)) {

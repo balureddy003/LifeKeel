@@ -4,10 +4,12 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useRouteParam } from '@/lib/useRouteParam'
 import Link from 'next/link'
+import { PendingApproval } from './PendingApproval'
 import { motion } from 'framer-motion'
-import { Users, Check, X, Clock, Mail } from 'lucide-react'
+import { Users, Check, X, Mail } from 'lucide-react'
 import { PasswordInput } from '@/components/PasswordInput'
 import { joinFamily, fetchFamilyInvite, type FamilyInviteInfo } from '@/lib/api'
+import { inviteIntro, INVITE_BUTTON, WRONG_PERSON } from './invite-copy'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
 import { Turnstile, useTurnstile } from '@/components/security/Turnstile'
@@ -21,6 +23,13 @@ import { Turnstile, useTurnstile } from '@/components/security/Turnstile'
 //     specific pending roster member; accepting creates/links their login
 //     and flips that roster entry to active immediately (the organizer's
 //     approval already happened at invite-send time).
+/** The sender's first name from `?from=`, if it looks like a name; otherwise undefined. */
+export function inviterFirstName(search: string): string | undefined {
+  const raw = new URLSearchParams(search).get('from')?.trim()
+  if (!raw || raw.length > 30 || !/^[\p{L}][\p{L} '’-]*$/u.test(raw)) return undefined
+  return raw
+}
+
 const isMemberInviteToken = (code: string) => /^[0-9a-f]{48}$/i.test(code)
 
 export default function InviteJoinClient() {
@@ -102,10 +111,11 @@ function AcceptMemberInvite({ token }: { token: string }) {
         </div>
         <h1 className="text-2xl font-bold">You're invited, {info.memberName}</h1>
         <p className="text-sm text-ink-tertiary mt-1">
-          {info.familyName} set you up on LifeKeel. Set a password to finish joining — you'll be
-          signed in right away. If you already have an Keel account for this family, use that
-          password to link it instead.
+          {inviteIntro(info.inviterName)} Set a password to finish joining — you'll be signed in
+          right away. If you already have a LifeKeel account for this family, use that password to
+          link it instead.
         </p>
+        <p className="text-xs text-ink-tertiary mt-2">{WRONG_PERSON}</p>
       </div>
 
       <div className="mb-6">
@@ -146,7 +156,7 @@ function AcceptMemberInvite({ token }: { token: string }) {
         disabled={password.length < 8 || loading}
         className="w-full bg-family-500 text-white font-semibold rounded-2xl py-4 text-base shadow-md shadow-family-500/15 disabled:opacity-40 active:opacity-90 transition-opacity"
       >
-        {loading ? 'Joining...' : `Join ${info.familyName}`}
+        {loading ? 'Joining...' : INVITE_BUTTON}
       </motion.button>
 
       <p className="text-xs text-ink-tertiary text-center mt-4">
@@ -164,12 +174,15 @@ function AcceptMemberInvite({ token }: { token: string }) {
 // it only creates a pending request the family's organizer has to explicitly
 // approve. See docs/prd/110-family-sharing-secondary-user-access.md.
 function RequestJoin({ code }: { code: string }) {
+  // Read after mount: the page is statically exported, so there is no query at build time.
+  const [from, setFrom] = useState<string | undefined>(undefined)
+  useEffect(() => setFrom(inviterFirstName(window.location.search)), [])
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [submitted, setSubmitted] = useState<{ familyName: string } | null>(null)
+  const [submitted, setSubmitted] = useState(false)
   const captcha = useTurnstile()
 
   const canSubmit = name.trim() && email.trim() && password.length >= 8 && captcha.ready
@@ -180,9 +193,9 @@ function RequestJoin({ code }: { code: string }) {
     setLoading(true)
     setError(null)
     try {
-      const result = await joinFamily(code, name.trim(), email.trim(), password, captcha.consume())
+      await joinFamily(code, name.trim(), email.trim(), password, captcha.consume())
       haptic('success')
-      setSubmitted(result)
+      setSubmitted(true)
     } catch (err) {
       haptic('warning')
       setError(
@@ -193,25 +206,7 @@ function RequestJoin({ code }: { code: string }) {
     }
   }
 
-  if (submitted) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
-        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}>
-          <div className="w-16 h-16 rounded-3xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-4 mx-auto">
-            <Clock size={32} className="text-family-400" />
-          </div>
-          <h1 className="text-2xl font-bold mb-2">Waiting for approval</h1>
-          <p className="text-sm text-ink-secondary leading-relaxed max-w-xs mx-auto">
-            We've let {submitted.familyName} know you'd like to join. Once they approve your
-            request, sign in with the email and password you just set.
-          </p>
-          <Link href="/login" className="inline-block mt-6 text-sm font-semibold text-family-400">
-            Go to sign in
-          </Link>
-        </motion.div>
-      </div>
-    )
-  }
+  if (submitted) return <PendingApproval />
 
   return (
     <div className="min-h-screen flex flex-col px-6 pt-12 pb-8">
@@ -219,9 +214,13 @@ function RequestJoin({ code }: { code: string }) {
         <div className="w-16 h-16 rounded-3xl bg-family-500/10 border border-family-500/20 flex items-center justify-center mb-3 mx-auto">
           <Users size={32} className="text-family-400" />
         </div>
-        <h1 className="text-2xl font-bold">Join your family on Keel</h1>
+        <h1 className="text-2xl font-bold">
+          {from ? `${from} invited you to see your family's plan` : 'Join your family on LifeKeel'}
+        </h1>
         <p className="text-sm text-ink-tertiary mt-1">
-          The organizer will need to approve your request before you can sign in.
+          {from
+            ? `${from} has to approve you first. Until then you won't see anything.`
+            : 'The organizer will need to approve your request before you can sign in.'}
         </p>
       </div>
 

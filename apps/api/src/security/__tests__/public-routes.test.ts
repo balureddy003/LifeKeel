@@ -22,6 +22,7 @@ describe('public route inventory', () => {
           "A /engine/health",
           "A /status",
           "A /metrics",
+          "A /internal/cron",
           "F /auth/token",
           "F /auth/demo-token",
           "B /auth/signup",
@@ -72,8 +73,20 @@ describe('public route inventory', () => {
     }
   })
 
+  it('opens /staging/mail and /staging/control only when the staging sink is on, as exactly two group F entries', () => {
+    const off = publicRoutes({ docsEnabled: false })
+    const on = publicRoutes({ docsEnabled: false, stagingSink: true })
+    expect(off.some((r) => r.prefix.startsWith('/staging'))).toBe(false)
+    expect(on.filter((r) => !off.includes(r)).map((r) => `${r.group} ${r.prefix}`)).toEqual([
+      'F /staging/mail',
+      'F /staging/control',
+    ])
+  })
+
   it('server.ts takes its open list from this module, not a local literal', () => {
-    expect(serverSrc).toContain('openPrefixes({ docsEnabled: DOCS_ENABLED })')
+    expect(serverSrc).toContain(
+      'openPrefixes({ docsEnabled: DOCS_ENABLED, stagingSink: STAGING_SINK })',
+    )
     expect(serverSrc).not.toMatch(/const open = \[/)
   })
 })

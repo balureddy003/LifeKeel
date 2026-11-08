@@ -40,6 +40,7 @@ import { NavRail } from './NavRail'
 import { isKeelPanelEnabled } from '@/lib/keel/client'
 import { PANEL_ID, useKeelPanel } from '@/lib/keel/store'
 import { haptic } from '@/lib/haptics'
+import { firstStepWaitMessage, isFirstStepPath } from '@/lib/signup-destination'
 import { track } from '@/lib/growth-track'
 import { isNativeShell, biometricLockEnabled, verifyBiometric } from '@/lib/native'
 
@@ -398,7 +399,7 @@ function EmergencyButton() {
         activateEmergency()
       }}
       whileTap={{ scale: 0.95 }}
-      className="relative h-11 pl-3 pr-3 rounded-full flex items-center gap-1.5"
+      className="relative h-12 pl-3 pr-3 rounded-full flex items-center gap-1.5"
       style={{
         background: 'linear-gradient(135deg, #ffafa3, #ffafa3)',
         border: '1px solid rgba(211,184,245,0.5)',
@@ -453,7 +454,7 @@ function AskKeelButton({ context }: { context?: string }) {
           router.push(context ? `/assistant?context=${encodeURIComponent(context)}` : '/assistant')
       }}
       whileTap={{ scale: 0.9 }}
-      className="relative w-11 h-11 rounded-full flex items-center justify-center"
+      className="relative w-12 h-12 rounded-full flex items-center justify-center"
       style={{
         background: 'rgb(var(--family-500))',
         border: '1px solid rgb(var(--tint) / 0.15)',
@@ -536,7 +537,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/operator') ||
     pathname.startsWith('/invite')
 
-  // A new account heads straight for its first brief. The household behind it
+  // A new account heads straight for its first step (the family list, or a money question picked
+  // on the landing page). The household behind it
   // is created quietly (same as "Skip for now") instead of stopping the person
   // at a set-up screen first; if that fails, the normal set-up screen shows.
   const [autoFamilyFailed, setAutoFamilyFailed] = useState(false)
@@ -547,7 +549,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     !family &&
     !familyLoadFailed &&
     !autoFamilyFailed &&
-    pathname.startsWith('/briefs')
+    isFirstStepPath(pathname)
   useEffect(() => {
     if (!wantsAutoFamily || autoFamilyStarted.current) return
     autoFamilyStarted.current = true
@@ -663,7 +665,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         aria-busy="true"
         className="flex min-h-[65dvh] items-center justify-center px-4 text-ink-tertiary"
       >
-        Getting your brief ready…
+        {firstStepWaitMessage(pathname)}
       </div>
     )
   }
@@ -998,7 +1000,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         // picked type carried through — they used to land on the
         // hypothetical /events simulator, and car/property/travel had no
         // real flow at all. ?type= preselects on the confirm screen.
-        onSelectEvent={(eventId) => router.push(`/life-events?type=${eventId}`)}
+        onSelectEvent={(eventId) => router.push(`/life-events?type=${eventId}&now=1`)}
       />
       <CommandPalette />
       <PwaInit />

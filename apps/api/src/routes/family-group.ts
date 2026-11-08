@@ -22,7 +22,11 @@ import type { Db } from 'mongodb'
 import { randomUUID, randomBytes } from 'node:crypto'
 import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { getFamilyGroupsCollection } from '../db.js'
-import { isFamilyOrganizer } from '../family/family-permissions.js'
+import {
+  isFamilyOrganizer,
+  isMinorMember,
+  memberMatchesUser,
+} from '../family/family-permissions.js'
 import { cascadeLegacyMemberRemoval } from './family-legacy.js'
 import { getAuditLogger } from '../audit/audit-log.js'
 import { displayNameError } from '../validation/display-name.js'
@@ -91,6 +95,19 @@ export interface FamilyMemberDoc {
   // Intent 25: optional relationship label for children ("my child" /
   // "partner's child" / "shared"). Set via POST/PATCH; display-only.
   relationship_label?: RelationshipLabel
+  // The organizer let this adult add and edit household records. Stored on the
+  // roster, not on a session role, so it applies at once and ends when the
+  // member is removed or becomes a child.
+  can_edit?: boolean
+  // The organizer said this adult does not need to confirm the family list
+  // (someone they care for, for example), so the list does not wait for them.
+  // Without it every adult on the roster, joined or not, has to see the list.
+  confirm_exempt?: boolean
+  // Set when someone is made an organizer: the user who did it. That person can
+  // always remove or demote them; they can never remove or demote that person.
+  // So a handover made under pressure cannot lock the person who made it out of
+  // their own family. An organizer with no value here is an original organizer.
+  made_organizer_by?: string
 }
 
 export interface FamilyGroupDoc extends Record<string, unknown> {
@@ -156,6 +173,8 @@ function toResponse(doc: FamilyGroupDoc, inviteViewedAt: Map<string, Date> = new
       ...(m.user_id ? { userId: m.user_id } : {}),
       ...(m.date_of_birth ? { dateOfBirth: m.date_of_birth } : {}),
       ...(m.relationship_label ? { relationshipLabel: m.relationship_label } : {}),
+      ...(m.can_edit ? { canEdit: true } : {}),
+      ...(m.confirm_exempt ? { confirmExempt: true } : {}),
     })),
     ...(doc.context_note ? { contextNote: doc.context_note } : {}),
   }
@@ -351,8 +370,26 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
 
     if (!(await isFamilyOrganizer(db, tenant_id, req.authContext.user_id)))
       return reply.status(403).send({ error: 'Only the organizer can manage the family' })
-    if (req.params.id === req.authContext.user_id && role !== undefined && role !== 'organizer')
-      return reply.status(409).send({ error: 'An organizer cannot remove their own role' })
+    const roleGroup = (await groupsFor(tenant_id).findOne({})) as FamilyGroupDoc | null
+    const roleTarget = roleGroup?.members.find((m) => m.id === req.params.id)
+    const roleActor = roleGroup?.members.find((m) => memberMatchesUser(m, req.authContext.user_id))
+    if (roleTarget?.role === 'organizer' && role !== undefined && role !== 'organizer') {
+      const stepsDown = roleTarget.id === roleActor?.id
+      if (stepsDown) {
+        // Stepping down is fine, as long as somebody is left in charge.
+        const others = roleGroup!.members.filter(
+          (m) => m.id !== roleTarget.id && m.role === 'organizer' && m.status === 'active',
+        )
+        if (others.length === 0)
+          return reply
+            .status(409)
+            .send({ error: 'Hand over to another organizer before you step down.' })
+      } else if (roleTarget.made_organizer_by !== req.authContext.user_id) {
+        return reply
+          .status(409)
+          .send({ error: 'Only the person who made someone an organizer can change their role.' })
+      }
+    }
 
     // Labels only make sense on children — check against the effective
     // role (a single PATCH may set role and label together).
@@ -369,6 +406,10 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
     const set: Record<string, unknown> = { updated_at: new Date() }
     const unset: Record<string, unknown> = {}
     if (role !== undefined) set['members.$.role'] = role
+    // Remember who made an organizer (see made_organizer_by), and forget it when they stop being one.
+    if (role === 'organizer' && roleTarget?.role !== 'organizer')
+      set['members.$.made_organizer_by'] = req.authContext.user_id
+    if (role !== undefined && role !== 'organizer') unset['members.$.made_organizer_by'] = ''
     if (date_of_birth !== undefined) set['members.$.date_of_birth'] = date_of_birth
     if (relationship_label !== undefined && relationship_label !== null)
       set['members.$.relationship_label'] = relationship_label
@@ -377,6 +418,8 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
     // change to adult/parent — the child-only guard above only covers
     // the same request.
     if (role !== undefined && role !== 'child') unset['members.$.relationship_label'] = ''
+    // A child can never hold edit access.
+    if (role === 'child') unset['members.$.can_edit'] = ''
 
     const result = (await groupsFor(tenant_id).findOneAndUpdate(
       { 'members.id': req.params.id },
@@ -387,14 +430,127 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
     return { family: toResponse(result) }
   })
 
+  // ── PUT /family/members/:id/edit-access ─────────────────────────────────
+  // The organizer lets a second adult add and edit household records (or takes
+  // it back). Tier 0 permission bookkeeping: nothing is sent and nothing acts
+  // for anyone; every grant and revoke is audit-logged.
+  fastify.put<{ Params: { id: string }; Body: { enabled?: unknown } }>(
+    '/family/members/:id/edit-access',
+    async (req, reply) => {
+      const { tenant_id, user_id } = req.authContext
+      if (!(await isFamilyOrganizer(db, tenant_id, user_id)))
+        return reply.status(403).send({ error: 'Only the organizer can change edit access' })
+      const enabled = req.body?.enabled
+      if (typeof enabled !== 'boolean')
+        return reply.status(400).send({ error: 'enabled must be true or false' })
+
+      const group = (await groupsFor(tenant_id).findOne({})) as FamilyGroupDoc | null
+      const member = group?.members.find((m) => m.id === req.params.id)
+      if (!member) return reply.status(404).send({ error: 'Member not found' })
+      if (member.role === 'organizer')
+        return reply.status(409).send({ error: 'The organizer can always edit' })
+      if (member.role === 'child')
+        return reply.status(400).send({ error: 'Children cannot have edit access' })
+      if (member.status !== 'active')
+        return reply
+          .status(400)
+          .send({ error: 'They need to join before they can have edit access' })
+
+      const result = (await groupsFor(tenant_id).findOneAndUpdate(
+        { 'members.id': member.id },
+        enabled
+          ? { $set: { 'members.$.can_edit': true, updated_at: new Date() } }
+          : { $set: { updated_at: new Date() }, $unset: { 'members.$.can_edit': '' } },
+        { returnDocument: 'after' },
+      )) as FamilyGroupDoc | null
+      if (!result) return reply.status(404).send({ error: 'Member not found' })
+      getAuditLogger()?.fromRequest(req, 'family.edit_access_changed', 'family_member', member.id, {
+        enabled,
+      })
+      return { family: toResponse(result) }
+    },
+  )
+
+  // ── PUT /family/members/:id/confirm-exempt ──────────────────────────────
+  // The organizer says an adult does not need to confirm the family list (for
+  // example someone they care for), or puts the duty back. It works for adults
+  // who have not joined yet: that is the point. Tier 0 bookkeeping, audit-logged.
+  fastify.put<{ Params: { id: string }; Body: { exempt?: unknown } }>(
+    '/family/members/:id/confirm-exempt',
+    async (req, reply) => {
+      const { tenant_id, user_id } = req.authContext
+      if (!(await isFamilyOrganizer(db, tenant_id, user_id)))
+        return reply.status(403).send({ error: 'Only the organizer can change who confirms' })
+      const exempt = req.body?.exempt
+      if (typeof exempt !== 'boolean')
+        return reply.status(400).send({ error: 'exempt must be true or false' })
+
+      const group = (await groupsFor(tenant_id).findOne({})) as FamilyGroupDoc | null
+      const member = group?.members.find((m) => m.id === req.params.id)
+      if (!member) return reply.status(404).send({ error: 'Member not found' })
+      if (member.role === 'organizer')
+        return reply.status(409).send({ error: 'The organizer always confirms' })
+      if (member.role === 'child')
+        return reply.status(400).send({ error: 'Children are never asked to confirm' })
+
+      const result = (await groupsFor(tenant_id).findOneAndUpdate(
+        { 'members.id': member.id },
+        exempt
+          ? { $set: { 'members.$.confirm_exempt': true, updated_at: new Date() } }
+          : { $set: { updated_at: new Date() }, $unset: { 'members.$.confirm_exempt': '' } },
+        { returnDocument: 'after' },
+      )) as FamilyGroupDoc | null
+      if (!result) return reply.status(404).send({ error: 'Member not found' })
+      getAuditLogger()?.fromRequest(
+        req,
+        'family.confirm_duty_changed',
+        'family_member',
+        member.id,
+        {
+          exempt,
+        },
+      )
+      return { family: toResponse(result) }
+    },
+  )
+
   // ── DELETE /family/members/:id ──────────────────────────────────────────
   fastify.delete<{ Params: { id: string } }>('/family/members/:id', async (req, reply) => {
-    const { tenant_id } = req.authContext
+    const { tenant_id, user_id, roles } = req.authContext
 
-    if (!(await isFamilyOrganizer(db, tenant_id, req.authContext.user_id)))
-      return reply.status(403).send({ error: 'Only the organizer can manage the family' })
-    if (req.params.id === req.authContext.user_id)
-      return reply.status(409).send({ error: 'An organizer cannot remove themselves' })
+    const current = (await groupsFor(tenant_id).findOne({})) as FamilyGroupDoc | null
+    const target = current?.members.find((m) => m.id === req.params.id)
+    const actor = current?.members.find((m) => memberMatchesUser(m, user_id))
+    const leaving = !!target && !!actor && target.id === actor.id
+
+    if (leaving) {
+      // Anyone can leave on their own, without the organizer: for someone who needs
+      // to get out, depending on the person they are leaving would defeat the point.
+      if (isMinorMember(target))
+        return reply.status(403).send({ error: 'A parent decides when a child leaves the family' })
+      if ((roles ?? []).includes('owner'))
+        return reply.status(409).send({
+          error:
+            'The account owner cannot leave. Hand over the account first, or delete the family.',
+        })
+      if (target.role === 'organizer') {
+        const others = current!.members.filter(
+          (m) => m.id !== target.id && m.role === 'organizer' && m.status === 'active',
+        )
+        if (others.length === 0)
+          return reply
+            .status(409)
+            .send({ error: 'Hand over to another organizer before you leave.' })
+      }
+    } else {
+      if (!(await isFamilyOrganizer(db, tenant_id, user_id)))
+        return reply.status(403).send({ error: 'Only the organizer can manage the family' })
+      // Whoever was made an organizer cannot remove the person who made them one.
+      if (target?.role === 'organizer' && target.made_organizer_by !== user_id)
+        return reply
+          .status(409)
+          .send({ error: 'Only the person who made someone an organizer can remove them.' })
+    }
     const before = (await groupsFor(tenant_id).findOneAndUpdate(
       {},
       { $pull: { members: { id: req.params.id } }, $set: { updated_at: new Date() } },

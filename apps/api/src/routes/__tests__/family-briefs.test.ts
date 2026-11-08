@@ -42,6 +42,7 @@ import {
   type HouseholdBriefDoc,
   migrateSensitiveBriefFacts,
   purgeExpiredSensitiveFacts,
+  stripSensitiveBriefInputs,
 } from '../../briefs/briefs.js'
 
 const TENANT = 't-briefs'
@@ -801,6 +802,54 @@ describe('catalogue review fixes', () => {
       got.json().brief.facts.find((f: { label: string }) => f.label === 'Allergies as recorded')
         ?.value,
     ).toBe('Penicillin')
+  })
+
+  it('keeps sensitive facts only in ciphertext — never in stored or returned inputs (review F01)', async () => {
+    for (const entry of BRIEF_CATALOGUE.filter((e) => e.sensitive)) {
+      await db.collection('household_briefs').deleteMany({})
+      const marker = `Canary note for ${entry.title}`
+      const res = await v2(entry.id, {
+        change_date: '2026-10-28',
+        sensitive_consent: true,
+        facts: { [entry.fields![0]!]: marker },
+      })
+      expect(res.statusCode, entry.id).toBe(201)
+      expect(JSON.stringify(res.json().brief.inputs), entry.id).not.toContain(marker)
+      const id = res.json().brief.id
+      const { facts_encrypted: _ct, ...rest } = (await db
+        .collection('household_briefs')
+        .findOne({ id }))!
+      expect(JSON.stringify(rest), entry.id).not.toContain(marker)
+
+      const list = await app.inject({ method: 'GET', url: '/family/briefs' })
+      expect(JSON.stringify(list.json().briefs[0].inputs), entry.id).not.toContain(marker)
+
+      await db
+        .collection('household_briefs')
+        .updateOne({ id }, { $set: { facts_expire_at: new Date(Date.now() - 1000) } })
+      const expired = await app.inject({ method: 'GET', url: `/family/briefs/${id}` })
+      expect(expired.body, entry.id).not.toContain(marker)
+    }
+  })
+
+  it('migration drops the plaintext inputs.facts copy older sensitive briefs kept', async () => {
+    const res = await v2('medical_contacts', {
+      change_date: '2026-10-28',
+      sensitive_consent: true,
+      facts: { 'Allergies as recorded': 'Penicillin' },
+    })
+    const id = res.json().brief.id
+    await db
+      .collection('household_briefs')
+      .updateOne({ id }, { $set: { 'inputs.facts': { 'Allergies as recorded': 'Penicillin' } } })
+    // Read path hides it even before the migration runs.
+    const before = await app.inject({ method: 'GET', url: `/family/briefs/${id}` })
+    expect(JSON.stringify(before.json().brief.inputs)).not.toContain('Penicillin')
+    expect((await stripSensitiveBriefInputs(db)).stripped).toBe(1)
+    const stored = await db.collection('household_briefs').findOne({ id })
+    expect(stored!.inputs.facts).toBeUndefined()
+    expect(stored!.inputs.change_date).toBe('2026-10-28')
+    expect(stored!.facts_encrypted).toMatch(/^dek:/)
   })
 
   it('rejects a handover fact that looks like a secret (Intent 79)', async () => {

@@ -64,7 +64,7 @@ describe('verify-otp page', () => {
     const [first] = await screen.findAllByLabelText(/Digit \d of 6/)
     fireEvent.paste(first!, { clipboardData: { getData: () => '482 913' } })
     await waitFor(() => expect(verifyEmailOtp).toHaveBeenCalledWith('482913'))
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/briefs'))
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/domains'))
   })
 
   it('announces a wrong code with the tries left and clears the boxes', async () => {

@@ -5,6 +5,7 @@ import yaml from 'js-yaml'
 import { repoRoot } from '@lifekeel/platform'
 import { DETECTOR_CONTENT_POSTS } from './detector-content-posts.js'
 import { ensureKeelIndexes } from './keel-agent/threads.js'
+import { stripSensitiveBriefInputs } from './briefs/briefs.js'
 
 export interface Migration {
   id: string
@@ -396,7 +397,44 @@ export const migrations: Migration[] = [
         db.collection('household_obligations').createIndex({ id: 1 }),
         db.collection('employer_cover_facts').createIndex({ tenant_id: 1, created_at: 1 }),
         db.collection('employer_cover_facts').createIndex({ id: 1 }),
+        db.collection('domain_records').createIndex({ tenant_id: 1, domain_id: 1, created_at: 1 }),
+        db.collection('domain_records').createIndex({ id: 1 }),
+        db
+          .collection('domain_confirmations')
+          .createIndex(
+            { tenant_id: 1, domain_id: 1, user_id: 1, result_version: 1 },
+            { unique: true },
+          ),
       ])
+    },
+  },
+  {
+    // Review F01: sensitive handover facts were also stored in plaintext under
+    // inputs.facts, outliving the encrypted copy's expiry. Encrypt any
+    // remaining plaintext facts, then drop the duplicate.
+    id: '20261102000000-strip-sensitive-brief-inputs',
+    up: async (db) => {
+      await stripSensitiveBriefInputs(db)
+    },
+  },
+  {
+    // Review F10: in-flight LLM spend reservations. TTL frees a reservation a
+    // crashed process never released; the tenant index serves the sum.
+    id: '20261102000001-llm-budget-reservation-indexes',
+    up: async (db) => {
+      await Promise.all([
+        db.collection('llm_budget_reservations').createIndex({ tenant_id: 1, expires_at: 1 }),
+        db
+          .collection('llm_budget_reservations')
+          .createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 }),
+      ])
+    },
+  },
+  {
+    // Review F12: the receipt chain streams in (executed_at, id) order per tenant.
+    id: '20261102000002-action-receipts-chain-index',
+    up: async (db) => {
+      await db.collection('action_receipts').createIndex({ tenant_id: 1, executed_at: 1, id: 1 })
     },
   },
 ]

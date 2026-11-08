@@ -337,6 +337,18 @@ describe('router: dead devices and the email floor (real MongoDB)', () => {
   })
   const prefs = () => db.collection('delivery_preferences').findOne({ tenant_id: T })
 
+  it('a muted alert kind sends nothing for a normal alert, but never silences a critical one', async () => {
+    const { router, emails } = await setup({ channels: ['email'] })
+    await db
+      .collection('delivery_preferences')
+      .updateOne({ tenant_id: T }, { $set: { kinds_muted: ['insight_alert'] } })
+    expect(await router.deliver(insight('muted-1'), T)).toBeNull()
+    expect(emails).toHaveLength(0)
+    const critical = { ...insight('muted-2'), urgency: 'critical' }
+    expect(await router.deliver(critical, T)).toMatchObject({ success: true })
+    expect(emails).toHaveLength(1)
+  })
+
   it('an expired web subscription is removed, recorded, the channel switched off, and the alert goes to email', async () => {
     const { router, emails } = await setup({ subs: ['https://dead'], web: () => gone('web_push') })
     const r = await router.deliver(insight('i1'), T)

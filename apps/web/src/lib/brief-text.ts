@@ -24,7 +24,7 @@ export function runsOutAround(sentence: string): string | undefined {
  */
 export function briefHeadline(main: string): string {
   const runsOut = main.match(/savings would run out around ([A-Za-z]+ \d{4})/)
-  if (runsOut) return `Savings would run out around ${runsOut[1]}.`
+  if (runsOut) return `Your savings would last until about ${runsOut[1]}.`
   if (/savings last more than 50 years/.test(main)) return 'Savings would last more than 50 years.'
   if (/there are no savings to draw on/.test(main)) return 'There are no savings to draw on.'
   const clauses = main.split('. ').map((c) => c.replace(/\.$/, ''))

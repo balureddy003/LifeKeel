@@ -1,9 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
-  <!-- Monochrome, no container — for a single-color context on a light ground: letterhead, a light-mode favicon, print. -->
-  <path d="M96 30 L96 160" stroke="#16151a" stroke-width="9" stroke-linecap="round"/>
-  <path d="M96 34 C122 48 130 66 126 84 L96 84 Z" fill="#16151a"/>
-  <path d="M96 112 L126 112 C130 130 122 148 96 162 Z" fill="#16151a" opacity="0.5"/>
-  <rect x="80" y="156" width="32" height="12" rx="6" fill="#16151a"/>
-  <path d="M26 98 Q38 92 50 98 T74 98" fill="none" stroke="#16151a" stroke-width="6" stroke-linecap="round" opacity="0.65"/>
-  <path d="M118 98 Q130 92 142 98 T166 98" fill="none" stroke="#16151a" stroke-width="6" stroke-linecap="round" opacity="0.65"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="12 8 92 104" width="92" height="104"><path d="M58 14C88 30 96 50 92 56H58Z" fill="#16151a"/><path d="M58 106C88 90 96 70 92 64H58Z" fill="#16151a" fill-opacity=".55"/><circle cx="58" cy="60" r="4.5" fill="#16151a"/><path d="M22 60h28M66 60h4" stroke="#16151a" stroke-opacity=".45" stroke-width="3" stroke-linecap="round"/></svg>

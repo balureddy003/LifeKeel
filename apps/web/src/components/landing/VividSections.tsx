@@ -23,7 +23,7 @@ import {
 import { appUrl } from '@/lib/region'
 import { track } from '@/lib/growth-track'
 import { haptic } from '@/lib/haptics'
-import { CAPABILITIES, MOMENTS, type Moment } from './capabilities'
+import { CAPABILITIES, CHAPTERS, type Chapter } from './capabilities'
 import { PROMISES } from './Promises'
 import { SECURITY } from './Security'
 import { FREE_ROWS, PLUS_ROWS } from './Pricing'
@@ -79,25 +79,25 @@ export function StatStrip() {
 const STEPS: { icon: LucideIcon; title: string; body: string }[] = [
   {
     icon: ClipboardList,
-    title: 'Add what you hold',
-    body: 'Savings, cover, debts, wills and papers, and who is in the family. Type it in or upload the document.',
+    title: 'Choose the problem',
+    body: 'Income stopping, a drop in pay, a fix ending, fees starting. Start from the one in front of you.',
   },
   {
     icon: ScanSearch,
-    title: 'Keel checks it',
-    body: 'Runway, cover against a rough estimate, renewals, duplicates and retirement pace, all from your own figures.',
+    title: 'Enter a few figures',
+    body: 'Savings, monthly costs, any cover on file. Keel works out the months and the date it depends on, from your own figures.',
   },
   {
     icon: Compass,
-    title: 'Know the next step',
-    body: 'A readiness snapshot today, and a short set of steps on the day something happens.',
+    title: 'Send the link',
+    body: 'The other adult reads the same answer. You see when they have opened it.',
   },
 ]
 
 export function HowItWorks() {
   return (
     <section className="vv-section" aria-labelledby="vv-how-h">
-      <Heading eyebrow="How it works" id="vv-how-h" title="Three steps to a clearer picture." />
+      <Heading eyebrow="How it works" id="vv-how-h" title="Three steps. One evening." />
       <ol className="vv-steps">
         {STEPS.map(({ icon: Icon, title, body }, i) => (
           <li key={title}>
@@ -114,15 +114,51 @@ export function HowItWorks() {
   )
 }
 
-const MOMENT_STYLE: Record<Moment, { tone: string; icon: LucideIcon }> = {
-  before: { tone: 'cyan', icon: ShieldCheck },
-  during: { tone: 'violet', icon: LifeBuoy },
-  after: { tone: 'amber', icon: MessageSquareText },
+const CHAPTER_STYLE: Record<Chapter, { tone: string; icon: LucideIcon }> = {
+  find: { tone: 'cyan', icon: FolderLock },
+  know: { tone: 'violet', icon: MessageSquareText },
+  dates: { tone: 'amber', icon: BellRing },
+  ask: { tone: 'blue', icon: ScanSearch },
+  help: { tone: 'pink', icon: LifeBuoy },
+  change: { tone: 'green', icon: Compass },
 }
+
+const PROBLEMS: Array<[string, string, string]> = [
+  [
+    'income_stops',
+    'One of us might stop earning',
+    'How many months could the household run on savings and any cover on file?',
+  ],
+  [
+    'earning_less',
+    'Someone is about to earn less',
+    'A known drop is coming — see the savings left when it lands, and the months after.',
+  ],
+  [
+    'handover_gap',
+    'The other adult does not know',
+    'The runway, who to call, and where the key papers and policies live.',
+  ],
+  [
+    'mortgage_fix',
+    'Our mortgage fix is ending',
+    'Enter the new payment and see how the months change from the day it starts.',
+  ],
+  [
+    'fees_start',
+    'Nursery or school fees are starting',
+    'A new monthly cost from a known date — see what it does to the months left.',
+  ],
+  [
+    'job_change',
+    'A job change or notice period',
+    'The gap after the final pay date, and the months you could cover it.',
+  ],
+]
 
 export function ThreeProblems() {
   return (
-    <section className="vv-section" aria-labelledby="vv-problems-h">
+    <section className="vv-section" id="problems" aria-labelledby="vv-problems-h">
       <Heading
         eyebrow="Start here"
         id="vv-problems-h"
@@ -130,23 +166,7 @@ export function ThreeProblems() {
         intro="Pick the question in front of your household. A few figures in, one answer out — send it to the other adult and you will see when they have opened it."
       />
       <div className="vv-plans">
-        {[
-          [
-            'income_stops',
-            'One of us might stop earning',
-            'How many months could the household run on savings and any cover on file?',
-          ],
-          [
-            'earning_less',
-            'Someone is about to earn less',
-            'A known drop is coming — see the savings left when it lands, and the months after.',
-          ],
-          [
-            'handover_gap',
-            'The other adult does not know',
-            'The runway, who to call, and where the key papers and policies live.',
-          ],
-        ].map(([id, t, d]) => (
+        {PROBLEMS.map(([id, t, d]) => (
           <article className="vv-plan" key={t}>
             <h3>
               <a href={appUrl(`/signup?brief=${id}`)} onClick={signup('problems')}>
@@ -169,31 +189,37 @@ export function ThreeProblems() {
   )
 }
 
+/** Six chapters, each a thing a family says out loud. A new use case adds a scene in capabilities.ts. */
 export function Features() {
   return (
     <section className="vv-section" id="features" aria-labelledby="vv-features-h">
       <Heading
-        eyebrow="One home for the family"
+        eyebrow="One list, six questions"
         id="vv-features-h"
-        title="Ready before. Found during. Sorted after."
-        intro="Everything below works from what your family adds. Keel shows, estimates and drafts. You decide."
+        title="The things your family says out loud."
+        intro="Each one is something LifeKeel helps with today, from what your family adds. LifeKeel shows, estimates and drafts. You decide."
       />
       <div className="vv-moments">
-        {MOMENTS.map((m) => {
-          const { tone, icon: Icon } = MOMENT_STYLE[m.id]
+        {CHAPTERS.map((ch) => {
+          const { tone, icon: Icon } = CHAPTER_STYLE[ch.id]
           return (
-            <article key={m.id} className={`vv-moment vv-${tone}`}>
+            <article
+              key={ch.id}
+              className={`vv-moment vv-${tone}`}
+              aria-labelledby={`vv-chapter-${ch.id}`}
+            >
               <header>
                 <span className="vv-icon">
                   <Icon size={22} aria-hidden="true" />
                 </span>
                 <div>
-                  <h3>{m.name}</h3>
-                  <p>{m.line}</p>
+                  <p className="vv-says">{ch.says}</p>
+                  <h3 id={`vv-chapter-${ch.id}`}>{ch.name}</h3>
+                  <p>{ch.line}</p>
                 </div>
               </header>
               <ul>
-                {CAPABILITIES.filter((c) => c.moment === m.id && c.live).map((c) => (
+                {CAPABILITIES.filter((c) => c.chapter === ch.id && c.live).map((c) => (
                   <li key={c.claim}>
                     <Check size={16} aria-hidden="true" />
                     <span>

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <!-- K = mast + sail arm above the waterline, its reflection (the keel) below -->
+  <defs><linearGradient id="g" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse"><stop stop-color="#0b3b5c"/><stop offset="1" stop-color="#0e7490"/></linearGradient>
+  <linearGradient id="r" x1="0" y1="60" x2="0" y2="100" gradientUnits="userSpaceOnUse"><stop stop-color="#7dd3fc" stop-opacity=".95"/><stop offset="1" stop-color="#7dd3fc" stop-opacity=".45"/></linearGradient></defs>
+  <rect width="120" height="120" rx="27" fill="url(#g)"/>
+  <path d="M42 24V96" stroke="#fff" stroke-width="11" stroke-linecap="round"/>
+  <path d="M50 58C64 54 76 42 86 26" stroke="#fff" stroke-width="11" stroke-linecap="round" fill="none"/>
+  <path d="M50 62C64 66 76 78 86 94" stroke="url(#r)" stroke-width="11" stroke-linecap="round" fill="none"/>
+  <circle cx="86" cy="94" r="5.5" fill="#7dd3fc"/>
+</svg>

@@ -488,25 +488,30 @@ describe('architecture claims: queue durability and migration gate', () => {
 })
 
 describe('architecture claims: service-role split (B7)', () => {
-  it('every cron schedule and queue consumer lives inside the SERVICE_ROLE gate', () => {
+  it('inline timers and queue consumers stay gated; every role registers jobs for Scheduler', () => {
     const src = readSrc('apps/api/src/server.ts')
-    const open = src.indexOf('if (runBackgroundWork) {')
-    const close = src.indexOf('} // end runBackgroundWork')
+    const open = src.indexOf('const scheduleJob = (')
+    const close = src.indexOf('} // end background-work block')
     expect(open).toBeGreaterThan(-1)
     expect(close).toBeGreaterThan(open)
     const gated = src.slice(open, close)
-    // No timer or consumer may be registered outside the gated region —
-    // an api-role process must run zero background work.
-    expect(src.slice(0, open)).not.toContain('cron.schedule(')
-    expect(src.slice(close)).not.toContain('cron.schedule(')
-    expect(src.slice(close)).not.toContain('.subscribe(')
-    expect(gated).toContain('cron.schedule(')
-    expect(gated).toContain('.subscribe(')
+    // Intent 92: jobs register in every role (api serves them to Cloud
+    // Scheduler); only the inline timer/consumer starts are role-gated.
+    expect(gated).toContain('registerScheduledJob(')
+    expect(gated).toContain('if (timersEnabled)')
+    expect(gated).toContain('if (consumersEnabled)')
+    // Queue consumers must sit inside the consumersEnabled gate — an
+    // api-role process must not poll Redis unless explicitly opted in.
+    const consumerIdx = gated.indexOf('startWebhookWorker(')
+    expect(consumerIdx).toBeGreaterThan(-1)
+    expect(gated.slice(0, consumerIdx)).toContain('if (consumersEnabled)')
+    // The trigger route exists so Scheduler can reach the registry.
+    expect(src).toContain("'/internal/cron/:name'")
   })
 
   it('the queue connection stays role-agnostic — api publishes, jobs consumes', () => {
     const src = readSrc('apps/api/src/server.ts')
-    const open = src.indexOf('if (runBackgroundWork) {')
+    const open = src.indexOf('const scheduleJob = (')
     expect(src.slice(0, open)).toContain('queueManager.connect()')
   })
 })

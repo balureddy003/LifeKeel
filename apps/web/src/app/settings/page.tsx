@@ -1,5 +1,11 @@
 'use client'
 
+import { EditAccessSwitch } from '@/components/EditAccessSwitch'
+import { ConfirmDutySwitch } from '@/components/ConfirmDutySwitch'
+import { LeaveFamily } from '@/components/LeaveFamily'
+import { APPROVAL_NOTE, approvalConfirm } from './join-request-copy'
+import { PushToggle } from '@/components/PushToggle'
+import { TextButton } from '@/components/TextButton'
 import { ACCOUNT_DELETE_WARNING } from '@/lib/deletion-receipt-copy'
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
@@ -66,6 +72,7 @@ import {
   approveAccessRequest,
   denyAccessRequest,
   resetInviteCode,
+  removeFamilyGroupMember,
   fetchMyReferralCode,
   fetchReferralSummary,
   fetchFamilyContinuity,
@@ -133,6 +140,8 @@ export default function SettingsPage() {
     signOut,
     inviteMember,
     removeMember,
+    setMemberEditAccess,
+    setMemberConfirmExempt,
     updateMemberRole,
     updateProfile,
     refresh,
@@ -162,6 +171,7 @@ export default function SettingsPage() {
   // their account.
   const isOrganizer =
     family?.members.find((m) => m.id === user?.id || m.userId === user?.id)?.role === 'organizer'
+  const ownMember = family?.members.find((m) => m.id === user?.id || m.userId === user?.id)
   const [accessRequests, setAccessRequests] = useState<AccessRequest[]>([])
   const [actingOnRequestId, setActingOnRequestId] = useState<string | null>(null)
   const [accessRequestError, setAccessRequestError] = useState<string | null>(null)
@@ -353,6 +363,10 @@ export default function SettingsPage() {
 
   const handleApproveRequest = async (id: string) => {
     haptic('light')
+    // Approving lets them in to everything on the family list: say who is asking and what
+    // that means before it happens.
+    const asking = accessRequests.find((r) => r.id === id)
+    if (asking && !(await confirm(approvalConfirm(asking.name, asking.email)))) return
     setActingOnRequestId(id)
     setAccessRequestError(null)
     try {
@@ -392,7 +406,11 @@ export default function SettingsPage() {
     const code = inviteCodeOverride ?? family?.inviteCode
     if (!code) return
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}/invite/${code}`)
+      // The sender's first name rides in the link so the person opening it
+      // knows who it is from. The code alone still reveals nothing.
+      const from = user?.name?.trim().split(/\s+/)[0]
+      const link = `${window.location.origin}/invite/${code}${from ? `?from=${encodeURIComponent(from)}` : ''}`
+      await navigator.clipboard.writeText(link)
       haptic('success')
       toast({ message: 'Invite link copied. Send it to your partner.' })
     } catch {
@@ -714,6 +732,30 @@ export default function SettingsPage() {
                       {ROLE_LABELS[m.role]}
                       {m.relationshipLabel ? ` · ${RELATIONSHIP_LABELS[m.relationshipLabel]}` : ''}
                     </div>
+                    {isOrganizer &&
+                      m.status === 'active' &&
+                      (m.role === 'adult' || m.role === 'parent') && (
+                        <EditAccessSwitch
+                          name={m.name}
+                          enabled={m.canEdit === true}
+                          onChange={(next) => {
+                            haptic('light')
+                            setMemberEditAccess(m.id, next).catch(() => haptic('warning'))
+                          }}
+                        />
+                      )}
+                    {/* Who has to confirm the family list. Shown for adults who
+                        have not joined too: that is who it is for. */}
+                    {isOrganizer && (m.role === 'adult' || m.role === 'parent') && (
+                      <ConfirmDutySwitch
+                        name={m.name}
+                        required={m.confirmExempt !== true}
+                        onChange={(next) => {
+                          haptic('light')
+                          setMemberConfirmExempt(m.id, !next).catch(() => haptic('warning'))
+                        }}
+                      />
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
                     <span
@@ -797,6 +839,28 @@ export default function SettingsPage() {
               }
             />
           </ListSection>
+        )}
+
+        {/* Anyone who needs to get out can leave on their own, without the organizer.
+            Children cannot: a parent decides that. The server explains when it is not
+            allowed (a sole organizer has to hand over first, the account owner cannot leave). */}
+        {family && ownMember && ownMember.status === 'active' && ownMember.role !== 'child' && (
+          <LeaveFamily
+            onLeave={async () => {
+              const ok = await confirm({
+                title: 'Leave this family?',
+                message:
+                  'You will lose access to the family list straight away. This can not be undone.',
+                confirmLabel: 'Leave',
+                destructive: true,
+              })
+              if (!ok) return
+              haptic('warning')
+              await removeFamilyGroupMember(ownMember.id)
+              signOut()
+              router.push('/login')
+            }}
+          />
         )}
 
         {/* Add Member form — plain conditional render, no AnimatePresence.
@@ -929,6 +993,7 @@ export default function SettingsPage() {
                     <div className="text-left min-w-0">
                       <div className="text-base font-medium truncate">{r.name}</div>
                       <div className="text-xs text-ink-tertiary mt-0.5 truncate">{r.email}</div>
+                      <div className="text-sm text-ink-secondary mt-1">{APPROVAL_NOTE}</div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {actingOnRequestId === r.id ? (
@@ -941,19 +1006,19 @@ export default function SettingsPage() {
                               handleApproveRequest(r.id)
                             }}
                             aria-label={`Approve ${r.name}`}
-                            className="w-8 h-8 rounded-lg bg-success/10 text-success flex items-center justify-center"
+                            className="min-h-[48px] px-3 rounded-lg bg-success/10 text-success text-base font-medium flex items-center gap-1.5"
                           >
-                            <Check size={16} />
+                            <Check size={16} aria-hidden="true" /> Approve
                           </button>
                           <button
                             onClick={(e) => {
                               e.stopPropagation()
                               handleDenyRequest(r.id)
                             }}
-                            aria-label={`Deny ${r.name}`}
-                            className="w-8 h-8 rounded-lg bg-danger/10 text-danger flex items-center justify-center"
+                            aria-label={`Decline ${r.name}`}
+                            className="min-h-[48px] px-3 rounded-lg bg-danger/10 text-danger text-base font-medium flex items-center gap-1.5"
                           >
-                            <X size={16} />
+                            <X size={16} aria-hidden="true" /> Decline
                           </button>
                         </>
                       )}
@@ -1096,14 +1161,12 @@ export default function SettingsPage() {
                   onChange={(e) => setContextNote(e.target.value)}
                   className="glass-input w-full rounded-xl px-3 py-2.5 text-sm text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 resize-none"
                 />
-                <button
-                  type="button"
+                <TextButton
                   disabled={contextBusy || contextNote === (family?.contextNote ?? '')}
                   onClick={saveContextNote}
-                  className="text-xs font-semibold text-family-400 disabled:opacity-40"
                 >
                   {contextBusy ? 'Saving…' : contextSaved ? 'Saved' : 'Save context'}
-                </button>
+                </TextButton>
               </div>
             </ListRow>
           </ListSection>
@@ -1235,22 +1298,11 @@ export default function SettingsPage() {
                         : 'Renewals and new insights — never marketing'}
                     </div>
                   </div>
-                  <button
-                    role="switch"
-                    aria-checked={pushEnabled}
-                    aria-label="Push notifications"
+                  <PushToggle
+                    enabled={pushEnabled}
                     disabled={pushAvailable === false || pushBusy}
-                    onClick={handlePushToggle}
-                    className={`relative w-12 h-7 rounded-full transition-colors disabled:opacity-40 flex-shrink-0 ${
-                      pushEnabled ? 'bg-family-500' : 'bg-tint/10'
-                    }`}
-                  >
-                    <span
-                      className={`absolute top-0.5 w-6 h-6 rounded-full bg-white transition-transform ${
-                        pushEnabled ? 'translate-x-[22px]' : 'translate-x-0.5'
-                      }`}
-                    />
-                  </button>
+                    onToggle={handlePushToggle}
+                  />
                 </div>
               </ListRow>
             </ListSection>

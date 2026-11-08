@@ -233,6 +233,21 @@ const GENERIC_LOGIN_ERROR = 'Invalid email or password'
 const THROTTLED_LOGIN_ERROR =
   'Too many sign-in attempts. Wait a few minutes or reset your password.'
 
+/** Same switch signup uses; read at call time so code outside this file can follow it. */
+export function emailVerificationEnabled(): boolean {
+  return process.env['EMAIL_VERIFICATION_ENABLED'] === 'true'
+}
+
+/** A fresh verification token for an account created outside signup (e.g. join approval). Only the hash is stored. */
+export function issueEmailVerification(): { hash: string; expires: Date; url: string } {
+  const token = generateEmailVerificationToken()
+  return {
+    hash: hashAuthToken(token),
+    expires: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    url: verificationUrl(token),
+  }
+}
+
 /** The link in the verification email — goes to the web /verify-email
  *  page, which POSTs the token back to /auth/verify-email. Never logged:
  *  possession of this URL proves mailbox ownership. The token rides in the
@@ -878,6 +893,24 @@ export async function registerAuthUserRoutes(
     }
 
     await col.updateOne({ id: user_id, tenant_id }, { $set: updateData })
+
+    // The family list keeps its own copy of a person's name and email. Without this a
+    // rename never reaches it, and the family's digests keep going to an address the
+    // person has left. Match the roster entry by account id or by its linked login.
+    if (updateData.name !== undefined || updateData.email !== undefined) {
+      const rosterSet: Record<string, string> = {}
+      if (updateData.name !== undefined) rosterSet['members.$[m].name'] = updateData.name
+      if (updateData.email !== undefined) rosterSet['members.$[m].email'] = updateData.email
+      await (
+        await getDb()
+      )
+        .collection('family_groups')
+        .updateOne(
+          { tenant_id },
+          { $set: rosterSet },
+          { arrayFilters: [{ $or: [{ 'm.id': user_id }, { 'm.user_id': user_id }] }] },
+        )
+    }
 
     // New address must prove ownership — the link goes to the new inbox,
     // never the old one. Send only after the update lands so a failure

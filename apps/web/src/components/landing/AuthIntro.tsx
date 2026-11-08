@@ -1,6 +1,6 @@
 import {
   CalendarClock,
-  FileText,
+  ClipboardList,
   FolderLock,
   KeyRound,
   Mail,
@@ -14,12 +14,12 @@ export type AuthIntroVariant = 'login' | 'signup' | 'reset'
 function LoginIntro() {
   return (
     <>
-      <p className="lk-eyebrow">YOUR FAMILY, IN ONE PLACE</p>
+      <p className="lk-eyebrow">KNOW WHERE TO LOOK</p>
       <h2>Pick up where you left off.</h2>
-      <p>Everything your family keeps in LifeKeel is right where you left it.</p>
+      <p>Your family list is right where you left it.</p>
       <div className="lk-intro-snapshot" aria-hidden="true">
         <div className="lk-intro-snapshot-head">
-          <span>Your household</span>
+          <span>Your family list</span>
           <span className="lk-intro-avatars">
             <i />
             <i />
@@ -27,9 +27,9 @@ function LoginIntro() {
           </span>
         </div>
         {[
+          { Icon: ClipboardList, label: 'The list', note: 'Policies, cars and school dates' },
+          { Icon: CalendarClock, label: 'Dates', note: 'What is coming up' },
           { Icon: FolderLock, label: 'Papers', note: 'Kept in your vault' },
-          { Icon: CalendarClock, label: 'Cover', note: 'Renewal dates on file' },
-          { Icon: Wallet, label: 'Money', note: 'Accounts in one view' },
         ].map(({ Icon, label, note }) => (
           <div key={label} className="lk-intro-row">
             <Icon size={18} />
@@ -44,19 +44,40 @@ function LoginIntro() {
   )
 }
 
-function SignupIntro() {
+function SignupIntro({ problem }: { problem?: string | null | undefined }) {
+  // A money question picked on the landing page keeps its own path. Otherwise this is the family list.
+  const steps = problem
+    ? [
+        { Icon: KeyRound, title: 'Create your account', note: 'You’re doing this now' },
+        { Icon: Wallet, title: 'Enter a few figures', note: 'Savings, monthly costs, any cover' },
+        { Icon: ShieldCheck, title: 'See the months', note: 'And the date they depend on' },
+        { Icon: Users, title: 'Send the link', note: 'You see when they have opened it' },
+      ]
+    : [
+        { Icon: KeyRound, title: 'Create your account', note: 'You’re doing this now' },
+        { Icon: ClipboardList, title: 'Add one thing', note: 'A car, a policy or a school date' },
+        {
+          Icon: Users,
+          title: 'Ask every adult to look',
+          note: 'Each one confirms they have seen it',
+        },
+        {
+          Icon: FolderLock,
+          title: 'Find it when you need it',
+          note: 'One list, one place to look',
+        },
+      ]
   return (
     <>
       <p className="lk-eyebrow">START FREE</p>
-      <h2>Set up your family’s home base.</h2>
-      <p>Start with what you know. You can add the rest at your own pace.</p>
+      <h2>{problem ? `Your question: ${problem}.` : 'Your family list starts here.'}</h2>
+      <p>
+        {problem
+          ? 'A few figures in, one answer out. Free to start.'
+          : 'Add one thing tonight. The rest can wait. Free to start.'}
+      </p>
       <ol className="lk-intro-steps">
-        {[
-          { Icon: KeyRound, title: 'Create your account', note: 'You’re doing this now' },
-          { Icon: Users, title: 'Add your household', note: 'The people you look after' },
-          { Icon: FileText, title: 'Add what’s on file', note: 'Policies, accounts and papers' },
-          { Icon: ShieldCheck, title: 'See where things stand', note: 'In one calm view' },
-        ].map(({ Icon, title, note }, i) => (
+        {steps.map(({ Icon, title, note }, i) => (
           <li key={title} aria-current={i === 0 ? 'step' : undefined}>
             <span className="lk-intro-step-icon">
               <Icon size={18} aria-hidden="true" />
@@ -106,11 +127,17 @@ function ResetIntro() {
   )
 }
 
-export function AuthIntro({ variant }: { variant: AuthIntroVariant }) {
+export function AuthIntro({
+  variant,
+  problem,
+}: {
+  variant: AuthIntroVariant
+  problem?: string | null | undefined
+}) {
   return (
     <aside className="lk-auth-intro" data-intro={variant} aria-label="About LifeKeel">
       {variant === 'login' && <LoginIntro />}
-      {variant === 'signup' && <SignupIntro />}
+      {variant === 'signup' && <SignupIntro problem={problem} />}
       {variant === 'reset' && <ResetIntro />}
     </aside>
   )

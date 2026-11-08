@@ -210,10 +210,15 @@ export function initTaskGateway(db: Db): void {
     // only batch-class tasks — a family's live session is never hard-stopped
     // on platform cost.
     budgetGuard: {
-      check: async (tenantId, detectorId, policy) => {
-        const llm = await llmBudgetGuard.check(tenantId, detectorId)
+      check: async (tenantId, detectorId, policy, estimate) => {
+        const llm = await llmBudgetGuard.check(tenantId, detectorId, estimate)
         if (!llm.allowed) return llm
-        return checkPlanSpendBudget(db, tenantId, policy)
+        const plan = await checkPlanSpendBudget(db, tenantId, policy)
+        if (!plan.allowed) {
+          await llm.release?.()
+          return plan
+        }
+        return { ...plan, ...(llm.release ? { release: llm.release } : {}) }
       },
     },
     processorGuard: {

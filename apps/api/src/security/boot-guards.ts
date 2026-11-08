@@ -49,6 +49,14 @@ export function evaluateBootGuards(env: Env, mode: string): BootGuardResult {
     violations.push('METRICS_SCRAPE_TOKEN must be set (at least 24 characters) outside dev')
   }
 
+  // /internal/cron fires scheduled jobs for Cloud Scheduler (intent 92). The
+  // route 404s without a token anyway; requiring one at boot keeps a deploy
+  // from silently losing its cron trigger.
+  const cronToken = env['CRON_TRIGGER_TOKEN'] ?? ''
+  if (cronToken.length < 24) {
+    violations.push('CRON_TRIGGER_TOKEN must be set (at least 24 characters) outside dev')
+  }
+
   return { violations, exceptions }
 }
 

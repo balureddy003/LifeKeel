@@ -9,10 +9,10 @@ describe('homepage live content', () => {
   it('keeps the live homepage message and detailed sections', () => {
     render(<HomeExperience />)
     for (const name of [
-      'Your family’s money, cover and papers. One bright place.',
-      'Three steps to a clearer picture.',
+      'Know where to look.',
+      'Three steps. One evening.',
       'One problem, one evening, one number.',
-      'Ready before. Found during. Sorted after.',
+      'The things your family says out loud.',
       'When something happens, your family has somewhere to start.',
       'Keep the household record current.',
       'Six things Keel does not do.',
@@ -21,8 +21,33 @@ describe('homepage live content', () => {
       'Make your account. Keel starts checking what you tell it.',
     ])
       expect(screen.getByRole('heading', { name })).toBeTruthy()
+    // The problems come before the steps and the capability list.
+    const order = (t: string) =>
+      screen
+        .getByRole('heading', { name: t })
+        .compareDocumentPosition(screen.getByRole('heading', { name: 'Three steps. One evening.' }))
+    expect(
+      order('One problem, one evening, one number.') & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
     expect(screen.getByText('£7.99 a month')).toBeTruthy()
     expect(screen.queryByText(/deleted immediately|Deletion is immediate/i)).toBeNull()
+  })
+
+  it('tells the short story right after the hero, then the chapters, then the rest', () => {
+    render(<HomeExperience />)
+    const after = (a: string, b: string) =>
+      screen
+        .getByRole('heading', { name: a })
+        .compareDocumentPosition(screen.getByRole('heading', { name: b })) &
+      Node.DOCUMENT_POSITION_FOLLOWING
+    expect(after('Know where to look.', 'Marcia’s Tuesday.')).toBeTruthy()
+    expect(after('Marcia’s Tuesday.', 'The things your family says out loud.')).toBeTruthy()
+    expect(
+      after('The things your family says out loud.', 'One problem, one evening, one number.'),
+    ).toBeTruthy()
+    expect(
+      after('The things your family says out loud.', 'Free to start. One optional paid plan.'),
+    ).toBeTruthy()
   })
 
   it('leads with the three brief problems, not a sample family', () => {
@@ -31,6 +56,9 @@ describe('homepage live content', () => {
       'One of us might stop earning',
       'Someone is about to earn less',
       'The other adult does not know',
+      'Our mortgage fix is ending',
+      'Nursery or school fees are starting',
+      'A job change or notice period',
     ]) {
       expect(screen.getByText(name)).toBeTruthy()
     }
@@ -39,6 +67,9 @@ describe('homepage live content', () => {
       ['One of us might stop earning', 'income_stops'],
       ['Someone is about to earn less', 'earning_less'],
       ['The other adult does not know', 'handover_gap'],
+      ['Our mortgage fix is ending', 'mortgage_fix'],
+      ['Nursery or school fees are starting', 'fees_start'],
+      ['A job change or notice period', 'job_change'],
     ]
     for (const [name, id] of cards) {
       expect(screen.getByRole('link', { name }).getAttribute('href')).toContain(

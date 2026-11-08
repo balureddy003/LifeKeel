@@ -2,6 +2,8 @@ import type { BriefCatalogueEntry, BriefInputs } from '@/lib/api'
 
 export type FormValues = Record<string, string>
 
+/** The API refuses anything above 1,000,000,000 minor units. */
+const MAX_POUNDS = 10_000_000
 const toMinor = (pounds: string) => Math.round((Number(pounds) || 0) * 100)
 
 /** The API accepts at most 6 dated steps. */
@@ -119,6 +121,8 @@ export function validate(e: BriefCatalogueEntry, f: FormValues): Record<string, 
     'cash_in',
   ])
     if (!blank(k) && Number(f[k]) < 0) errors[k] = 'Enter zero or more'
+    else if (!blank(k) && !(Number(f[k]) <= MAX_POUNDS))
+      errors[k] = 'Enter an amount of £10,000,000 or less'
   for (let n = 0; n < stepCount(f); n++) {
     const none = ['step_income', 'step_essentials', 'step_cash'].every((k) => blank(`${k}:${n}`))
     if (blank(`step_date:${n}`)) errors[`step_date:${n}`] = 'Choose the date of this change'

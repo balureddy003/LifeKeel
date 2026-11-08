@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { FileText, Printer } from 'lucide-react'
 import { GlassCard, PageHeader, Skeleton } from '@/components/Glass'
 import { useToast } from '@/components/Toast'
@@ -54,7 +55,11 @@ export default function ClaimPacketPage() {
       {lifePolicies && lifePolicies.length === 0 && (
         <GlassCard className="mt-6 p-5">
           <p className="text-ink-secondary">
-            No life policies on file. Record one in the financial profile and it appears here.
+            No life policies on file. Add one in the{' '}
+            <Link href="/financial-profile" className="font-medium text-family-400 underline">
+              financial profile
+            </Link>{' '}
+            and it appears here.
           </p>
         </GlassCard>
       )}

@@ -1,5 +1,12 @@
 import './env.js'
 import { installMailpitTransport } from './dev/mailpit.js'
+import { getDb as getStagingDb } from './db.js'
+import {
+  installStagingMailSink,
+  registerStagingMailRoutes,
+  resolveStagingSink,
+} from './staging/mail-sink.js'
+import { registerStagingControlRoutes } from './staging/test-controls.js'
 import { installResendTransport } from './email/transport.js'
 
 import { randomUUID } from 'node:crypto'
@@ -134,6 +141,11 @@ import {
   releaseCronLock,
   ensureCronLockIndex,
 } from './jobs/cron-lock.js'
+import {
+  registerScheduledJob,
+  getScheduledJob,
+  cronTriggerAuthorized,
+} from './jobs/scheduled-crons.js'
 import { ensureSpendIndexes } from './spend-ledger.js'
 import { ensureTenantKeyIndexes } from './crypto/envelope.js'
 import { registerApiVersioning, rewriteVersionedUrl } from './api-versioning.js'
@@ -211,6 +223,7 @@ import { registerFamilyBriefRoutes } from './routes/family-briefs.js'
 import { registerHouseholdObligationRoutes } from './routes/household-obligations.js'
 import { registerClaimPacketRoutes } from './routes/family-claim-packet.js'
 import { registerEmployerCoverRoutes } from './routes/family-employer-cover.js'
+import { registerFamilyDomainRoutes } from './routes/family-domains.js'
 import { registerFamilyFeedRoutes } from './routes/family-feed.js'
 import { registerFamilyNotificationRoutes } from './routes/family-notifications.js'
 import { runScenarioWatchlist } from './jobs/scenario-watchlist.js'
@@ -251,7 +264,10 @@ const log = createLogger({ service: 'api', version: process.env['npm_package_ver
 
 // Mailpit (dev capture) wins over any real provider; Resend takes over
 // sgMail.send when RESEND_API_KEY is set, SendGrid stays the default.
-if (!installMailpitTransport()) installResendTransport()
+// The staging sink (staging only, refuses to start anywhere else) wins over all.
+const STAGING_SINK = resolveStagingSink() !== null
+if (STAGING_SINK) installStagingMailSink(getStagingDb)
+else if (!installMailpitTransport()) installResendTransport()
 
 // These are instantiated before MongoDB connects — they degrade gracefully
 // when DB is unavailable (calibrator/thresholds use identity/fallback values)
@@ -335,9 +351,15 @@ try {
   // the queue (queueManager.connect() runs in every role), only consumers
   // and timers are gated.
   const serviceRole = process.env['SERVICE_ROLE'] ?? 'all'
-  const runBackgroundWork = serviceRole !== 'api'
+  // Intent 92: timers and queue consumers only run in a long-lived process.
+  // The api role registers every job for Cloud Scheduler
+  // (/internal/cron/<name>) but starts no timers; jobs/all keep the inline
+  // timers for local dev. Queue consumers need a persistent process, so the
+  // api role only runs them when explicitly opted in.
+  const timersEnabled = serviceRole !== 'api' || process.env['INLINE_CRONS'] === 'on'
+  const consumersEnabled = serviceRole !== 'api' || process.env['QUEUE_CONSUMERS'] === 'on'
   if (serviceRole === 'api') {
-    log.info({}, 'SERVICE_ROLE=api — background work disabled in this process')
+    log.info({}, 'SERVICE_ROLE=api — jobs registered for Cloud Scheduler, no inline timers')
   }
 
   // Indexes run in every role: routes also read/write spend_events and
@@ -361,7 +383,24 @@ try {
   // queue health; consumers below are the gated part.
   await queueManager.connect()
 
-  if (runBackgroundWork) {
+  // Every role builds the job registry: the api role serves them to Cloud
+  // Scheduler via /internal/cron/<name>; jobs/all also start the inline
+  // timers below. `scheduleJob` is cron.schedule with registration added —
+  // same callback, same node-cron options, just named.
+  const scheduleJob = (
+    name: string,
+    expr: string,
+    fn: () => Promise<unknown>,
+    opts?: Parameters<typeof cron.schedule>[2],
+  ): void => {
+    registerScheduledJob(name, fn)
+    if (timersEnabled) {
+      cron.schedule(expr, fn, opts)
+    } else {
+      log.info({ name, expr }, 'Cron registered for Cloud Scheduler')
+    }
+  }
+  {
     // KEEL-003: every cron.schedule job below runs under this lock, keyed by
     // its own name — deploy-api.yml allows up to 4 Cloud Run replicas, and
     // without this, two replicas racing the same job could both act on the
@@ -371,9 +410,11 @@ try {
     // One-time cleanup: archive stale pre-fix insight records (A1/A2/A3
     // patterns) that are still live on Home. Runs in the background —
     // doesn't block startup. Safe to run multiple times (idempotent).
-    cleanupStaleInsightsStartup(workflowDb).catch((err) =>
-      log.error({ err }, 'Startup stale-insight cleanup failed'),
-    )
+    if (timersEnabled) {
+      cleanupStaleInsightsStartup(workflowDb).catch((err) =>
+        log.error({ err }, 'Startup stale-insight cleanup failed'),
+      )
+    }
 
     // ── Connector sync engine — polling + token refresh ───────────────────────
     // Wires connector-driven insights into the same DeliveryRouter used for
@@ -401,11 +442,21 @@ try {
     // Token refresh every 10 minutes — refreshes tokens expiring within 30 min
 
     const tokenRefresher = new TokenRefreshScheduler(workflowDb as any)
-    tokenRefresher.start(10 * 60 * 1000)
-    log.info({}, 'Token refresh scheduler started')
+    // Registered like every other job so Cloud Scheduler can fire it; the
+    // inline interval only runs where timers are enabled (dev/jobs role).
+    registerScheduledJob('token-refresh', () =>
+      withCronLock(workflowDb, 'token-refresh', async () => {
+        await tokenRefresher.refreshExpiring()
+      }),
+    )
+    if (timersEnabled) {
+      tokenRefresher.start(10 * 60 * 1000)
+      log.info({}, 'Token refresh scheduler started')
+    }
 
     // Connector poll every 15 minutes — incremental sync of all connected tenants
-    cron.schedule(
+    scheduleJob(
+      'connector-sync',
       '*/15 * * * *',
       async () => {
         try {
@@ -423,7 +474,8 @@ try {
     // Connector credential-health alert — runs shortly after each poll so tenants
     // are notified immediately when an API key expires or is revoked in the
     // background. Creates a deduplicated high-urgency insight per tenant+connector.
-    cron.schedule(
+    scheduleJob(
+      'connector-health',
       '*/15 * * * *',
       async () => {
         try {
@@ -441,7 +493,8 @@ try {
     // DPIA retention (Intent 79): purge expired sensitive brief facts daily.
     // The read-path lazy purge is kept as belt-and-braces; this sweep is what
     // actually bounds retention for briefs nobody opens again.
-    cron.schedule(
+    scheduleJob(
+      'brief-facts-retention',
       '23 4 * * *',
       async () => {
         try {
@@ -463,7 +516,8 @@ try {
     // Opt-in (EMAIL_SCAN_FANOUT=true): one queue job per mailbox so scans run in parallel
     // across workers instead of one after another (see jobs/email-scan.ts).
     const emailScanFanout = process.env['EMAIL_SCAN_FANOUT'] === 'true'
-    cron.schedule(
+    scheduleJob(
+      'email-scan',
       '*/15 * * * *',
       async () => {
         try {
@@ -489,7 +543,8 @@ try {
     // relevant when the self-hosted model is configured; bounded per document by
     // MAX_DOCUMENT_ATTEMPTS and per sweep by SWEEP_LIMIT (see ocr/retry-failed.ts).
     if (localModelConfigured) {
-      cron.schedule(
+      scheduleJob(
+        'document-ocr-retry',
         '*/10 * * * *',
         async () => {
           try {
@@ -512,7 +567,8 @@ try {
     // OCR hand-off for documents the scan worker promoted to 'clean'
     // (CLOUDFLARE_INTEGRATION.md §7.3). Claimed per row, so one dispatch
     // per document across replicas; free plans go to 'stored'.
-    cron.schedule(
+    scheduleJob(
+      'document-ocr-dispatch',
       '* * * * *',
       async () => {
         try {
@@ -533,7 +589,8 @@ try {
     // Marketing publish sweep — every minute. Channels can't hold schedules,
     // so approved posts with a due scheduled_at are dispatched here; the lock
     // plus the 'publishing' claim guard against double-posting.
-    cron.schedule(
+    scheduleJob(
+      'marketing-publish',
       '* * * * *',
       async () => {
         try {
@@ -553,7 +610,8 @@ try {
 
     // Daily draft generation — queues one AI draft per opted-in tenant for
     // review. Never publishes; it only fills the morning review queue.
-    cron.schedule(
+    scheduleJob(
+      'marketing-generate',
       '23 8 * * *',
       async () => {
         try {
@@ -585,7 +643,8 @@ try {
 
     // Search Console and GA4 read-back (intent 47) — daily at 06:30, read-only. A no-op until
     // GOOGLE_READONLY_SERVICE_ACCOUNT_JSON and the property settings are present.
-    cron.schedule(
+    scheduleJob(
+      'search-readback',
       '30 6 * * *',
       async () => {
         try {
@@ -608,7 +667,8 @@ try {
 
     // Engagement polling — hourly; refreshes like/repost/reply counts on
     // published posts where the channel exposes public metrics (Bluesky).
-    cron.schedule(
+    scheduleJob(
+      'marketing-engagement',
       '17 * * * *',
       async () => {
         try {
@@ -627,7 +687,8 @@ try {
 
     // Stripe revenue (read-only) — daily at 04:15. Feeds channel economics;
     // a no-op until STRIPE_READONLY_KEY (a restricted rk_ key) is set.
-    cron.schedule(
+    scheduleJob(
+      'revenue-sync',
       '15 4 * * *',
       async () => {
         try {
@@ -646,7 +707,8 @@ try {
     // Daily profile check — 07:10. Read-only: reads each connected
     // platform's live profile and records drift against the approved text. It
     // never writes to a platform; fixing a profile is a human act.
-    cron.schedule(
+    scheduleJob(
+      'profile-check',
       '10 7 * * *',
       async () => {
         try {
@@ -667,7 +729,8 @@ try {
     // Daily metrics rollup — hourly at :40. Recomputes today + yesterday
     // (late-arriving events) into metrics_daily; first run backfills 90 days.
     // Operator dashboards read the rollup instead of scanning raw events.
-    cron.schedule(
+    scheduleJob(
+      'metrics-rollup',
       '40 * * * *',
       async () => {
         try {
@@ -686,7 +749,8 @@ try {
     // AI task failure-share check every 10 minutes (PRD-217) — the October
     // outage fell back on every call for days before a manual probe found
     // it; this pages ops within minutes of a task-level collapse.
-    cron.schedule(
+    scheduleJob(
+      'ai-health-alert',
       '*/10 * * * *',
       async () => {
         try {
@@ -707,7 +771,8 @@ try {
     // target is never touched twice) plus an operator_audit_log entry under
     // actor 'autopilot'. All rules default off — this cron is inert until an
     // operator enables one.
-    cron.schedule(
+    scheduleJob(
+      'autopilot-sweep',
       '50 * * * *',
       async () => {
         try {
@@ -730,7 +795,8 @@ try {
 
     // Weekly operator digest — Mondays 08:30. Persisted to operator_digests
     // and posted to the ops Slack channel (best-effort, never throws).
-    cron.schedule(
+    scheduleJob(
+      'weekly-digest',
       '30 8 * * 1',
       async () => {
         try {
@@ -748,7 +814,8 @@ try {
 
     // Lifecycle email sweep — hourly at :25. Lead nurture, activation and
     // upgrade nudges; consent/suppression/marketing_paused gated, ledger-deduped.
-    cron.schedule(
+    scheduleJob(
+      'lifecycle-sweep',
       '25 * * * *',
       async () => {
         try {
@@ -771,7 +838,8 @@ try {
     if (deliveryRouter) {
       const dr = deliveryRouter
       await ensureReminderIndexes(workflowDb)
-      cron.schedule(
+      scheduleJob(
+        'policy-renewal-reminders',
         '17 * * * *',
         async () => {
           try {
@@ -797,7 +865,8 @@ try {
     // guidance exists even when nobody opens the page. Write-only state —
     // no notifications are delivered (Tier 0, deterministic).
     await ensureMemberNudgeIndexes(workflowDb)
-    cron.schedule(
+    scheduleJob(
+      'member-agent-loop',
       '15 7 * * *',
       async () => {
         try {
@@ -819,7 +888,8 @@ try {
     // organizer enabled the switch. Email-only; the state machine itself is
     // the guarantee against double-sends.
     await ensureContinuityIndexes(workflowDb)
-    cron.schedule(
+    scheduleJob(
+      'continuity-check',
       '45 7 * * *',
       async () => {
         try {
@@ -839,7 +909,8 @@ try {
     // medical life event they reported 3+ days ago still has unchecked
     // response-plan steps. One email ever per event, same dedupe shape as
     // vault-reminder.ts.
-    cron.schedule(
+    scheduleJob(
+      'checklist-reminder',
       '10 8 * * *',
       async () => {
         try {
@@ -864,7 +935,8 @@ try {
       ['family-heartbeat-weekly', '0 8 * * 1', 'weekly'],
       ['family-heartbeat-monthly', '0 8 1 * *', 'monthly'],
     ] as const) {
-      cron.schedule(
+      scheduleJob(
+        name,
         schedule,
         async () => {
           try {
@@ -891,7 +963,8 @@ try {
     // Runs at 08:00 daily; sends each tenant their queued insights as one email.
     if (deliveryRouter) {
       const dr = deliveryRouter
-      cron.schedule(
+      scheduleJob(
+        'daily-digest',
         '0 8 * * *',
         async () => {
           try {
@@ -915,7 +988,8 @@ try {
     // ── Calibration drift alerting — 2 AM nightly ────────────────────────────
     // Compares per-detector ECE against previous run; alerts when ECE > 0.10 or
     // increases by > 0.05 since last check.
-    cron.schedule(
+    scheduleJob(
+      'calibration-drift',
       '0 2 * * *',
       async () => {
         if (!scoreCalibrator) return
@@ -974,7 +1048,8 @@ try {
     // account deletion can resurrect the tenant's rows — and their tombstone.
     // Re-wiping every status:'deleted' tenant makes the erasure durable across
     // restores. Idempotent and a no-op when nothing is tombstoned.
-    cron.schedule(
+    scheduleJob(
+      'erasure-replay',
       '30 4 * * *',
       async () => {
         await withCronLock(workflowDb, 'erasure-replay', async () => {
@@ -1001,7 +1076,8 @@ try {
     //   approved, auto_approved → 1 (positive signal — user or policy endorsed)
     //   dismissed, auto_dismissed → 0 (negative signal — user or policy rejected)
     //   policy_blocked, budget_blocked → excluded (not user decisions, no signal)
-    cron.schedule(
+    scheduleJob(
+      'calibration-fit',
       '0 3 * * *',
       async () => {
         if (!scoreCalibrator) return
@@ -1150,7 +1226,8 @@ try {
     // Handles outcome charge settlement (H3), trial expiration (H5),
     // payment failure recovery (H6), and billing cycle resets (H4).
     // All jobs are idempotent — safe to run multiple times.
-    cron.schedule(
+    scheduleJob(
+      'billing',
       '0 4 * * *',
       async () => {
         try {
@@ -1178,7 +1255,7 @@ try {
       tenantId: string,
     ): Promise<void> =>
       persistAndDeliverInsightsCore(workflowDb, insights, tenantId, deliveryRouter)
-    insightsDeliveryHook = persistAndDeliverInsights
+    if (timersEnabled) insightsDeliveryHook = persistAndDeliverInsights
 
     // Stale profile evaluation — daily at 06:30 (before the member agent
     // loop at 07:15 and continuity check at 07:45). Closes the gap where a
@@ -1189,7 +1266,8 @@ try {
     // POST /family/financial-profile/evaluate already runs on demand; this
     // only adds the "someone has to remember to click it" → "guaranteed to
     // eventually happen" part.
-    cron.schedule(
+    scheduleJob(
+      'stale-profile-evaluation',
       '30 6 * * *',
       async () => {
         try {
@@ -1212,7 +1290,8 @@ try {
 
     // PRD-145: freshness check, daily at 06:45 — after the 06:30 profile sweep, so
     // it reads settled profiles. Deterministic; sends nothing itself.
-    cron.schedule(
+    scheduleJob(
+      'freshness-check',
       '45 6 * * *',
       async () => {
         try {
@@ -1233,7 +1312,8 @@ try {
     // feed events when a watched scenario's runway/depletion month moves by
     // ≥0.5 months. Runs after the 06:30 stale-profile sweep so projections
     // see yesterday's freshest data.
-    cron.schedule(
+    scheduleJob(
+      'scenario-watchlist',
       '30 5 * * *',
       async () => {
         try {
@@ -1253,7 +1333,8 @@ try {
     const insightSlaWorker = new InsightSlaWorker(workflowDb)
     const escalationWorker = new EscalationWorker(workflowDb)
     await retentionWorker.ensureIndexes()
-    cron.schedule(
+    scheduleJob(
+      'retention',
       '0 2 * * *',
       async () => {
         try {
@@ -1264,7 +1345,8 @@ try {
       },
       { missedExecutionTolerance: 60_000 },
     )
-    cron.schedule(
+    scheduleJob(
+      'insight-sla-escalation',
       '*/15 * * * *',
       async () => {
         try {
@@ -1338,7 +1420,8 @@ try {
     //    calibration for the online-learning layer against held-out
     //    approve/dismiss history. Runs at 7 AM every Monday.
     //    Persists per-detector reports to `feature_hash_eval_reports`.
-    cron.schedule(
+    scheduleJob(
+      'feature-hash-eval',
       '0 7 * * 1',
       async () => {
         try {
@@ -1359,35 +1442,40 @@ try {
 
     // ── Queue consumers ─────────────────────────────────────────────────────
     // (queueManager.connect() already ran above — it's role-agnostic.)
-    startWebhookWorker(engine, connectorLoader, eventGenerator, workflowDb, deliveryRouter)
-    if (emailScanFanout) {
-      // Per-process concurrency; total parallelism is this x replicas. Size it with the
-      // model service: each in-flight scan can hold one local-model call (see
-      // LOCAL_MODEL_MAX_CONCURRENT and the lifekeel_local_model_queue_wait_seconds metric).
-      const scanConcurrency = Number(process.env['EMAIL_SCAN_CONCURRENCY']) || 2
-      queueManager.subscribe(
-        EMAIL_SCAN_QUEUE,
-        (payload) => runQueuedInboxScan(workflowDb, payload),
-        {
-          concurrency: scanConcurrency,
-        },
-      )
-      log.info({ concurrency: scanConcurrency }, 'Email scan fan-out workers started')
-    }
+    // Consumers need a persistent process polling Redis; the api role only
+    // runs them with QUEUE_CONSUMERS=on (scale-to-zero makes that mostly
+    // moot — intent 92's follow-up is Cloud Tasks for these queues).
+    if (consumersEnabled) {
+      startWebhookWorker(engine, connectorLoader, eventGenerator, workflowDb, deliveryRouter)
+      if (emailScanFanout) {
+        // Per-process concurrency; total parallelism is this x replicas. Size it with the
+        // model service: each in-flight scan can hold one local-model call (see
+        // LOCAL_MODEL_MAX_CONCURRENT and the lifekeel_local_model_queue_wait_seconds metric).
+        const scanConcurrency = Number(process.env['EMAIL_SCAN_CONCURRENCY']) || 2
+        queueManager.subscribe(
+          EMAIL_SCAN_QUEUE,
+          (payload) => runQueuedInboxScan(workflowDb, payload),
+          {
+            concurrency: scanConcurrency,
+          },
+        )
+        log.info({ concurrency: scanConcurrency }, 'Email scan fan-out workers started')
+      }
 
-    // Campaign bulk send — one durable job per recipient claim (B11). Bounded
-    // concurrency keeps bulk mail under SendGrid's rate ceiling; the claim
-    // rows are the durable per-recipient state, so a worker crash loses
-    // nothing already claimed.
-    const campaignConcurrency = Number(process.env['CAMPAIGN_SEND_CONCURRENCY']) || 4
-    queueManager.subscribe(
-      CAMPAIGN_SEND_QUEUE,
-      (payload) => runCampaignSendJob(workflowDb, payload as CampaignSendJob),
-      { concurrency: campaignConcurrency },
-    )
-    log.info({ concurrency: campaignConcurrency }, 'Campaign send workers started')
-    log.info({}, 'Queue consumers started')
-  } // end runBackgroundWork — every cron.schedule and consumer above is gated
+      // Campaign bulk send — one durable job per recipient claim (B11). Bounded
+      // concurrency keeps bulk mail under SendGrid's rate ceiling; the claim
+      // rows are the durable per-recipient state, so a worker crash loses
+      // nothing already claimed.
+      const campaignConcurrency = Number(process.env['CAMPAIGN_SEND_CONCURRENCY']) || 4
+      queueManager.subscribe(
+        CAMPAIGN_SEND_QUEUE,
+        (payload) => runCampaignSendJob(workflowDb, payload as CampaignSendJob),
+        { concurrency: campaignConcurrency },
+      )
+      log.info({ concurrency: campaignConcurrency }, 'Campaign send workers started')
+      log.info({}, 'Queue consumers started')
+    }
+  } // end background-work block — jobs register for /internal/cron/* in every role
 
   // ── Score calibration ─────────────────────────────────────────────────────
   // Loads per-detector temperature params into memory; calibrateSync() is then
@@ -1601,7 +1689,7 @@ if (process.env['NODE_ENV'] === 'production' && connectorLoader.count === 0) {
   }
 }
 const DOCS_ENABLED = apiDocsEnabled(process.env, deploymentConfig.mode)
-const OPEN_ROUTE_PREFIXES = openPrefixes({ docsEnabled: DOCS_ENABLED })
+const OPEN_ROUTE_PREFIXES = openPrefixes({ docsEnabled: DOCS_ENABLED, stagingSink: STAGING_SINK })
 
 const trustedProxyHops = Number(
   process.env['TRUST_PROXY_HOPS'] ?? (deploymentConfig.mode === 'dev' ? 0 : 1),
@@ -2324,6 +2412,9 @@ if (workflowDb) {
   registerHouseholdObligationRoutes(app, workflowDb)
   registerClaimPacketRoutes(app, workflowDb)
   registerEmployerCoverRoutes(app, workflowDb)
+  registerFamilyDomainRoutes(app, workflowDb)
+  registerStagingMailRoutes(app, getStagingDb)
+  registerStagingControlRoutes(app, getStagingDb)
   registerFamilyFeedRoutes(app, workflowDb)
   registerFamilyNotificationRoutes(app, workflowDb)
   registerMemberTwinRoutes(app, workflowDb)
@@ -2359,6 +2450,30 @@ if (workflowDb) {
 }
 // Prometheus metrics — generic ops/observability, not vertical-specific.
 await registerMetricsRoutes(app, engine, scoreCalibrator)
+
+// ── Cloud Scheduler cron trigger (intent 92) ────────────────────────────────
+// POST /internal/cron/<name> runs a job registered at boot. The route sits on
+// the open list (the global auth hook would 401 the opaque bearer otherwise)
+// and checks CRON_TRIGGER_TOKEN itself, constant-time — same shape as
+// /metrics + METRICS_SCRAPE_TOKEN. When the token is unset the route 404s:
+// there is no unauthenticated way to fire a cron.
+app.post('/internal/cron/:name', async (request, reply) => {
+  const expected = process.env['CRON_TRIGGER_TOKEN']
+  if (!expected) return reply.code(404).send({ error: 'Not found' })
+  if (!cronTriggerAuthorized(request.headers.authorization, expected)) {
+    return reply.code(401).send({ error: 'Unauthorized' })
+  }
+  const name = (request.params as { name: string }).name
+  const job = getScheduledJob(name)
+  if (!job) return reply.code(404).send({ error: 'Unknown cron job' })
+  try {
+    await job()
+    return { ok: true, job: name }
+  } catch (err) {
+    log.error({ err, job: name }, 'Scheduled cron invocation failed')
+    return reply.code(500).send({ error: 'Cron job failed' })
+  }
+})
 
 // ─── Start ───────────────────────────────────────────────────────────────────
 

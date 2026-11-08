@@ -161,6 +161,7 @@ record a recurring reason to be reopened.
 | `89-parent-mode.md` | Hold a parent's file with the parent's consent | — | **BLOCKED** on the PRD-229 safeguarding review |
 | `90-staged-emergency-access.md` | Timed release of papers to named adults | — | **PARKED** — irreversible action, legal review |
 | `91-adviser-and-employer-brief-link-pilot.md` | Advisers and employers send a brief link; measured on time to first number | PRD-207 | **GATED** on regulatory advice |
+| `92-serverless-background-work.md` | Move ~30 cron timers to Cloud Scheduler + authenticated API endpoints; revisit always-on jobs services (~$130/mo) | — | **PROPOSED** — infra-cost reduction, no behaviour change |
 
 Note: `78-factual-brief-catalogue.md` is shipped (PRs #308) but is not yet listed in
 the table above; add its row when this index is next reconciled.

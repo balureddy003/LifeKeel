@@ -201,7 +201,7 @@ export default function ReceiptsPage() {
                     <div className="shrink-0 text-right">
                       <div className="text-xs text-ink-tertiary">{when(r.executed_at)}</div>
                       <div
-                        className="mt-1 font-mono text-[10px] text-ink-tertiary/70"
+                        className="mt-1 font-mono text-[10px] text-ink-tertiary"
                         title={`Receipt ${r.id} · chain position ${r.chain_index} · ${r.chain_hash}`}
                       >
                         #{r.chain_index} {shortHash(r.chain_hash)}

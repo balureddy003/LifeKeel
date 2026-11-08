@@ -12,6 +12,7 @@ import { ConfirmSheetProvider } from '@/components/ConfirmSheetProvider'
 import { ToastProvider } from '@/components/Toast'
 import { NativeRegionGate } from '@/components/NativeRegionGate'
 import { FAQ } from '@/components/landing/faq-data'
+import { SITE_DESCRIPTION, SITE_TITLE } from '@/lib/site-copy'
 
 // globals.css's --font-sans was always 'Inter' by declaration, but no font
 // was ever loaded — every visitor actually got system-ui. next/font self-
@@ -57,17 +58,14 @@ const mono = IBM_Plex_Mono({
   preload: false,
 })
 
-const TITLE = "LifeKeel — your family's cover and next steps, kept in one place"
-const DESCRIPTION =
-  'See what you hold on file, where it looks light, and the steps to take on a bad day. Informational only, not financial advice.'
 // Canonical public domain — served via the Firebase Hosting site
 // "lifekeel-trellis" (apps/web/.firebaserc). lifekeel.si redirects here.
 const SITE_URL = 'https://lifekeel.co.uk'
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: TITLE,
-  description: DESCRIPTION,
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
@@ -75,18 +73,20 @@ export const metadata: Metadata = {
     title: 'LifeKeel',
   },
   openGraph: {
-    title: TITLE,
-    description: DESCRIPTION,
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
     url: SITE_URL,
     siteName: 'LifeKeel',
-    images: [{ url: '/og-image.png', width: 1200, height: 630, alt: 'LifeKeel' }],
+    images: [
+      { url: '/og-image.png', width: 1200, height: 630, alt: 'LifeKeel. Know where to look.' },
+    ],
     locale: 'en_GB',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: TITLE,
-    description: DESCRIPTION,
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
     images: ['/og-image.png'],
   },
 }
@@ -154,7 +154,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   '@type': 'WebSite',
                   name: 'LifeKeel',
                   url: SITE_URL,
-                  description: DESCRIPTION,
+                  description: SITE_DESCRIPTION,
                 },
                 {
                   '@type': 'FAQPage',

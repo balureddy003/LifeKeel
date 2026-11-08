@@ -8,7 +8,7 @@
  * to distinguish from the organizer).
  */
 
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import Fastify from 'fastify'
 import { registerFamilyJoinRoutes } from '../family-join.js'
 import { hashPassword } from '../auth-users.js'
@@ -26,6 +26,7 @@ interface FakeState {
   familyGroups: Record<string, unknown>[]
   joinRequests: Record<string, unknown>[]
   memberInvites: Record<string, unknown>[]
+  joinBlocks: Record<string, unknown>[]
 }
 
 function makeState(): FakeState {
@@ -38,9 +39,30 @@ function makeState(): FakeState {
         name: 'The Rivera Family',
         invite_code: INVITE_CODE,
         members: [
-          { id: ORGANIZER_ID, name: 'Organizer', email: 'organizer@example.com', role: 'organizer', status: 'active', joined_at: '2026-01-01T00:00:00.000Z' },
-          { id: OTHER_ADULT_ID, name: 'Other Adult', email: 'other@example.com', role: 'adult', status: 'active', joined_at: '2026-01-01T00:00:00.000Z' },
-          { id: PENDING_MEMBER_ID, name: 'Sam Pending', email: 'sam@example.com', role: 'adult', status: 'pending', joined_at: '2026-01-01T00:00:00.000Z' },
+          {
+            id: ORGANIZER_ID,
+            name: 'Organizer',
+            email: 'organizer@example.com',
+            role: 'organizer',
+            status: 'active',
+            joined_at: '2026-01-01T00:00:00.000Z',
+          },
+          {
+            id: OTHER_ADULT_ID,
+            name: 'Other Adult',
+            email: 'other@example.com',
+            role: 'adult',
+            status: 'active',
+            joined_at: '2026-01-01T00:00:00.000Z',
+          },
+          {
+            id: PENDING_MEMBER_ID,
+            name: 'Sam Pending',
+            email: 'sam@example.com',
+            role: 'adult',
+            status: 'pending',
+            joined_at: '2026-01-01T00:00:00.000Z',
+          },
         ],
         created_at: new Date(),
         updated_at: new Date(),
@@ -48,6 +70,7 @@ function makeState(): FakeState {
     ],
     joinRequests: [],
     memberInvites: [],
+    joinBlocks: [],
   }
 }
 
@@ -57,23 +80,35 @@ function match(doc: Record<string, unknown>, filter: Record<string, unknown>): b
     // updates on the roster array.
     if (k === 'members.id') return (doc['members'] as { id: string }[]).some((m) => m.id === v)
     if (v && typeof v === 'object' && '$in' in (v as Record<string, unknown>))
-      return ((v as { $in: unknown[] }).$in).includes(doc[k])
+      return (v as { $in: unknown[] }).$in.includes(doc[k])
+    if (v && typeof v === 'object' && '$lt' in (v as Record<string, unknown>))
+      return (doc[k] as Date) < (v as { $lt: Date }).$lt
+    if (v && typeof v === 'object' && '$gt' in (v as Record<string, unknown>))
+      return (doc[k] as Date) > (v as { $gt: Date }).$gt
     if (v && typeof v === 'object' && '$gte' in (v as Record<string, unknown>))
-      return (doc[k] as Date) >= ((v as { $gte: Date }).$gte)
+      return (doc[k] as Date) >= (v as { $gte: Date }).$gte
     return doc[k] === v
   })
 }
 
 function makeFakeDb(state: FakeState) {
   const usersCol = {
-    findOne: async (filter: Record<string, unknown>) => state.users.find((u) => match(u, filter)) ?? null,
-    insertOne: async (doc: Record<string, unknown>) => { state.users.push(doc); return { insertedId: doc['id'] } },
+    findOne: async (filter: Record<string, unknown>) =>
+      state.users.find((u) => match(u, filter)) ?? null,
+    insertOne: async (doc: Record<string, unknown>) => {
+      state.users.push(doc)
+      return { insertedId: doc['id'] }
+    },
     createIndex: async () => undefined,
   }
 
   const familyGroupsCol = {
-    findOne: async (filter: Record<string, unknown>) => state.familyGroups.find((f) => match(f, filter)) ?? null,
-    updateOne: async (filter: Record<string, unknown>, update: { $set?: Record<string, unknown>; $push?: Record<string, unknown> }) => {
+    findOne: async (filter: Record<string, unknown>) =>
+      state.familyGroups.find((f) => match(f, filter)) ?? null,
+    updateOne: async (
+      filter: Record<string, unknown>,
+      update: { $set?: Record<string, unknown>; $push?: Record<string, unknown> },
+    ) => {
       const doc = state.familyGroups.find((f) => match(f, filter))
       if (!doc) return { matchedCount: 0 }
       if (update.$push) {
@@ -87,7 +122,9 @@ function makeFakeDb(state: FakeState) {
             // Positional update — apply to the member matched by the
             // 'members.id' filter.
             const memberId = filter['members.id']
-            const member = (doc['members'] as Record<string, unknown>[]).find((m) => m['id'] === memberId)
+            const member = (doc['members'] as Record<string, unknown>[]).find(
+              (m) => m['id'] === memberId,
+            )
             if (member) member[key.slice('members.$.'.length)] = value
           } else {
             doc[key] = value
@@ -100,13 +137,22 @@ function makeFakeDb(state: FakeState) {
   }
 
   const joinRequestsCol = {
-    findOne: async (filter: Record<string, unknown>) => state.joinRequests.find((r) => match(r, filter)) ?? null,
-    insertOne: async (doc: Record<string, unknown>) => { state.joinRequests.push(doc); return { insertedId: doc['id'] } },
+    findOne: async (filter: Record<string, unknown>) =>
+      state.joinRequests.find((r) => match(r, filter)) ?? null,
+    insertOne: async (doc: Record<string, unknown>) => {
+      state.joinRequests.push(doc)
+      return { insertedId: doc['id'] }
+    },
     deleteOne: async (filter: Record<string, unknown>) => {
       const idx = state.joinRequests.findIndex((r) => match(r, filter))
       if (idx === -1) return { deletedCount: 0 }
       state.joinRequests.splice(idx, 1)
       return { deletedCount: 1 }
+    },
+    deleteMany: async (filter: Record<string, unknown>) => {
+      const before = state.joinRequests.length
+      state.joinRequests = state.joinRequests.filter((r) => !match(r, filter))
+      return { deletedCount: before - state.joinRequests.length }
     },
     find: (filter: Record<string, unknown>) => {
       const results = state.joinRequests.filter((r) => match(r, filter))
@@ -116,8 +162,12 @@ function makeFakeDb(state: FakeState) {
   }
 
   const memberInvitesCol = {
-    findOne: async (filter: Record<string, unknown>) => state.memberInvites.find((i) => match(i, filter)) ?? null,
-    insertOne: async (doc: Record<string, unknown>) => { state.memberInvites.push(doc); return { insertedId: doc['id'] } },
+    findOne: async (filter: Record<string, unknown>) =>
+      state.memberInvites.find((i) => match(i, filter)) ?? null,
+    insertOne: async (doc: Record<string, unknown>) => {
+      state.memberInvites.push(doc)
+      return { insertedId: doc['id'] }
+    },
     deleteOne: async (filter: Record<string, unknown>) => {
       const idx = state.memberInvites.findIndex((i) => match(i, filter))
       if (idx === -1) return { deletedCount: 0 }
@@ -134,12 +184,32 @@ function makeFakeDb(state: FakeState) {
 
   const inviteSends: Record<string, unknown>[] = []
   const inviteSendsCol = {
-    countDocuments: async (filter: Record<string, unknown>) => inviteSends.filter((d) => match(d, filter)).length,
-    insertOne: async (doc: Record<string, unknown>) => { inviteSends.push(doc); return { insertedId: 'x' } },
+    countDocuments: async (filter: Record<string, unknown>) =>
+      inviteSends.filter((d) => match(d, filter)).length,
+    insertOne: async (doc: Record<string, unknown>) => {
+      inviteSends.push(doc)
+      return { insertedId: 'x' }
+    },
+  }
+
+  const joinBlocksCol = {
+    findOne: async (filter: Record<string, unknown>) =>
+      state.joinBlocks.find((b) => match(b, filter)) ?? null,
+    updateOne: async (
+      filter: Record<string, unknown>,
+      update: { $set: Record<string, unknown> },
+    ) => {
+      const hit = state.joinBlocks.find((b) => match(b, filter))
+      if (hit) Object.assign(hit, update.$set)
+      else state.joinBlocks.push({ ...filter, ...update.$set })
+      return { modifiedCount: 1 }
+    },
+    createIndex: async () => undefined,
   }
 
   return {
     collection: (name: string) => {
+      if (name === 'family_join_blocks') return joinBlocksCol
       if (name === 'family_invite_sends') return inviteSendsCol
       if (name === 'users') return usersCol
       if (name === 'family_groups') return familyGroupsCol
@@ -152,11 +222,19 @@ function makeFakeDb(state: FakeState) {
 
 let state: FakeState
 
+const sendJoinApprovedEmail = vi.fn()
+const sendFamilyInviteEmail = vi.fn()
+vi.mock('../../auth-email.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../auth-email.js')>()),
+  sendJoinApprovedEmail: (...args: unknown[]) => sendJoinApprovedEmail(...args),
+  sendFamilyInviteEmail: (...args: unknown[]) => sendFamilyInviteEmail(...args),
+}))
+
 vi.mock('../../db.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../db.js')>()
   return {
     ...actual,
-     
+
     getDb: async () => makeFakeDb(state) as any,
   }
 })
@@ -169,20 +247,27 @@ async function buildApp(callerId: string | null) {
   app.addHook('onRequest', async (request) => {
     if (callerId) (request as any).authContext = { tenant_id: TENANT, user_id: callerId }
   })
-   
+
   registerFamilyJoinRoutes(app, makeFakeDb(state) as any, fakeAuth as any)
   return app
 }
 
 describe('POST /family/join', () => {
-  beforeEach(() => { state = makeState() })
+  beforeEach(() => {
+    state = makeState()
+  })
 
   it('creates a pending join request and does NOT create a users row', async () => {
     const app = await buildApp(null)
     const res = await app.inject({
       method: 'POST',
       url: '/family/join',
-      payload: { invite_code: INVITE_CODE, name: 'Jane Doe', email: 'jane@example.com', password: 'password123' },
+      payload: {
+        invite_code: INVITE_CODE,
+        name: 'Jane Doe',
+        email: 'jane@example.com',
+        password: 'password123',
+      },
     })
     expect(res.statusCode).toBe(201)
     expect(state.joinRequests).toHaveLength(1)
@@ -191,12 +276,36 @@ describe('POST /family/join', () => {
     expect(state.users).toHaveLength(0)
   })
 
+  it('tells the person asking nothing about the family (safeguarding)', async () => {
+    // Someone holding the code may be a person the family is avoiding. The reply
+    // must not confirm who is here: no family name, no members, nothing but "pending".
+    const app = await buildApp(null)
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/join',
+      payload: {
+        invite_code: INVITE_CODE,
+        name: 'Jane Doe',
+        email: 'jane@example.com',
+        password: 'password123',
+      },
+    })
+    expect(res.statusCode).toBe(201)
+    expect(res.json()).toEqual({ status: 'pending' })
+    expect(res.body).not.toContain('Rivera')
+  })
+
   it('rejects an invalid invite code with no side effects', async () => {
     const app = await buildApp(null)
     const res = await app.inject({
       method: 'POST',
       url: '/family/join',
-      payload: { invite_code: 'WRONGCODE', name: 'Jane Doe', email: 'jane@example.com', password: 'password123' },
+      payload: {
+        invite_code: 'WRONGCODE',
+        name: 'Jane Doe',
+        email: 'jane@example.com',
+        password: 'password123',
+      },
     })
     expect(res.statusCode).toBe(400)
     expect(state.joinRequests).toHaveLength(0)
@@ -208,7 +317,12 @@ describe('POST /family/join', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/family/join',
-      payload: { invite_code: INVITE_CODE, name: 'Jane Doe', email: 'jane@example.com', password: 'password123' },
+      payload: {
+        invite_code: INVITE_CODE,
+        name: 'Jane Doe',
+        email: 'jane@example.com',
+        password: 'password123',
+      },
     })
     expect(res.statusCode).toBe(409)
     expect(res.json().error).toMatch(/already registered/i)
@@ -216,24 +330,62 @@ describe('POST /family/join', () => {
 
   it('rejects a duplicate pending request for the same email', async () => {
     const app = await buildApp(null)
-    await app.inject({ method: 'POST', url: '/family/join', payload: { invite_code: INVITE_CODE, name: 'Jane', email: 'jane@example.com', password: 'password123' } })
-    const res = await app.inject({ method: 'POST', url: '/family/join', payload: { invite_code: INVITE_CODE, name: 'Jane', email: 'jane@example.com', password: 'password123' } })
+    await app.inject({
+      method: 'POST',
+      url: '/family/join',
+      payload: {
+        invite_code: INVITE_CODE,
+        name: 'Jane',
+        email: 'jane@example.com',
+        password: 'password123',
+      },
+    })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/join',
+      payload: {
+        invite_code: INVITE_CODE,
+        name: 'Jane',
+        email: 'jane@example.com',
+        password: 'password123',
+      },
+    })
     expect(res.statusCode).toBe(409)
     expect(state.joinRequests).toHaveLength(1)
   })
 
   it('rejects a short password and a missing name before touching the database', async () => {
     const app = await buildApp(null)
-    const shortPw = await app.inject({ method: 'POST', url: '/family/join', payload: { invite_code: INVITE_CODE, name: 'Jane', email: 'jane@example.com', password: 'short' } })
+    const shortPw = await app.inject({
+      method: 'POST',
+      url: '/family/join',
+      payload: {
+        invite_code: INVITE_CODE,
+        name: 'Jane',
+        email: 'jane@example.com',
+        password: 'short',
+      },
+    })
     expect(shortPw.statusCode).toBe(400)
-    const noName = await app.inject({ method: 'POST', url: '/family/join', payload: { invite_code: INVITE_CODE, name: '', email: 'jane@example.com', password: 'password123' } })
+    const noName = await app.inject({
+      method: 'POST',
+      url: '/family/join',
+      payload: {
+        invite_code: INVITE_CODE,
+        name: '',
+        email: 'jane@example.com',
+        password: 'password123',
+      },
+    })
     expect(noName.statusCode).toBe(400)
     expect(state.joinRequests).toHaveLength(0)
   })
 })
 
 describe('organizer-only guard on access-requests / approve / deny / invite-code reset', () => {
-  beforeEach(() => { state = makeState() })
+  beforeEach(() => {
+    state = makeState()
+  })
 
   it('403s GET /family/access-requests for a non-organizer roster member', async () => {
     const app = await buildApp(OTHER_ADULT_ID)
@@ -242,9 +394,21 @@ describe('organizer-only guard on access-requests / approve / deny / invite-code
   })
 
   it('403s approve/deny/reset for a non-organizer roster member', async () => {
-    state.joinRequests.push({ id: 'req-1', tenant_id: TENANT, name: 'Jane', email: 'jane@example.com', password_hash: 'x', salt: 'y', status: 'pending', requested_at: new Date() })
+    state.joinRequests.push({
+      id: 'req-1',
+      tenant_id: TENANT,
+      name: 'Jane',
+      email: 'jane@example.com',
+      password_hash: 'x',
+      salt: 'y',
+      status: 'pending',
+      requested_at: new Date(),
+    })
     const app = await buildApp(OTHER_ADULT_ID)
-    const approve = await app.inject({ method: 'POST', url: '/family/access-requests/req-1/approve' })
+    const approve = await app.inject({
+      method: 'POST',
+      url: '/family/access-requests/req-1/approve',
+    })
     const deny = await app.inject({ method: 'POST', url: '/family/access-requests/req-1/deny' })
     const reset = await app.inject({ method: 'POST', url: '/family/invite-code/reset' })
     expect(approve.statusCode).toBe(403)
@@ -262,7 +426,16 @@ describe('organizer-only guard on access-requests / approve / deny / invite-code
   })
 
   it('lets the organizer list pending requests', async () => {
-    state.joinRequests.push({ id: 'req-1', tenant_id: TENANT, name: 'Jane', email: 'jane@example.com', password_hash: 'x', salt: 'y', status: 'pending', requested_at: new Date() })
+    state.joinRequests.push({
+      id: 'req-1',
+      tenant_id: TENANT,
+      name: 'Jane',
+      email: 'jane@example.com',
+      password_hash: 'x',
+      salt: 'y',
+      status: 'pending',
+      requested_at: new Date(),
+    })
     const app = await buildApp(ORGANIZER_ID)
     const res = await app.inject({ method: 'GET', url: '/family/access-requests' })
     expect(res.statusCode).toBe(200)
@@ -272,10 +445,65 @@ describe('organizer-only guard on access-requests / approve / deny / invite-code
 })
 
 describe('POST /family/access-requests/:id/approve', () => {
-  beforeEach(() => { state = makeState() })
+  beforeEach(() => {
+    state = makeState()
+    sendJoinApprovedEmail.mockReset()
+  })
+
+  it('tells the joiner, once, at the address they gave, with a sign-in link and no household data', async () => {
+    state.joinRequests.push({
+      id: 'req-1',
+      tenant_id: TENANT,
+      name: 'Jane Doe',
+      email: 'jane@example.com',
+      password_hash: 'hashed',
+      salt: 'salt123',
+      status: 'pending',
+      requested_at: new Date(),
+    })
+    const app = await buildApp(ORGANIZER_ID)
+    const res = await app.inject({ method: 'POST', url: '/family/access-requests/req-1/approve' })
+    expect(res.statusCode).toBe(200)
+    expect(sendJoinApprovedEmail).toHaveBeenCalledTimes(1)
+    const [to, name, family, url] = sendJoinApprovedEmail.mock.calls[0] as string[]
+    expect(to).toBe('jane@example.com')
+    expect(name).toBe('Jane Doe')
+    expect(family).toBe(state.familyGroups[0]!['name'])
+    expect(url).toMatch(/\/login$/)
+  })
+
+  it('sends nothing when the request is missing, the caller is not the organizer, or the email was taken', async () => {
+    const app = await buildApp(ORGANIZER_ID)
+    await app.inject({ method: 'POST', url: '/family/access-requests/nope/approve' })
+    state.joinRequests.push({
+      id: 'req-2',
+      tenant_id: TENANT,
+      name: 'Taken',
+      email: 'taken@example.com',
+      password_hash: 'h',
+      salt: 's',
+      status: 'pending',
+      requested_at: new Date(),
+    })
+    state.users.push({ id: 'u-x', email: 'taken@example.com', tenant_id: 'other' })
+    const taken = await app.inject({ method: 'POST', url: '/family/access-requests/req-2/approve' })
+    expect(taken.statusCode).toBe(409)
+    const other = await buildApp(null)
+    await other.inject({ method: 'POST', url: '/family/access-requests/req-2/approve' })
+    expect(sendJoinApprovedEmail).not.toHaveBeenCalled()
+  })
 
   it('creates a real user sharing the family tenant_id, adds them to the roster as role=adult, and removes the request', async () => {
-    state.joinRequests.push({ id: 'req-1', tenant_id: TENANT, name: 'Jane Doe', email: 'jane@example.com', password_hash: 'hashed', salt: 'salt123', status: 'pending', requested_at: new Date() })
+    state.joinRequests.push({
+      id: 'req-1',
+      tenant_id: TENANT,
+      name: 'Jane Doe',
+      email: 'jane@example.com',
+      password_hash: 'hashed',
+      salt: 'salt123',
+      status: 'pending',
+      requested_at: new Date(),
+    })
     const app = await buildApp(ORGANIZER_ID)
     const res = await app.inject({ method: 'POST', url: '/family/access-requests/req-1/approve' })
 
@@ -296,15 +524,125 @@ describe('POST /family/access-requests/:id/approve', () => {
     expect(state.joinRequests).toHaveLength(0)
   })
 
+  describe('mailbox proof (critic pass 2)', () => {
+    const request = (over: Record<string, unknown> = {}) => ({
+      id: 'req-1',
+      tenant_id: TENANT,
+      name: 'Jane Doe',
+      email: 'jane@example.com',
+      password_hash: 'hashed',
+      salt: 'salt123',
+      status: 'pending',
+      requested_at: new Date(),
+      ...over,
+    })
+    afterEach(() => {
+      delete process.env['EMAIL_VERIFICATION_ENABLED']
+    })
+
+    it('when verification is on, the account starts unverified and the email carries the confirm link', async () => {
+      process.env['EMAIL_VERIFICATION_ENABLED'] = 'true'
+      state.joinRequests.push(request())
+      const app = await buildApp(ORGANIZER_ID)
+      const res = await app.inject({ method: 'POST', url: '/family/access-requests/req-1/approve' })
+      expect(res.statusCode).toBe(200)
+      const user = state.users[0]!
+      expect(user['email_verified']).toBe(false)
+      const stored = user['email_verification_token_hash'] as string
+      expect(stored).toMatch(/^[0-9a-f]{64}$/)
+      expect((user['email_verification_expires'] as Date).getTime()).toBeGreaterThan(Date.now())
+      const verifyUrl = sendJoinApprovedEmail.mock.calls[0]![4] as string
+      const token = /\/verify-email#token=([0-9a-f]{64})$/.exec(verifyUrl)?.[1]
+      expect(token).toBeDefined()
+      expect(token).not.toBe(stored) // only the hash is stored
+      expect(createHash('sha256').update(token!).digest('hex')).toBe(stored)
+    })
+
+    it('when verification is off the behaviour is unchanged: verified, plain sign-in email', async () => {
+      state.joinRequests.push(request())
+      const app = await buildApp(ORGANIZER_ID)
+      await app.inject({ method: 'POST', url: '/family/access-requests/req-1/approve' })
+      expect(state.users[0]!['email_verified']).toBe(true)
+      expect(sendJoinApprovedEmail.mock.calls[0]![4]).toBeUndefined()
+    })
+
+    it('an expired request cannot be approved, is cleared, and sends nothing', async () => {
+      state.joinRequests.push(request({ requested_at: new Date(Date.now() - 15 * 86_400_000) }))
+      const app = await buildApp(ORGANIZER_ID)
+      const res = await app.inject({ method: 'POST', url: '/family/access-requests/req-1/approve' })
+      expect(res.statusCode).toBe(410)
+      expect(state.users).toHaveLength(0)
+      expect(state.joinRequests).toHaveLength(0)
+      expect(sendJoinApprovedEmail).not.toHaveBeenCalled()
+    })
+
+    it('the organizer list hides expired requests, and an expired one no longer blocks a new request', async () => {
+      state.joinRequests.push(request({ requested_at: new Date(Date.now() - 15 * 86_400_000) }))
+      const org = await buildApp(ORGANIZER_ID)
+      const list = await org.inject({ method: 'GET', url: '/family/access-requests' })
+      expect(list.json().requests).toEqual([])
+      // ...and the expired request, with its password hash, is gone, not just hidden.
+      expect(state.joinRequests).toHaveLength(0)
+      const anon = await buildApp(null)
+      const again = await anon.inject({
+        method: 'POST',
+        url: '/family/join',
+        payload: {
+          invite_code: INVITE_CODE,
+          name: 'Jane Doe',
+          email: 'jane@example.com',
+          password: 'password123',
+        },
+      })
+      expect(again.statusCode).toBe(201)
+      expect(state.joinRequests).toHaveLength(1)
+      expect((state.joinRequests[0]!['requested_at'] as Date).getTime()).toBeGreaterThan(
+        Date.now() - 60_000,
+      )
+    })
+
+    it('a fresh pending request still blocks a duplicate', async () => {
+      state.joinRequests.push(request())
+      const anon = await buildApp(null)
+      const dup = await anon.inject({
+        method: 'POST',
+        url: '/family/join',
+        payload: {
+          invite_code: INVITE_CODE,
+          name: 'Jane Doe',
+          email: 'jane@example.com',
+          password: 'password123',
+        },
+      })
+      expect(dup.statusCode).toBe(409)
+    })
+  })
+
   it('404s for a request that does not exist or already resolved', async () => {
     const app = await buildApp(ORGANIZER_ID)
-    const res = await app.inject({ method: 'POST', url: '/family/access-requests/does-not-exist/approve' })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/access-requests/does-not-exist/approve',
+    })
     expect(res.statusCode).toBe(404)
   })
 
   it('rejects and discards the request if the email was registered elsewhere since it was made', async () => {
-    state.joinRequests.push({ id: 'req-1', tenant_id: TENANT, name: 'Jane', email: 'jane@example.com', password_hash: 'x', salt: 'y', status: 'pending', requested_at: new Date() })
-    state.users.push({ id: 'someone-else', email: 'jane@example.com', tenant_id: 'a-different-tenant' })
+    state.joinRequests.push({
+      id: 'req-1',
+      tenant_id: TENANT,
+      name: 'Jane',
+      email: 'jane@example.com',
+      password_hash: 'x',
+      salt: 'y',
+      status: 'pending',
+      requested_at: new Date(),
+    })
+    state.users.push({
+      id: 'someone-else',
+      email: 'jane@example.com',
+      tenant_id: 'a-different-tenant',
+    })
     const app = await buildApp(ORGANIZER_ID)
     const res = await app.inject({ method: 'POST', url: '/family/access-requests/req-1/approve' })
     expect(res.statusCode).toBe(409)
@@ -315,10 +653,21 @@ describe('POST /family/access-requests/:id/approve', () => {
 })
 
 describe('POST /family/access-requests/:id/deny', () => {
-  beforeEach(() => { state = makeState() })
+  beforeEach(() => {
+    state = makeState()
+  })
 
   it('discards the request without ever touching users', async () => {
-    state.joinRequests.push({ id: 'req-1', tenant_id: TENANT, name: 'Jane', email: 'jane@example.com', password_hash: 'x', salt: 'y', status: 'pending', requested_at: new Date() })
+    state.joinRequests.push({
+      id: 'req-1',
+      tenant_id: TENANT,
+      name: 'Jane',
+      email: 'jane@example.com',
+      password_hash: 'x',
+      salt: 'y',
+      status: 'pending',
+      requested_at: new Date(),
+    })
     const app = await buildApp(ORGANIZER_ID)
     const res = await app.inject({ method: 'POST', url: '/family/access-requests/req-1/deny' })
     expect(res.statusCode).toBe(200)
@@ -328,7 +677,9 @@ describe('POST /family/access-requests/:id/deny', () => {
 })
 
 describe('POST /family/invite-code/reset', () => {
-  beforeEach(() => { state = makeState() })
+  beforeEach(() => {
+    state = makeState()
+  })
 
   it('replaces the invite code for the organizer', async () => {
     const app = await buildApp(ORGANIZER_ID)
@@ -341,11 +692,17 @@ describe('POST /family/invite-code/reset', () => {
 })
 
 describe('POST /family/members/:id/invite (PRD-123)', () => {
-  beforeEach(() => { state = makeState() })
+  beforeEach(() => {
+    state = makeState()
+  })
 
   it('creates an invite for a pending adult member and returns the URL', async () => {
     const app = await buildApp(ORGANIZER_ID)
-    const res = await app.inject({ method: 'POST', url: `/family/members/${PENDING_MEMBER_ID}/invite`, payload: {} })
+    const res = await app.inject({
+      method: 'POST',
+      url: `/family/members/${PENDING_MEMBER_ID}/invite`,
+      payload: {},
+    })
     expect(res.statusCode).toBe(201)
     expect(state.memberInvites).toHaveLength(1)
     const invite = state.memberInvites[0]!
@@ -361,95 +718,187 @@ describe('POST /family/members/:id/invite (PRD-123)', () => {
     const members = state.familyGroups[0]!['members'] as Record<string, unknown>[]
     const teen = new Date()
     teen.setUTCFullYear(teen.getUTCFullYear() - 15)
-    members.push({ id: 'teen-1', name: 'Teen', email: 'teen@example.com', role: 'adult', status: 'pending', date_of_birth: teen.toISOString().slice(0, 10), joined_at: '2026-01-01T00:00:00.000Z' })
+    members.push({
+      id: 'teen-1',
+      name: 'Teen',
+      email: 'teen@example.com',
+      role: 'adult',
+      status: 'pending',
+      date_of_birth: teen.toISOString().slice(0, 10),
+      joined_at: '2026-01-01T00:00:00.000Z',
+    })
     const app = await buildApp(ORGANIZER_ID)
-    const res = await app.inject({ method: 'POST', url: '/family/members/teen-1/invite', payload: {} })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/members/teen-1/invite',
+      payload: {},
+    })
     expect(res.statusCode).toBe(400)
     expect(state.memberInvites).toHaveLength(0)
   })
 
   it('R08: acceptance re-checks age — a member who became a child since the invite cannot accept', async () => {
     const app = await buildApp(ORGANIZER_ID)
-    const res = await app.inject({ method: 'POST', url: `/family/members/${PENDING_MEMBER_ID}/invite`, payload: {} })
+    const res = await app.inject({
+      method: 'POST',
+      url: `/family/members/${PENDING_MEMBER_ID}/invite`,
+      payload: {},
+    })
     const raw = String(res.json().invite_url).split('/invite/')[1]!
     const members = state.familyGroups[0]!['members'] as Record<string, unknown>[]
     members.find((m) => m['id'] === PENDING_MEMBER_ID)!['role'] = 'child'
-    const accept = await app.inject({ method: 'POST', url: '/family/invite/accept', payload: { token: raw, password: 'password123' } })
+    const accept = await app.inject({
+      method: 'POST',
+      url: '/family/invite/accept',
+      payload: { token: raw, password: 'password123' },
+    })
     expect(accept.statusCode).toBe(400)
     expect(state.users.find((u) => u['email'] === 'sam@example.com')).toBeUndefined()
   })
 
   it('403s for a non-organizer roster member', async () => {
     const app = await buildApp(OTHER_ADULT_ID)
-    const res = await app.inject({ method: 'POST', url: `/family/members/${PENDING_MEMBER_ID}/invite`, payload: {} })
+    const res = await app.inject({
+      method: 'POST',
+      url: `/family/members/${PENDING_MEMBER_ID}/invite`,
+      payload: {},
+    })
     expect(res.statusCode).toBe(403)
     expect(state.memberInvites).toHaveLength(0)
   })
 
   it('409s for a member who is already active, 400s for a child, 404s for unknown', async () => {
     const app = await buildApp(ORGANIZER_ID)
-    const active = await app.inject({ method: 'POST', url: `/family/members/${OTHER_ADULT_ID}/invite`, payload: {} })
+    const active = await app.inject({
+      method: 'POST',
+      url: `/family/members/${OTHER_ADULT_ID}/invite`,
+      payload: {},
+    })
     expect(active.statusCode).toBe(409)
     const members = state.familyGroups[0]!['members'] as { id: string; role: string }[]
     members.push({ id: 'kid-1', role: 'child' } as never)
-    const child = await app.inject({ method: 'POST', url: '/family/members/kid-1/invite', payload: {} })
+    const child = await app.inject({
+      method: 'POST',
+      url: '/family/members/kid-1/invite',
+      payload: {},
+    })
     expect(child.statusCode).toBe(400)
-    const unknown = await app.inject({ method: 'POST', url: '/family/members/nobody/invite', payload: {} })
+    const unknown = await app.inject({
+      method: 'POST',
+      url: '/family/members/nobody/invite',
+      payload: {},
+    })
     expect(unknown.statusCode).toBe(404)
     expect(state.memberInvites).toHaveLength(0)
   })
 
   it('takes email from the body when the roster entry has none, and persists it', async () => {
     const members = state.familyGroups[0]!['members'] as Record<string, unknown>[]
-    const noEmail = { id: 'no-email-1', name: 'No Email', email: '', role: 'adult', status: 'pending', joined_at: '2026-01-01T00:00:00.000Z' }
+    const noEmail = {
+      id: 'no-email-1',
+      name: 'No Email',
+      email: '',
+      role: 'adult',
+      status: 'pending',
+      joined_at: '2026-01-01T00:00:00.000Z',
+    }
     members.push(noEmail)
     const app = await buildApp(ORGANIZER_ID)
-    const res = await app.inject({ method: 'POST', url: '/family/members/no-email-1/invite', payload: { email: 'new@example.com' } })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/members/no-email-1/invite',
+      payload: { email: 'new@example.com' },
+    })
     expect(res.statusCode).toBe(201)
     expect(noEmail['email']).toBe('new@example.com')
   })
 
   it('rotates the token on re-invite so only one outstanding invite exists', async () => {
     const app = await buildApp(ORGANIZER_ID)
-    await app.inject({ method: 'POST', url: `/family/members/${PENDING_MEMBER_ID}/invite`, payload: {} })
+    await app.inject({
+      method: 'POST',
+      url: `/family/members/${PENDING_MEMBER_ID}/invite`,
+      payload: {},
+    })
     const first = state.memberInvites[0]!['token']
-    await app.inject({ method: 'POST', url: `/family/members/${PENDING_MEMBER_ID}/invite`, payload: {} })
+    await app.inject({
+      method: 'POST',
+      url: `/family/members/${PENDING_MEMBER_ID}/invite`,
+      payload: {},
+    })
     expect(state.memberInvites).toHaveLength(1)
     expect(state.memberInvites[0]!['token']).not.toBe(first)
   })
 })
 
 describe('GET /family/invite/:token and POST /family/invite/accept (PRD-123)', () => {
-  beforeEach(() => { state = makeState() })
+  beforeEach(() => {
+    state = makeState()
+  })
 
   async function inviteSam(app: Awaited<ReturnType<typeof buildApp>>): Promise<string> {
-    const res = await app.inject({ method: 'POST', url: `/family/members/${PENDING_MEMBER_ID}/invite`, payload: {} })
+    const res = await app.inject({
+      method: 'POST',
+      url: `/family/members/${PENDING_MEMBER_ID}/invite`,
+      payload: {},
+    })
     expect(res.statusCode).toBe(201)
     return String(res.json().invite_url).split('/invite/')[1]!
   }
 
-  it('resolves the token to member + family names without exposing financial data', async () => {
+  it('resolves the token to the invitee and the inviter, and does not name the family', async () => {
+    // An invite can reach the wrong person (a mistyped address). Whoever holds the link is
+    // told who invited them, not which family, its name, or anything on its list.
     const app = await buildApp(ORGANIZER_ID)
     const token = await inviteSam(app)
     const res = await app.inject({ method: 'GET', url: `/family/invite/${token}` })
     expect(res.statusCode).toBe(200)
     expect(res.json().member_name).toBe('Sam Pending')
-    expect(res.json().family_name).toBe('The Rivera Family')
+    expect(res.json().inviter_name).toBe('Organizer')
+    expect(res.json()).not.toHaveProperty('family_name')
+    expect(res.body).not.toContain('Rivera')
     expect(res.json()).not.toHaveProperty('email')
+  })
+
+  it('the invite email names the person who invited them, never the family', async () => {
+    sendFamilyInviteEmail.mockReset()
+    const app = await buildApp(ORGANIZER_ID)
+    await inviteSam(app)
+    expect(sendFamilyInviteEmail).toHaveBeenCalledTimes(1)
+    const args = sendFamilyInviteEmail.mock.calls[0] as string[]
+    expect(args.join(' ')).not.toContain('Rivera')
+    expect(args[2]).toBe('Organizer')
+  })
+
+  it('an invite sent before this change still resolves, with no inviter name', async () => {
+    const app = await buildApp(ORGANIZER_ID)
+    const token = await inviteSam(app)
+    delete state.memberInvites[0]!['invited_by_first_name']
+    const res = await app.inject({ method: 'GET', url: `/family/invite/${token}` })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().inviter_name).toBeNull()
   })
 
   it('404s the lookup for an unknown or expired token', async () => {
     const app = await buildApp(ORGANIZER_ID)
-    expect((await app.inject({ method: 'GET', url: '/family/invite/not-a-token' })).statusCode).toBe(404)
+    expect(
+      (await app.inject({ method: 'GET', url: '/family/invite/not-a-token' })).statusCode,
+    ).toBe(404)
     const token = await inviteSam(app)
     state.memberInvites[0]!['expires_at'] = new Date(Date.now() - 1000)
-    expect((await app.inject({ method: 'GET', url: `/family/invite/${token}` })).statusCode).toBe(404)
+    expect((await app.inject({ method: 'GET', url: `/family/invite/${token}` })).statusCode).toBe(
+      404,
+    )
   })
 
   it('accept activates the existing roster entry — no duplicate member, user_id linked', async () => {
     const app = await buildApp(ORGANIZER_ID)
     const token = await inviteSam(app)
-    const res = await app.inject({ method: 'POST', url: '/family/invite/accept', payload: { token, password: 'password123' } })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/invite/accept',
+      payload: { token, password: 'password123' },
+    })
     expect(res.statusCode).toBe(200)
     expect(res.json().token).toContain('signed:')
 
@@ -469,61 +918,132 @@ describe('GET /family/invite/:token and POST /family/invite/accept (PRD-123)', (
 
     // Token is one-time — deleted on use.
     expect(state.memberInvites).toHaveLength(0)
-    const replay = await app.inject({ method: 'POST', url: '/family/invite/accept', payload: { token, password: 'password123' } })
+    const replay = await app.inject({
+      method: 'POST',
+      url: '/family/invite/accept',
+      payload: { token, password: 'password123' },
+    })
     expect(replay.statusCode).toBe(400)
   })
 
   it('links an existing same-tenant account when the password verifies', async () => {
-    state.users.push({ id: 'sam-user', email: 'sam@example.com', tenant_id: TENANT, password_hash: hashPassword('right-password', 's'), salt: 's' })
+    state.users.push({
+      id: 'sam-user',
+      email: 'sam@example.com',
+      tenant_id: TENANT,
+      password_hash: hashPassword('right-password', 's'),
+      salt: 's',
+    })
     const app = await buildApp(ORGANIZER_ID)
     const token = await inviteSam(app)
-    const res = await app.inject({ method: 'POST', url: '/family/invite/accept', payload: { token, password: 'right-password' } })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/invite/accept',
+      payload: { token, password: 'right-password' },
+    })
     expect(res.statusCode).toBe(200)
     expect(res.json().user.id).toBe('sam-user')
     expect(state.users).toHaveLength(1)
-    const sam = (state.familyGroups[0]!['members'] as Record<string, unknown>[]).find((m) => m['id'] === PENDING_MEMBER_ID)!
+    const sam = (state.familyGroups[0]!['members'] as Record<string, unknown>[]).find(
+      (m) => m['id'] === PENDING_MEMBER_ID,
+    )!
     expect(sam['user_id']).toBe('sam-user')
   })
 
   it('401s on a wrong password for an existing account without consuming the invite', async () => {
-    state.users.push({ id: 'sam-user', email: 'sam@example.com', tenant_id: TENANT, password_hash: hashPassword('right-password', 's'), salt: 's' })
+    state.users.push({
+      id: 'sam-user',
+      email: 'sam@example.com',
+      tenant_id: TENANT,
+      password_hash: hashPassword('right-password', 's'),
+      salt: 's',
+    })
     const app = await buildApp(ORGANIZER_ID)
     const token = await inviteSam(app)
-    const res = await app.inject({ method: 'POST', url: '/family/invite/accept', payload: { token, password: 'wrong-password' } })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/invite/accept',
+      payload: { token, password: 'wrong-password' },
+    })
     expect(res.statusCode).toBe(401)
     expect(state.memberInvites).toHaveLength(1)
-    const sam = (state.familyGroups[0]!['members'] as Record<string, unknown>[]).find((m) => m['id'] === PENDING_MEMBER_ID)!
+    const sam = (state.familyGroups[0]!['members'] as Record<string, unknown>[]).find(
+      (m) => m['id'] === PENDING_MEMBER_ID,
+    )!
     expect(sam['status']).toBe('pending')
   })
 
   it('409s at invite time when the email belongs to a different tenant — and at accept time as defense in depth', async () => {
     state.users.push({ id: 'elsewhere', email: 'sam@example.com', tenant_id: 'other-tenant' })
     const app = await buildApp(ORGANIZER_ID)
-    const res = await app.inject({ method: 'POST', url: `/family/members/${PENDING_MEMBER_ID}/invite`, payload: {} })
+    const res = await app.inject({
+      method: 'POST',
+      url: `/family/members/${PENDING_MEMBER_ID}/invite`,
+      payload: {},
+    })
     expect(res.statusCode).toBe(409)
     // Even if an invite somehow exists (email registered between invite and
     // accept), accept refuses cross-tenant linking too.
-    state.memberInvites.push({ id: 'stale', tenant_id: TENANT, member_id: PENDING_MEMBER_ID, email: 'sam@example.com', token: 'aa11bb22cc33dd44ee55', expires_at: new Date(Date.now() + 10000), created_at: new Date() })
-    const accept = await app.inject({ method: 'POST', url: '/family/invite/accept', payload: { token: 'aa11bb22cc33dd44ee55', password: 'password123' } })
+    state.memberInvites.push({
+      id: 'stale',
+      tenant_id: TENANT,
+      member_id: PENDING_MEMBER_ID,
+      email: 'sam@example.com',
+      token: 'aa11bb22cc33dd44ee55',
+      expires_at: new Date(Date.now() + 10000),
+      created_at: new Date(),
+    })
+    const accept = await app.inject({
+      method: 'POST',
+      url: '/family/invite/accept',
+      payload: { token: 'aa11bb22cc33dd44ee55', password: 'password123' },
+    })
     expect(accept.statusCode).toBe(409)
   })
 
   it('rejects accept on an already-activated member', async () => {
     const app = await buildApp(ORGANIZER_ID)
     const token = await inviteSam(app)
-    await app.inject({ method: 'POST', url: '/family/invite/accept', payload: { token, password: 'password123' } })
+    await app.inject({
+      method: 'POST',
+      url: '/family/invite/accept',
+      payload: { token, password: 'password123' },
+    })
     // A second invite created before the first was used should fail on accept.
-    state.memberInvites.push({ id: 'stale', tenant_id: TENANT, member_id: PENDING_MEMBER_ID, email: 'sam@example.com', token: 'ff66ee77dd88cc99bb00', expires_at: new Date(Date.now() + 10000), created_at: new Date() })
-    const res = await app.inject({ method: 'POST', url: '/family/invite/accept', payload: { token: 'ff66ee77dd88cc99bb00', password: 'password123' } })
+    state.memberInvites.push({
+      id: 'stale',
+      tenant_id: TENANT,
+      member_id: PENDING_MEMBER_ID,
+      email: 'sam@example.com',
+      token: 'ff66ee77dd88cc99bb00',
+      expires_at: new Date(Date.now() + 10000),
+      created_at: new Date(),
+    })
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/invite/accept',
+      payload: { token: 'ff66ee77dd88cc99bb00', password: 'password123' },
+    })
     expect(res.statusCode).toBe(400)
   })
 })
 
 describe('PRD-123: approve links an existing pending roster member instead of duplicating', () => {
-  beforeEach(() => { state = makeState() })
+  beforeEach(() => {
+    state = makeState()
+  })
 
   it('activates the pending entry matched by email rather than pushing a second row', async () => {
-    state.joinRequests.push({ id: 'req-1', tenant_id: TENANT, name: 'Sam Pending', email: 'sam@example.com', password_hash: 'x', salt: 'y', status: 'pending', requested_at: new Date() })
+    state.joinRequests.push({
+      id: 'req-1',
+      tenant_id: TENANT,
+      name: 'Sam Pending',
+      email: 'sam@example.com',
+      password_hash: 'x',
+      salt: 'y',
+      status: 'pending',
+      requested_at: new Date(),
+    })
     const app = await buildApp(ORGANIZER_ID)
     const res = await app.inject({ method: 'POST', url: '/family/access-requests/req-1/approve' })
     expect(res.statusCode).toBe(200)

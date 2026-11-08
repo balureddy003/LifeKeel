@@ -22,7 +22,7 @@ describe('briefHeadline', () => {
   it('leads with when savings run out', () => {
     const main =
       'Before the change, income covers the entered spending. At the first change, savings last about 11.1 months. After the last entered change, savings last about 11.1 months. On these figures savings would run out around October 2027 (about month 12.1 from the calculation date).'
-    expect(briefHeadline(main)).toBe('Savings would run out around October 2027.')
+    expect(briefHeadline(main)).toBe('Your savings would last until about October 2027.')
     expect(runsOutAround(main)).toBe('October 2027')
   })
   it('says income covers spending when it does throughout', () => {

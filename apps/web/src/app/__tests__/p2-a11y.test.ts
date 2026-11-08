@@ -38,7 +38,10 @@ describe('names and labels', () => {
   it('every settings switch has an accessible name', () => {
     const src = read('settings', 'page.tsx')
     const switches = src.split('role="switch"').slice(1)
-    expect(switches.length).toBeGreaterThanOrEqual(3)
+    // Switches that moved into components (PushToggle, EditAccessSwitch) carry
+    // their own name, and their own tests assert it.
+    const inComponents = (src.match(/<(PushToggle|EditAccessSwitch)\b/g) ?? []).length
+    expect(switches.length + inComponents).toBeGreaterThanOrEqual(3)
     for (const chunk of switches) expect(chunk.slice(0, 200)).toContain('aria-label=')
   })
 

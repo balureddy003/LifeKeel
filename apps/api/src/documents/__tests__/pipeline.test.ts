@@ -461,7 +461,11 @@ describe('quota reservations', () => {
         init('t-a', { filename: `f${i}.pdf`, mime: 'application/pdf', size: 100 }),
       ),
     )
-    expect(results.filter((r) => r.statusCode === 201)).toHaveLength(MAX_INFLIGHT)
+    const seen = results.map((r) => `${r.statusCode} ${r.body.slice(0, 120)}`)
+    expect(
+      results.filter((r) => r.statusCode === 201),
+      seen.join(' | '),
+    ).toHaveLength(MAX_INFLIGHT)
     expect(
       results
         .filter((r) => r.statusCode === 429)
@@ -477,7 +481,13 @@ describe('quota reservations', () => {
           init('t-a', { filename: `f${i}.pdf`, mime: 'application/pdf', size: 400 }),
         ),
       )
-      expect(results.filter((r) => r.statusCode === 201)).toHaveLength(2)
+      // Flaky under CI load (one 201 instead of two). Show every response so the
+      // next failure says which request lost and why, instead of a bare count.
+      const seen = results.map((r) => `${r.statusCode} ${r.body.slice(0, 120)}`)
+      expect(
+        results.filter((r) => r.statusCode === 201),
+        seen.join(' | '),
+      ).toHaveLength(2)
       expect(results.find((r) => r.statusCode === 413)?.json().error).toBe('storage_limit')
     } finally {
       delete process.env['MAX_TENANT_STORAGE_BYTES']
@@ -518,16 +528,14 @@ describe('quota reservations', () => {
 describe('compatibility and isolation', () => {
   it('GridFS rows still serve bytes; mode=url says to use bytes', async () => {
     const fileId = await writeGridfs(db, 'old.pdf', { tenant_id: 't-a' }, PDF)
-    await db
-      .collection('documents')
-      .insertOne({
-        id: 'old-1',
-        tenant_id: 't-a',
-        file_id: fileId,
-        mime_type: 'application/pdf',
-        status: 'stored',
-        filename: 'old.pdf',
-      })
+    await db.collection('documents').insertOne({
+      id: 'old-1',
+      tenant_id: 't-a',
+      file_id: fileId,
+      mime_type: 'application/pdf',
+      status: 'stored',
+      filename: 'old.pdf',
+    })
     const bytes = await app.inject({ url: '/documents/old-1/file', headers: { 'x-tenant': 't-a' } })
     expect(bytes.statusCode).toBe(200)
     expect(bytes.rawPayload).toEqual(PDF)

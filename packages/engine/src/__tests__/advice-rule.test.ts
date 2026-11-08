@@ -64,6 +64,8 @@ function webCopyFiles(): string[] {
     'apps/web/src/components/MarketingLanding.tsx',
     // PRD-141/145/203: new user-facing copy outside the landing page.
     'apps/web/src/components/PerceivedProtectionCard.tsx',
+    'apps/web/src/components/TodayCard.tsx',
+    'apps/web/src/lib/today-item.ts',
     'apps/web/src/components/FreshnessCard.tsx',
     'apps/web/src/lib/extraction-review-copy.ts',
     'apps/web/src/lib/trust-copy.ts',
@@ -84,9 +86,24 @@ function webCopyFiles(): string[] {
     'apps/web/src/components/ChannelsCard.tsx',
     'apps/web/src/lib/channel-explain.ts',
     'apps/api/src/delivery/push-payload.ts',
+    // The notification catalogue: every kind's label, reason and lock-screen words.
+    'apps/api/src/delivery/notification-catalogue.ts',
     // Intent 80: catalogue titles, field labels and the generated-sentence
     // template text all pass the same banned-pattern scan.
     'apps/api/src/briefs/catalogue.ts',
+    // Domain packs: titles, summaries, field labels and trigger labels are copy.
+    ...walk('apps/api/src/domains/packs'),
+    'apps/api/src/domains/view.ts',
+    'apps/api/src/domains/playbook.ts',
+    // The monthly digest renderer, now carrying one factual line per domain.
+    'apps/api/src/feed/render-quiet-care.ts',
+    'apps/api/src/routes/family-domains.ts',
+    // Domain pages state what is on file and who has seen it.
+    'apps/web/src/app/domains/page.tsx',
+    'apps/web/src/app/domains/SentenceCapture.tsx',
+    // The three doors on the home page: what each gives you, never what to do with money.
+    'apps/web/src/components/ThreeDoors.tsx',
+    'apps/web/src/app/domains/domain-copy.ts',
     // Keel inline agent panel: help text, presets, setup step titles and fixed replies.
     'apps/api/src/keel-agent/help.ts',
     'apps/api/src/keel-agent/presets.ts',

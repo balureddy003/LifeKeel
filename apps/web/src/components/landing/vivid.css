@@ -926,7 +926,7 @@
   padding: 20px 24px;
   font-size: 15px;
   font-weight: 750;
-  min-height: 44px;
+  min-height: 48px;
 }
 .vv-faq summary::-webkit-details-marker {
   display: none;
@@ -1074,3 +1074,11 @@
     border-radius: 28px;
   }
 }
+
+/* The line under the hero buttons needs air, or it touches the button. */
+.vv-hero-cta + .vv-fine { margin-top: 14px; }
+.vv-signin { margin-top: 6px; }
+.vv-signin a { display: inline-flex; align-items: center; min-height: 48px; padding: 0 4px; font-weight: 600; }
+
+/* The line a family says out loud, above each chapter name. */
+.vv-says { font-style: italic; font-weight: 600; margin: 0 0 4px; }

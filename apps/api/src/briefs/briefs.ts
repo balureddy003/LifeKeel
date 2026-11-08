@@ -247,9 +247,11 @@ export async function emitBriefEvent(
     | 'brief_gate_converted',
   meta: Record<string, unknown> | null = null,
 ): Promise<void> {
+  // meta.tenant_id is where every growth_events writer keeps the tenant,
+  // and what erasure matches on.
   await db
     .collection('growth_events')
-    .insertOne({ tenant_id: tenantId, event, meta, created_at: new Date() })
+    .insertOne({ event, meta: { ...meta, tenant_id: tenantId }, created_at: new Date() })
     .catch(() => {})
 }
 
@@ -363,7 +365,7 @@ export async function purgeExpiredSensitiveFacts(db: Db): Promise<{ purged: numb
     .collection<HouseholdBriefDoc>('household_briefs')
     .updateMany(
       { facts_expire_at: { $lt: new Date() } },
-      { $unset: { facts_encrypted: '', facts: '', facts_expire_at: '' } },
+      { $unset: { facts_encrypted: '', facts: '', 'inputs.facts': '', facts_expire_at: '' } },
     )
   return { purged: res.modifiedCount }
 }
@@ -390,6 +392,7 @@ export async function migrateSensitiveBriefFacts(db: Db): Promise<{
       {
         $set: {
           facts: [],
+          inputs: withoutHandoverFacts(doc.inputs),
           sensitive: true,
           facts_encrypted: await encryptForTenant(db, doc.tenant_id, JSON.stringify(doc.facts)),
           facts_expire_at: doc.facts_expire_at ?? new Date(Date.now() + SENSITIVE_FACTS_TTL_MS),
@@ -400,6 +403,35 @@ export async function migrateSensitiveBriefFacts(db: Db): Promise<{
     migrated++
   }
   return { migrated, skipped }
+}
+
+/**
+ * Sensitive handover text lives only in facts_encrypted. The raw `facts` map
+ * the solver echoes back in its inputs must never be stored or returned
+ * beside it, or it would outlive the ciphertext's expiry.
+ */
+export function withoutHandoverFacts<T extends object>(inputs: T): T {
+  if (!('facts' in inputs)) return inputs
+  const { facts: _facts, ...rest } = inputs as T & { facts?: unknown }
+  return rest as T
+}
+
+/**
+ * Removes the plaintext copy of sensitive handover facts that older briefs
+ * stored in `inputs.facts`. The same facts are already in facts_encrypted
+ * (or in `facts`, which migrateSensitiveBriefFacts encrypts first).
+ */
+export async function stripSensitiveBriefInputs(db: Db): Promise<{ stripped: number }> {
+  await migrateSensitiveBriefFacts(db)
+  const sensitiveIds = BRIEF_CATALOGUE.filter((e) => e.sensitive).map((e) => e.id)
+  const res = await db.collection<HouseholdBriefDoc>('household_briefs').updateMany(
+    {
+      $or: [{ sensitive: true }, { problem_type: { $in: sensitiveIds } }],
+      'inputs.facts': { $exists: true },
+    },
+    { $unset: { 'inputs.facts': '' } },
+  )
+  return { stripped: res.modifiedCount }
 }
 
 /** DPIA-set retention for sensitive handover facts (~24 months). */

@@ -222,7 +222,7 @@ export async function sendPasswordResetEmail(
 export async function sendFamilyInviteEmail(
   to: string,
   name: string,
-  familyName: string,
+  inviterFirstName: string,
   inviteUrl: string,
 ): Promise<void> {
   if (!emailConfigured()) {
@@ -233,21 +233,24 @@ export async function sendFamilyInviteEmail(
   const apiKey = process.env['SENDGRID_API_KEY']
   if (apiKey) sgMail.setApiKey(apiKey)
   const firstName = name.split(' ')[0] || 'there'
+  // Says who sent it so the right person recognises it, and never the family's name:
+  // if the address was mistyped, a stranger must not learn which family this is.
+  const who = inviterFirstName.trim() || 'Someone'
 
   try {
     await sgMail.send({
       to,
       from: { email: getFromEmail(), name: 'LifeKeel' },
-      subject: `${familyName} invited you to LifeKeel`,
-      text: `Hi ${firstName},\n\n${familyName} has set you up as a member of their family on LifeKeel. Accept the invitation to create your sign-in (link expires in 7 days):\n${inviteUrl}\n\nIf you weren't expecting this, you can safely ignore it — no account is created unless you accept.`,
+      subject: `${who} invited you to LifeKeel`,
+      text: `Hi ${firstName},\n\n${who} has invited you to join their family on LifeKeel. Accept the invitation to create your sign-in (link expires in 7 days):\n${inviteUrl}\n\nIf you weren't expecting this, you can safely ignore it — no account is created unless you accept.`,
       html: renderEmail({
-        preheader: `${familyName} set you up as a family member on LifeKeel.`,
+        preheader: `${who} invited you to join their family on LifeKeel.`,
         eyebrow: 'Family invitation',
-        title: `${familyName} invited you to LifeKeel`,
+        title: `${who} invited you to LifeKeel`,
         bodyHtml:
           p(`Hi ${escapeHtml(firstName)},`) +
           p(
-            `<strong>${escapeHtml(familyName)}</strong> has set you up as a member of their family on LifeKeel. Accept the invitation to create your sign-in. This link expires in 7 days.`,
+            `<strong>${escapeHtml(who)}</strong> has invited you to join their family on LifeKeel. Accept the invitation to create your sign-in. This link expires in 7 days.`,
           ),
         cta: { url: inviteUrl, label: 'Accept invitation' },
         note: "If you weren't expecting this, you can safely ignore it — no account is created unless you accept.",
@@ -259,6 +262,62 @@ export async function sendFamilyInviteEmail(
     log.info({ to }, 'Family invite email sent')
   } catch (err) {
     log.error({ to, err }, 'Failed to send family invite email')
+  }
+}
+
+/**
+ * Tells a person their request to join a family was approved. Sent only after
+ * the organizer taps Approve, to the address the person gave when they asked.
+ * Informational: it carries the family name and a sign-in link, no household
+ * data. Without it the joiner has no signal that it is time to sign in.
+ */
+export async function sendJoinApprovedEmail(
+  to: string,
+  name: string,
+  familyName: string,
+  signInUrl: string,
+  /** When set, the address is not yet proven: the link confirms the mailbox before sign-in. */
+  verifyUrl?: string,
+): Promise<void> {
+  if (!emailConfigured()) {
+    log.warn({ to }, 'No email provider configured — skipping join-approved email')
+    return
+  }
+
+  const apiKey = process.env['SENDGRID_API_KEY']
+  if (apiKey) sgMail.setApiKey(apiKey)
+  const firstName = name.split(' ')[0] || 'there'
+
+  try {
+    await sgMail.send({
+      to,
+      from: { email: getFromEmail(), name: 'LifeKeel' },
+      subject: `You can now sign in to ${familyName} on LifeKeel`,
+      text: verifyUrl
+        ? `Hi ${firstName},\n\nYour request to join ${familyName} on LifeKeel was approved. First confirm this email address (the link expires in 24 hours):\n${verifyUrl}\n\nThen sign in with the email and password you chose:\n${signInUrl}\n\nIf you did not ask to join, you can ignore this message.`
+        : `Hi ${firstName},\n\nYour request to join ${familyName} on LifeKeel was approved. Sign in with the email and password you chose:\n${signInUrl}\n\nIf you did not ask to join, you can ignore this message.`,
+      html: renderEmail({
+        preheader: `Your request to join ${familyName} was approved.`,
+        eyebrow: 'Request approved',
+        title: `You can now sign in to ${familyName}`,
+        bodyHtml:
+          p(`Hi ${escapeHtml(firstName)},`) +
+          p(
+            `Your request to join <strong>${escapeHtml(familyName)}</strong> on LifeKeel was approved. ${verifyUrl ? 'Confirm this email address first, then sign in with the email and password you chose.' : 'Sign in with the email and password you chose.'}`,
+          ),
+        cta: verifyUrl
+          ? { url: verifyUrl, label: 'Confirm your email' }
+          : { url: signInUrl, label: 'Sign in' },
+        note: 'If you did not ask to join, you can ignore this message.',
+        footer: {
+          reason:
+            'You got this because you asked to join a family on LifeKeel and the organizer approved it.',
+        },
+      }),
+    })
+    log.info({ to }, 'Join-approved email sent')
+  } catch (err) {
+    log.error({ to, err }, 'Failed to send join-approved email')
   }
 }
 

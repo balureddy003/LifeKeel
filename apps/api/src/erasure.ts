@@ -44,10 +44,14 @@ export const DELETABLE_COLLECTIONS = [
   'household_briefs', // PRD-222
   'household_obligations', // PRD-231
   'employer_cover_facts', // PRD-232
+  'domain_records', // domain packs: household-entered records
+  'domain_confirmations', // domain packs: per-adult seen stamps
+  'digest_unseen_mentions', // digest: how often "not yet seen" was said per list version
   'family_continuity_state',
   'rehearsal_records', // PRD-214 M3 — dated continuity rehearsals
   'life_change_calibration', // PRD-213 M4 — shadow-only drift-sentinel rows
   'family_join_requests',
+  'family_join_blocks',
   'family_member_invites',
   'family_invite_sends', // R43 daily invitation counter
   'oauth_pending_grants', // R37 parked connector grants (encrypted, 10-minute TTL)
@@ -117,6 +121,8 @@ export const DELETABLE_COLLECTIONS = [
   'llm_usage',
   // Unified spend ledger (B8) — tenant-attributed spend telemetry.
   'spend_events',
+  // In-flight LLM spend reservations (10-minute TTL).
+  'llm_budget_reservations',
   'feature_hash_models',
   'feature_hash_model_versions',
   'tenant_level_models',
@@ -156,8 +162,12 @@ export const CUSTOM_DELETES: ReadonlyArray<{
     userEmails: string[]
   }) => Record<string, unknown>
 }> = [
-  // Growth funnel events store the tenant under meta.tenant_id.
-  { collection: 'growth_events', filter: (c) => ({ 'meta.tenant_id': c.tenantId }) },
+  // Growth funnel events store the tenant under meta.tenant_id. Brief events
+  // written before 2026-11 put it at the top level, so both shapes match.
+  {
+    collection: 'growth_events',
+    filter: (c) => ({ $or: [{ 'meta.tenant_id': c.tenantId }, { tenant_id: c.tenantId }] }),
+  },
   // A referral touches two tenants — the referrer and the referee.
   {
     collection: 'referrals',

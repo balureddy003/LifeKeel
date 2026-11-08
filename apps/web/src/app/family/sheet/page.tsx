@@ -19,8 +19,8 @@ const SECTIONS = [
   ['key_papers', 'Where the key papers are'],
   ['accounts', 'Accounts'],
   ['policies', 'Cover on file'],
-  ['balances', 'Include balances'],
-  ['children', "Children's details"],
+  ['balances', 'Include account balances'],
+  ['children', "Children's names and dates of birth"],
 ] as const
 
 export default function EmergencySheetPage() {
@@ -58,20 +58,33 @@ export default function EmergencySheetPage() {
           Choose what to include — nothing is shown or stored until you pick it. You send the file
           yourself; LifeKeel never hosts or sends it.
         </p>
-        {SECTIONS.map(([id, label]) => (
-          <label key={id} className="flex items-center gap-2 py-1 text-sm text-ink-primary">
-            <input
-              type="checkbox"
-              checked={picked.has(id)}
-              onChange={(e) => {
-                const next = new Set(picked)
-                e.target.checked ? next.add(id) : next.delete(id)
-                setPicked(next)
-              }}
-            />
-            {label}
-          </label>
-        ))}
+        {SECTIONS.map(([id, label]) => {
+          // Balances are a detail of Accounts, not a section of their own.
+          const nested = id === 'balances'
+          const disabled = nested && !picked.has('accounts')
+          return (
+            <label
+              key={id}
+              className={`flex items-center gap-2 py-1 text-sm text-ink-primary ${nested ? 'pl-6' : ''} ${disabled ? 'opacity-50' : ''}`}
+            >
+              <input
+                type="checkbox"
+                checked={picked.has(id)}
+                disabled={disabled}
+                onChange={(e) => {
+                  const next = new Set(picked)
+                  if (e.target.checked) next.add(id)
+                  else {
+                    next.delete(id)
+                    if (id === 'accounts') next.delete('balances')
+                  }
+                  setPicked(next)
+                }}
+              />
+              {label}
+            </label>
+          )
+        })}
         <label className="flex items-center gap-2 py-1 mt-2 text-sm text-ink-secondary">
           <input
             type="checkbox"

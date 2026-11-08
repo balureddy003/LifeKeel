@@ -15,8 +15,11 @@ import {
   drainCampaignSends,
   pauseCampaign,
   resumeCampaign,
+  runCampaignSendJob,
   type CampaignDoc,
+  type CampaignSendJob,
 } from '../campaigns.js'
+import { queueManager } from '../../queue/QueueManager.js'
 import {
   lifecycleSendsCol,
   userUnsubscribeToken,
@@ -106,6 +109,12 @@ describe('resolveAudience', () => {
     await seedUser()
     await seedUser({ id: 'u2', email: 'opted@example.com', email_opt_out: true })
     await seedUser({ id: 'u3', email: 'susp@example.com', status: 'suspended' })
+    const r = await resolveAudience(db, { audience: 'users' })
+    expect(r.map((x) => x.id)).toEqual(['u1'])
+  })
+
+  it('users audience includes a password signup with no status field', async () => {
+    await seedUser({ status: undefined })
     const r = await resolveAudience(db, { audience: 'users' })
     expect(r.map((x) => x.id)).toEqual(['u1'])
   })
@@ -288,5 +297,160 @@ describe('campaign send (durable per-recipient jobs)', () => {
     await runCampaignSendJob(db, { campaign_id: 'c1', key: 'campaign:c1:u1' })
     const done = await campaignsCol(db).findOne({ id: 'c1' })
     expect(done!['stats']?.['sent']).toBe(1)
+  })
+})
+
+describe('campaign send state machine (review F06–F08)', () => {
+  async function startSending(campaign: CampaignDoc) {
+    await campaignsCol(db).insertOne(campaign)
+    await campaignsCol(db).updateOne({ id: campaign.id }, { $set: { status: 'sending' } })
+  }
+
+  it('workers that run the moment a job is published cannot finish the campaign early', async () => {
+    await seedUser()
+    await seedUser({ id: 'u2', email: 'two@example.com' })
+    await seedLead()
+    vi.mocked(sgMail.send).mockClear()
+    const spy = vi
+      .spyOn(queueManager, 'publish')
+      .mockImplementation(async (_q, payload) => runCampaignSendJob(db, payload as CampaignSendJob))
+    try {
+      const campaign = makeCampaign()
+      await startSending(campaign)
+      await queueCampaignSend(db, campaign)
+    } finally {
+      spy.mockRestore()
+    }
+    const done = await campaignsCol(db).findOne({ id: 'c1' })
+    expect(done!['status']).toBe('sent')
+    expect(done!['stats']).toMatchObject({ targeted: 3, sent: 3, settled: 3 })
+    expect(vi.mocked(sgMail.send)).toHaveBeenCalledTimes(3)
+  })
+
+  it('an empty audience completes without any worker', async () => {
+    const campaign = makeCampaign()
+    await startSending(campaign)
+    const { targeted } = await queueCampaignSend(db, campaign)
+    expect(targeted).toBe(0)
+    expect((await campaignsCol(db).findOne({ id: 'c1' }))!['status']).toBe('sent')
+  })
+
+  it('two workers racing on one recipient call the provider once and count once', async () => {
+    await seedUser()
+    const campaign = makeCampaign({ filter: { audience: 'users' } })
+    await startSending(campaign)
+    await queueCampaignSend(db, campaign)
+    vi.mocked(sgMail.send).mockClear()
+    const job = { campaign_id: 'c1', key: 'campaign:c1:u1' }
+    await Promise.all([runCampaignSendJob(db, job), runCampaignSendJob(db, job)])
+    expect(vi.mocked(sgMail.send)).toHaveBeenCalledTimes(1)
+    const done = await campaignsCol(db).findOne({ id: 'c1' })
+    expect(done!['stats']).toMatchObject({ sent: 1, settled: 1 })
+    expect(done!['status']).toBe('sent')
+  })
+
+  it('re-checks eligibility before sending: opt-out, deletion, suppression, new minor DOB', async () => {
+    await seedUser()
+    await seedUser({ id: 'u2', email: 'two@example.com' })
+    await seedUser({ id: 'u3', email: 'three@example.com', tenant_id: 't3' })
+    await seedLead()
+    const campaign = makeCampaign()
+    await startSending(campaign)
+    await queueCampaignSend(db, campaign)
+
+    await db.collection('users').updateOne({ id: 'u1' }, { $set: { email_opt_out: true } })
+    await db.collection('users').deleteOne({ id: 'u2' })
+    await db.collection('leads').updateOne({ id: 'lead-1' }, { $set: { suppressed: true } })
+    await db.collection('family_groups').insertOne({
+      tenant_id: 't3',
+      members: [
+        { id: 'm3', user_id: 'u3', role: 'adult', status: 'active', date_of_birth: '2015-01-01' },
+      ],
+    })
+
+    vi.mocked(sgMail.send).mockClear()
+    await drainCampaignSends(db, 'c1')
+    expect(vi.mocked(sgMail.send)).not.toHaveBeenCalled()
+    const rows = await lifecycleSendsCol(db).find({ campaign_id: 'c1' }).toArray()
+    expect(Object.fromEntries(rows.map((r) => [r.recipient, r.error]))).toEqual({
+      u1: 'user_opted_out',
+      u2: 'user_deleted',
+      u3: 'user_is_minor',
+      'lead-1': 'lead_suppressed',
+    })
+    expect(rows.every((r) => r.status === 'skipped')).toBe(true)
+    expect((await campaignsCol(db).findOne({ id: 'c1' }))!['status']).toBe('sent')
+  })
+
+  it('a global marketing pause stops already-queued jobs and leaves them resumable', async () => {
+    await seedUser()
+    const campaign = makeCampaign({ filter: { audience: 'users' } })
+    await startSending(campaign)
+    await queueCampaignSend(db, campaign)
+
+    await db.collection('platform_config').insertOne({ key: 'global', marketing_paused: true })
+    invalidatePlatformConfigCache()
+    vi.mocked(sgMail.send).mockClear()
+    await drainCampaignSends(db, 'c1')
+    expect(vi.mocked(sgMail.send)).not.toHaveBeenCalled()
+    expect((await campaignsCol(db).findOne({ id: 'c1' }))!['status']).toBe('paused')
+    expect(await lifecycleSendsCol(db).countDocuments({ status: 'pending' })).toBe(1)
+    await expect(resumeCampaign(db, 'c1')).rejects.toThrow('marketing_paused')
+
+    await db
+      .collection('platform_config')
+      .updateOne({ key: 'global' }, { $set: { marketing_paused: false } })
+    invalidatePlatformConfigCache()
+    expect(await resumeCampaign(db, 'c1')).toBe(1)
+    await drainCampaignSends(db, 'c1')
+    expect(vi.mocked(sgMail.send)).toHaveBeenCalledTimes(1)
+    expect((await campaignsCol(db).findOne({ id: 'c1' }))!['status']).toBe('sent')
+  })
+
+  it('a send whose worker died mid-call is recorded as unknown, never re-sent', async () => {
+    await seedUser()
+    const campaign = makeCampaign({ filter: { audience: 'users' } })
+    await startSending(campaign)
+    await queueCampaignSend(db, campaign)
+    await lifecycleSendsCol(db).updateOne(
+      { key: 'campaign:c1:u1' },
+      {
+        $set: {
+          status: 'sending',
+          claim_id: 'dead-worker',
+          sending_at: new Date(Date.now() - DAY),
+        },
+      },
+    )
+    vi.mocked(sgMail.send).mockClear()
+    // Queue recovery redelivers the job; it must not call the provider again.
+    await runCampaignSendJob(db, { campaign_id: 'c1', key: 'campaign:c1:u1' })
+    expect(vi.mocked(sgMail.send)).not.toHaveBeenCalled()
+    const row = await lifecycleSendsCol(db).findOne({ key: 'campaign:c1:u1' })
+    expect(row!.status).toBe('failed')
+    expect(row!.attempts).toBe(3)
+    expect((await campaignsCol(db).findOne({ id: 'c1' }))!['status']).toBe('sent')
+  })
+
+  it('resume finishes an audience whose materialization was interrupted', async () => {
+    await seedUser()
+    await seedUser({ id: 'u2', email: 'two@example.com' })
+    const campaign = makeCampaign({ filter: { audience: 'users' } })
+    await startSending(campaign)
+    await queueCampaignSend(db, campaign)
+    // Simulate a crash after only u1 was claimed.
+    await lifecycleSendsCol(db).deleteOne({ key: 'campaign:c1:u2' })
+    await campaignsCol(db).updateOne({ id: 'c1' }, { $set: { audience_materialized: false } })
+    await drainCampaignSends(db, 'c1')
+    expect((await campaignsCol(db).findOne({ id: 'c1' }))!['status']).toBe('sending')
+
+    expect(await pauseCampaign(db, 'c1')).toBe(true)
+    expect(await resumeCampaign(db, 'c1')).toBe(1)
+    await drainCampaignSends(db, 'c1')
+    const keys = (await lifecycleSendsCol(db).find({ campaign_id: 'c1' }).toArray()).map(
+      (r) => r.key,
+    )
+    expect(keys.sort()).toEqual(['campaign:c1:u1', 'campaign:c1:u2'])
+    expect((await campaignsCol(db).findOne({ id: 'c1' }))!['status']).toBe('sent')
   })
 })

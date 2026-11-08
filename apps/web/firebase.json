@@ -58,7 +58,7 @@
       "ignore": ["firebase.json", "**/.git", "**/node_modules/**"],
       "redirects": [
         {
-          "regex": "^(/(?:assistant|assets?|audit-log|auth|cashflow|connect|documents|events|family|family-setup|finances|financial-profile|health|inbox|insights|invite|legacy|life-events|login|map|marketing|member|operator|reset-password|settings|signup|upgrade|upload|vault|verify-email|welcome)(?:/.*)?)$",
+          "regex": "^(/(?:assistant|assets?|audit-log|auth|cashflow|connect|documents|domains|events|family|family-setup|finances|financial-profile|health|inbox|insights|invite|legacy|life-events|login|map|marketing|member|operator|reset-password|settings|signup|upgrade|upload|vault|verify-email|welcome)(?:/.*)?)$",
           "destination": "https://app.lifekeel.co.uk:1",
           "type": 302
         }
@@ -101,7 +101,7 @@
       "ignore": ["firebase.json", "**/.git", "**/node_modules/**"],
       "redirects": [
         {
-          "regex": "^(/(?:assistant|assets?|audit-log|auth|cashflow|connect|documents|events|family|family-setup|finances|financial-profile|health|inbox|insights|invite|legacy|life-events|login|map|marketing|member|operator|reset-password|settings|signup|upgrade|upload|vault|verify-email|welcome)(?:/.*)?)$",
+          "regex": "^(/(?:assistant|assets?|audit-log|auth|cashflow|connect|documents|domains|events|family|family-setup|finances|financial-profile|health|inbox|insights|invite|legacy|life-events|login|map|marketing|member|operator|reset-password|settings|signup|upgrade|upload|vault|verify-email|welcome)(?:/.*)?)$",
           "destination": "https://app.lifekeel.si:1",
           "type": 302
         }
@@ -135,6 +135,57 @@
         {
           "source": "/_next/static/**",
           "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+        }
+      ]
+    },
+    {
+      "target": "staging",
+      "public": "out",
+      "ignore": ["firebase.json", "**/.git", "**/node_modules/**"],
+      "rewrites": [
+        { "source": "/auth/callback", "destination": "/auth/callback/index.html" },
+        { "source": "/auth/callback/", "destination": "/auth/callback/index.html" },
+        { "source": "/member/**", "destination": "/member/placeholder/index.html" },
+        { "source": "/asset/**", "destination": "/asset/placeholder/index.html" },
+        { "source": "/documents/**", "destination": "/documents/placeholder/index.html" },
+        { "source": "/insights/**", "destination": "/insights/placeholder/index.html" },
+        { "source": "/events/**", "destination": "/events/placeholder/index.html" },
+        { "source": "/life-events/**", "destination": "/life-events/placeholder/index.html" },
+        { "source": "/health/**", "destination": "/health/placeholder/index.html" },
+        { "source": "/blog/**", "destination": "/blog/placeholder/index.html" },
+        { "source": "/invite/**", "destination": "/invite/placeholder/index.html" },
+        { "source": "/b/**", "destination": "/b/placeholder/index.html" },
+        { "source": "/operator/users/**", "destination": "/operator/users/placeholder/index.html" }
+      ],
+      "headers": [
+        {
+          "source": "**",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            {
+              "key": "Content-Security-Policy",
+              "value": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://api.lifekeel.co.uk https://api.lifekeel.si https://app.lifekeel.co.uk https://app.lifekeel.si https://huggingface.co https://*.huggingface.co https://*.hf.co https://challenges.cloudflare.com https://*.r2.cloudflarestorage.com __API_ORIGIN__; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests"
+            },
+            { "key": "X-Frame-Options", "value": "DENY" },
+            { "key": "X-Content-Type-Options", "value": "nosniff" },
+            { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+            {
+              "key": "Permissions-Policy",
+              "value": "geolocation=(), camera=(), microphone=(), payment=(), usb=(), interest-cohort=()"
+            },
+            {
+              "key": "Strict-Transport-Security",
+              "value": "max-age=63072000; includeSubDomains; preload"
+            }
+          ]
+        },
+        {
+          "source": "/_next/static/**",
+          "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+        },
+        {
+          "source": "/b/**",
+          "headers": [{ "key": "Referrer-Policy", "value": "no-referrer" }]
         }
       ]
     }
