@@ -120,16 +120,30 @@ What the sink does not test: Resend itself. Sender domain, SPF and DKIM, deliver
 real `From` address are only proven by sending real mail. Do that once by a human, from
 production-like configuration, to an inbox they own.
 
-## Time and jobs (not built)
+## Time and jobs (built, off until you switch it on)
 
-The 14-day join expiry and the monthly digest depend on time and on jobs, so an agent cannot
-reach them today. Proposed, each behind the same kind of guard as the sink (staging only,
-token, refuses to start elsewhere):
+The 14-day join expiry and the monthly digest depend on time, so an agent cannot reach them by
+waiting. `apps/api/src/staging/test-controls.ts` adds two staging-only calls. They add no
+product behaviour; they only set up time.
 
-- A way to run a named job once (digest, reminders, expiry purge) on demand.
-- A way to move "now" forward for one tenant, or to create a request already dated 15 days ago.
+Switch on with `STAGING_TEST_CONTROLS=on` on the staging API service (and nowhere else). It
+refuses to start unless the mail sink is on, the environment is `staging`, the token is long
+enough and no production host is configured, so a digest run can never send real mail. Both
+calls need the `X-Staging-Token` header, are listed as group F public routes, and do not exist
+when the setting is off.
 
-These are new code and need review. They should not exist in a production build path.
+- `POST /staging/control/age-join-request` `{ "email": "kai@example.test", "days": 15 }`
+  moves a pending request back 15 days (1 to 60). Only `example.test` and `example.com`
+  addresses are accepted. Then ask for the organizer's request list: the normal code removes
+  expired requests.
+- `POST /staging/control/run-digest` `{ "cadence": "monthly", "now": "2027-03-01T08:00:00Z" }`
+  runs the digest job once as of that date, over the families on staging, and returns the
+  counts. By default it records a sweep at that date first, because the digest refuses to send
+  without a recent one; pass `"fresh_sweep": false` to prove it holds back instead. Call it with
+  `now` in consecutive months to see the "not yet seen by every adult" reminder stop after two.
+  Each window sends once per person, so repeat calls in the same month send nothing new.
+
+Mail from a run lands in the mail sink as usual.
 
 ## Data
 

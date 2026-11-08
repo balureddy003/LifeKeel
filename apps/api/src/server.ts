@@ -6,6 +6,7 @@ import {
   registerStagingMailRoutes,
   resolveStagingSink,
 } from './staging/mail-sink.js'
+import { registerStagingControlRoutes } from './staging/test-controls.js'
 import { installResendTransport } from './email/transport.js'
 
 import { randomUUID } from 'node:crypto'
@@ -2336,6 +2337,7 @@ if (workflowDb) {
   registerEmployerCoverRoutes(app, workflowDb)
   registerFamilyDomainRoutes(app, workflowDb)
   registerStagingMailRoutes(app, getStagingDb)
+  registerStagingControlRoutes(app, getStagingDb)
   registerFamilyFeedRoutes(app, workflowDb)
   registerFamilyNotificationRoutes(app, workflowDb)
   registerMemberTwinRoutes(app, workflowDb)
