@@ -1,16 +1,25 @@
-import { CalendarClock, FolderLock, KeyRound, Mail, ShieldCheck, Users, Wallet } from 'lucide-react'
+import {
+  CalendarClock,
+  ClipboardList,
+  FolderLock,
+  KeyRound,
+  Mail,
+  ShieldCheck,
+  Users,
+  Wallet,
+} from 'lucide-react'
 
 export type AuthIntroVariant = 'login' | 'signup' | 'reset'
 
 function LoginIntro() {
   return (
     <>
-      <p className="lk-eyebrow">YOUR FAMILY, IN ONE PLACE</p>
+      <p className="lk-eyebrow">KNOW WHERE TO LOOK</p>
       <h2>Pick up where you left off.</h2>
-      <p>Everything your family keeps in LifeKeel is right where you left it.</p>
+      <p>Your family list is right where you left it.</p>
       <div className="lk-intro-snapshot" aria-hidden="true">
         <div className="lk-intro-snapshot-head">
-          <span>Your household</span>
+          <span>Your family list</span>
           <span className="lk-intro-avatars">
             <i />
             <i />
@@ -18,9 +27,9 @@ function LoginIntro() {
           </span>
         </div>
         {[
+          { Icon: ClipboardList, label: 'The list', note: 'Policies, cars and school dates' },
+          { Icon: CalendarClock, label: 'Dates', note: 'What is coming up' },
           { Icon: FolderLock, label: 'Papers', note: 'Kept in your vault' },
-          { Icon: CalendarClock, label: 'Cover', note: 'Renewal dates on file' },
-          { Icon: Wallet, label: 'Money', note: 'Accounts in one view' },
         ].map(({ Icon, label, note }) => (
           <div key={label} className="lk-intro-row">
             <Icon size={18} />
@@ -36,18 +45,39 @@ function LoginIntro() {
 }
 
 function SignupIntro({ problem }: { problem?: string | null | undefined }) {
+  // A money question picked on the landing page keeps its own path. Otherwise this is the family list.
+  const steps = problem
+    ? [
+        { Icon: KeyRound, title: 'Create your account', note: 'You’re doing this now' },
+        { Icon: Wallet, title: 'Enter a few figures', note: 'Savings, monthly costs, any cover' },
+        { Icon: ShieldCheck, title: 'See the months', note: 'And the date they depend on' },
+        { Icon: Users, title: 'Send the link', note: 'You see when they have opened it' },
+      ]
+    : [
+        { Icon: KeyRound, title: 'Create your account', note: 'You’re doing this now' },
+        { Icon: ClipboardList, title: 'Add one thing', note: 'A car, a policy or a school date' },
+        {
+          Icon: Users,
+          title: 'Ask every adult to look',
+          note: 'Each one confirms they have seen it',
+        },
+        {
+          Icon: FolderLock,
+          title: 'Find it when you need it',
+          note: 'One list, one place to look',
+        },
+      ]
   return (
     <>
       <p className="lk-eyebrow">START FREE</p>
-      <h2>{problem ? `Your brief: ${problem}.` : 'Your first brief is next.'}</h2>
-      <p>One evening, a few figures, one answer in months. Your first brief is free.</p>
+      <h2>{problem ? `Your question: ${problem}.` : 'Your family list starts here.'}</h2>
+      <p>
+        {problem
+          ? 'A few figures in, one answer out. Free to start.'
+          : 'Add one thing tonight. The rest can wait. Free to start.'}
+      </p>
       <ol className="lk-intro-steps">
-        {[
-          { Icon: KeyRound, title: 'Create your account', note: 'You’re doing this now' },
-          { Icon: Wallet, title: 'Enter a few figures', note: 'Savings, monthly costs, any cover' },
-          { Icon: ShieldCheck, title: 'See the months', note: 'And the date they depend on' },
-          { Icon: Users, title: 'Send the link', note: 'You see when they have opened it' },
-        ].map(({ Icon, title, note }, i) => (
+        {steps.map(({ Icon, title, note }, i) => (
           <li key={title} aria-current={i === 0 ? 'step' : undefined}>
             <span className="lk-intro-step-icon">
               <Icon size={18} aria-hidden="true" />
