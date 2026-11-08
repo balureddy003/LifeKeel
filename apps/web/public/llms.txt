@@ -1,40 +1,42 @@
 # LifeKeel
 
-> Your family's chart, kept current. LifeKeel is one home for what a family
-> holds on file: savings, insurance cover, wills and papers. It shows what is
-> there, where it looks light against a rough estimate, and the steps to take
-> on a bad day. Not a budgeting app, not an AI financial advisor. Informational
-> and educational only; not financial, investment, tax, or legal advice, and not
-> a substitute for professional emergency services.
+> A shared family list. LifeKeel keeps what a family would look for on one
+> list: policies, cars, school dates and who to call. Every adult is asked to
+> confirm they have seen it, and a change asks everyone to look again. It also
+> gives first steps when something happens, and a few money questions on the
+> family's own figures. Not a budgeting app, not an AI financial advisor.
+> Informational and educational only; not financial, investment, tax, or legal
+> advice, and not a substitute for professional emergency services.
 
 LifeKeel is free to start, with no credit card required. It never moves money
 or buys products. Anything it sends for a person, such as emails to people they
 name if they go quiet, stays off until they switch it on.
 
-## Before, during and after
+## What a family can do
 
-Everything below works from what the family adds.
+Everything below works from what the family adds. LifeKeel shows, estimates and
+drafts. The family decides.
 
-- Before: savings runway and emergency fund; life, income and health cover on
-  file; policy renewals and duplicate policies for the same person; retirement
-  and education pace; debt health; wills and papers on file; a "what if"
-  simulator.
-- During: documents the family's adults can open (with optional passphrase
-  sealing, no recovery); steps for seven kinds of bad day, which start when
-  the person says what happened; optional emails to people they name if they
-  go quiet.
-- After: who to call, from the policy papers on file; a draft message to the
-  person's own insurer, for them to edit and send.
-
-## Free
-
-- Emergency Mode, with seven kinds of event.
-- "What if" scenarios on the family's own figures.
-- A readiness snapshot.
-- Document upload and storage.
-- Connect an email account so Keel can read financial mail.
-- A roster for the whole family. Each adult has their own view and children
-  get a simpler one.
+- Find it ("Where's the...?"): policies, cars and school dates on one list;
+  papers that every adult can open; wills and papers on file; who to call, from
+  the policy papers on file.
+- Everyone knows ("Do you know about...?"): each adult confirms they have seen
+  the list, and a change asks everyone to look again. Someone can be excused,
+  for example if they are unwell. An adult joins with a code and the organizer
+  approves. The organizer chooses who can change the list. Children are never
+  asked to confirm.
+- Dates, not surprises ("What's coming up?"): MOT, renewal and fees dates from
+  the dates the family adds; a monthly note of what changed; policy renewals
+  and duplicate policies for the same person.
+- Money questions ("What if we...?"): how many months savings would last; a
+  "what if" for a change in pay or costs; cover on file against a rough
+  estimate; retirement and education pace; debt health.
+- Where to start ("Something's happened."): first steps that fit what is on the
+  list; steps for seven kinds of bad day, which start when the person says what
+  happened; a claim packet and a draft message to the person's own insurer, for
+  them to edit and send; optional emails to people they name if they go quiet.
+- A list that keeps up ("Things have changed."): any adult can leave, and a
+  person who is removed is cut off at once.
 
 ## Keel Plus (paid, 7.99 pounds a month, cancel any time)
 
