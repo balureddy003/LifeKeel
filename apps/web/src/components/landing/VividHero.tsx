@@ -32,12 +32,12 @@ const TILES = [
 ] as const
 
 const ON_THE_LIST = [
-  { tone: 'amber', text: 'MOT due 14 March · Sam’s car' },
-  { tone: 'violet', text: 'Life policy · held by Sam, covers Alex' },
-  { tone: 'cyan', text: 'School fees start 1 September · Mia' },
+  { tone: 'amber', text: 'MOT due 14 March · Dev’s car' },
+  { tone: 'violet', text: 'Life policy · held by Dev, covers Marcia' },
+  { tone: 'cyan', text: 'School fees start 1 September · Asha' },
 ] as const
 
-const HAVE_LOOKED = ['Sam has looked', 'Alex has looked'] as const
+const HAVE_LOOKED = ['Dev has looked', 'Marcia has looked'] as const
 
 export function VividHero() {
   return (

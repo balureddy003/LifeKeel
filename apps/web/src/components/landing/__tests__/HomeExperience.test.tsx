@@ -90,4 +90,11 @@ describe('homepage live content', () => {
     expect(new Set(ids).size).toBe(ids.length)
     expect(container.querySelector('#signup a')?.getAttribute('href')).toMatch(/\/signup$/)
   })
+
+  it('uses one cast: the hero sample list and the story name the same people', () => {
+    const { container } = render(<HomeExperience />)
+    const text = container.textContent ?? ''
+    for (const name of ['Dev', 'Marcia', 'Asha']) expect(text).toContain(name)
+    expect(text).not.toMatch(/\b(Sam|Alex|Mia)\b/)
+  })
 })
