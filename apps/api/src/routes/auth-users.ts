@@ -894,6 +894,24 @@ export async function registerAuthUserRoutes(
 
     await col.updateOne({ id: user_id, tenant_id }, { $set: updateData })
 
+    // The family list keeps its own copy of a person's name and email. Without this a
+    // rename never reaches it, and the family's digests keep going to an address the
+    // person has left. Match the roster entry by account id or by its linked login.
+    if (updateData.name !== undefined || updateData.email !== undefined) {
+      const rosterSet: Record<string, string> = {}
+      if (updateData.name !== undefined) rosterSet['members.$[m].name'] = updateData.name
+      if (updateData.email !== undefined) rosterSet['members.$[m].email'] = updateData.email
+      await (
+        await getDb()
+      )
+        .collection('family_groups')
+        .updateOne(
+          { tenant_id },
+          { $set: rosterSet },
+          { arrayFilters: [{ $or: [{ 'm.id': user_id }, { 'm.user_id': user_id }] }] },
+        )
+    }
+
     // New address must prove ownership — the link goes to the new inbox,
     // never the old one. Send only after the update lands so a failure
     // can't strand a token.
