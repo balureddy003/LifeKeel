@@ -72,8 +72,19 @@ describe('public route inventory', () => {
     }
   })
 
+  it('opens /staging/mail only when the staging sink is on, as exactly one group F entry', () => {
+    const off = publicRoutes({ docsEnabled: false })
+    const on = publicRoutes({ docsEnabled: false, stagingSink: true })
+    expect(off.some((r) => r.prefix.startsWith('/staging'))).toBe(false)
+    expect(on.filter((r) => !off.includes(r)).map((r) => `${r.group} ${r.prefix}`)).toEqual([
+      'F /staging/mail',
+    ])
+  })
+
   it('server.ts takes its open list from this module, not a local literal', () => {
-    expect(serverSrc).toContain('openPrefixes({ docsEnabled: DOCS_ENABLED })')
+    expect(serverSrc).toContain(
+      'openPrefixes({ docsEnabled: DOCS_ENABLED, stagingSink: STAGING_SINK })',
+    )
     expect(serverSrc).not.toMatch(/const open = \[/)
   })
 })

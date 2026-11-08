@@ -1,5 +1,11 @@
 import './env.js'
 import { installMailpitTransport } from './dev/mailpit.js'
+import { getDb as getStagingDb } from './db.js'
+import {
+  installStagingMailSink,
+  registerStagingMailRoutes,
+  resolveStagingSink,
+} from './staging/mail-sink.js'
 import { installResendTransport } from './email/transport.js'
 
 import { randomUUID } from 'node:crypto'
@@ -252,7 +258,10 @@ const log = createLogger({ service: 'api', version: process.env['npm_package_ver
 
 // Mailpit (dev capture) wins over any real provider; Resend takes over
 // sgMail.send when RESEND_API_KEY is set, SendGrid stays the default.
-if (!installMailpitTransport()) installResendTransport()
+// The staging sink (staging only, refuses to start anywhere else) wins over all.
+const STAGING_SINK = resolveStagingSink() !== null
+if (STAGING_SINK) installStagingMailSink(getStagingDb)
+else if (!installMailpitTransport()) installResendTransport()
 
 // These are instantiated before MongoDB connects — they degrade gracefully
 // when DB is unavailable (calibrator/thresholds use identity/fallback values)
@@ -1602,7 +1611,7 @@ if (process.env['NODE_ENV'] === 'production' && connectorLoader.count === 0) {
   }
 }
 const DOCS_ENABLED = apiDocsEnabled(process.env, deploymentConfig.mode)
-const OPEN_ROUTE_PREFIXES = openPrefixes({ docsEnabled: DOCS_ENABLED })
+const OPEN_ROUTE_PREFIXES = openPrefixes({ docsEnabled: DOCS_ENABLED, stagingSink: STAGING_SINK })
 
 const trustedProxyHops = Number(
   process.env['TRUST_PROXY_HOPS'] ?? (deploymentConfig.mode === 'dev' ? 0 : 1),
@@ -2326,6 +2335,7 @@ if (workflowDb) {
   registerClaimPacketRoutes(app, workflowDb)
   registerEmployerCoverRoutes(app, workflowDb)
   registerFamilyDomainRoutes(app, workflowDb)
+  registerStagingMailRoutes(app, getStagingDb)
   registerFamilyFeedRoutes(app, workflowDb)
   registerFamilyNotificationRoutes(app, workflowDb)
   registerMemberTwinRoutes(app, workflowDb)

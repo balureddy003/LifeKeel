@@ -35,7 +35,9 @@ export function activeEmailProvider(env: NodeJS.ProcessEnv = process.env): Email
 /** Gate check senders use instead of reading SENDGRID_API_KEY directly —
  *  Resend counts as configured too. */
 export function emailConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
-  return activeEmailProvider(env) !== null
+  // The staging sink stands in for a provider: mail is kept, not sent. Whether
+  // it may run at all is decided at boot (staging/mail-sink.ts).
+  return activeEmailProvider(env) !== null || env['STAGING_MAIL_SINK']?.trim() === 'on'
 }
 
 /** Sender address. EMAIL_FROM is provider-neutral; SENDGRID_FROM_EMAIL is
