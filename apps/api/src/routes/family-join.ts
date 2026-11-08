@@ -81,6 +81,8 @@ interface FamilyMemberInviteDoc extends Record<string, unknown> {
   token: string
   expires_at: Date
   created_at: Date
+  /** First name of the organizer who sent it. The email and the accept page say this instead of the family's name. */
+  invited_by_first_name?: string
 }
 
 function inviteTokenHash(token: string): string {
@@ -525,11 +527,16 @@ export function registerFamilyJoinRoutes(
       // rather than leaving multiple live claims on the same roster entry.
       await invites.deleteMany({ tenant_id, member_id: member.id })
       const token = randomBytes(24).toString('hex')
+      // An invite can reach the wrong person (a mistyped address). It says who sent it, so
+      // the right person recognises it, and not which family: that is not for a stranger.
+      const sender = family.members.find((m) => memberMatchesUser(m, user_id))
+      const inviterFirstName = sender?.name.trim().split(/\s+/)[0] || ''
       const invite: FamilyMemberInviteDoc = {
         id: randomUUID(),
         tenant_id,
         member_id: member.id,
         email,
+        ...(inviterFirstName ? { invited_by_first_name: inviterFirstName } : {}),
         token: inviteTokenHash(token),
         expires_at: new Date(Date.now() + INVITE_TTL_MS),
         created_at: new Date(),
@@ -546,7 +553,7 @@ export function registerFamilyJoinRoutes(
 
       const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
       const inviteUrl = `${appUrl}/invite/${token}`
-      await sendFamilyInviteEmail(email, member.name, family.name, inviteUrl)
+      await sendFamilyInviteEmail(email, member.name, inviterFirstName, inviteUrl)
 
       // Token deliberately absent from audit metadata — it's a live credential.
       getAuditLogger()?.fromRequest(req, 'family.member_invited', 'family_member', member.id, {
@@ -565,8 +572,8 @@ export function registerFamilyJoinRoutes(
   )
 
   // ── GET /family/invite/:token (PRD-123, public) ─────────────────────────
-  // Lets the accept page render "X invited you to join Y" before the
-  // recipient commits a password. Reveals only names — never whether the
+  // Lets the accept page say who invited them before the recipient commits a
+  // password. Reveals only first names — never the family, whether the
   // email is registered, never any financial detail.
   fastify.get<{ Params: { token: string } }>(
     '/family/invite/:token',
@@ -602,7 +609,8 @@ export function registerFamilyJoinRoutes(
       }
       return {
         member_name: member.name,
-        family_name: family.name,
+        // Who invited them, never which family: whoever holds the link may be the wrong person.
+        inviter_name: invite.invited_by_first_name ?? null,
         expires_at: invite.expires_at.toISOString(),
       }
     },

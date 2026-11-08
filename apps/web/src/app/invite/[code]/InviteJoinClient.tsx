@@ -9,6 +9,7 @@ import { motion } from 'framer-motion'
 import { Users, Check, X, Mail } from 'lucide-react'
 import { PasswordInput } from '@/components/PasswordInput'
 import { joinFamily, fetchFamilyInvite, type FamilyInviteInfo } from '@/lib/api'
+import { inviteIntro, INVITE_BUTTON, WRONG_PERSON } from './invite-copy'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
 import { Turnstile, useTurnstile } from '@/components/security/Turnstile'
@@ -110,10 +111,11 @@ function AcceptMemberInvite({ token }: { token: string }) {
         </div>
         <h1 className="text-2xl font-bold">You're invited, {info.memberName}</h1>
         <p className="text-sm text-ink-tertiary mt-1">
-          {info.familyName} set you up on LifeKeel. Set a password to finish joining — you'll be
-          signed in right away. If you already have a LifeKeel account for this family, use that
-          password to link it instead.
+          {inviteIntro(info.inviterName)} Set a password to finish joining — you'll be signed in
+          right away. If you already have a LifeKeel account for this family, use that password to
+          link it instead.
         </p>
+        <p className="text-xs text-ink-tertiary mt-2">{WRONG_PERSON}</p>
       </div>
 
       <div className="mb-6">
@@ -154,7 +156,7 @@ function AcceptMemberInvite({ token }: { token: string }) {
         disabled={password.length < 8 || loading}
         className="w-full bg-family-500 text-white font-semibold rounded-2xl py-4 text-base shadow-md shadow-family-500/15 disabled:opacity-40 active:opacity-90 transition-opacity"
       >
-        {loading ? 'Joining...' : `Join ${info.familyName}`}
+        {loading ? 'Joining...' : INVITE_BUTTON}
       </motion.button>
 
       <p className="text-xs text-ink-tertiary text-center mt-4">

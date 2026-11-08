@@ -223,9 +223,11 @@ function makeFakeDb(state: FakeState) {
 let state: FakeState
 
 const sendJoinApprovedEmail = vi.fn()
+const sendFamilyInviteEmail = vi.fn()
 vi.mock('../../auth-email.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../auth-email.js')>()),
   sendJoinApprovedEmail: (...args: unknown[]) => sendJoinApprovedEmail(...args),
+  sendFamilyInviteEmail: (...args: unknown[]) => sendFamilyInviteEmail(...args),
 }))
 
 vi.mock('../../db.js', async (importOriginal) => {
@@ -844,14 +846,37 @@ describe('GET /family/invite/:token and POST /family/invite/accept (PRD-123)', (
     return String(res.json().invite_url).split('/invite/')[1]!
   }
 
-  it('resolves the token to member + family names without exposing financial data', async () => {
+  it('resolves the token to the invitee and the inviter, and does not name the family', async () => {
+    // An invite can reach the wrong person (a mistyped address). Whoever holds the link is
+    // told who invited them, not which family, its name, or anything on its list.
     const app = await buildApp(ORGANIZER_ID)
     const token = await inviteSam(app)
     const res = await app.inject({ method: 'GET', url: `/family/invite/${token}` })
     expect(res.statusCode).toBe(200)
     expect(res.json().member_name).toBe('Sam Pending')
-    expect(res.json().family_name).toBe('The Rivera Family')
+    expect(res.json().inviter_name).toBe('Organizer')
+    expect(res.json()).not.toHaveProperty('family_name')
+    expect(res.body).not.toContain('Rivera')
     expect(res.json()).not.toHaveProperty('email')
+  })
+
+  it('the invite email names the person who invited them, never the family', async () => {
+    sendFamilyInviteEmail.mockReset()
+    const app = await buildApp(ORGANIZER_ID)
+    await inviteSam(app)
+    expect(sendFamilyInviteEmail).toHaveBeenCalledTimes(1)
+    const args = sendFamilyInviteEmail.mock.calls[0] as string[]
+    expect(args.join(' ')).not.toContain('Rivera')
+    expect(args[2]).toBe('Organizer')
+  })
+
+  it('an invite sent before this change still resolves, with no inviter name', async () => {
+    const app = await buildApp(ORGANIZER_ID)
+    const token = await inviteSam(app)
+    delete state.memberInvites[0]!['invited_by_first_name']
+    const res = await app.inject({ method: 'GET', url: `/family/invite/${token}` })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().inviter_name).toBeNull()
   })
 
   it('404s the lookup for an unknown or expired token', async () => {

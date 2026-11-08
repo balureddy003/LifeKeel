@@ -58,7 +58,7 @@ const tenant: TenantForAlert = {
 
 await sendEmailVerificationEmail(to, 'Sam Preview', `${app}/verify-email?token=preview`)
 await sendPasswordResetEmail(to, 'Sam Preview', `${app}/reset-password/confirm?token=preview`)
-await sendFamilyInviteEmail(to, 'Alex Preview', 'The Preview family', `${app}/invite?token=preview`)
+await sendFamilyInviteEmail(to, 'Alex Preview', 'Sam', `${app}/invite?token=preview`)
 await sendContinuityCheckInEmail(to, 'Sam Preview', 30, app)
 await sendContinuityAlertEmail(to, 'Alex Preview', 'Sam', 37, app)
 await sendVaultReminderEmail(to, 'Alex Preview', 'Sam', 'A bereavement in the family', 4)
