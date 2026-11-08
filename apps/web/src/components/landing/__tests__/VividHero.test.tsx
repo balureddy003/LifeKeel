@@ -30,11 +30,11 @@ describe('home hero', () => {
     expect(screen.getByText('A shared family list')).toBeTruthy()
   })
 
-  it('says what is kept and that every adult has seen it', () => {
+  it('says what is kept and that every adult is asked to confirm, never that they all have', () => {
     render(<VividHero />)
     expect(
       screen.getByText(
-        'LifeKeel keeps what your family would look for on one list. Policies, cars, school dates and who to call. Every adult has seen it.',
+        'LifeKeel keeps what your family would look for on one list. Policies, cars, school dates and who to call. Every adult is asked to confirm they have seen it.',
       ),
     ).toBeTruthy()
   })
@@ -76,7 +76,8 @@ describe('home hero', () => {
       container.querySelector('[aria-label="Sample family list, as shown in the app"]'),
     ).toBeTruthy()
     expect(screen.getByText('Sample family list')).toBeTruthy()
-    expect(screen.getByText('Seen by both adults')).toBeTruthy()
+    expect(screen.getByText('Seen by every adult')).toBeTruthy()
+    expect(document.body.textContent).not.toMatch(/both adults|Every adult has seen it/)
     expect(screen.getByText(/MOT due 14 March/)).toBeTruthy()
     expect(screen.getByText('Made-up family. Made-up dates.')).toBeTruthy()
     // It is a list, not a calculation: no runway months, no pound amounts.

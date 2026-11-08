@@ -51,7 +51,7 @@ export function VividHero() {
         </h1>
         <p className="vv-lede">
           LifeKeel keeps what your family would look for on one list. Policies, cars, school dates
-          and who to call. Every adult has seen it.
+          and who to call. Every adult is asked to confirm they have seen it.
         </p>
         <div className="vv-hero-cta" id="signup">
           <a
@@ -101,7 +101,7 @@ export function VividHero() {
           <div className="vv-mock-stats">
             <div>
               <small>Every adult</small>
-              <b>Seen by both adults</b>
+              <b>Seen by every adult</b>
             </div>
           </div>
         </div>
