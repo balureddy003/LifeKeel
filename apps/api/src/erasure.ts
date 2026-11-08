@@ -51,6 +51,7 @@ export const DELETABLE_COLLECTIONS = [
   'rehearsal_records', // PRD-214 M3 — dated continuity rehearsals
   'life_change_calibration', // PRD-213 M4 — shadow-only drift-sentinel rows
   'family_join_requests',
+  'family_join_blocks',
   'family_member_invites',
   'family_invite_sends', // R43 daily invitation counter
   'oauth_pending_grants', // R37 parked connector grants (encrypted, 10-minute TTL)
