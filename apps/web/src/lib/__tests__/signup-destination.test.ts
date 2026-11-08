@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { isFirstStepPath, signupDestination, signupProblem } from '../signup-destination'
+import {
+  firstStepWaitMessage,
+  isFirstStepPath,
+  signupDestination,
+  signupProblem,
+} from '../signup-destination'
 
 describe('signupDestination', () => {
   it('lands on the family list by default: the page promises "Start your family\u2019s list"', () => {
@@ -39,5 +44,12 @@ describe('isFirstStepPath', () => {
   it('is not any other page', () => {
     for (const p of ['/', '/settings', '/login', '/signup', '/family-setup', '/b/xyz'])
       expect(isFirstStepPath(p), p).toBe(false)
+  })
+})
+
+describe('firstStepWaitMessage', () => {
+  it('says what is being got ready, in the words of the page being opened', () => {
+    expect(firstStepWaitMessage('/domains')).toBe('Getting your family list ready…')
+    expect(firstStepWaitMessage('/briefs')).toBe('Getting your question ready…')
   })
 })

@@ -36,3 +36,10 @@ const BRIEF_PROBLEMS: Record<string, string> = {
 export function signupProblem(brief: string | null): string | null {
   return brief && BRIEF_ID.test(brief) ? (BRIEF_PROBLEMS[brief] ?? null) : null
 }
+
+/** The short wait while a new account's household is created. */
+export function firstStepWaitMessage(pathname: string): string {
+  return pathname.startsWith('/domains')
+    ? 'Getting your family list ready…'
+    : 'Getting your question ready…'
+}

@@ -40,7 +40,7 @@ import { NavRail } from './NavRail'
 import { isKeelPanelEnabled } from '@/lib/keel/client'
 import { PANEL_ID, useKeelPanel } from '@/lib/keel/store'
 import { haptic } from '@/lib/haptics'
-import { isFirstStepPath } from '@/lib/signup-destination'
+import { firstStepWaitMessage, isFirstStepPath } from '@/lib/signup-destination'
 import { track } from '@/lib/growth-track'
 import { isNativeShell, biometricLockEnabled, verifyBiometric } from '@/lib/native'
 
@@ -665,7 +665,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         aria-busy="true"
         className="flex min-h-[65dvh] items-center justify-center px-4 text-ink-tertiary"
       >
-        Getting your brief ready…
+        {firstStepWaitMessage(pathname)}
       </div>
     )
   }
