@@ -171,6 +171,16 @@ async function status(token) {
 const dateIn = (days) => new Date(Date.now() + days * DAY).toISOString().slice(0, 10)
 
 const households = []
+/** ONLY can be one id (H07), a range (H23-H40) or a comma list. */
+const selected = (id) => {
+  if (!ONLY) return true
+  const n = (x) => Number(String(x).replace(/\D/g, ''))
+  if (ONLY.includes('-')) {
+    const [a, b] = ONLY.split('-')
+    return n(id) >= n(a) && n(id) <= n(b)
+  }
+  return ONLY.split(',').includes(id)
+}
 const household = (id, title, story, fn) => households.push({ id, title, story, fn })
 
 // ═══════════════════════ THE HOUSEHOLDS ═════════════════════════════════════
@@ -1161,10 +1171,706 @@ household(
   },
 )
 
+// ═══════════════════════ ADDED AFTER EXPERT REVIEW ═════════════════════════
+// Five expert lenses (family law and safeguarding, protection, accessibility,
+// UK demographics, privacy) each read the first 22 households and proposed gaps.
+// These are the ones an API script can check. What needs a browser or a person
+// is listed in docs/research/uk-household-coverage-*.md. The lenses are
+// simulated perspectives, not credentialed sign-off.
+
+const sinkMail = async (to, since) =>
+  TOKEN
+    ? ((
+        await call(
+          'GET',
+          `/staging/mail?to=${encodeURIComponent(to)}&since=${encodeURIComponent(since)}`,
+          { headers: { 'x-staging-token': TOKEN } },
+        )
+      ).json?.messages ?? [])
+    : null
+const skipRow = (stage, expected, why) =>
+  rows.push({
+    household: hh.id,
+    title: hh.title,
+    stage,
+    expected,
+    ok: null,
+    detail: `SKIPPED: ${why}`,
+    decision: false,
+  })
+const yearsAgo = (years, offsetDays = 0) => {
+  const d = new Date()
+  d.setUTCFullYear(d.getUTCFullYear() - years)
+  return new Date(d.getTime() + offsetDays * DAY).toISOString().slice(0, 10)
+}
+
+household(
+  'H23',
+  'Leaving a family yourself',
+  "Ned joined his partner Olive's family list and now wants out. Separately, Olive wants to step back as organizer.",
+  async () => {
+    const f = await newFamily('Olive', 'Pryce')
+    const o = f.org.token
+    const ned = await joinAndApprove(f, 'Ned Pryce')
+    const nid = (await member(f, 'Ned Pryce'))?.id
+    const leave = await call('DELETE', `/family/members/${nid}`, { token: ned.token })
+    S(
+      '8 Leaving',
+      'Ned can leave the family himself, without asking the organizer',
+      leave.status < 300,
+      `${leave.status} ${leave.text.slice(0, 100)}`,
+    )
+    const after = await view(ned.token)
+    S(
+      '8 Leaving',
+      'once he has left he can see nothing of the family',
+      is4xx(after),
+      `${after.status}`,
+    )
+    const rae = await joinAndApprove(f, 'Rae Pryce')
+    const rid = (await member(f, 'Rae Pryce'))?.id
+    await call('PATCH', `/family/members/${rid}`, { token: o, body: { role: 'organizer' } })
+    const oid = (await member(f, 'Olive Pryce'))?.id
+    const step = await call('DELETE', `/family/members/${oid}`, { token: o })
+    S(
+      '8 Leaving',
+      'after handing over to Rae, Olive can leave the family herself and the family keeps running',
+      step.status < 300 && !is4xx(await view(rae.token)),
+      `${step.status} ${step.text.slice(0, 100)}`,
+    )
+  },
+)
+
+household(
+  'H24',
+  'Removed without a word',
+  'Hannah removes Gareth. He must not be emailed anything, because a message to him could put her at risk.',
+  async () => {
+    if (!TOKEN)
+      return skipRow(
+        '8 Separation',
+        'removing a person sends them no email at all',
+        'STAGING_TEST_TOKEN not set',
+      )
+    const f = await newFamily('Hannah', 'Doyle')
+    const g = await joinAndApprove(f, 'Gareth Doyle')
+    await addVehicle(f.org.token, 'DOY 001', dateIn(30))
+    const since = new Date().toISOString()
+    const gid = (await member(f, 'Gareth Doyle'))?.id
+    await call('DELETE', `/family/members/${gid}`, { token: f.org.token })
+    await addVehicle(f.org.token, 'DOY 002', dateIn(40))
+    await sleep(4000)
+    const mailed = await sinkMail(g.email, since)
+    S(
+      '8 Separation',
+      'Gareth receives no email about being removed, and none about changes made afterwards',
+      (mailed ?? []).length === 0,
+      JSON.stringify((mailed ?? []).map((m) => m.subject)),
+    )
+  },
+)
+
+household(
+  'H25',
+  'Handing over control under pressure',
+  "Ife's controlling partner Marcus stands over her while she makes him an organizer. She must not be locked out afterwards.",
+  async () => {
+    const f = await newFamily('Ife', 'Coker')
+    const o = f.org.token
+    const m = await joinAndApprove(f, 'Marcus Coker')
+    const mid = (await member(f, 'Marcus Coker'))?.id
+    const oid = (await member(f, 'Ife Coker'))?.id
+    const up = await call('PATCH', `/family/members/${mid}`, {
+      token: o,
+      body: { role: 'organizer' },
+    })
+    S('8 Handover', 'Ife can make Marcus an organizer', up.status < 300, `${up.status}`)
+    const lockout = await call('DELETE', `/family/members/${oid}`, { token: m.token })
+    S(
+      '8 Handover',
+      'someone made organizer cannot remove the person who made them one, so Ife cannot be locked out',
+      is4xx(lockout),
+      `${lockout.status} ${lockout.text.slice(0, 90)}`,
+      { decision: true },
+    )
+    // Separate family: Ife must be able to take control back from someone she handed it to.
+    const g = await newFamily('Ife', 'Coker2')
+    const m2 = await joinAndApprove(g, 'Marcus Coker2')
+    const m2id = (await member(g, 'Marcus Coker2'))?.id
+    await call('PATCH', `/family/members/${m2id}`, {
+      token: g.org.token,
+      body: { role: 'organizer' },
+    })
+    const take = await call('DELETE', `/family/members/${m2id}`, { token: g.org.token })
+    S(
+      '8 Handover',
+      'Ife can still remove Marcus afterwards',
+      take.status < 300 && is4xx(await view(m2.token)),
+      `${take.status}`,
+    )
+  },
+)
+
+household(
+  'H26',
+  'Turned down, then keeps asking',
+  'Ife declines a request from someone she is avoiding. He tries again and again with the same address.',
+  async () => {
+    const f = await newFamily('Ife', 'Balogun')
+    const o = f.org.token
+    const addr = emailFor('persistent.b')
+    const ask = async () => {
+      await pace('join')
+      return call('POST', '/family/join', {
+        body: {
+          invite_code: (await call('GET', '/family', { token: o })).json.family.inviteCode,
+          name: 'Persistent Person',
+          email: addr,
+          password: PW,
+        },
+      })
+    }
+    await ask()
+    const first = (
+      (await call('GET', '/family/access-requests', { token: o })).json?.requests ?? []
+    ).find((r) => r.email === addr)
+    await call('POST', `/family/access-requests/${first?.id}/deny`, { token: o })
+    const again = await ask()
+    S(
+      '3 Join',
+      'after Ife declines, the same person cannot keep putting requests in front of her',
+      is4xx(again),
+      `${again.status}`,
+      { decision: true },
+    )
+  },
+)
+
+household(
+  'H27',
+  'Records stay when someone leaves or dies',
+  'Tom held the car, and Lisa and Tom are divorcing. Wendy lost her husband. In both cases the family needs the records to stay.',
+  async () => {
+    const f = await newFamily('Lisa', 'Ward')
+    const o = f.org.token
+    const tom = await addMember(f, { name: 'Tom Ward', role: 'adult', email: emailFor('tom.w') })
+    await joinAndApprove(f, 'Tom Ward', { email: emailFor('tom.w') })
+    const tid = (await member(f, 'Tom Ward'))?.id
+    const add = await call('POST', '/family/domains/car/records/vehicle', {
+      token: o,
+      body: { holder_member_id: tid, ...vehicle('WARD 001', dateIn(20)) },
+    })
+    S(
+      '4 The list',
+      'a car held by Tom can be put on the list',
+      tom.status < 300 && add.status === 201,
+      `${add.status}`,
+    )
+    await call('DELETE', `/family/members/${tid}`, { token: o })
+    const v = (await view(o)).json
+    S(
+      '8 Separation or death',
+      'after Tom is removed, the car and its dates are still on the list',
+      (v?.rows ?? []).some((r) => r.values?.reg === 'WARD 001'),
+      JSON.stringify((v?.rows ?? []).map((r) => r.values?.reg)),
+    )
+    S(
+      '8 Separation or death',
+      'the car is shown as held by someone no longer in the family, not as an error and not removed',
+      (v?.gaps ?? []).some((g) => /no longer in the family/i.test(g.note)),
+      JSON.stringify(v?.gaps),
+    )
+    S(
+      '8 Separation or death',
+      'the date still counts as coming up',
+      (v?.upcoming ?? []).length >= 1,
+      JSON.stringify(v?.upcoming),
+    )
+  },
+)
+
+household(
+  'H28',
+  'A child in two homes',
+  'Priti and Sean are separated and share Jay, 8, week on and week off. Each runs their own list; Jay is on both.',
+  async () => {
+    const a = await newFamily('Priti', 'Shah')
+    const b = await newFamily('Sean', 'Murray')
+    const j1 = await addMember(a, {
+      name: 'Jay Shah-Murray',
+      role: 'child',
+      dob: '2018-03-03',
+      label: 'shared_child',
+    })
+    const j2 = await addMember(b, {
+      name: 'Jay Shah-Murray',
+      role: 'child',
+      dob: '2018-03-03',
+      label: 'shared_child',
+    })
+    S(
+      '2 Set up',
+      "Jay can be on both parents' lists, with no warning that he is a duplicate",
+      j1.status < 300 && j2.status < 300,
+      `${j1.status}/${j2.status}`,
+    )
+    await addVehicle(a.org.token, 'SHAH 001', dateIn(20))
+    const seenByB = await view(b.org.token)
+    S(
+      '7 Privacy',
+      "neither parent can see anything on the other's list",
+      !seenByB.text.includes('SHAH 001') && !(await roster(b)).some((m) => /Priti/.test(m.name)),
+      'cross-list leak',
+    )
+  },
+)
+
+household(
+  'H29',
+  'A lodger in the house',
+  "Gill rents a room to Pavel, and her son's family lives upstairs. Pavel should not see her family's details.",
+  async () => {
+    const f = await newFamily('Gill', 'Rowe')
+    await addVehicle(f.org.token, 'ROWE 001', dateIn(30))
+    const p = await joinAndApprove(f, 'Pavel Nowak')
+    const seen = p.token ? await view(p.token) : { status: 0, text: '' }
+    S(
+      '7 Who can do what',
+      "a lodger can be let in without being shown the family's private records",
+      !seen.text.includes('ROWE 001'),
+      'Pavel sees the family list',
+      { decision: true },
+    )
+  },
+)
+
+household(
+  'H30',
+  'One name, and a name that changes',
+  'Suharto has a single name. Aisha Khan becomes Aisha Raza after marriage.',
+  async () => {
+    await pace('signup')
+    const one = await call('POST', '/auth/signup', {
+      body: {
+        email: emailFor('suharto'),
+        password: PW,
+        name: 'Suharto',
+        workspace: `sim suharto ${RUN}`,
+      },
+    })
+    S(
+      '1 Sign up',
+      'a person with one name can sign up; nobody asks for a surname',
+      one.status === 201,
+      `${one.status} ${one.text.slice(0, 100)}`,
+    )
+    const f = await newFamily('Aisha', 'Khan')
+    const ren = await call('PUT', '/auth/profile', {
+      token: f.org.token,
+      body: { name: 'Aisha Raza' },
+    })
+    S(
+      '8 Name change',
+      'Aisha can change her name',
+      ren.status < 300,
+      `${ren.status} ${ren.text.slice(0, 100)}`,
+    )
+    const names = (await roster(f)).map((m) => m.name)
+    S(
+      '8 Name change',
+      'the family list shows her new name, once, with no old copy left behind',
+      names.includes('Aisha Raza') && !names.includes('Aisha Khan'),
+      JSON.stringify(names),
+    )
+  },
+)
+
+household(
+  'H31',
+  'Just arrived, nearly nothing on the list yet',
+  'Samira arrived from Syria with two children and one email. She has no car, policy or school yet.',
+  async () => {
+    await pace('signup')
+    const r = await call('POST', '/auth/signup', {
+      body: {
+        email: emailFor('samira'),
+        password: PW,
+        name: 'Samira Haddad',
+        workspace: `sim samira ${RUN}`,
+        country: 'SY',
+      },
+    })
+    S(
+      '1 Sign up',
+      'a country outside the UK is accepted and nothing says it is wrong',
+      r.status === 201,
+      `${r.status} ${r.text.slice(0, 100)}`,
+    )
+    const f = await newFamily('Samira', 'Haddad2')
+    const pages = [
+      await view(f.org.token),
+      await view(f.org.token, 'life_protection'),
+      await call('GET', '/family/domains', { token: f.org.token }),
+    ]
+    S(
+      '4 The list',
+      'every list page opens when nothing is on it',
+      pages.every((p) => p.status === 200),
+      pages.map((p) => p.status).join(','),
+    )
+    const alarm = pages
+      .map((p) => p.text)
+      .join(' ')
+      .match(
+        /\b(gap|missing|uncovered|unprotected|exposed|you should|we recommend|not enough|at risk)\b/i,
+      )
+    S(
+      '4 The list',
+      'an empty list does not hint that something is missing or that the family is unprotected',
+      !alarm,
+      alarm?.[0] ?? '',
+    )
+  },
+)
+
+household(
+  'H32',
+  'Forces family posted abroad',
+  'Corporal Reid is posted to Germany with his family. The cars are UK-registered and one MOT has passed.',
+  async () => {
+    await pace('signup')
+    const r = await call('POST', '/auth/signup', {
+      body: {
+        email: emailFor('reid'),
+        password: PW,
+        name: 'Sam Reid',
+        workspace: `sim reid ${RUN}`,
+        country: 'DE',
+      },
+    })
+    S('1 Sign up', 'living in Germany is accepted', r.status === 201, `${r.status}`)
+    const f = await newFamily('Cal', 'Reid2')
+    await addVehicle(f.org.token, 'REID OVER', dateIn(-12))
+    const v = await view(f.org.token)
+    S(
+      '4 The list',
+      'the overdue MOT date is shown, as a date that has passed',
+      (v.json?.upcoming ?? []).some((u) => u.days < 0),
+      JSON.stringify(v.json?.upcoming),
+    )
+    const scary = v.text.match(/\b(illegal|offence|fine|penalty|prosecut|uninsured|unlawful)\b/i)
+    S('4 The list', 'it never says anything is illegal or an offence', !scary, scary?.[0] ?? '')
+  },
+)
+
+household(
+  'H33',
+  'A couple sharing one mailbox',
+  'Dev and Asha use one email address. Both are adults and both must confirm.',
+  async () => {
+    const f = await newFamily('Dev', 'Menon')
+    await pace('join')
+    const j = await call('POST', '/family/join', {
+      body: {
+        invite_code: f.family.inviteCode,
+        name: 'Asha Menon',
+        email: f.org.email,
+        password: PW,
+      },
+    })
+    S(
+      '3 Join',
+      'Asha is told in plain words that the address is already used and what she can do next',
+      is4xx(j) &&
+        /\w{4,}/.test(j.json?.error ?? '') &&
+        !/E11000|stack|undefined|null/i.test(j.text),
+      `${j.status} ${j.text.slice(0, 120)}`,
+    )
+    S(
+      '3 Join',
+      'she is not shown a code or a server error',
+      !is4xx({ status: 0 }) && j.status < 500,
+      `${j.status}`,
+    )
+  },
+)
+
+household(
+  'H34',
+  'An adult with no email at all',
+  'Nan is an adult in the house and has never had an email address.',
+  async () => {
+    const f = await newFamily('Rosa', 'Quinn')
+    const nan = await addMember(f, { name: 'Nan Quinn', role: 'adult', email: '' })
+    S(
+      '2 Set up',
+      'Nan can be listed as an adult without an email address',
+      nan.status < 300,
+      `${nan.status} ${nan.text.slice(0, 100)}`,
+    )
+    const st = await (async () => {
+      await addVehicle(f.org.token, 'QUI 001', dateIn(30))
+      await confirm(f.org.token)
+      return status(f.org.token)
+    })()
+    S(
+      '5 Seen by everyone',
+      'the list says plainly that Nan has not seen it, and does not call it complete until Rosa says she does not need to',
+      st.all === false && st.required.includes('Nan Quinn'),
+      JSON.stringify(st),
+    )
+  },
+)
+
+household(
+  'H35',
+  'Turning 18 this week',
+  'One adult-listed son turned 18 yesterday; his sister turns 18 tomorrow.',
+  async () => {
+    const f = await newFamily('Uma', 'Joshi')
+    const o = f.org.token
+    const old = emailFor('sunil.j')
+    const young = emailFor('tara.j')
+    await addMember(f, { name: 'Sunil Joshi', role: 'adult', dob: yearsAgo(18, -1), email: old })
+    await addMember(f, { name: 'Tara Joshi', role: 'adult', dob: yearsAgo(18, 1), email: young })
+    const a = await joinAndApprove(f, 'Sunil Joshi', { email: old })
+    const b = await joinAndApprove(f, 'Tara Joshi', { email: young })
+    await addVehicle(o, 'JOS 001', dateIn(30))
+    const st = await status(o)
+    S(
+      '5 Seen by everyone',
+      'the day after his 18th birthday Sunil is an adult and is asked to confirm',
+      st.required.includes('Sunil Joshi'),
+      JSON.stringify(st.required),
+    )
+    S(
+      '5 Seen by everyone',
+      'the day before hers, Tara is still treated as a child and is not asked',
+      !st.required.includes('Tara Joshi'),
+      JSON.stringify(st.required),
+    )
+    const w = b.token ? await addVehicle(b.token, 'JOS 009', dateIn(3)) : { status: 0 }
+    S(
+      '7 Who can do what',
+      'Tara still cannot change the list until she is 18',
+      is4xx(w),
+      `${w.status}`,
+    )
+    S('3 Join', 'both can sign in', !!a.token && !!b.token)
+  },
+)
+
+household(
+  'H36',
+  'Everything about me, and delete the family',
+  'Ben asks for a copy of what is held about him. Later Hannah deletes the whole family.',
+  async () => {
+    const f = await newFamily('Ada', 'Norris')
+    const o = f.org.token
+    await addMember(f, { name: 'Kid Norris', role: 'child', dob: '2018-05-05', label: 'my_child' })
+    await addVehicle(o, 'NOR 001', dateIn(30))
+    const ben = await joinAndApprove(f, 'Ben Norris')
+    const mine = await call('GET', '/account/export', { token: ben.token })
+    S(
+      '9 My data',
+      'Ben can get a copy of what is held about him',
+      mine.status === 200 && mine.text.length > 20,
+      `${mine.status} ${mine.text.slice(0, 80)}`,
+    )
+    S(
+      '9 My data',
+      "it holds his details, and not Ada's email, the children's names or the family's car",
+      !mine.text.includes(f.org.email) &&
+        !mine.text.includes('Kid Norris') &&
+        !mine.text.includes('NOR 001'),
+      "other people's data in his export",
+    )
+    const del = await call('POST', '/account/delete', {
+      token: o,
+      body: { confirmation: f.org.email },
+    })
+    S(
+      '9 Delete',
+      'Ada can delete the family',
+      del.status < 300,
+      `${del.status} ${del.text.slice(0, 100)}`,
+    )
+    const after = await view(ben.token)
+    S(
+      '9 Delete',
+      "afterwards Ben's session shows nothing of the family",
+      is4xx(after),
+      `${after.status}`,
+    )
+    await pace('join')
+    const reuse = await call('POST', '/family/join', {
+      body: {
+        invite_code: f.family.inviteCode,
+        name: 'Late Joiner',
+        email: emailFor('late.n'),
+        password: PW,
+      },
+    })
+    S('9 Delete', 'the old invite code stops working', is4xx(reuse), `${reuse.status}`)
+  },
+)
+
+household(
+  'H37',
+  'An invite typed to the wrong address',
+  "Ada mistypes Ben's email. The invite goes to a stranger, then she notices and cancels it.",
+  async () => {
+    if (!TOKEN)
+      return skipRow(
+        '3 Join',
+        'what a stranger could learn from a misdirected invite',
+        'STAGING_TEST_TOKEN not set',
+      )
+    const f = await newFamily('Ada', 'Fox')
+    const o = f.org.token
+    await addMember(f, { name: 'Zed Fox', role: 'child', dob: '2017-01-01', label: 'my_child' })
+    await addVehicle(o, 'FOX 001', dateIn(30))
+    const typo = emailFor('ben.fox.typo')
+    await addMember(f, { name: 'Ben Fox', role: 'adult', email: typo })
+    const bid = (await member(f, 'Ben Fox'))?.id
+    const since = new Date().toISOString()
+    const inv = await call('POST', `/family/members/${bid}/invite`, {
+      token: o,
+      body: { email: typo },
+    })
+    const msgs = await (async () => {
+      for (let i = 0; i < 6; i++) {
+        const m = await sinkMail(typo, since)
+        if (m?.length) return m
+        await sleep(1200)
+      }
+      return []
+    })()
+    const text = msgs.map((m) => m.text).join('\n')
+    S(
+      '3 Join',
+      "the person who got the email by mistake learns no child's name and nothing on the list",
+      msgs.length > 0 && !/Zed|FOX 001/.test(text),
+      text.slice(0, 160),
+    )
+    S(
+      '3 Join',
+      'the email does not name the family',
+      !/Fox/.test(text.replace(/Ben Fox/g, '')),
+      text.slice(0, 160),
+      { decision: true },
+    )
+    const link = msgs.flatMap((m) => m.links ?? []).find((l) => /invite\//.test(l))
+    const tok = link?.split('/invite/')[1]?.split(/[?#]/)[0]
+    await call('DELETE', `/family/members/${bid}`, { token: o })
+    const dead = tok ? await call('GET', `/family/invite/${tok}`) : { status: 0 }
+    S(
+      '3 Join',
+      'once Ada cancels the invite the link stops working at once',
+      is4xx(dead),
+      `${inv.status} link ${dead.status}`,
+    )
+  },
+)
+
+household(
+  'H38',
+  'Double taps, bad signal, and forgotten passwords',
+  'Someone taps save twice on a poor connection. Someone else forgets their password.',
+  async () => {
+    const f = await newFamily('Mel', 'Archer2')
+    const o = f.org.token
+    await Promise.all([addVehicle(o, 'ARC 001', dateIn(30)), addVehicle(o, 'ARC 001', dateIn(30))])
+    const n = ((await view(o)).json?.rows ?? []).filter((r) => r.values?.reg === 'ARC 001').length
+    S(
+      '4 The list',
+      'saving the same car twice at once leaves it on the list once, or says it looks like one already there',
+      n === 1,
+      `listed ${n} times`,
+      { decision: true },
+    )
+    const known = await call('POST', '/auth/request-password-reset', {
+      body: { email: f.org.email },
+    })
+    const unknown = await call('POST', '/auth/request-password-reset', {
+      body: { email: emailFor('nobody.here') },
+    })
+    S(
+      '8 Locked out',
+      'asking for a password reset says the same thing whether or not the address is known',
+      known.status === unknown.status && known.text === unknown.text,
+      `${known.status} ${known.text.slice(0, 60)} | ${unknown.status} ${unknown.text.slice(0, 60)}`,
+    )
+    const codes = []
+    for (let i = 0; i < 4; i++)
+      codes.push(
+        (await call('POST', '/family/invite-code/reset', { token: o })).json?.inviteCode ?? '',
+      )
+    S(
+      '3 Join',
+      'invite codes avoid letters that look like numbers (no O, I or L)',
+      codes.every((c) => c && !/[OIL]/.test(c)),
+      codes.join(','),
+    )
+  },
+)
+
+// Reviewers asked for stronger checks on existing households:
+household(
+  'H39',
+  'Excused is not "has seen it" (check on H10)',
+  'Jo excuses her brother Sam. The list must never show him as someone who has confirmed.',
+  async () => {
+    const f = await newFamily('Jo', 'Barrett2')
+    const o = f.org.token
+    await addMember(f, { name: 'Sam Barrett2', role: 'adult', email: emailFor('sam.b2') })
+    await addVehicle(o, 'BAR2 001', dateIn(30))
+    const sid = (await member(f, 'Sam Barrett2'))?.id
+    await call('PUT', `/family/members/${sid}/confirm-exempt`, { token: o, body: { exempt: true } })
+    await confirm(o)
+    const st = await status(o)
+    S(
+      '5 Seen by everyone',
+      'an excused person is never listed as having confirmed',
+      !st.confirmed.includes('Sam Barrett2'),
+      JSON.stringify(st),
+    )
+    S(
+      '5 Seen by everyone',
+      'and the list says it is complete without claiming he saw it',
+      st.all === true && !st.confirmed.includes('Sam Barrett2'),
+      JSON.stringify(st),
+    )
+  },
+)
+
+household(
+  'H40',
+  'Handover: does the outgoing organizer keep control? (check on H17)',
+  'Quinn makes Rae an organizer. He should still be able to look after the family.',
+  async () => {
+    const f = await newFamily('Quinn', 'Hart')
+    const o = f.org.token
+    const rae = await joinAndApprove(f, 'Rae Hart')
+    const rid = (await member(f, 'Rae Hart'))?.id
+    await call('PATCH', `/family/members/${rid}`, { token: o, body: { role: 'organizer' } })
+    const sid = await joinAndApprove(f, 'Sid Hart')
+    const sidId = (await member(f, 'Sid Hart'))?.id
+    const rm = await call('DELETE', `/family/members/${sidId}`, { token: o })
+    S(
+      '8 Handover',
+      'after handing over, Quinn can still look after the family (for example remove someone)',
+      rm.status < 300,
+      `${rm.status} ${rm.text.slice(0, 80)}`,
+    )
+    S('8 Handover', 'Rae can too', !!rae.token)
+  },
+)
+
 // ═══════════════════════ RUNNER ═════════════════════════════════════════════
 const started = Date.now()
 for (const h of households) {
-  if (ONLY && h.id !== ONLY) continue
+  if (!selected(h.id)) continue
   hh = h
   const before = rows.length
   try {
