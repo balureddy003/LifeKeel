@@ -10,8 +10,7 @@
  * If staging disagrees, that is a finding: either a product gap or a wrong
  * expectation, and the owner decides which.
  *
- * Expectations marked [DECISION] depend on a product call that has not been made;
- * two of them contradict each other on purpose (see H09 and H10).
+ * Expectations marked [DECISION] depend on a product call that has not been made.
  *
  * Refuses to run against production. Fictional names, example.test addresses.
  * Exit code 1 when any expectation is not met.
@@ -628,14 +627,12 @@ household(
       'the three who have joined confirming does not count as every adult while Grandad has not seen it',
       st.all === false,
       JSON.stringify(st),
-      { decision: true },
     )
     S(
       '5 Seen by everyone',
       'the screen names Grandad as the one still to see it',
       st.required.includes('Grandad Okoye'),
       JSON.stringify(st.required),
-      { decision: true },
     )
     const nanEdit = await addVehicle(nan.token, 'OKO 009', dateIn(9))
     S(
@@ -658,7 +655,7 @@ household(
 household(
   'H10',
   'Carer for an adult with a learning disability',
-  'Jo cares for her brother Sam, 34. Sam is on the family list but cannot manage confirming things.',
+  'Jo cares for her brother Sam, 34. Sam is on the family list but cannot manage confirming things. Jo can excuse him.',
   async () => {
     const f = await newFamily('Jo', 'Barrett')
     const o = f.org.token
@@ -666,21 +663,58 @@ household(
     S('2 Set up', 'Jo can put an adult dependant on the family list', sam.status < 300, sam.text)
     await addVehicle(o, 'BAR 001', dateIn(30))
     await confirm(o)
-    const st = await status(o)
+    let st = await status(o)
     S(
       '5 Seen by everyone',
-      'Jo confirming completes it; Sam is not held to confirm',
-      st.all === true,
+      'until Jo says otherwise, the list waits for every adult on it, Sam included (it never claims someone has seen it who has not)',
+      st.all === false && st.required.includes('Sam Barrett'),
       JSON.stringify(st),
-      { decision: true },
     )
-    const roles = (await roster(f)).map((m) => m.role)
+    const samId = (await member(f, 'Sam Barrett'))?.id
+    const ex = await call('PUT', `/family/members/${samId}/confirm-exempt`, {
+      token: o,
+      body: { exempt: true },
+    })
     S(
       '2 Set up',
-      'there is a way to mark someone as a dependant adult, not just adult or child',
-      roles.includes('dependant') || roles.includes('dependent') || roles.includes('carer'),
-      'roles are organizer, parent, adult, child only',
-      { decision: true },
+      'Jo can say Sam does not need to confirm, even though he has not joined',
+      ex.status === 200,
+      `${ex.status} ${ex.text.slice(0, 100)}`,
+    )
+    st = await status(o)
+    S(
+      '5 Seen by everyone',
+      'then Jo confirming completes it, and Sam is no longer shown as someone to wait for',
+      st.all === true && !st.required.includes('Sam Barrett'),
+      JSON.stringify(st),
+    )
+    const back = await call('PUT', `/family/members/${samId}/confirm-exempt`, {
+      token: o,
+      body: { exempt: false },
+    })
+    st = await status(o)
+    S(
+      '5 Seen by everyone',
+      'Jo can ask Sam to confirm again, and the list waits for him again',
+      back.status === 200 && st.all === false,
+      JSON.stringify(st),
+    )
+    const kid = await addMember(f, {
+      name: 'Tia Barrett',
+      role: 'child',
+      dob: '2018-01-01',
+      label: 'my_child',
+    })
+    const kidId = (await member(f, 'Tia Barrett'))?.id
+    const kex = await call('PUT', `/family/members/${kidId}/confirm-exempt`, {
+      token: o,
+      body: { exempt: true },
+    })
+    S(
+      '2 Set up',
+      'children are never asked, so there is no switch to set for them',
+      kid.status < 300 && kex.status === 400,
+      `${kex.status}`,
     )
   },
 )

@@ -1,6 +1,7 @@
 'use client'
 
 import { EditAccessSwitch } from '@/components/EditAccessSwitch'
+import { ConfirmDutySwitch } from '@/components/ConfirmDutySwitch'
 import { PushToggle } from '@/components/PushToggle'
 import { TextButton } from '@/components/TextButton'
 import { ACCOUNT_DELETE_WARNING } from '@/lib/deletion-receipt-copy'
@@ -137,6 +138,7 @@ export default function SettingsPage() {
     inviteMember,
     removeMember,
     setMemberEditAccess,
+    setMemberConfirmExempt,
     updateMemberRole,
     updateProfile,
     refresh,
@@ -734,6 +736,18 @@ export default function SettingsPage() {
                           }}
                         />
                       )}
+                    {/* Who has to confirm the family list. Shown for adults who
+                        have not joined too: that is who it is for. */}
+                    {isOrganizer && (m.role === 'adult' || m.role === 'parent') && (
+                      <ConfirmDutySwitch
+                        name={m.name}
+                        required={m.confirmExempt !== true}
+                        onChange={(next) => {
+                          haptic('light')
+                          setMemberConfirmExempt(m.id, !next).catch(() => haptic('warning'))
+                        }}
+                      />
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
                     <span

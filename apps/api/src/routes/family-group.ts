@@ -95,6 +95,10 @@ export interface FamilyMemberDoc {
   // roster, not on a session role, so it applies at once and ends when the
   // member is removed or becomes a child.
   can_edit?: boolean
+  // The organizer said this adult does not need to confirm the family list
+  // (someone they care for, for example), so the list does not wait for them.
+  // Without it every adult on the roster, joined or not, has to see the list.
+  confirm_exempt?: boolean
 }
 
 export interface FamilyGroupDoc extends Record<string, unknown> {
@@ -161,6 +165,7 @@ function toResponse(doc: FamilyGroupDoc, inviteViewedAt: Map<string, Date> = new
       ...(m.date_of_birth ? { dateOfBirth: m.date_of_birth } : {}),
       ...(m.relationship_label ? { relationshipLabel: m.relationship_label } : {}),
       ...(m.can_edit ? { canEdit: true } : {}),
+      ...(m.confirm_exempt ? { confirmExempt: true } : {}),
     })),
     ...(doc.context_note ? { contextNote: doc.context_note } : {}),
   }
@@ -431,6 +436,49 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
       getAuditLogger()?.fromRequest(req, 'family.edit_access_changed', 'family_member', member.id, {
         enabled,
       })
+      return { family: toResponse(result) }
+    },
+  )
+
+  // ── PUT /family/members/:id/confirm-exempt ──────────────────────────────
+  // The organizer says an adult does not need to confirm the family list (for
+  // example someone they care for), or puts the duty back. It works for adults
+  // who have not joined yet: that is the point. Tier 0 bookkeeping, audit-logged.
+  fastify.put<{ Params: { id: string }; Body: { exempt?: unknown } }>(
+    '/family/members/:id/confirm-exempt',
+    async (req, reply) => {
+      const { tenant_id, user_id } = req.authContext
+      if (!(await isFamilyOrganizer(db, tenant_id, user_id)))
+        return reply.status(403).send({ error: 'Only the organizer can change who confirms' })
+      const exempt = req.body?.exempt
+      if (typeof exempt !== 'boolean')
+        return reply.status(400).send({ error: 'exempt must be true or false' })
+
+      const group = (await groupsFor(tenant_id).findOne({})) as FamilyGroupDoc | null
+      const member = group?.members.find((m) => m.id === req.params.id)
+      if (!member) return reply.status(404).send({ error: 'Member not found' })
+      if (member.role === 'organizer')
+        return reply.status(409).send({ error: 'The organizer always confirms' })
+      if (member.role === 'child')
+        return reply.status(400).send({ error: 'Children are never asked to confirm' })
+
+      const result = (await groupsFor(tenant_id).findOneAndUpdate(
+        { 'members.id': member.id },
+        exempt
+          ? { $set: { 'members.$.confirm_exempt': true, updated_at: new Date() } }
+          : { $set: { updated_at: new Date() }, $unset: { 'members.$.confirm_exempt': '' } },
+        { returnDocument: 'after' },
+      )) as FamilyGroupDoc | null
+      if (!result) return reply.status(404).send({ error: 'Member not found' })
+      getAuditLogger()?.fromRequest(
+        req,
+        'family.confirm_duty_changed',
+        'family_member',
+        member.id,
+        {
+          exempt,
+        },
+      )
       return { family: toResponse(result) }
     },
   )

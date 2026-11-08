@@ -11,6 +11,7 @@ import {
   updateFamilyGroupMemberRole,
   updateFamilyGroupMemberDateOfBirth,
   setFamilyGroupMemberEditAccess,
+  setFamilyGroupMemberConfirmExempt,
   acceptFamilyInvite as apiAcceptFamilyInvite,
   type ApiFamilyGroup,
 } from './api'
@@ -96,6 +97,7 @@ interface AuthContextValue {
   updateMemberDateOfBirth: (id: string, dateOfBirth: string) => Promise<void>
   /** Organizer only. */
   setMemberEditAccess: (id: string, enabled: boolean) => Promise<void>
+  setMemberConfirmExempt: (id: string, exempt: boolean) => Promise<void>
   refresh: () => Promise<void>
 }
 
@@ -657,6 +659,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const setMemberConfirmExempt = async (id: string, exempt: boolean) => {
+    const previous = family
+    if (family) {
+      persist(user, {
+        ...family,
+        members: family.members.map((m) => (m.id === id ? { ...m, confirmExempt: exempt } : m)),
+      })
+    }
+    try {
+      const apiFamily = await setFamilyGroupMemberConfirmExempt(id, exempt)
+      persist(user, toFamilyGroup(apiFamily))
+    } catch (err) {
+      persist(user, previous)
+      throw err
+    }
+  }
+
   const updateMemberDateOfBirth = async (id: string, dateOfBirth: string) => {
     const previous = family
     if (family) {
@@ -722,6 +741,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         updateMemberRole,
         updateMemberDateOfBirth,
         setMemberEditAccess,
+        setMemberConfirmExempt,
         refresh,
       }}
     >
