@@ -141,6 +141,33 @@ describe('run-digest', () => {
     const sweep = await db.collection('job_runs').findOne({ job: 'stale-profile-evaluation' })
     expect((sweep!['ran_at'] as Date).toISOString()).toBe('2027-03-01T08:00:00.000Z')
   })
+  it('can be limited to one family, so a test does not send a digest to every family on staging', async () => {
+    const adult = (id: string) => ({
+      id,
+      user_id: id,
+      name: id,
+      email: `${id}@example.test`,
+      role: 'organizer',
+      status: 'active',
+    })
+    await db.collection('family_groups').insertMany([
+      { id: 'f1', tenant_id: 't1', name: 'One', members: [adult('a1')] },
+      { id: 'f2', tenant_id: 't2', name: 'Two', members: [adult('a2')] },
+    ])
+    const all = await call({ cadence: 'monthly', now: '2027-03-01T08:00:00Z' })
+    expect(all.json().result.tenants).toBe(2)
+    const one = await call({ cadence: 'monthly', now: '2027-03-01T08:00:00Z', tenant_id: 't2' })
+    expect(one.json().result.tenants).toBe(1)
+    const none = await call({
+      cadence: 'monthly',
+      now: '2027-03-01T08:00:00Z',
+      tenant_id: 'nobody',
+    })
+    expect(none.json().result.tenants).toBe(0)
+  })
+  it('refuses a tenant_id that is not text', async () => {
+    expect((await call({ cadence: 'monthly', tenant_id: 42 })).statusCode).toBe(400)
+  })
   it('can skip the sweep to prove the digest holds back without one', async () => {
     await db.collection('family_groups').insertOne({
       tenant_id: 't1',

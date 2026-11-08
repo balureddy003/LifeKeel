@@ -1162,13 +1162,16 @@ scenario('16 time: monthly digest, reminder cap and restart', async () => {
   const b = await joinAndApprove(fam, 'Zoe', 'Archer')
   await call('POST', '/family/domains/car/records/vehicle', { token: o, body: vehicle('DIGEST 1') })
   const since0 = new Date().toISOString()
+  // Scope each run to this family: staging holds many, and a full run sends a
+  // digest to every one of them.
+  const tenantId = (await call('GET', '/auth/me', { token: o })).json?.tenant_id
   const run = async (now, extra = {}) =>
-    (await control('run-digest', { cadence: 'monthly', now, ...extra })).json
+    (await control('run-digest', { cadence: 'monthly', now, tenant_id: tenantId, ...extra })).json
   const NOT_SEEN = /not yet seen by every adult/
   const bodies = async (to, since) => (await mailTo(to, since)).map((m) => m.text).join('\n')
 
   const r1 = await run('2027-03-01T08:00:00Z')
-  check('digest run reports the family', r1?.result?.tenants >= 1, JSON.stringify(r1))
+  check('digest run reports exactly this family', r1?.result?.tenants === 1, JSON.stringify(r1))
   const m1 = await bodies(fam.org.email, since0)
   check(
     'March: organizer gets a digest listing the family list',

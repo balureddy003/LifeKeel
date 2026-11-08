@@ -137,8 +137,9 @@ when the setting is off.
   addresses are accepted. Then ask for the organizer's request list: the normal code removes
   expired requests.
 - `POST /staging/control/run-digest` `{ "cadence": "monthly", "now": "2027-03-01T08:00:00Z" }`
-  runs the digest job once as of that date, over the families on staging, and returns the
-  counts. By default it records a sweep at that date first, because the digest refuses to send
+  runs the digest job once as of that date and returns the counts. Without `"tenant_id"` it
+  runs over every family on staging (slow once there are many; each gets a digest in the
+  sink), so pass `"tenant_id": "<the family's tenant>"` (from `GET /auth/me`) to run one. By default it records a sweep at that date first, because the digest refuses to send
   without a recent one; pass `"fresh_sweep": false` to prove it holds back instead. Call it with
   `now` in consecutive months to see the "not yet seen by every adult" reminder stop after two.
   Each window sends once per person, so repeat calls in the same month send nothing new.
