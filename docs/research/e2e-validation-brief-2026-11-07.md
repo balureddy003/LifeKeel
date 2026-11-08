@@ -98,8 +98,9 @@ Not covered end to end: the job's recording step after sending.
 
 ### 7. Uploads (#400)
 A burst of files picked at once on a tenant's first upload of the day used to refuse one
-with a false "Daily upload limit reached". Check: pick 5-8 files at once on a new household:
-all start. The real limit still refuses once reached and releases reserved bytes.
+with a false "Daily upload limit reached". Check: pick 5-8 files on a new household. The web page sends them one after another, so all
+are accepted. A client that sends them in parallel gets at most 3 in flight (by design) and
+"Too many uploads at once" for the rest, never a daily-limit message. The real limit still refuses once reached and releases reserved bytes.
 
 ### 8. Copy, readability and accessibility (#379, #383, #384, #392, #395)
 - Family-facing copy is at grade 9 or below with no jargon; the noun is **family list** and

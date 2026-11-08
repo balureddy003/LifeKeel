@@ -36,8 +36,16 @@ node scripts/staging-sim/run.mjs [scenario-number-prefix]
 | 12 | Notifications, push key, continuity |
 | 13 | Brute-force throttling |
 | 14 | Mail sink: verification and approval emails, token replay |
+| 15 | 14-day join expiry (needs staging controls): 13 days stays, 15 days goes, expired cannot be approved, can ask again |
+| 16 | Monthly digest (needs staging controls): reminder shown twice then stops, restarts after an edit, seen-by-all, held back without a sweep |
+| 17 | Parallel upload burst: never a false daily limit; the cap of 3 in flight holds |
+
+Scenarios 15 and 16 need the staging test controls (`STAGING_TEST_CONTROLS=on`,
+see `docs/runbooks/staging-environment.md`) and the mail token. Without them they
+are reported as SKIPPED, never as passed.
 
 ## Not covered
 
-Uploads, the 14-day join expiry and the monthly digest (no job or clock
-controls yet), real push, and anything a person sees in a browser.
+Real push, and anything a person sees in a browser. Scenarios 15 and 16 were
+written before the controls were deployed, so their first live run may need the
+wording of an assertion adjusted.
