@@ -20,16 +20,16 @@ export function HomeExperience() {
     <main className="vv-main">
       <div className="vv-bg" aria-hidden="true" />
       <VividHero />
-      <StatStrip />
+      <Features />
+      <BadDay />
       <div id="how-it-works">
         <ThreeProblems />
         <Trust />
         <HowItWorks />
       </div>
       <PlusBand />
+      <StatStrip />
       <Plans />
-      <BadDay />
-      <Features />
       <Questions />
       <FinalCta />
     </main>

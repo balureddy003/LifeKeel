@@ -1079,3 +1079,6 @@
 .vv-hero-cta + .vv-fine { margin-top: 14px; }
 .vv-signin { margin-top: 6px; }
 .vv-signin a { display: inline-flex; align-items: center; min-height: 48px; padding: 0 4px; font-weight: 600; }
+
+/* The line a family says out loud, above each chapter name. */
+.vv-says { font-style: italic; font-weight: 600; margin: 0 0 4px; }

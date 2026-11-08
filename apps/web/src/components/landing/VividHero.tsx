@@ -65,7 +65,7 @@ export function VividHero() {
             Start your family’s list
             <ArrowRight size={18} aria-hidden="true" />
           </a>
-          <a className="vv-btn vv-btn-ghost" href="#how-it-works">
+          <a className="vv-btn vv-btn-ghost" href="#features">
             See how it works
           </a>
         </div>

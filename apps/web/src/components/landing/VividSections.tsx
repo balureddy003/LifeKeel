@@ -23,7 +23,7 @@ import {
 import { appUrl } from '@/lib/region'
 import { track } from '@/lib/growth-track'
 import { haptic } from '@/lib/haptics'
-import { CAPABILITIES, MOMENTS, type Moment } from './capabilities'
+import { CAPABILITIES, CHAPTERS, type Chapter } from './capabilities'
 import { PROMISES } from './Promises'
 import { SECURITY } from './Security'
 import { FREE_ROWS, PLUS_ROWS } from './Pricing'
@@ -114,10 +114,13 @@ export function HowItWorks() {
   )
 }
 
-const MOMENT_STYLE: Record<Moment, { tone: string; icon: LucideIcon }> = {
-  before: { tone: 'cyan', icon: ShieldCheck },
-  during: { tone: 'violet', icon: LifeBuoy },
-  after: { tone: 'amber', icon: MessageSquareText },
+const CHAPTER_STYLE: Record<Chapter, { tone: string; icon: LucideIcon }> = {
+  find: { tone: 'cyan', icon: FolderLock },
+  know: { tone: 'violet', icon: MessageSquareText },
+  dates: { tone: 'amber', icon: BellRing },
+  ask: { tone: 'blue', icon: ScanSearch },
+  help: { tone: 'pink', icon: LifeBuoy },
+  change: { tone: 'green', icon: Compass },
 }
 
 const PROBLEMS: Array<[string, string, string]> = [
@@ -186,31 +189,37 @@ export function ThreeProblems() {
   )
 }
 
+/** Six chapters, each a thing a family says out loud. A new use case adds a scene in capabilities.ts. */
 export function Features() {
   return (
     <section className="vv-section" id="features" aria-labelledby="vv-features-h">
       <Heading
-        eyebrow="One home for the family"
+        eyebrow="One list, six questions"
         id="vv-features-h"
-        title="Ready before. Found during. Sorted after."
-        intro="Everything below works from what your family adds. Keel shows, estimates and drafts. You decide."
+        title="The things your family says out loud."
+        intro="Each one is something LifeKeel helps with today, from what your family adds. LifeKeel shows, estimates and drafts. You decide."
       />
       <div className="vv-moments">
-        {MOMENTS.map((m) => {
-          const { tone, icon: Icon } = MOMENT_STYLE[m.id]
+        {CHAPTERS.map((ch) => {
+          const { tone, icon: Icon } = CHAPTER_STYLE[ch.id]
           return (
-            <article key={m.id} className={`vv-moment vv-${tone}`}>
+            <article
+              key={ch.id}
+              className={`vv-moment vv-${tone}`}
+              aria-labelledby={`vv-chapter-${ch.id}`}
+            >
               <header>
                 <span className="vv-icon">
                   <Icon size={22} aria-hidden="true" />
                 </span>
                 <div>
-                  <h3>{m.name}</h3>
-                  <p>{m.line}</p>
+                  <p className="vv-says">{ch.says}</p>
+                  <h3 id={`vv-chapter-${ch.id}`}>{ch.name}</h3>
+                  <p>{ch.line}</p>
                 </div>
               </header>
               <ul>
-                {CAPABILITIES.filter((c) => c.moment === m.id && c.live).map((c) => (
+                {CAPABILITIES.filter((c) => c.chapter === ch.id && c.live).map((c) => (
                   <li key={c.claim}>
                     <Check size={16} aria-hidden="true" />
                     <span>

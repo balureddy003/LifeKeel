@@ -47,7 +47,7 @@ describe('home hero', () => {
       method: 'signup',
     })
     expect(screen.getByRole('link', { name: 'See how it works' }).getAttribute('href')).toBe(
-      '#how-it-works',
+      '#features',
     )
   })
 
