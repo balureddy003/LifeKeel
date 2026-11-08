@@ -3,6 +3,7 @@
 import { EditAccessSwitch } from '@/components/EditAccessSwitch'
 import { ConfirmDutySwitch } from '@/components/ConfirmDutySwitch'
 import { LeaveFamily } from '@/components/LeaveFamily'
+import { APPROVAL_NOTE, approvalConfirm } from './join-request-copy'
 import { PushToggle } from '@/components/PushToggle'
 import { TextButton } from '@/components/TextButton'
 import { ACCOUNT_DELETE_WARNING } from '@/lib/deletion-receipt-copy'
@@ -362,6 +363,10 @@ export default function SettingsPage() {
 
   const handleApproveRequest = async (id: string) => {
     haptic('light')
+    // Approving lets them in to everything on the family list: say who is asking and what
+    // that means before it happens.
+    const asking = accessRequests.find((r) => r.id === id)
+    if (asking && !(await confirm(approvalConfirm(asking.name, asking.email)))) return
     setActingOnRequestId(id)
     setAccessRequestError(null)
     try {
@@ -988,6 +993,7 @@ export default function SettingsPage() {
                     <div className="text-left min-w-0">
                       <div className="text-base font-medium truncate">{r.name}</div>
                       <div className="text-xs text-ink-tertiary mt-0.5 truncate">{r.email}</div>
+                      <div className="text-sm text-ink-secondary mt-1">{APPROVAL_NOTE}</div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {actingOnRequestId === r.id ? (
