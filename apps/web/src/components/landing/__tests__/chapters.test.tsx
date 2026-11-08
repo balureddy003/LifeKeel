@@ -100,4 +100,12 @@ describe('the chapters on the page', () => {
     const { container } = render(<Features />)
     expect(container.textContent).not.toMatch(/\b(Live|Planned|Coming soon)\b/)
   })
+
+  it('shows at most three scenes per card; the rest sit behind a "more" toggle', () => {
+    const { container } = render(<Features />)
+    for (const card of container.querySelectorAll('article.vv-moment')) {
+      expect(card.querySelectorAll(':scope > ul > li').length).toBeLessThanOrEqual(3)
+    }
+    expect(container.querySelectorAll('details.vv-more').length).toBeGreaterThan(0)
+  })
 })
