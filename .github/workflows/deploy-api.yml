@@ -236,6 +236,7 @@ jobs:
             VAPID_PRIVATE_KEY=lifekeel-vapid-private-key:latest
             VAPID_SUBJECT=lifekeel-vapid-subject:latest
             METRICS_SCRAPE_TOKEN=lifekeel-metrics-scrape-token:latest
+            CRON_TRIGGER_TOKEN=lifekeel-cron-trigger-token:latest
             OTP_PEPPER=lifekeel-otp-pepper:latest
             TURNSTILE_SECRET_KEY=lifekeel-turnstile-secret-key:latest
             RESEND_API_KEY=lifekeel-resend-api-key:latest
