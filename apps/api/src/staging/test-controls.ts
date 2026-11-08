@@ -73,25 +73,30 @@ export function registerStagingControlRoutes(
     },
   )
 
-  app.post<{ Body: { cadence?: unknown; now?: unknown; fresh_sweep?: unknown } }>(
-    '/staging/control/run-digest',
-    async (req, reply) => {
-      if (!allowed(req.headers)) return reply.code(401).send({ error: 'Invalid token' })
-      const cadence = req.body?.cadence
-      if (cadence !== 'weekly' && cadence !== 'monthly')
-        return reply.code(400).send({ error: 'cadence must be weekly or monthly' })
-      const now = req.body?.now === undefined ? new Date() : new Date(String(req.body.now))
-      if (Number.isNaN(now.getTime()) || now.getUTCFullYear() < 2020 || now.getUTCFullYear() > 2100)
-        return reply.code(400).send({ error: 'now must be an ISO date between 2020 and 2100' })
-      const db = await getDatabase()
-      // The monthly digest refuses to claim "we checked" without a recent sweep.
-      // Recording one at the chosen date lets a tester reach the send path;
-      // pass fresh_sweep:false to prove it holds back without one.
-      if (req.body?.fresh_sweep !== false) await recordJobRun(db, SWEEP_JOB, {}, now)
-      const result = await runFamilyHeartbeat(db, { cadence, now })
-      log.warn({ cadence, now: now.toISOString(), ...result }, 'STAGING control: ran digest')
-      return { cadence, now: now.toISOString(), result }
-    },
-  )
+  app.post<{
+    Body: { cadence?: unknown; now?: unknown; fresh_sweep?: unknown; tenant_id?: unknown }
+  }>('/staging/control/run-digest', async (req, reply) => {
+    if (!allowed(req.headers)) return reply.code(401).send({ error: 'Invalid token' })
+    const cadence = req.body?.cadence
+    if (cadence !== 'weekly' && cadence !== 'monthly')
+      return reply.code(400).send({ error: 'cadence must be weekly or monthly' })
+    const now = req.body?.now === undefined ? new Date() : new Date(String(req.body.now))
+    if (Number.isNaN(now.getTime()) || now.getUTCFullYear() < 2020 || now.getUTCFullYear() > 2100)
+      return reply.code(400).send({ error: 'now must be an ISO date between 2020 and 2100' })
+    const tenantId = req.body?.tenant_id
+    if (tenantId !== undefined && (typeof tenantId !== 'string' || !tenantId))
+      return reply.code(400).send({ error: 'tenant_id must be text' })
+    const db = await getDatabase()
+    // The monthly digest refuses to claim "we checked" without a recent sweep.
+    // Recording one at the chosen date lets a tester reach the send path;
+    // pass fresh_sweep:false to prove it holds back without one.
+    if (req.body?.fresh_sweep !== false) await recordJobRun(db, SWEEP_JOB, {}, now)
+    const result = await runFamilyHeartbeat(db, { cadence, now, ...(tenantId ? { tenantId } : {}) })
+    log.warn(
+      { cadence, now: now.toISOString(), tenantId: tenantId ?? 'all', ...result },
+      'STAGING control: ran digest',
+    )
+    return { cadence, now: now.toISOString(), result }
+  })
   return true
 }

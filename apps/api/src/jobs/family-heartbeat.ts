@@ -129,7 +129,9 @@ async function pendingPlaybookSteps(
 
 export async function runFamilyHeartbeat(
   db: Db,
-  opts: { cadence: 'weekly' | 'monthly'; now?: Date },
+  // `tenantId` limits a run to one family. Production never sets it; the staging
+  // test controls do, so a test does not send a digest to every family there.
+  opts: { cadence: 'weekly' | 'monthly'; now?: Date; tenantId?: string },
 ): Promise<HeartbeatResult> {
   const now = opts.now ?? new Date()
   const appUrl = process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002'
@@ -150,7 +152,10 @@ export async function runFamilyHeartbeat(
   }
 
   const families = await safe(
-    db.collection<FamilyGroupDoc>('family_groups').find({}).toArray(),
+    db
+      .collection<FamilyGroupDoc>('family_groups')
+      .find(opts.tenantId ? { tenant_id: opts.tenantId } : {})
+      .toArray(),
     [] as FamilyGroupDoc[],
   )
 
