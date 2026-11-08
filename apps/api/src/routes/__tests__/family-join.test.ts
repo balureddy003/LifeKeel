@@ -254,6 +254,25 @@ describe('POST /family/join', () => {
     expect(state.users).toHaveLength(0)
   })
 
+  it('tells the person asking nothing about the family (safeguarding)', async () => {
+    // Someone holding the code may be a person the family is avoiding. The reply
+    // must not confirm who is here: no family name, no members, nothing but "pending".
+    const app = await buildApp(null)
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/join',
+      payload: {
+        invite_code: INVITE_CODE,
+        name: 'Jane Doe',
+        email: 'jane@example.com',
+        password: 'password123',
+      },
+    })
+    expect(res.statusCode).toBe(201)
+    expect(res.json()).toEqual({ status: 'pending' })
+    expect(res.body).not.toContain('Rivera')
+  })
+
   it('rejects an invalid invite code with no side effects', async () => {
     const app = await buildApp(null)
     const res = await app.inject({

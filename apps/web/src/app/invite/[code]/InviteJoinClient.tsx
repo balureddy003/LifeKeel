@@ -180,7 +180,7 @@ function RequestJoin({ code }: { code: string }) {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [submitted, setSubmitted] = useState<{ familyName: string } | null>(null)
+  const [submitted, setSubmitted] = useState(false)
   const captcha = useTurnstile()
 
   const canSubmit = name.trim() && email.trim() && password.length >= 8 && captcha.ready
@@ -191,9 +191,9 @@ function RequestJoin({ code }: { code: string }) {
     setLoading(true)
     setError(null)
     try {
-      const result = await joinFamily(code, name.trim(), email.trim(), password, captcha.consume())
+      await joinFamily(code, name.trim(), email.trim(), password, captcha.consume())
       haptic('success')
-      setSubmitted(result)
+      setSubmitted(true)
     } catch (err) {
       haptic('warning')
       setError(
@@ -204,7 +204,7 @@ function RequestJoin({ code }: { code: string }) {
     }
   }
 
-  if (submitted) return <PendingApproval familyName={submitted.familyName} />
+  if (submitted) return <PendingApproval />
 
   return (
     <div className="min-h-screen flex flex-col px-6 pt-12 pb-8">
