@@ -67,7 +67,12 @@ export const CLAIMS: Claim[] = [
     status: 'live',
     evidence: 'apps/api/src/routes/family-scenarios.ts',
   },
-  { id: 'monthly-letter', text: 'Monthly letter about what changed', status: 'planned' },
+  {
+    id: 'monthly-letter',
+    text: 'A monthly note of what changed on the family list',
+    status: 'live',
+    evidence: 'apps/api/src/jobs/family-heartbeat.ts',
+  },
   {
     id: 'vault',
     text: 'Documents the family’s adults can open',
@@ -230,6 +235,43 @@ export const CLAIMS: Claim[] = [
     status: 'live',
     page: true,
     evidence: 'apps/api/src/domains/view.ts',
+  },
+  {
+    id: 'join-with-code',
+    text: 'An adult joins with a code and the organizer approves them',
+    status: 'live',
+    evidence: 'apps/api/src/routes/family-join.ts',
+  },
+  {
+    id: 'edit-access',
+    text: 'The organizer chooses who can change the list; children are never asked to confirm',
+    status: 'live',
+    evidence: 'apps/api/src/routes/family-group.ts',
+  },
+  {
+    id: 'dates-coming-up',
+    text: 'Dates on the list, with what is coming up next',
+    status: 'live',
+    evidence: 'apps/api/src/domains/view.ts',
+  },
+  {
+    id: 'first-steps-from-list',
+    text: 'First steps that fit what is on the family list',
+    status: 'live',
+    evidence: 'apps/api/src/domains/playbook.ts',
+  },
+  {
+    id: 'leave-and-removal',
+    text: 'Any adult can leave, and a person removed is cut off at once',
+    status: 'live',
+    evidence: 'apps/api/src/routes/family-group.ts',
+  },
+  {
+    id: 'recovery-contact',
+    text: 'A recovery contact kept with each vehicle on the family list',
+    status: 'live',
+    page: true,
+    evidence: 'apps/api/src/domains/packs/car.ts',
   },
   {
     id: 'household-brief',
