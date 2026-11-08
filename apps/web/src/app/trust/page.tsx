@@ -14,7 +14,6 @@ import { RETENTION_TEXT, STATUS_TEXT, UNREVIEWED_NOTE } from '@/lib/ai-disclosur
 import {
   BACKUPS_LEAD,
   BACKUPS_TITLE,
-  CLAIMS_EMPTY,
   CLAIMS_TITLE,
   EVIDENCE_LABEL,
   MONEY_TEXT,
@@ -57,32 +56,32 @@ export default function TrustPage() {
 
       {data && (
         <>
-          <H2>{CLAIMS_TITLE}</H2>
-          {data.claims.length === 0 ? (
-            <p className="text-sm text-ink-secondary">{CLAIMS_EMPTY}</p>
-          ) : (
-            <ul className="space-y-3">
-              {data.claims.map((c) => (
-                <li key={c.id}>
-                  <GlassCard className="p-4">
-                    <p className="text-sm text-ink-primary">{c.statement}</p>
-                    {c.evidence && (
-                      <p className="text-xs text-ink-tertiary mt-1.5">
-                        {EVIDENCE_LABEL[c.evidence.kind]}:{' '}
-                        {c.evidence.href ? (
-                          <Link href={c.evidence.href} className="text-family-400 font-medium">
-                            {c.evidence.how}
-                          </Link>
-                        ) : (
-                          c.evidence.how
-                        )}{' '}
-                        Last confirmed {c.verified_at.slice(0, 10)}.
-                      </p>
-                    )}
-                  </GlassCard>
-                </li>
-              ))}
-            </ul>
+          {data.claims.length > 0 && (
+            <>
+              <H2>{CLAIMS_TITLE}</H2>
+              <ul className="space-y-3">
+                {data.claims.map((c) => (
+                  <li key={c.id}>
+                    <GlassCard className="p-4">
+                      <p className="text-sm text-ink-primary">{c.statement}</p>
+                      {c.evidence && (
+                        <p className="text-xs text-ink-tertiary mt-1.5">
+                          {EVIDENCE_LABEL[c.evidence.kind]}:{' '}
+                          {c.evidence.href ? (
+                            <Link href={c.evidence.href} className="text-family-400 font-medium">
+                              {c.evidence.how}
+                            </Link>
+                          ) : (
+                            c.evidence.how
+                          )}{' '}
+                          Last confirmed {c.verified_at.slice(0, 10)}.
+                        </p>
+                      )}
+                    </GlassCard>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
 
           <H2 id="processors">{PROCESSORS_TITLE}</H2>

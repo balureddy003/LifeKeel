@@ -14,8 +14,6 @@ export const MONEY_TEXT =
   'You can use LifeKeel free. An optional paid plan adds more. LifeKeel does not sell your information and does not earn from the companies it describes.'
 
 export const CLAIMS_TITLE = 'What we state, and the evidence'
-export const CLAIMS_EMPTY =
-  'Nothing is listed here yet. Statements are added once they have been checked, and removed if they are not kept up to date.'
 export const EVIDENCE_LABEL: Record<'page' | 'check' | 'commitment', string> = {
   page: 'Where to see it',
   check: 'How it is checked',

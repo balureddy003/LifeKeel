@@ -14,15 +14,16 @@ const ai = (status: string) => ({
 beforeEach(() => fetchTrust.mockReset())
 
 describe('trust page', () => {
-  it('says nothing is listed yet instead of inventing claims, and shows the live processors', async () => {
+  it('shows no empty claims section instead of inventing claims, and shows the live processors', async () => {
     fetchTrust.mockResolvedValue({
       claims: [],
       ai: ai('terms_under_review'),
       backups: { retention_days: null, statement: 'The backup window has not been confirmed.' },
     })
     render(<TrustPage />)
-    await waitFor(() => expect(screen.getByText(/Nothing is listed here yet/)).toBeTruthy())
-    expect(screen.getByText('Hosted one')).toBeTruthy()
+    await waitFor(() => expect(screen.getByText('Hosted one')).toBeTruthy())
+    expect(screen.queryByText(/Nothing is listed here yet/)).toBeNull()
+    expect(screen.queryByRole('heading', { name: /What we state/ })).toBeNull()
     expect(screen.getByText(/has not been confirmed/)).toBeTruthy()
     expect(screen.queryByText(/certified|audited|penetration/i)).toBeNull()
   })
