@@ -39,6 +39,7 @@ for v in "${DEPLOY_VARS[@]}"; do env_args+=("$v="); done   # empty, like an unse
 # plus the app hosts the deploy sets via --update-env-vars. Boot guards
 # (apps/api/src/security/boot-guard-registry.ts) refuse to start without them.
 env_args+=(METRICS_SCRAPE_TOKEN="smoke-metrics-scrape-token-0123456789"
+  CRON_TRIGGER_TOKEN="smoke-cron-trigger-token-0123456789abcdef"
   TURNSTILE_SECRET_KEY="1x0000000000000000000000000000000AA"
   OTP_PEPPER="smoke-otp-pepper-smoke-otp-pepper-0123456789"
   SENDGRID_API_KEY="SG.smoke-not-a-real-key"
