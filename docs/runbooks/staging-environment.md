@@ -87,7 +87,6 @@ Guardrails that replace project isolation (all part of the outline below, none c
 | `AUTH_OTP_MODE` | As production wants it | Login codes also arrive by email, so the sink covers them too. |
 | `TURNSTILE_MODE` | Off, or Cloudflare's published test keys | A bot check must not block an agent in staging. Never bypass it in production. |
 | VAPID secrets | A staging key pair, own subject | `npx web-push generate-vapid-keys`. Push needs these or the switch is disabled. |
-| `NEXT_PUBLIC_ON_DEVICE_VOICE` | `on` in the staging web build | Voice can still be previewed anywhere with `?voice=on`. |
 | AI keys | Separate staging secrets only | See "AI in staging". |
 | Stripe | Test-mode keys | Never live keys. |
 | Resend | Not needed while the sink is on | The sink replaces sending. |
@@ -148,7 +147,7 @@ These are new code and need review. They should not exist in a production build 
 | Digest, 14-day expiry | After the job and time switches exist | |
 | Upload burst | Yes | |
 | Push wiring (subscribe, server send attempt) | Yes, with staging VAPID keys | A real notification on a real phone |
-| Microphone and on-device voice | | Yes, on real phones, including airplane mode |
+| Dictation with the phone keyboard | | Yes, on real phones (the app has no voice feature of its own) |
 | Contrast, tap size, screen reader | Partly (browser measurements) | Yes |
 
 ## Outline for the owner (adapt and test; not run)

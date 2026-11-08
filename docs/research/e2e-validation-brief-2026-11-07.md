@@ -12,7 +12,7 @@ Date: 2026-11-07. Main at the time of writing: `5133cd63`, CI green. For a test 
   a testing-phase exception (no zero data retention), so real data must not reach it.
 - Do not deploy, merge or change production settings. Report; do not fix.
 - Nothing below has been run against the real production API, a real mailbox, a real
-  microphone or the real voice model unless a section says so. Treat every "expected" as
+  microphone unless a section says so. Treat every "expected" as
   a claim to check, not a fact.
 - Staging address, two tester inboxes and two accounts (organizer + second adult) are
   needed. They are placeholders in the tester guide: `[staging address]`,
@@ -22,8 +22,6 @@ Date: 2026-11-07. Main at the time of writing: `5133cd63`, CI green. For a test 
 
 | Setting | Effect | Default |
 |---|---|---|
-| `NEXT_PUBLIC_ON_DEVICE_VOICE=on` | Shows the on-device voice button on the domains pages | off |
-| `?voice=on` (or `?voice=off`) in the URL | Per-device preview of voice; remembered in localStorage key `lk_voice_preview`; consent is still asked | off |
 | `EMAIL_VERIFICATION_ENABLED` | When on, a joiner's account needs a confirm link; when off, it does not | deployment's choice (unknown) |
 | `MAX_TENANT_UPLOADS_PER_DAY` | Daily upload cap per household | 200 |
 | `MAX_TENANT_STORAGE_BYTES` | Storage cap per household | see code |
@@ -95,12 +93,7 @@ Not covered end to end: the job's recording step after sending.
   becomes a draft that the person reviews and saves. Deterministic, no model, no network.
   Nothing saves without review.
 - **Photograph a letter or policy (C0):** a card that uses the existing document upload.
-- **On-device voice (C4):** off unless the flag or `?voice=on` is set. Downloads about 40
-  MB (Whisper tiny, English, from huggingface.co) after consent, runs on the phone, can be
-  removed in the UI. Microphone is allowed on `/domains` pages only.
-  Check with the network in airplane mode after the first download: dictation still works
-  and nothing leaves the device. **Never exercised against the real model or microphone;
-  this is the highest-value thing to test.**
+- **Voice (updated 2026-11-08):** LifeKeel has no voice feature of its own. The on-device speech model (40 MB from huggingface.co) was removed; people speak with their phone keyboard's microphone, which works in any text box. The site denies the microphone on every page. Check that the tip above the sentence box says the phone does it and makes no privacy claim.
 - Each record shows a source line when it comes from the financial profile.
 
 ### 7. Uploads (#400)
@@ -117,7 +110,7 @@ all start. The real limit still refuses once reached and releases reserved bytes
 
 ### 9. Hosting (#396)
 Landing sites redirect `/domains` to the app. Check on each landing host, and that the
-microphone is allowed on the app's `/domains` pages only (Permissions-Policy). Firebase
+microphone is denied on every page (Permissions-Policy). Firebase
 header precedence was never checked live.
 
 ## Cross-cutting checks

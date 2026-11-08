@@ -461,15 +461,15 @@ describe('hardening (critic pass 2)', () => {
 })
 
 describe('easy capture, first step (no new processing)', () => {
-  it('tells a person their phone keyboard can type what they say, and does not call it private', async () => {
+  it('tells a person their phone keyboard can type what they say, says the phone does it, and does not call it private', async () => {
     window.history.pushState({}, '', '/domains?d=car')
     getDomainView.mockResolvedValue(carView())
     render(<DomainsPage />)
     fireEvent.click(await screen.findByRole('button', { name: /Add a vehicle/ }))
-    const tips = screen.getAllByText(/your phone's keyboard can type what you say/i)
+    const tips = screen.getAllByText(/microphone on your phone's keyboard/i)
     expect(tips.length).toBeGreaterThanOrEqual(1)
     for (const tip of tips) {
-      expect(tip.textContent).toMatch(/feature of your phone/)
+      expect(tip.textContent).toMatch(/Your phone does this, not LifeKeel/)
       expect(tip.textContent).not.toMatch(/private|secure|encrypted|approved/i)
     }
   })
