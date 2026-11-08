@@ -10,15 +10,14 @@ import { haptic } from '@/lib/haptics'
 const SLIDES = [
   {
     icon: Map,
-    title: "Your family's chart",
+    title: "Your family's list",
     subtitle:
       'What you hold and where it looks light, in one place: cover, savings, wills and papers.',
   },
   {
     icon: MessageSquare,
     title: 'Ask about what is on file',
-    subtitle:
-      'Ask where a policy is, and Keel answers from the papers and figures you have added.',
+    subtitle: 'Ask where a policy is, and Keel answers from the papers and figures you have added.',
   },
   {
     icon: ShieldQuestion,

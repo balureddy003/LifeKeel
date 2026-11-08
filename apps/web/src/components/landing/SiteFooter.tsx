@@ -150,8 +150,8 @@ export function SiteFooter({ home = true }: { home?: boolean }) {
       <div className="lk-foot-inner">
         <div className="lk-footer-intro">
           <div>
-            <span className="lk-eyebrow">THE NEXT CHAPTER STARTS HERE</span>
-            <h2>Life happens. Have a plan.</h2>
+            <span className="lk-eyebrow">KNOW WHERE TO LOOK</span>
+            <h2>One list. Every adult. Easy to find.</h2>
           </div>
           <div className="lk-footer-subscribe">
             <h3>Good things, in your inbox.</h3>
@@ -162,7 +162,7 @@ export function SiteFooter({ home = true }: { home?: boolean }) {
           <div>
             <Brand />
             <p className="lk-fine">
-              Your family&rsquo;s chart, kept current. Know what is on file, and where to start if
+              Your family&rsquo;s list, kept current. Know what is on file, and where to start if
               something happens.
             </p>
             <div className="lk-socials" role="group" aria-label="Social media">
@@ -227,9 +227,7 @@ export function SiteFooter({ home = true }: { home?: boolean }) {
           </nav>
         </div>
         <div className="lk-foot-bottom">
-          <p className="lk-fine">
-            © {new Date().getFullYear()} LifeKeel. Made for your family&rsquo;s next chapter.
-          </p>
+          <p className="lk-fine">© {new Date().getFullYear()} LifeKeel. Made for families.</p>
           <Link href="/cookies">Cookie settings</Link>
         </div>
         <p className="lk-fine lk-legalline">
