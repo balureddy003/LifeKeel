@@ -32,7 +32,7 @@ describe('home hero', () => {
     render(<VividHero />)
     expect(
       screen.getByText(
-        'One list for what your family would look for. Policies, cars, school dates and who to call. Every adult is asked to confirm they have seen it.',
+        'One shared map of what your family would look for: policies, cars, school dates and who to call. It shows what is on file, what is coming next, and where it looks light, as an estimate from the figures you enter. Every adult is asked to confirm they have seen it.',
       ),
     ).toBeTruthy()
   })
