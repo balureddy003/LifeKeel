@@ -49,3 +49,13 @@ are reported as SKIPPED, never as passed.
 Real push, and anything a person sees in a browser. Scenarios 15 and 16 were
 written before the controls were deployed, so their first live run may need the
 wording of an assertion adjusted.
+
+## UK households
+
+`households.mjs` runs 22 fictional UK households (couple, lone parent, blended,
+separated, safeguarding, multigenerational, carer, widowed, same-sex, kinship,
+house-share, adult and teenage children, self-employed, handover, names from many
+cultures, shared surnames, large family, new partner, lapsed request). Each stage
+states the **expected outcome from the family's point of view**, not from the code.
+`--md path` writes the expectations and results as a table; the latest is
+`docs/research/uk-household-coverage-2026-11-08.md`. H22 needs the staging controls.
