@@ -36,13 +36,44 @@ Consequences for testing:
 
 | Piece | Staging | Notes |
 |---|---|---|
-| Google Cloud project | A separate project (recommended), e.g. `lifekeel-staging` | Separate IAM and secrets. Fallback: same project, services and secrets prefixed `staging-`. Owner decision. |
+| Google Cloud project | The existing project, `dyocense-502208`; every staging resource is prefixed (see "Decision") | Decided by the owner on 2026-11-08. A separate project would have given separate IAM and secrets; the guardrails below replace that. |
 | API | Cloud Run `lifekeel-api-staging` | Built from the same Dockerfile and image process as production, min instances 0. |
 | Jobs | Optional at first | Needed for the digest and reminders; see "Time and jobs". |
 | Database | Its own MongoDB database and credentials | Never the production connection string. |
 | Redis | Its own instance or a separate database | Same rule. |
 | Web | A separate Firebase Hosting site or a preview channel | Build with `NEXT_PUBLIC_API_URL` pointing at the staging API. The deploy step pins the API origin into the CSP, so the staging build needs its own value. |
 | Mail | The staging mail sink (built, see below) | Nothing leaves the database. |
+
+## Decision: same project, prefixed names (2026-11-08)
+
+Staging lives in the existing Google Cloud and Firebase project (`dyocense-502208`). Nothing
+separates it from production except names and permissions, so those matter:
+
+| Resource | Production | Staging |
+|---|---|---|
+| Cloud Run API | `lifekeel-api` | `lifekeel-api-staging` |
+| Cloud Run jobs | `lifekeel-jobs` | `lifekeel-jobs-staging` (later) |
+| Secrets | `lifekeel-*` | `staging-*` (own copy of each one staging needs; none shared) |
+| Container images | `lifekeel-docker/api` | same repository, tags prefixed `staging-` |
+| Firebase Hosting | sites `lifekeel`, `lifekeel-landing-uk`, `lifekeel-landing-si` | a new site `lifekeel-staging` in the same Firebase project, as a new target in `apps/web/.firebaserc` |
+| Database | `lifekeel` | a separate database name and its own user, `lifekeel_staging` |
+| Service accounts | existing deploy accounts | a new staging runtime account and a new staging deploy account |
+
+Guardrails that replace project isolation (all part of the outline below, none created yet):
+
+- The staging runtime account is granted access to `staging-*` secrets one by one, never at
+  project level, and has no access to any `lifekeel-*` secret. Same for the staging deploy
+  account, which must not be able to deploy `lifekeel-api` or the production hosting sites.
+- The staging deploy workflow targets only the staging service and site by name and has its own
+  GitHub environment. It must not reuse the production environment or its approval.
+- The staging database user can reach only the staging database.
+- Billing, quotas and logs are shared with production. Give the staging service a low
+  max-instances and a budget alert so a test loop cannot starve or bill production.
+- Resource naming is the only visible boundary, so the acceptance checks include listing
+  services and secrets and confirming each staging resource carries the prefix.
+- The mail sink already refuses to start on a production host, which still protects mail if a
+  setting is copied across by mistake. It does not protect against a staging service being
+  pointed at the production database; the separate database user is what prevents that.
 
 ## Settings that differ from production
 
@@ -122,7 +153,7 @@ These are new code and need review. They should not exist in a production build 
 
 ## Outline for the owner (adapt and test; not run)
 
-1. Decide: separate project or same project; the staging web address; who may deploy.
+1. Confirm the staging web address and who may deploy (the project question is decided).
 2. Create the project or services, the database and Redis, and the staging secrets.
 3. Create a Firebase Hosting site (or channel) for staging and add it as a target in
    `apps/web/.firebaserc`.
@@ -140,7 +171,7 @@ These are new code and need review. They should not exist in a production build 
 - `GET /staging/mail` without the token returns 401; with it and a `to`, returns that
   address's messages only.
 - A new joiner's confirm link can be fetched and opened by an agent.
-- No production secret exists in the staging project.
+- No production secret is readable by the staging accounts (try it: a staging account asking for a `lifekeel-*` secret must be refused).
 - Production behaviour is unchanged: `/staging/mail` returns 404 there.
 
 ## Known limits
