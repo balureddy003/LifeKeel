@@ -6,6 +6,7 @@
 import type { Db } from 'mongodb'
 import { getTenantCollection } from '@lifekeel/platform'
 import type { RecordType } from './types.js'
+import { isMinorMember } from '../family/family-permissions.js'
 
 export interface DomainRow {
   id: string
@@ -49,9 +50,24 @@ const financialProfilePolicies: Adapter = async (db, tenantId, rec) => {
     tenantId,
   ).findOne({})
   const allowed = rec.fields.find((f) => f.key === 'type')?.choices ?? []
+  // `filter: { covers: 'minor' }` keeps only policies whose covered person is a
+  // child, so a pack about children does not repeat every adult policy.
+  const onlyMinors = rec.source.kind === 'adapter' && rec.source.filter?.['covers'] === 'minor'
+  let minors = new Set<string>()
+  if (onlyMinors) {
+    const group = await db
+      .collection<{ members?: { id: string; role: string; date_of_birth?: string | null }[] }>(
+        'family_groups',
+      )
+      .findOne({ tenant_id: tenantId })
+    minors = new Set((group?.members ?? []).filter(isMinorMember).map((m) => m.id))
+  }
   return (doc?.policies ?? [])
     .map((p, i) => ({ p, i }))
     .filter(({ p }) => allowed.includes(p.type))
+    .filter(
+      ({ p }) => !onlyMinors || (!!p.beneficiary_member_id && minors.has(p.beneficiary_member_id)),
+    )
     .map(({ p, i }) => ({
       id: p.id ?? `policy_${i}`,
       record: rec.key,
