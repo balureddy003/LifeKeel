@@ -218,6 +218,20 @@ export const CLAIMS: Claim[] = [
     evidence: 'apps/api/src/routes/account.ts',
   },
   {
+    id: 'family-list',
+    text: 'A shared family list of policies, cars, children\u2019s dates and who to call',
+    status: 'live',
+    page: true,
+    evidence: 'apps/api/src/domains/registry.ts',
+  },
+  {
+    id: 'every-adult-confirms',
+    text: 'Each adult confirms they have seen the list, and a change asks everyone to look again',
+    status: 'live',
+    page: true,
+    evidence: 'apps/api/src/domains/view.ts',
+  },
+  {
     id: 'household-brief',
     text: 'A computed household brief shared with the other adult, with opened confirmation',
     status: 'live',
