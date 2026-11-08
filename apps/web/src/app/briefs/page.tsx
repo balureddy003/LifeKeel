@@ -76,7 +76,7 @@ const inputCls =
 const primaryBtn =
   'inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-full bg-family-500 px-6 text-base font-semibold text-white disabled:opacity-50'
 const ghostBtn =
-  'inline-flex min-h-[44px] items-center gap-2 rounded-full border border-haze px-4 text-sm font-medium text-ink-secondary'
+  'inline-flex min-h-[48px] items-center gap-2 rounded-full border border-haze px-4 text-sm font-medium text-ink-secondary'
 
 function Field({
   id,
@@ -249,7 +249,7 @@ function StepRows({
           <button
             type="button"
             onClick={() => remove(i)}
-            className="mt-2 min-h-[44px] text-sm text-ink-secondary underline"
+            className="mt-2 min-h-[48px] text-sm text-ink-secondary underline"
           >
             Remove this change
           </button>
@@ -259,7 +259,7 @@ function StepRows({
         <button
           type="button"
           onClick={() => set({ ...f, steps_n: String(n + 1) })}
-          className="mt-3 inline-flex min-h-[44px] items-center rounded-full border border-haze px-4 text-sm font-medium text-ink-secondary"
+          className="mt-3 inline-flex min-h-[48px] items-center rounded-full border border-haze px-4 text-sm font-medium text-ink-secondary"
         >
           + Add a later change
         </button>
@@ -597,7 +597,7 @@ function ResultCard({
           </p>
         )}
         <details className="mt-2">
-          <summary className="min-h-[44px] cursor-pointer py-2 text-sm font-medium text-family-400">
+          <summary className="min-h-[48px] cursor-pointer py-2 text-sm font-medium text-family-400">
             How this was worked out
           </summary>
           <p className="text-ink-secondary">{main}</p>
@@ -1441,7 +1441,7 @@ export default function BriefsPage() {
           <button
             type="button"
             onClick={back}
-            className="inline-flex min-h-[44px] items-center gap-1 text-sm text-ink-tertiary"
+            className="inline-flex min-h-[48px] items-center gap-1 text-sm text-ink-tertiary"
           >
             <ArrowLeft size={16} aria-hidden="true" /> Choose something else
           </button>
@@ -1508,7 +1508,7 @@ export default function BriefsPage() {
                       50,
                     )
                   }}
-                  className="mt-1 inline-flex min-h-[44px] items-center gap-1 text-sm text-ink-secondary"
+                  className="mt-1 inline-flex min-h-[48px] items-center gap-1 text-sm text-ink-secondary"
                 >
                   <ArrowLeft size={16} aria-hidden="true" /> Back to today and when
                 </button>
@@ -1721,7 +1721,7 @@ export default function BriefsPage() {
                           onClick={() =>
                             void confirmBrief(b.id, b.result_version!).then(() => refresh())
                           }
-                          className="min-h-[44px] rounded-full bg-family-500 px-4 text-sm font-semibold text-white"
+                          className="min-h-[48px] rounded-full bg-family-500 px-4 text-sm font-semibold text-white"
                         >
                           I have read this
                         </button>
@@ -1732,7 +1732,7 @@ export default function BriefsPage() {
                             <button
                               type="button"
                               onClick={() => startUpdate(b)}
-                              className="inline-flex min-h-[44px] items-center gap-1 font-medium text-family-400 underline"
+                              className="inline-flex min-h-[48px] items-center gap-1 font-medium text-family-400 underline"
                             >
                               <Pencil size={14} aria-hidden="true" /> Update these figures
                             </button>
@@ -1747,7 +1747,7 @@ export default function BriefsPage() {
                                 return refresh()
                               })
                             }
-                            className="min-h-[44px] text-ink-secondary underline"
+                            className="min-h-[48px] text-ink-secondary underline"
                           >
                             Turn off the link
                           </button>
@@ -1756,7 +1756,7 @@ export default function BriefsPage() {
                           <button
                             type="button"
                             onClick={() => void newLink(b, other)}
-                            className="min-h-[44px] text-ink-secondary underline"
+                            className="min-h-[48px] text-ink-secondary underline"
                           >
                             {b.share && !b.share.revoked
                               ? 'Get a new link'
@@ -1768,7 +1768,7 @@ export default function BriefsPage() {
                         <button
                           type="button"
                           onClick={() => void remove(b)}
-                          className="min-h-[44px] text-red-500 underline"
+                          className="min-h-[48px] text-red-500 underline"
                         >
                           Delete
                         </button>

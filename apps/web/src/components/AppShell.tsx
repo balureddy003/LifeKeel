@@ -398,7 +398,7 @@ function EmergencyButton() {
         activateEmergency()
       }}
       whileTap={{ scale: 0.95 }}
-      className="relative h-11 pl-3 pr-3 rounded-full flex items-center gap-1.5"
+      className="relative h-12 pl-3 pr-3 rounded-full flex items-center gap-1.5"
       style={{
         background: 'linear-gradient(135deg, #ffafa3, #ffafa3)',
         border: '1px solid rgba(211,184,245,0.5)',
@@ -453,7 +453,7 @@ function AskKeelButton({ context }: { context?: string }) {
           router.push(context ? `/assistant?context=${encodeURIComponent(context)}` : '/assistant')
       }}
       whileTap={{ scale: 0.9 }}
-      className="relative w-11 h-11 rounded-full flex items-center justify-center"
+      className="relative w-12 h-12 rounded-full flex items-center justify-center"
       style={{
         background: 'rgb(var(--family-500))',
         border: '1px solid rgb(var(--tint) / 0.15)',

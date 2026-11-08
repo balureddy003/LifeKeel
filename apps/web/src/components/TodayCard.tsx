@@ -59,7 +59,7 @@ export function TodayCard({
           <Link
             href={item.href}
             onClick={() => haptic('light')}
-            className="mt-3 inline-flex min-h-[44px] items-center gap-1 text-sm font-semibold text-family-400"
+            className="mt-3 inline-flex min-h-[48px] items-center gap-1 text-sm font-semibold text-family-400"
           >
             {item.cta} <ChevronRight size={16} aria-hidden="true" />
           </Link>

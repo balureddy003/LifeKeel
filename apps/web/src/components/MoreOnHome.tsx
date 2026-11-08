@@ -38,7 +38,7 @@ export function MoreOnHome({ fold, children }: { fold: boolean; children: ReactN
       }}
       className="group"
     >
-      <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between rounded-2xl border border-haze bg-surface-1 px-4 text-sm font-semibold text-ink-secondary">
+      <summary className="flex min-h-[48px] cursor-pointer list-none items-center justify-between rounded-2xl border border-haze bg-surface-1 px-4 text-sm font-semibold text-ink-secondary">
         More about your family
         <ChevronDown
           size={16}

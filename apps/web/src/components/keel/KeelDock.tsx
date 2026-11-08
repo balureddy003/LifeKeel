@@ -109,7 +109,7 @@ function Header({
           type="button"
           onClick={onEmergency}
           aria-label="Emergency help"
-          className="flex h-11 w-11 items-center justify-center rounded-full text-danger"
+          className="flex h-12 w-12 items-center justify-center rounded-full text-danger"
         >
           <Siren size={18} aria-hidden />
         </button>
@@ -118,7 +118,7 @@ function Header({
         type="button"
         onClick={() => newConversation()}
         aria-label="New conversation"
-        className="flex h-11 w-11 items-center justify-center rounded-full text-ink-secondary"
+        className="flex h-12 w-12 items-center justify-center rounded-full text-ink-secondary"
       >
         <Plus size={18} aria-hidden />
       </button>
@@ -126,7 +126,7 @@ function Header({
         type="button"
         onClick={() => setMinimised(true)}
         aria-label="Minimise Keel"
-        className="flex h-11 w-11 items-center justify-center rounded-full text-ink-secondary"
+        className="flex h-12 w-12 items-center justify-center rounded-full text-ink-secondary"
       >
         <Minus size={18} aria-hidden />
       </button>
@@ -134,7 +134,7 @@ function Header({
         type="button"
         onClick={() => closePanel()}
         aria-label="Close Keel"
-        className="flex h-11 w-11 items-center justify-center rounded-full text-ink-secondary"
+        className="flex h-12 w-12 items-center justify-center rounded-full text-ink-secondary"
       >
         <X size={18} aria-hidden />
       </button>

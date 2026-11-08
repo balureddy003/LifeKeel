@@ -107,7 +107,7 @@ export function WhatIf({ brief }: { brief: HouseholdBrief }) {
         }
       }}
     >
-      <summary className="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm font-medium text-ink-primary">
+      <summary className="flex min-h-[48px] cursor-pointer items-center gap-2 text-sm font-medium text-ink-primary">
         <SlidersHorizontal size={16} aria-hidden="true" /> Try a what-if
       </summary>
       <p className="mt-2 text-sm text-ink-secondary">
@@ -184,7 +184,7 @@ export function WhatIf({ brief }: { brief: HouseholdBrief }) {
         <button
           type="button"
           onClick={() => setValues({})}
-          className="mt-3 inline-flex min-h-[44px] items-center gap-2 rounded-full border border-haze px-4 text-sm font-medium text-ink-secondary"
+          className="mt-3 inline-flex min-h-[48px] items-center gap-2 rounded-full border border-haze px-4 text-sm font-medium text-ink-secondary"
         >
           <RotateCcw size={16} aria-hidden="true" /> Back to what I entered
         </button>
