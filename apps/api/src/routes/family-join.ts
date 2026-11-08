@@ -212,7 +212,9 @@ export function registerFamilyJoinRoutes(
       })
 
       log.info({ tenantId: family.tenant_id, requestId: doc.id }, 'Family join request submitted')
-      return reply.status(201).send({ status: 'pending', family_name: family.name })
+      // Nothing about the family goes back to the person asking. They hold only a
+      // code, and may be someone the family is avoiding; the organizer decides.
+      return reply.status(201).send({ status: 'pending' })
     },
   )
 

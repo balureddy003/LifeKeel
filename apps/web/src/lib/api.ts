@@ -2504,7 +2504,7 @@ export async function joinFamily(
   email: string,
   password: string,
   turnstileToken?: string | null,
-): Promise<{ familyName: string }> {
+): Promise<void> {
   const base = getApiBase()
   const res = await credFetch(`${base}/family/join`, {
     method: 'POST',
@@ -2516,7 +2516,6 @@ export async function joinFamily(
     throw new Error(
       turnstileErrorMessage(data.error) ?? (data.error || "Couldn't submit your request"),
     )
-  return { familyName: data.family_name as string }
 }
 
 export async function fetchAccessRequests(): Promise<AccessRequest[]> {
