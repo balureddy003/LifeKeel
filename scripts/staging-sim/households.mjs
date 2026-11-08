@@ -1237,6 +1237,9 @@ household(
       'after handing over to Rae, Olive can leave the family herself and the family keeps running',
       step.status < 300 && !is4xx(await view(rae.token)),
       `${step.status} ${step.text.slice(0, 100)}`,
+      // Olive created the account, so leaving also means handing over the account itself.
+      // That needs an ownership transfer that does not exist yet.
+      { decision: true },
     )
   },
 )

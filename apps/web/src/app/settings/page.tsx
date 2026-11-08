@@ -2,6 +2,7 @@
 
 import { EditAccessSwitch } from '@/components/EditAccessSwitch'
 import { ConfirmDutySwitch } from '@/components/ConfirmDutySwitch'
+import { LeaveFamily } from '@/components/LeaveFamily'
 import { PushToggle } from '@/components/PushToggle'
 import { TextButton } from '@/components/TextButton'
 import { ACCOUNT_DELETE_WARNING } from '@/lib/deletion-receipt-copy'
@@ -70,6 +71,7 @@ import {
   approveAccessRequest,
   denyAccessRequest,
   resetInviteCode,
+  removeFamilyGroupMember,
   fetchMyReferralCode,
   fetchReferralSummary,
   fetchFamilyContinuity,
@@ -168,6 +170,7 @@ export default function SettingsPage() {
   // their account.
   const isOrganizer =
     family?.members.find((m) => m.id === user?.id || m.userId === user?.id)?.role === 'organizer'
+  const ownMember = family?.members.find((m) => m.id === user?.id || m.userId === user?.id)
   const [accessRequests, setAccessRequests] = useState<AccessRequest[]>([])
   const [actingOnRequestId, setActingOnRequestId] = useState<string | null>(null)
   const [accessRequestError, setAccessRequestError] = useState<string | null>(null)
@@ -831,6 +834,28 @@ export default function SettingsPage() {
               }
             />
           </ListSection>
+        )}
+
+        {/* Anyone who needs to get out can leave on their own, without the organizer.
+            Children cannot: a parent decides that. The server explains when it is not
+            allowed (a sole organizer has to hand over first, the account owner cannot leave). */}
+        {family && ownMember && ownMember.status === 'active' && ownMember.role !== 'child' && (
+          <LeaveFamily
+            onLeave={async () => {
+              const ok = await confirm({
+                title: 'Leave this family?',
+                message:
+                  'You will lose access to the family list straight away. This can not be undone.',
+                confirmLabel: 'Leave',
+                destructive: true,
+              })
+              if (!ok) return
+              haptic('warning')
+              await removeFamilyGroupMember(ownMember.id)
+              signOut()
+              router.push('/login')
+            }}
+          />
         )}
 
         {/* Add Member form — plain conditional render, no AnimatePresence.
