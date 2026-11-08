@@ -141,4 +141,5 @@ jobs:
 
       - name: Deploy to Firebase Hosting
         working-directory: apps/web
-        run: firebase deploy --only hosting --project "$FIREBASE_PROJECT_ID" --non-interactive
+        # The three production sites only, named so no other hosting site is published with this build.
+        run: firebase deploy --only hosting:family,hosting:landing-uk,hosting:landing-si --project "$FIREBASE_PROJECT_ID" --non-interactive
