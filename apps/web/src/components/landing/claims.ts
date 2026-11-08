@@ -267,6 +267,13 @@ export const CLAIMS: Claim[] = [
     evidence: 'apps/api/src/routes/family-group.ts',
   },
   {
+    id: 'recovery-contact',
+    text: 'A recovery contact kept with each vehicle on the family list',
+    status: 'live',
+    page: true,
+    evidence: 'apps/api/src/domains/packs/car.ts',
+  },
+  {
     id: 'household-brief',
     text: 'A computed household brief shared with the other adult, with opened confirmation',
     status: 'live',

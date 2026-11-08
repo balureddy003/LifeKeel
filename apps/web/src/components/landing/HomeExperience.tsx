@@ -1,6 +1,7 @@
 'use client'
 
 import { VividHero } from './VividHero'
+import { FamilyStory } from './FamilyStory'
 import {
   BadDay,
   Features,
@@ -20,6 +21,7 @@ export function HomeExperience() {
     <main className="vv-main">
       <div className="vv-bg" aria-hidden="true" />
       <VividHero />
+      <FamilyStory />
       <Features />
       <BadDay />
       <div id="how-it-works">
