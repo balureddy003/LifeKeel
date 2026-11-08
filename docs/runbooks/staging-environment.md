@@ -75,6 +75,37 @@ Guardrails that replace project isolation (all part of the outline below, none c
   setting is copied across by mistake. It does not protect against a staging service being
   pointed at the production database; the separate database user is what prevents that.
 
+## Deploying staging (workflow)
+
+`.github/workflows/deploy-staging.yml` deploys the staging API and web app. Run it from the Actions tab:
+**Deploy staging**, "Use workflow from: main", then put the commit in `ref` (default `main`). Tick `api`
+and `web` as needed. It never runs on a push, and it refuses any branch other than main.
+
+What keeps it apart from production:
+- It uses its own GitHub environment, `staging`. It never reads the `production` environment or its secrets.
+- The service name `lifekeel-api-staging` is written in the file, not a setting.
+- The API step updates the image only (`gcloud run deploy --image`). The settings and secrets on the staging
+  service are left alone, so set them once by hand and they stay.
+- The web step builds against `STAGING_API_URL`, refuses an empty value or a `lifekeel.co.uk` / `lifekeel.si`
+  host, puts that origin in the content-security policy, and publishes only the `staging` Firebase site.
+- `deploy-web.yml` (production) now names its three sites (`family`, `landing-uk`, `landing-si`). Before this
+  it used `--only hosting`, which also published the production build to the staging site and broke it.
+  `apps/api/src/__tests__/deploy-workflows.test.ts` fails if either rule slips.
+
+Set these on the `staging` environment (Settings, Environments) before the first run:
+
+| Kind | Name | Value |
+|---|---|---|
+| Variable | `STAGING_GCP_PROJECT_ID` | the project that holds staging (same as production for now) |
+| Variable | `STAGING_GCP_REGION` | optional; defaults to `us-central1` |
+| Variable | `STAGING_API_URL` | the staging Cloud Run URL |
+| Variable | `STAGING_FIREBASE_PROJECT_ID`, `STAGING_FIREBASE_SITE` | optional; default to the project above and `lifekeel-staging` |
+| Variable | `STAGING_GCP_WORKLOAD_IDENTITY_PROVIDER`, `STAGING_GCP_DEPLOY_SERVICE_ACCOUNT`, `STAGING_FIREBASE_DEPLOY_SERVICE_ACCOUNT` | preferred sign-in, no long-lived key |
+| Secret | `STAGING_GCP_SA_KEY`, `STAGING_FIREBASE_SA_KEY` | fallback only, used when no workload identity provider is set |
+
+Owner action, not done by the workflow: the `production` environment has no required reviewers. Add one under
+Settings, Environments, production, "Required reviewers", so a production deploy waits for a person.
+
 ## Settings that differ from production
 
 | Setting | Staging value | Why |
