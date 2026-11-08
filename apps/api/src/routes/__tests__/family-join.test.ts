@@ -26,6 +26,7 @@ interface FakeState {
   familyGroups: Record<string, unknown>[]
   joinRequests: Record<string, unknown>[]
   memberInvites: Record<string, unknown>[]
+  joinBlocks: Record<string, unknown>[]
 }
 
 function makeState(): FakeState {
@@ -69,6 +70,7 @@ function makeState(): FakeState {
     ],
     joinRequests: [],
     memberInvites: [],
+    joinBlocks: [],
   }
 }
 
@@ -81,6 +83,8 @@ function match(doc: Record<string, unknown>, filter: Record<string, unknown>): b
       return (v as { $in: unknown[] }).$in.includes(doc[k])
     if (v && typeof v === 'object' && '$lt' in (v as Record<string, unknown>))
       return (doc[k] as Date) < (v as { $lt: Date }).$lt
+    if (v && typeof v === 'object' && '$gt' in (v as Record<string, unknown>))
+      return (doc[k] as Date) > (v as { $gt: Date }).$gt
     if (v && typeof v === 'object' && '$gte' in (v as Record<string, unknown>))
       return (doc[k] as Date) >= (v as { $gte: Date }).$gte
     return doc[k] === v
@@ -188,8 +192,24 @@ function makeFakeDb(state: FakeState) {
     },
   }
 
+  const joinBlocksCol = {
+    findOne: async (filter: Record<string, unknown>) =>
+      state.joinBlocks.find((b) => match(b, filter)) ?? null,
+    updateOne: async (
+      filter: Record<string, unknown>,
+      update: { $set: Record<string, unknown> },
+    ) => {
+      const hit = state.joinBlocks.find((b) => match(b, filter))
+      if (hit) Object.assign(hit, update.$set)
+      else state.joinBlocks.push({ ...filter, ...update.$set })
+      return { modifiedCount: 1 }
+    },
+    createIndex: async () => undefined,
+  }
+
   return {
     collection: (name: string) => {
+      if (name === 'family_join_blocks') return joinBlocksCol
       if (name === 'family_invite_sends') return inviteSendsCol
       if (name === 'users') return usersCol
       if (name === 'family_groups') return familyGroupsCol

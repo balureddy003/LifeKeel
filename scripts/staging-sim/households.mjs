@@ -1339,12 +1339,19 @@ household(
     ).find((r) => r.email === addr)
     await call('POST', `/family/access-requests/${first?.id}/deny`, { token: o })
     const again = await ask()
+    await ask()
+    const listed = (await call('GET', '/family/access-requests', { token: o })).json?.requests ?? []
     S(
       '3 Join',
-      'after Ife declines, the same person cannot keep putting requests in front of her',
-      is4xx(again),
-      `${again.status}`,
-      { decision: true },
+      'after Ife declines, the same person cannot put another request in front of her',
+      !listed.some((r) => r.email === addr),
+      JSON.stringify(listed.map((r) => r.email)),
+    )
+    S(
+      '3 Join',
+      'the person is not told they were declined: the reply looks like any waiting request',
+      again.status === 201 && again.json?.status === 'pending',
+      `${again.status} ${again.text.slice(0, 80)}`,
     )
   },
 )

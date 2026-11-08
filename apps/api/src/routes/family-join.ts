@@ -104,6 +104,14 @@ const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 export const JOIN_REQUEST_TTL_DAYS = 14
 const requestCutoff = () => new Date(Date.now() - JOIN_REQUEST_TTL_DAYS * 86_400_000)
 
+/**
+ * After an organizer declines a request, that person cannot put another in front of them
+ * for this long. The person is not told: the reply looks like any waiting request, because
+ * telling someone the family is avoiding them could provoke them. A request that merely
+ * lapsed is not a decline. The organizer can still bring someone in by inviting them by name.
+ */
+export const DECLINE_BLOCK_DAYS = 90
+
 interface JoinBody {
   invite_code?: string
   name?: string
@@ -117,6 +125,10 @@ export function registerFamilyJoinRoutes(
   auth?: AuthService,
 ): void {
   const requests = getFamilyJoinRequestsCollection(db)
+  const blocks = db.collection<{ tenant_id: string; email: string; until: Date }>(
+    'family_join_blocks',
+  )
+  blocks.createIndex({ tenant_id: 1, email: 1 }).catch(() => {})
   requests.createIndex({ tenant_id: 1, status: 1 }).catch(() => {})
   const invites = getFamilyMemberInvitesCollection(db)
   invites.createIndex({ token: 1 }, { unique: true }).catch(() => {})
@@ -168,6 +180,16 @@ export function registerFamilyJoinRoutes(
         invite_code: invite_code.trim().toUpperCase(),
       })) as FamilyGroupDoc | null
       if (!family) return reply.status(400).send({ error: 'Invalid invite code' })
+
+      // Declined before: say nothing different, and put nothing in front of the organizer.
+      if (
+        await blocks.findOne({
+          tenant_id: family.tenant_id,
+          email: normalizedEmail,
+          until: { $gt: new Date() },
+        })
+      )
+        return reply.status(201).send({ status: 'pending' })
 
       const users = await getUsersCollection()
       const existingUser = await users.findOne({ email: normalizedEmail })
@@ -391,9 +413,16 @@ export function registerFamilyJoinRoutes(
       if (!family)
         return reply.status(403).send({ error: 'Only the organizer can deny join requests' })
 
+      const declined = await requests.findOne({ id: req.params.id, tenant_id, status: 'pending' })
       const result = await requests.deleteOne({ id: req.params.id, tenant_id, status: 'pending' })
       if (result.deletedCount === 0)
         return reply.status(404).send({ error: 'Join request not found' })
+      if (declined?.['email'])
+        await blocks.updateOne(
+          { tenant_id, email: String(declined['email']).toLowerCase() },
+          { $set: { until: new Date(Date.now() + DECLINE_BLOCK_DAYS * 86_400_000) } },
+          { upsert: true },
+        )
 
       getAuditLogger()?.fromRequest(
         req,
