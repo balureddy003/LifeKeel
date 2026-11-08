@@ -1207,6 +1207,12 @@ scenario('16 time: monthly digest, reminder cap and restart', async () => {
   const v = (await call('GET', '/family/domains/car', { token: o })).json?.result_version
   await call('POST', '/family/domains/car/confirm', { token: o, body: { result_version: v } })
   await call('POST', '/family/domains/car/confirm', { token: b.token, body: { result_version: v } })
+  const st16 = (await call('GET', '/family/domains/car', { token: o })).json?.confirmation
+  check(
+    'June: before the digest, the list itself says every adult has seen it',
+    st16?.both_confirmed === true,
+    JSON.stringify(st16),
+  )
   const since3 = new Date().toISOString()
   await run('2027-06-01T08:00:00Z')
   const m4 = await bodies(fam.org.email, since3)
@@ -1224,11 +1230,11 @@ scenario('16 time: monthly digest, reminder cap and restart', async () => {
 
   const since5 = new Date().toISOString()
   const held = await run('2030-01-01T08:00:00Z', { fresh_sweep: false })
-  const heldMail = await mailTo(fam.org.email, since5, 3)
+  const heldText = await bodies(fam.org.email, since5)
   check(
-    'with no recent sweep the monthly digest is held back, not sent',
-    heldMail.length === 0 && (held?.result?.sent ?? 0) === 0,
-    JSON.stringify(held?.result),
+    'with no recent daily check, the digest says plainly it could not check, and never "all clear"',
+    /couldn't run|could not run|couldn.t check/i.test(heldText) && !/all clear/i.test(heldText),
+    heldText.slice(0, 200) || JSON.stringify(held?.result),
   )
   const badNow = await control('run-digest', { cadence: 'monthly', now: 'tomorrow-ish' })
   check('a bad date is refused', badNow.status === 400, `${badNow.status}`)
