@@ -91,6 +91,11 @@ const STAGING: PublicRoute[] = [
     group: 'F',
     note: 'staging only: registered only when the sink is on; X-Staging-Token required',
   },
+  {
+    prefix: '/staging/control',
+    group: 'F',
+    note: 'staging only: test controls (age a join request, run the digest); registered only when STAGING_TEST_CONTROLS and the sink are on; X-Staging-Token required',
+  },
 ]
 
 export function publicRoutes(opts: { docsEnabled: boolean; stagingSink?: boolean }): PublicRoute[] {

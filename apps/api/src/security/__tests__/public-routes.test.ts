@@ -72,12 +72,13 @@ describe('public route inventory', () => {
     }
   })
 
-  it('opens /staging/mail only when the staging sink is on, as exactly one group F entry', () => {
+  it('opens /staging/mail and /staging/control only when the staging sink is on, as exactly two group F entries', () => {
     const off = publicRoutes({ docsEnabled: false })
     const on = publicRoutes({ docsEnabled: false, stagingSink: true })
     expect(off.some((r) => r.prefix.startsWith('/staging'))).toBe(false)
     expect(on.filter((r) => !off.includes(r)).map((r) => `${r.group} ${r.prefix}`)).toEqual([
       'F /staging/mail',
+      'F /staging/control',
     ])
   })
 
