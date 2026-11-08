@@ -144,20 +144,29 @@ const LEGAL = [
   { href: '/legal/gdpr', label: 'GDPR' },
 ]
 
-export function SiteFooter({ home = true }: { home?: boolean }) {
+/** The sign-up band shows on the landing page and the blog only; trust, legal and support pages stay quiet. */
+export function SiteFooter({
+  home = true,
+  newsletter = home,
+}: {
+  home?: boolean
+  newsletter?: boolean
+}) {
   return (
     <footer className="lk-band lk-footer">
       <div className="lk-foot-inner">
-        <div className="lk-footer-intro">
-          <div>
-            <span className="lk-eyebrow">KNOW WHERE TO LOOK</span>
-            <h2>One list. Every adult. Easy to find.</h2>
+        {newsletter && (
+          <div className="lk-footer-intro">
+            <div>
+              <span className="lk-eyebrow">KNOW WHERE TO LOOK</span>
+              <h2>One list. Every adult. Easy to find.</h2>
+            </div>
+            <div className="lk-footer-subscribe">
+              <h3>Good things, in your inbox.</h3>
+              <Newsletter />
+            </div>
           </div>
-          <div className="lk-footer-subscribe">
-            <h3>Good things, in your inbox.</h3>
-            <Newsletter />
-          </div>
-        </div>
+        )}
         <div className="lk-foot-grid">
           <div>
             <Brand />

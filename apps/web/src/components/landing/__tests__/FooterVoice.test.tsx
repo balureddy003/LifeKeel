@@ -13,3 +13,14 @@ describe('footer voice', () => {
     expect(text).not.toMatch(/\bchart\b|Have a plan|next chapter/i)
   })
 })
+
+describe('footer sign-up band', () => {
+  it('shows on the landing page, and not on public pages unless asked', () => {
+    const { container, rerender } = render(<SiteFooter />)
+    expect(container.textContent).toContain('Good things, in your inbox.')
+    rerender(<SiteFooter home={false} />)
+    expect(container.textContent).not.toContain('Good things, in your inbox.')
+    rerender(<SiteFooter home={false} newsletter />)
+    expect(container.textContent).toContain('Good things, in your inbox.')
+  })
+})
