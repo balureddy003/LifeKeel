@@ -99,7 +99,7 @@ export async function loadDomainRows(db: Db, tenantId: string, pack: DomainPack)
     }
   }
 
-  return { active, roster, rows }
+  return { active, roster, rows, members: group?.members ?? [] }
 }
 
 export async function buildDomainView(
@@ -109,7 +109,7 @@ export async function buildDomainView(
   viewerUserId?: string,
   now: Date = new Date(),
 ): Promise<DomainView> {
-  const { active, roster, rows } = await loadDomainRows(db, tenantId, pack)
+  const { active, roster, rows, members } = await loadDomainRows(db, tenantId, pack)
 
   const rosterIds = new Set(roster.map((r) => r.id))
   const nameOf = (id: string | null) => roster.find((r) => r.id === id)?.name ?? ''
@@ -185,7 +185,16 @@ export async function buildDomainView(
     )
     .digest('hex')
 
-  const required = active.filter((m) => !isMinorMember(m)).map((m) => ({ id: m.id, name: m.name }))
+  // Everyone who has to see the list: each adult on the roster, joined or not,
+  // unless the organizer said they do not need to. A person who has not joined
+  // cannot confirm yet, so the list is not called "seen by every adult" until
+  // they have, or the organizer excuses or removes them. Children and anyone
+  // under 18 are never asked.
+  const mustConfirm = members.filter(
+    (m) =>
+      (m.status === 'active' || m.status === 'pending') && !isMinorMember(m) && !m.confirm_exempt,
+  )
+  const required = mustConfirm.map((m) => ({ id: m.id, name: m.name }))
   const acks = (await getTenantCollection<DomainConfirmationDoc>(
     db,
     'domain_confirmations',
@@ -193,12 +202,10 @@ export async function buildDomainView(
   )
     .find({ domain_id: pack.id, result_version })
     .toArray()) as DomainConfirmationDoc[]
-  const confirmed = active
-    .filter((m) => !isMinorMember(m))
-    .flatMap((m) => {
-      const a = acks.find((x) => memberMatchesUser(m, x.user_id))
-      return a ? [{ id: m.id, name: m.name, confirmed_at: a.confirmed_at }] : []
-    })
+  const confirmed = mustConfirm.flatMap((m) => {
+    const a = acks.find((x) => memberMatchesUser(m, x.user_id))
+    return a ? [{ id: m.id, name: m.name, confirmed_at: a.confirmed_at }] : []
+  })
   return {
     domain_id: pack.id,
     rows,

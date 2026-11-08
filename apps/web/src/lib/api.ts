@@ -2365,6 +2365,8 @@ export interface ApiFamilyMember {
   relationshipLabel?: 'my_child' | 'partners_child' | 'shared_child' | 'other_child'
   /** The organizer let this adult add and edit family list records. */
   canEdit?: boolean
+  /** The organizer said this adult does not need to confirm the family list. */
+  confirmExempt?: boolean
 }
 
 export interface ApiFamilyGroup {
@@ -2478,6 +2480,14 @@ export async function setFamilyGroupMemberEditAccess(
   enabled: boolean,
 ): Promise<ApiFamilyGroup> {
   return familyGroupRequest(`/family/members/${id}/edit-access`, 'PUT', { enabled })
+}
+
+/** Organizer only: say an adult does not need to confirm the family list, or ask them to again. */
+export async function setFamilyGroupMemberConfirmExempt(
+  id: string,
+  exempt: boolean,
+): Promise<ApiFamilyGroup> {
+  return familyGroupRequest(`/family/members/${id}/confirm-exempt`, 'PUT', { exempt })
 }
 
 export async function removeFamilyGroupMember(id: string): Promise<ApiFamilyGroup> {
