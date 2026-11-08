@@ -22,6 +22,7 @@ const FILES = [
   'apps/api/src/domains/view.ts',
   'apps/web/src/app/domains/domain-copy.ts',
   'apps/web/src/components/ThreeDoors.tsx',
+  'apps/web/src/components/landing/VividHero.tsx',
   'apps/web/src/app/domains/page.tsx',
   'apps/web/src/app/domains/RecordList.tsx',
   'apps/web/src/app/domains/AddRecordForm.tsx',

@@ -9,7 +9,7 @@ describe('homepage live content', () => {
   it('keeps the live homepage message and detailed sections', () => {
     render(<HomeExperience />)
     for (const name of [
-      'One money question. One number. Both of you.',
+      'The day someone needs it, it is already there.',
       'Three steps. One evening.',
       'One problem, one evening, one number.',
       'Ready before. Found during. Sorted after.',
