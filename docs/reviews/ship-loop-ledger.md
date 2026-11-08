@@ -80,7 +80,7 @@ New rounds from the critic, in order: (a) catalogue truthfulness (inventory + tr
 | Landing hosting did not redirect `/domains` to the app; fixed with a test | merged 2026-11-07 | [396](https://github.com/balureddy003/LifeKeel/pull/396) |
 | Mistake corrected: a temporary 28k-line axe helper was committed in #394 and then removed in a follow-up commit (net diff clean; stays in that branch's history) | closed | |
 | Still to decide: free-plan promise for photo reading | owner | |
-| Real-phone voice test (iPhone and Android, several accents) before turning voice on | testers, using the guide | |
+| Dictation with the phone keyboard on real phones (several accents); the app's own voice feature was removed 2026-11-08 | testers, using the guide | |
 | Check production vision config: `resolveVisionClient()` prefers `OPENAI_API_KEY` and OpenAI is `unreviewed` in the processor registry | owner/ops check; could not be seen from the repo | |
 
 Still open from the critics: join account model (set-password link), whether production has verification or OTP login on, safeguarding default for email subjects, per-adult vs organizer-only mute, plus 2c, 3b, 4c, 5a, 6a, 7, 8, (g), (h).
@@ -108,3 +108,6 @@ The owner asked for the stack to be merged and for the loop to keep refining, th
 Lesson: stacked PRs were each green alone, but cross-branch interactions (readability check x catalogue copy) only showed on `main`. Merge a stack from the bottom and run `main` CI between merges when two branches add checks and copy.
 
 Dependency bump [397](https://github.com/balureddy003/LifeKeel/pull/397) was merged by the owner, not the loop. No PRs are open. Not built: settings screen for muting kinds, continuity emails outside the catalogue, 375px browser gate. Owner decisions listed above are unchanged.
+
+## Voice decision (2026-11-08, owner)
+Use the device's native dictation. The on-device Whisper feature (C4), its 40 MB download from huggingface.co and the microphone allowance on the domains pages were removed. Reason: a download from a third party at runtime, no control over the file, never tested on a real phone, and the same need is met by the keyboard microphone. The microphone is now denied on every page, and a test fails if a rule opens it.

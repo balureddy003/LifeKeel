@@ -52,7 +52,7 @@ export function rowLabel(pack: Pack, row: Row): string {
 
 /** Said once on forms with free-text fields. True and modest: the phone does the dictating, not LifeKeel. */
 export const DICTATION_TIP =
-  "Tip: your phone's keyboard can type what you say. That is a feature of your phone."
+  "Tip: tap the microphone on your phone's keyboard to say it instead of typing. Your phone does this, not LifeKeel."
 
 const ADAPTER_SOURCES: Record<string, { label: string; href: string }> = {
   financial_profile_policies: { label: 'financial profile', href: '/financial-profile' },

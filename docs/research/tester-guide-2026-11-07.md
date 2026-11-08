@@ -1,4 +1,4 @@
-# Tester guide: voice, capture, two-adult and accessibility
+# Tester guide: capture, dictation, two-adult and accessibility
 
 For people testing LifeKeel on real phones. You do not need to be technical. Your job is to try the things below the way a real person would, tell us what happened, and tell us where you got stuck. Nothing you do here is wrong: if you got stuck, that is the result we want.
 
@@ -19,31 +19,26 @@ Please note, and send with every report: phone model, operating system version, 
 
 Fictional vehicle: registration `AB12 CDE`, a hatchback, MOT due 9 May. Fictional policy: any provider name you make up.
 
-## 2. Test A: say it (voice) on your phone
+## 2. Test A: say it with your phone's own keyboard microphone
 
-This is the new feature and the one we most need real phones for. It is **off unless you switch it on for your own phone**.
+LifeKeel has no voice feature of its own. To speak instead of type, use the microphone button on your phone's keyboard. Your phone turns the voice into words, not LifeKeel, and nothing is downloaded. (A voice feature that downloaded a 40 MB model was removed on 2026-11-08.)
 
 1. Sign in as Sam. Open the family list for **Car and transport**.
-2. Add `?voice=on` to the end of the page address, for example `.../domains/?d=car&voice=on`, and press go. A **Say it** button should appear above the sentence box. (To turn it off later, use `?voice=off`.)
-3. Tap **Say it**. Read what the box tells you. It should say your voice is turned into words **on this phone and never leaves it**, that a small speech model (about 40 MB) downloads once, and that the download carries nothing you say.
-   - Is that clear? Would you be happy to agree? Say if anything worried you.
-4. Tap **Download and start**. Your phone will ask to use the microphone. Allow it.
-5. Say: **"MOT due 9 May on AB12 CDE, Sam's car."** Tap **Stop**.
-6. Wait. The first time can take a minute while the model downloads. **Write down how long you waited.**
-7. Check the words that appear in the box. **Write down exactly what it heard.** Fix them if needed.
-8. Tap **Show me what you understood**. Check the draft: vehicle, whose, registration, MOT due date. Tap **Save to the family list** only if it is right; otherwise tap **Not right**.
+2. Tap into **Tell us in one sentence**. Tap the microphone on your keyboard.
+3. Say: **"MOT due 9 May on AB12 CDE, Sam's car."** Stop dictating.
+4. Check the words in the box. **Write down exactly what it heard.** Fix them if needed.
+5. Tap **Show me what you understood**. Check the draft: vehicle, whose, registration, MOT due date. Tap **Save to the family list** only if it is right; otherwise tap **Not right**.
 
 Then try, and report each:
-- **Different voices and accents.** Ask two or three other people (different accents, an older person, a child's voice if a parent is happy) to say the same sentence. Note who and what it heard.
-- **Noise.** Say it with a TV on, then in a quiet room.
+- **Different voices and accents.** Ask two or three other people to say the same sentence. Note who and what it heard.
+- **Noise.** TV on, then a quiet room.
 - **A sentence you make up**, for example "Tax is due 1 June and the MOT is 9 May."
-- **Say nothing**, then tap Stop. What does it say?
-- **Say it, but tap Cancel.** Nothing should be made.
-- **Refuse the microphone** when the phone asks (or turn it off in the phone's settings). Does the message tell you what to do?
-- **Airplane mode test** (proves the voice stays on the phone): after the model has downloaded once, switch on airplane mode, then use **Say it** again. It should still work. If it does not, tell us.
-- **Remove the speech model** with the button at the bottom of the voice area. Does it say it was removed? Then try **Say it** again: it should ask again before downloading.
+- **Dates said aloud**: "ninth of May", "9/5", "next Tuesday". Which ones does the draft get right?
+- **Say nothing**, or cancel. Nothing should be made.
+- **Does the tip above the box read clearly?** It should say your phone does this and not LifeKeel, and make no promise about privacy.
+- **Which phone and keyboard** you used (iPhone keyboard, Gboard, Samsung). Where the audio is processed depends on your phone, so note it if your phone tells you.
 
-What we want to know: did it work, how accurate was it, how long did it take, did anything feel unsafe or unclear, did you ever not know what to do.
+What we want to know: did it work, how accurate was it, did anything feel unsafe or unclear, did you ever not know what to do.
 
 ## 3. Test B: type one sentence (no voice)
 
@@ -110,7 +105,7 @@ At the end, please also answer: **What was the easiest part? What was the most f
 
 ## 9. Things we already know (no need to report)
 
-- Voice is off by default and has never run on a real phone before this test; some failures are expected.
+- LifeKeel has no voice feature of its own; dictation is your phone keyboard's. The microphone is denied for the whole site, on purpose.
 - The speech model is small and English only; it will mishear some words.
 - There is no "share to LifeKeel" from the phone, and no "forward an email" yet.
 - Joined adults are read-only until the organizer switches editing on.
