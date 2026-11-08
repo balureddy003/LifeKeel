@@ -322,7 +322,9 @@ are unique (`git log origin/<branch>..main`).
 
 ### 6.5 Deploy
 Deploys are manual `workflow_dispatch` runs: `deploy-api.yml` (Cloud Run), `deploy-web.yml`
-(Firebase Hosting) and `deploy-local-judge.yml` (the self-hosted model service). Each one:
+(Firebase Hosting), `deploy-staging.yml` (staging API and web, its own `staging` environment; see
+[the staging runbook](runbooks/staging-environment.md)) and `deploy-local-judge.yml` (the self-hosted model
+service). Each one:
 1. Calls [require-ci.yml](../.github/workflows/require-ci.yml), which resolves
    the requested ref to one SHA, requires it to be in `main`'s history, and
    requires a successful `ci.yml` run on that exact SHA.
