@@ -13,6 +13,9 @@
         ],
         "landing-si": [
           "lifekeel-landing-si"
+        ],
+        "staging": [
+          "lifekeel-staging"
         ]
       }
     }
