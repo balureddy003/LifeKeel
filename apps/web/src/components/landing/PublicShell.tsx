@@ -15,14 +15,20 @@ import './public.css'
  * content. Inside it the app's colour tokens are remapped to the landing palette (public.css),
  * so those pages' existing Tailwind classes follow the landing look in light and dark.
  */
-export function PublicShell({ children }: { children: ReactNode }) {
+export function PublicShell({
+  children,
+  newsletter = false,
+}: {
+  children: ReactNode
+  newsletter?: boolean
+}) {
   // A signed-in person reading Terms from Settings should not be offered "Sign in".
   const { isAuthenticated } = useAuth()
   return (
     <div className="landing lk-public">
       <SiteHeader home={false} signedIn={isAuthenticated} />
       <div className="lk-public-body">{children}</div>
-      <SiteFooter home={false} />
+      <SiteFooter home={false} newsletter={newsletter} />
     </div>
   )
 }

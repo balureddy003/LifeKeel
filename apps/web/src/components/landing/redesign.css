@@ -241,9 +241,6 @@
 
 .landing.landing .lk-theme-btn, .landing.landing .lk-menu-btn { background: var(--surface); color: var(--ink); border-color: var(--line); }
 .landing.landing .lk-btn-quiet { background: transparent; color: var(--ink); border-color: var(--field-line); }
-.landing.landing .lk-social-icon { background: var(--palette-coral); color: var(--palette-ink); }
-.landing.landing .lk-social-icon:nth-child(2) { background: var(--palette-mint); }
-.landing.landing .lk-social-icon:nth-child(3) { background: var(--palette-yellow); }
 .landing.landing .lk-footer-subscribe { background: var(--bg); }
 .landing.landing .lk-legal-card:nth-child(4n + 1), .landing.landing .lk-guide-grid > a:nth-child(4n + 1) article { background: var(--palette-lilac); }
 .landing.landing .lk-legal-card:nth-child(4n + 2), .landing.landing .lk-guide-grid > a:nth-child(4n + 2) article { background: var(--palette-mint); }

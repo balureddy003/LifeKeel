@@ -144,25 +144,34 @@ const LEGAL = [
   { href: '/legal/gdpr', label: 'GDPR' },
 ]
 
-export function SiteFooter({ home = true }: { home?: boolean }) {
+/** The sign-up band shows on the landing page and the blog only; trust, legal and support pages stay quiet. */
+export function SiteFooter({
+  home = true,
+  newsletter = home,
+}: {
+  home?: boolean
+  newsletter?: boolean
+}) {
   return (
     <footer className="lk-band lk-footer">
       <div className="lk-foot-inner">
-        <div className="lk-footer-intro">
-          <div>
-            <span className="lk-eyebrow">THE NEXT CHAPTER STARTS HERE</span>
-            <h2>Life happens. Have a plan.</h2>
+        {newsletter && (
+          <div className="lk-footer-intro">
+            <div>
+              <span className="lk-eyebrow">KNOW WHERE TO LOOK</span>
+              <h2>One list. Every adult. Easy to find.</h2>
+            </div>
+            <div className="lk-footer-subscribe">
+              <h3>Good things, in your inbox.</h3>
+              <Newsletter />
+            </div>
           </div>
-          <div className="lk-footer-subscribe">
-            <h3>Good things, in your inbox.</h3>
-            <Newsletter />
-          </div>
-        </div>
+        )}
         <div className="lk-foot-grid">
           <div>
             <Brand />
             <p className="lk-fine">
-              Your family&rsquo;s chart, kept current. Know what is on file, and where to start if
+              Your family&rsquo;s list, kept current. Know what is on file, and where to start if
               something happens.
             </p>
             <div className="lk-socials" role="group" aria-label="Social media">
@@ -227,9 +236,7 @@ export function SiteFooter({ home = true }: { home?: boolean }) {
           </nav>
         </div>
         <div className="lk-foot-bottom">
-          <p className="lk-fine">
-            © {new Date().getFullYear()} LifeKeel. Made for your family&rsquo;s next chapter.
-          </p>
+          <p className="lk-fine">© {new Date().getFullYear()} LifeKeel. Made for families.</p>
           <Link href="/cookies">Cookie settings</Link>
         </div>
         <p className="lk-fine lk-legalline">

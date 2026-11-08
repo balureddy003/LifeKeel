@@ -315,7 +315,7 @@ export const GUIDES: Guide[] = [
       {
         heading: 'How Keel checks this',
         paragraphs: [
-          'Adding a child to an Keel profile re-evaluates all four checks at once — the fund target against new expenses, cover against a household that now includes a dependent, the education runway starting at eighteen years, and the retirement projection under changed contributions. The gaps arrive as a list, not a surprise.',
+          'Adding a child to a Keel profile re-evaluates all four checks at once — the fund target against new expenses, cover against a household that now includes a dependent, the education runway starting at eighteen years, and the retirement projection under changed contributions. The gaps arrive as a list, not a surprise.',
         ],
       },
     ],
@@ -375,7 +375,7 @@ export const GUIDES: Guide[] = [
       {
         heading: 'How Keel checks this',
         paragraphs: [
-          'Listing a mortgage and home in an Keel profile re-evaluates the fund target against the new essentials, adds the mortgage balance to the protection estimate, and keeps watching for the renewal and maintenance windows a house introduces — the checks run on the household as it actually is now, not as it was.',
+          'Listing a mortgage and home in a Keel profile re-evaluates the fund target against the new essentials, adds the mortgage balance to the protection estimate, and keeps watching for the renewal and maintenance windows a house introduces — the checks run on the household as it actually is now, not as it was.',
         ],
       },
     ],

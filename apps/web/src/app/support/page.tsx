@@ -366,7 +366,7 @@ export default function SupportPage() {
 
       <H2>Account or billing questions</H2>
       <P>
-        For anything about your account, an Keel Plus subscription, or a charge you don&apos;t
+        For anything about your account, a Keel Plus subscription, or a charge you don&apos;t
         recognize, open a case above — it lands in the operator inbox with your account context
         attached.
       </P>

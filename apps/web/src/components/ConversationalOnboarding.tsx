@@ -284,7 +284,7 @@ export function ConversationalOnboarding() {
       {
         id: 'ai-seed',
         role: 'ai',
-        text: `Nice to meet you, ${first}! Let's start your family's chart.`,
+        text: `Nice to meet you, ${first}! Let's start your family's list.`,
       },
       { id: 'q-seed', role: 'ai', text: ONBOARDING_QUESTIONS[seed.nextIndex]!.question },
     ])
@@ -372,7 +372,7 @@ export function ConversationalOnboarding() {
     if (currentQuestion.id === 'name') {
       newlyAdded = [{ id: 'self', emoji: '', name: answer, role: 'You', completion: 0 }]
       setMembers((prev) => [...prev, ...newlyAdded])
-      addAIMessage(`Nice to meet you, ${answer}! Let's start your family's chart.`)
+      addAIMessage(`Nice to meet you, ${answer}! Let's start your family's list.`)
     } else if (currentQuestion.id === 'email') {
       addAIMessage("Got it — that's your key back in if you ever need it.")
     } else if (currentQuestion.id === 'married' && answer.startsWith('Yes')) {
@@ -382,7 +382,7 @@ export function ConversationalOnboarding() {
     } else if (currentQuestion.id === 'spouse-name') {
       newlyAdded = [{ id: 'spouse', emoji: '', name: answer, role: 'Partner', completion: 0 }]
       setMembers((prev) => [...prev, ...newlyAdded])
-      addAIMessage(`Lovely! ${answer} is on your family's chart.`)
+      addAIMessage(`Lovely! ${answer} is on your family's list.`)
     } else if (currentQuestion.id === 'children' && answer === 'Yes') {
       addAIMessage('Wonderful!')
     } else if (currentQuestion.id === 'children' && answer === 'No') {
