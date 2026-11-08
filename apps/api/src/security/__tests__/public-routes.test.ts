@@ -22,6 +22,7 @@ describe('public route inventory', () => {
           "A /engine/health",
           "A /status",
           "A /metrics",
+          "A /internal/cron",
           "F /auth/token",
           "F /auth/demo-token",
           "B /auth/signup",

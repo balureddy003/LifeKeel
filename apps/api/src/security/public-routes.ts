@@ -31,6 +31,11 @@ const ALWAYS: PublicRoute[] = [
   { prefix: '/engine/health', group: 'A' },
   { prefix: '/status', group: 'A' },
   { prefix: '/metrics', group: 'A', note: 'route checks METRICS_SCRAPE_TOKEN itself' },
+  {
+    prefix: '/internal/cron',
+    group: 'A',
+    note: 'Cloud Scheduler trigger (intent 92); route checks CRON_TRIGGER_TOKEN itself, 404 when unset',
+  },
   { prefix: '/auth/token', group: 'F' },
   { prefix: '/auth/demo-token', group: 'F' },
   { prefix: '/auth/signup', group: 'B', turnstile: true },
