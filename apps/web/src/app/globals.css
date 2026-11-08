@@ -52,8 +52,14 @@ body {
 .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
 
 button, a {
-  min-height: 44px;
-  min-width: 44px;
+  min-height: 48px;
+  min-width: 48px;
+}
+
+/* Fields are tap targets too. Checkboxes and radios are excluded: their label is
+   the target. */
+select, textarea, input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='hidden']) {
+  min-height: 48px;
 }
 
 button.flat, a.flat, .no-min-h {

@@ -330,7 +330,7 @@ export default function EventDetailClient() {
           <Link
             href="/"
             onClick={() => localStorage.setItem(CRISIS_EVENT_KEY, event.id)}
-            className="flex items-center justify-center gap-2 w-full rounded-xl border border-family-500/30 bg-family-500/10 text-family-500 text-sm font-semibold min-h-[44px] mb-4"
+            className="flex items-center justify-center gap-2 w-full rounded-xl border border-family-500/30 bg-family-500/10 text-family-500 text-sm font-semibold min-h-[48px] mb-4"
           >
             <Siren size={15} /> Crisis mode — reduce Home to just these steps
           </Link>

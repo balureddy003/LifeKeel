@@ -280,7 +280,7 @@ export default function BriefShareClient() {
               </p>
             ) : null}
             <details className="mt-2">
-              <summary className="min-h-[44px] cursor-pointer py-2 text-sm font-medium text-family-400">
+              <summary className="min-h-[48px] cursor-pointer py-2 text-sm font-medium text-family-400">
                 How this was worked out
               </summary>
               <p className="text-ink-secondary">{sentence.main}</p>
@@ -397,7 +397,7 @@ export default function BriefShareClient() {
             </ul>
             <Link
               href="/"
-              className="mt-4 inline-flex min-h-[44px] items-center rounded-full border border-haze px-4 text-sm font-medium text-ink-secondary"
+              className="mt-4 inline-flex min-h-[48px] items-center rounded-full border border-haze px-4 text-sm font-medium text-ink-secondary"
             >
               Open LifeKeel
             </Link>
@@ -406,7 +406,7 @@ export default function BriefShareClient() {
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-haze px-4 text-sm font-medium text-ink-secondary print:hidden"
+            className="inline-flex min-h-[48px] items-center gap-2 rounded-full border border-haze px-4 text-sm font-medium text-ink-secondary print:hidden"
           >
             <Printer size={16} aria-hidden="true" /> Print or save as PDF
           </button>

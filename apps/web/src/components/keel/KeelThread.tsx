@@ -128,7 +128,7 @@ function Bubble({
               <button
                 type="button"
                 onClick={() => onRetry(msg.id)}
-                className="flex min-h-[44px] items-center gap-1.5 text-xs font-semibold text-family-400"
+                className="flex min-h-[48px] items-center gap-1.5 text-xs font-semibold text-family-400"
               >
                 <RotateCcw size={12} aria-hidden /> Try again
               </button>
@@ -214,7 +214,7 @@ export function KeelThread({ onNavigate }: { onNavigate?: () => void }) {
               key={s}
               type="button"
               onClick={() => void send(s)}
-              className="glass min-h-[44px] rounded-full px-4 text-sm text-ink-secondary"
+              className="glass min-h-[48px] rounded-full px-4 text-sm text-ink-secondary"
             >
               {s}
             </button>

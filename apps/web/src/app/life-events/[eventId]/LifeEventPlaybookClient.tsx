@@ -86,7 +86,7 @@ export function EventDetails({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="text-sm text-family-300 underline underline-offset-2 min-h-[44px]"
+        className="text-sm text-family-300 underline underline-offset-2 min-h-[48px]"
       >
         {event.context || event.affected_member_id
           ? 'Edit details'
@@ -135,7 +135,7 @@ export function EventDetails({
         <button
           type="button"
           onClick={() => setOpen(false)}
-          className="text-sm text-ink-tertiary min-h-[44px]"
+          className="text-sm text-ink-tertiary min-h-[48px]"
         >
           Cancel
         </button>

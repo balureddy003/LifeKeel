@@ -49,7 +49,7 @@ export function RegionSwitch({ className = '' }: { className?: string }) {
               type="button"
               aria-pressed={r === current}
               onClick={() => void choose(r)}
-              className="min-h-[44px] rounded-xl px-4 text-sm font-semibold bg-tint/[0.04] border border-tint/[0.08] text-ink-secondary aria-pressed:text-family-400"
+              className="min-h-[48px] rounded-xl px-4 text-sm font-semibold bg-tint/[0.04] border border-tint/[0.08] text-ink-secondary aria-pressed:text-family-400"
             >
               {REGION_LABELS[r]}
             </button>

@@ -29,7 +29,7 @@ export function NavChip({ card, onNavigate }: { card: NavCard; onNavigate?: () =
         onNavigate?.()
         requestSpotlight(card.anchor)
       }}
-      className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-family-500 px-4 text-sm font-semibold text-[rgb(var(--on-cta))]"
+      className="inline-flex min-h-[48px] items-center gap-1.5 rounded-full bg-family-500 px-4 text-sm font-semibold text-[rgb(var(--on-cta))]"
     >
       {card.label}
       <ArrowRight size={14} aria-hidden />
@@ -147,7 +147,7 @@ export function Proposal({ card, onApplied }: { card: ProposalCard; onApplied?: 
             type="button"
             onClick={() => void apply()}
             disabled={state === 'applying'}
-            className="min-h-[44px] rounded-full bg-family-500 px-4 text-sm font-semibold text-[rgb(var(--on-cta))] disabled:opacity-50"
+            className="min-h-[48px] rounded-full bg-family-500 px-4 text-sm font-semibold text-[rgb(var(--on-cta))] disabled:opacity-50"
           >
             Apply these settings
           </button>
@@ -155,7 +155,7 @@ export function Proposal({ card, onApplied }: { card: ProposalCard; onApplied?: 
             type="button"
             onClick={() => void dismiss()}
             disabled={state === 'applying'}
-            className="min-h-[44px] rounded-full px-4 text-sm font-semibold text-ink-secondary disabled:opacity-50"
+            className="min-h-[48px] rounded-full px-4 text-sm font-semibold text-ink-secondary disabled:opacity-50"
           >
             Not now
           </button>
