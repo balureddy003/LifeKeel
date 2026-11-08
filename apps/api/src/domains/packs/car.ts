@@ -15,6 +15,7 @@ export const car: DomainPack = {
       key: 'vehicle',
       label: 'Vehicle',
       person_attribution: 'holder',
+      identity: 'reg',
       source: { kind: 'store' },
       fields: [
         { key: 'reg', label: 'Registration', kind: 'text', sensitive: false },

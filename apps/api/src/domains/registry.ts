@@ -32,6 +32,14 @@ export function validateDomains(domains: readonly DomainPack[], playbookDir: str
     for (const r of d.records) {
       const keys = new Set(r.fields.map((f) => f.key))
       if (keys.size !== r.fields.length) problems.push(`${d.id}.${r.key}: duplicate field key`)
+      if (r.identity) {
+        const idf = r.fields.find((f) => f.key === r.identity)
+        if (!idf) problems.push(`${d.id}.${r.key}: identity names unknown field ${r.identity}`)
+        else if (idf.kind !== 'text')
+          problems.push(`${d.id}.${r.key}: identity field ${r.identity} must be a text field`)
+        if (r.source.kind !== 'store')
+          problems.push(`${d.id}.${r.key}: identity only applies to stored records`)
+      }
       for (const f of r.fields) {
         if (f.sensitive && r.source.kind === 'store')
           problems.push(

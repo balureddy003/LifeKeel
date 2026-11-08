@@ -54,6 +54,16 @@ export function registerFamilyDomainRoutes(
   }
   const records = (tenantId: string) =>
     getTenantCollection<DomainRecordDoc>(db, 'domain_records', tenantId)
+  // One record per real-world thing (a car per registration), even when two saves land at
+  // once: the key is unique per household, domain and record type. Records saved before
+  // this rule have no key, so they are checked by value as well (see the add route).
+  db.collection('domain_records')
+    .createIndex(
+      { tenant_id: 1, domain_id: 1, record: 1, identity_key: 1 },
+      { unique: true, partialFilterExpression: { identity_key: { $type: 'string' } } },
+    )
+    .catch(() => {})
+  const identityKey = (v: string | undefined) => (v ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
 
   app.get('/family/domains', async (req, reply) => {
     const ctx = req.authContext
@@ -123,8 +133,18 @@ export function registerFamilyDomainRoutes(
         return reply.code(400).send({
           error: 'That looks like a password or code. Record where it is kept, never the secret.',
         })
+      const wanted = rec.identity ? identityKey(values[rec.identity]) : ''
+      const already = () =>
+        reply.code(409).send({ error: `That ${rec.label.toLowerCase()} is already on the list.` })
+      if (wanted) {
+        const have = (await records(ctx.tenant_id)
+          .find({ domain_id: pack.id, record: rec.key })
+          .toArray()) as DomainRecordDoc[]
+        if (have.some((r) => identityKey(r.values[rec.identity!]) === wanted)) return already()
+      }
       const now = new Date()
       const doc = {
+        ...(wanted ? { identity_key: wanted } : {}),
         id: `dr_${randomUUID()}`,
         domain_id: pack.id,
         record: rec.key,
@@ -135,7 +155,13 @@ export function registerFamilyDomainRoutes(
         created_at: now,
         updated_at: now,
       }
-      await records(ctx.tenant_id).insertOne(doc)
+      try {
+        await records(ctx.tenant_id).insertOne(doc)
+      } catch (err) {
+        // Two saves at once: the other one got there first.
+        if ((err as { code?: number }).code === 11000) return already()
+        throw err
+      }
       await getAuditLogger()?.fromRequest(
         req,
         'domain_record.created',

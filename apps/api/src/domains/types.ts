@@ -43,6 +43,13 @@ export const RecordTypeSchema = z
     person_attribution: z.enum(['holder', 'subject', 'none']),
     fields: z.array(FieldSchema).min(1).max(20),
     /**
+     * The text field that says which real-world thing a record is (a car's registration).
+     * A household cannot save two records with the same value, ignoring spaces, dashes and
+     * capitals. Leave it out when nothing about the record is unique (a policy has no
+     * reliable number), and repeats stay allowed.
+     */
+    identity: Slug.optional(),
+    /**
      * `store`: kept in the generic domain_records collection.
      * `adapter`: read from an existing store, so data is never duplicated.
      */

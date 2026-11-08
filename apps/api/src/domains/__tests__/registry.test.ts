@@ -69,6 +69,31 @@ describe('domain registry', () => {
     expect(validateDomains([lifeProtection], PLAYBOOKS)).toEqual([])
   })
 
+  it('only lets a record name a real text field as its identity', () => {
+    const pack = (identity: string, kind: 'text' | 'date' = 'text') =>
+      DomainPackSchema.parse({
+        ...lifeProtection,
+        id: 'id_x',
+        records: [
+          {
+            key: 'thing',
+            label: 'Thing',
+            person_attribution: 'none',
+            identity,
+            source: { kind: 'store' },
+            fields: [{ key: 'tag', label: 'Tag', kind, sensitive: false }],
+          },
+        ],
+        matrix: undefined,
+        playbook: undefined,
+        planning: [],
+        external: { enabled: false, permitted: {} },
+      })
+    expect(validateDomains([pack('tag')], PLAYBOOKS)).toEqual([])
+    expect(validateDomains([pack('missing')], PLAYBOOKS).join()).toMatch(/unknown field missing/)
+    expect(validateDomains([pack('tag', 'date')], PLAYBOOKS).join()).toMatch(/must be a text field/)
+  })
+
   it('rejects duplicate domain ids', () => {
     expect(validateDomains([lifeProtection, lifeProtection], PLAYBOOKS).join()).toMatch(
       /duplicate domain id/,
