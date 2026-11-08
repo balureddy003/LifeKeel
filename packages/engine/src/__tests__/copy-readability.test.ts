@@ -31,6 +31,7 @@ const FILES = [
   'apps/web/src/app/domains/AddRecordForm.tsx',
   'apps/web/src/components/EditAccessSwitch.tsx',
   'apps/api/src/delivery/notification-catalogue.ts',
+  'apps/web/src/components/landing/AuthIntro.tsx',
 ].filter((f) => fs.existsSync(path.join(ROOT, f)))
 
 /** Words a family should not have to decode. */

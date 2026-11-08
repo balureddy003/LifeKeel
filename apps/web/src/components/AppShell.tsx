@@ -40,6 +40,7 @@ import { NavRail } from './NavRail'
 import { isKeelPanelEnabled } from '@/lib/keel/client'
 import { PANEL_ID, useKeelPanel } from '@/lib/keel/store'
 import { haptic } from '@/lib/haptics'
+import { firstStepWaitMessage, isFirstStepPath } from '@/lib/signup-destination'
 import { track } from '@/lib/growth-track'
 import { isNativeShell, biometricLockEnabled, verifyBiometric } from '@/lib/native'
 
@@ -536,7 +537,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/operator') ||
     pathname.startsWith('/invite')
 
-  // A new account heads straight for its first brief. The household behind it
+  // A new account heads straight for its first step (the family list, or a money question picked
+  // on the landing page). The household behind it
   // is created quietly (same as "Skip for now") instead of stopping the person
   // at a set-up screen first; if that fails, the normal set-up screen shows.
   const [autoFamilyFailed, setAutoFamilyFailed] = useState(false)
@@ -547,7 +549,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     !family &&
     !familyLoadFailed &&
     !autoFamilyFailed &&
-    pathname.startsWith('/briefs')
+    isFirstStepPath(pathname)
   useEffect(() => {
     if (!wantsAutoFamily || autoFamilyStarted.current) return
     autoFamilyStarted.current = true
@@ -663,7 +665,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         aria-busy="true"
         className="flex min-h-[65dvh] items-center justify-center px-4 text-ink-tertiary"
       >
-        Getting your brief ready…
+        {firstStepWaitMessage(pathname)}
       </div>
     )
   }

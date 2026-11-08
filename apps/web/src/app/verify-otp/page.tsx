@@ -13,6 +13,7 @@ import { Turnstile, useTurnstile } from '@/components/security/Turnstile'
 import { AuthRequestError, useAuth } from '@/lib/auth-context'
 import { clearPendingOtp, readPendingOtp, type PendingOtp } from '@/lib/otp-pending'
 import { haptic } from '@/lib/haptics'
+import { FAMILY_LIST_HOME } from '@/lib/signup-destination'
 
 type Phase =
   | 'idle'
@@ -96,7 +97,7 @@ export default function VerifyOtpPage() {
         const done = await verifyEmailOtp(code)
         haptic('success')
         setPhase('success')
-        router.push(done.next ?? (done.purpose === 'signup' ? '/briefs' : '/'))
+        router.push(done.next ?? (done.purpose === 'signup' ? FAMILY_LIST_HOME : '/'))
       } catch (err) {
         haptic('warning')
         const e = err instanceof AuthRequestError ? err : null

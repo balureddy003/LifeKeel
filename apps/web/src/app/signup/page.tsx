@@ -14,7 +14,7 @@ import { trackConversion } from '@/lib/ad-track'
 import { fetchPublicStatus } from '@/lib/api'
 import { Turnstile, useTurnstile } from '@/components/security/Turnstile'
 import { safeNext, stashReturnTo } from '@/lib/return-to'
-import { signupDestination, signupProblem } from '@/lib/signup-destination'
+import { FAMILY_LIST_HOME, signupDestination, signupProblem } from '@/lib/signup-destination'
 
 export default function SignUpPage() {
   const [name, setName] = useState('')
@@ -23,9 +23,9 @@ export default function SignUpPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [refCode, setRefCode] = useState<string | undefined>(undefined)
-  // The first brief is the promised first step, so signup lands on it (the
+  // The family list is the promised first step, so signup lands on it (a money
   // question picked on the landing page rides along as ?brief=).
-  const [after, setAfter] = useState('/briefs')
+  const [after, setAfter] = useState(FAMILY_LIST_HOME)
   const [problem, setProblem] = useState<string | null>(null)
   const [signupsOpen, setSignupsOpen] = useState<boolean | null>(null)
   const { signUp, signInWithProvider } = useAuth()
