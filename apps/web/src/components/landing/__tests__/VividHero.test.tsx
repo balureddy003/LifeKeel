@@ -1,5 +1,5 @@
 /**
- * The home page hero tells the family-list story: the day someone needs it, it is already there.
+ * The home page hero tells the family-list story: Know where to look.
  * It says what LifeKeel keeps, that every adult has seen it, and what it never does. It shows a
  * made-up family list, not a calculation, and every sentence reads at grade 9 or below.
  */
@@ -19,14 +19,12 @@ afterEach(() => {
 })
 
 describe('home hero', () => {
-  it('leads with the day it matters, not a calculation', () => {
+  it('leads with "Know where to look.", not a calculation and not a promise about a bad day', () => {
     render(<VividHero />)
-    expect(
-      screen.getByRole('heading', {
-        level: 1,
-        name: 'The day someone needs it, it is already there.',
-      }),
-    ).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1, name: 'Know where to look.' })).toBeTruthy()
+    // Four of five panel reviewers read the earlier headline as a euphemism for death, and it
+    // promised more than the product can: a list is only complete if someone added things.
+    expect(document.body.textContent).not.toMatch(/already there|The day someone needs it/)
     expect(screen.getByText('A shared family list')).toBeTruthy()
   })
 
@@ -34,7 +32,7 @@ describe('home hero', () => {
     render(<VividHero />)
     expect(
       screen.getByText(
-        'LifeKeel keeps what your family would look for on one list. Policies, cars, school dates and who to call. Every adult is asked to confirm they have seen it.',
+        'One list for what your family would look for. Policies, cars, school dates and who to call. Every adult is asked to confirm they have seen it.',
       ),
     ).toBeTruthy()
   })

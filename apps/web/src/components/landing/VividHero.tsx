@@ -15,13 +15,13 @@ import { track } from '@/lib/growth-track'
 import { haptic } from '@/lib/haptics'
 
 /**
- * The hero tells one story: the day someone needs it, it is already there. It says what
- * LifeKeel keeps, that every adult has seen it, and what it never does, then shows a
- * made-up family list. No calculation, no figures: those live further down the page.
+ * The hero tells one story under one line: Know where to look. It says what the list holds,
+ * that every adult is asked to confirm they have seen it, and what LifeKeel never does, then
+ * shows a made-up family list. No calculation, no figures: those live further down the page.
  *
  * Claims this copy relies on (see claims.ts): family-list, every-adult-confirms,
- * no-commissions, no-money-moved, no-selling, free-plan. Why this headline and what it
- * borrows: docs/research/landing-story-brief-2026-11-08.md.
+ * no-commissions, no-money-moved, no-selling, free-plan. Why this headline, and why not
+ * "The day someone needs it, it is already there": docs/research/brand-and-story-guide-2026-11-08.md.
  */
 
 const TILES = [
@@ -47,11 +47,11 @@ export function VividHero() {
           <UsersRound size={15} aria-hidden="true" />A shared family list
         </p>
         <h1 id="vv-hero-h">
-          The day someone needs it, <span className="vv-grad">it is already there.</span>
+          Know where <span className="vv-grad">to look.</span>
         </h1>
         <p className="vv-lede">
-          LifeKeel keeps what your family would look for on one list. Policies, cars, school dates
-          and who to call. Every adult is asked to confirm they have seen it.
+          One list for what your family would look for. Policies, cars, school dates and who to
+          call. Every adult is asked to confirm they have seen it.
         </p>
         <div className="vv-hero-cta" id="signup">
           <a
