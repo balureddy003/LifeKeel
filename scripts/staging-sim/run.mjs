@@ -1058,6 +1058,295 @@ scenario('14 mail: confirm links and approval email via the sink', async () => {
   )
 })
 
+// ═════════════════════════ TIME AND JOBS (need STAGING_TEST_CONTROLS) ═══════
+const control = (path, body) =>
+  call('POST', `/staging/control/${path}`, { body, headers: { 'x-staging-token': TOKEN } })
+async function controlsOn() {
+  if (!TOKEN) return 'STAGING_TEST_TOKEN not set'
+  const probe = await control('age-join-request', {})
+  if (probe.json?.error === 'Invalid token') return 'staging token was refused'
+  if (probe.status === 404 || probe.status === 401)
+    return 'staging controls are not deployed or STAGING_TEST_CONTROLS is off'
+  return null
+}
+const skip = (why) =>
+  results.push({ scenario: current, name: 'scenario', ok: null, detail: `SKIPPED: ${why}` })
+async function mailTo(to, since, tries = 8) {
+  for (let i = 0; i < tries; i++) {
+    const m = await mail(to, since)
+    if (m.json?.messages?.length) return m.json.messages
+    await sleep(1200)
+  }
+  return []
+}
+
+scenario('15 time: join request expires after 14 days', async () => {
+  const why = await controlsOn()
+  if (why) return skip(why)
+  const fam = await makeFamily('Zane', 'Whitlock')
+  const o = fam.org.token
+  const email = (n) => `${n}.${RUN}@example.test`
+  const request = async (n) => {
+    await pace('join')
+    return call('POST', '/family/join', {
+      body: {
+        invite_code: fam.family.inviteCode,
+        name: `${n} Whitlock`,
+        email: email(n.toLowerCase()),
+        password: PW,
+      },
+    })
+  }
+  await request('Fresh')
+  await request('Edge')
+  await request('Stale')
+  const listed = async () =>
+    (await call('GET', '/family/access-requests', { token: o })).json?.requests ?? []
+  check(
+    'three requests listed before ageing',
+    (await listed()).length === 3,
+    `${(await listed()).length}`,
+  )
+  const stale = (await listed()).find((r) => r.email === email('stale'))
+  const age = async (n, days) =>
+    (await control('age-join-request', { email: email(n), days })).json?.matched
+  check('ageing a request matches it', (await age('stale', 15)) === 1)
+  check('a day short of the limit (13 days) is still listed', (await age('edge', 13)) === 1)
+  const after = await listed()
+  check(
+    'request older than 14 days is gone from the list',
+    !after.some((r) => r.email === email('stale')),
+    JSON.stringify(after.map((r) => r.email)),
+  )
+  check(
+    '13-day request is still listed',
+    after.some((r) => r.email === email('edge')),
+  )
+  check(
+    'fresh request is still listed',
+    after.some((r) => r.email === email('fresh')),
+  )
+  const lateApprove = await call('POST', `/family/access-requests/${stale?.id}/approve`, {
+    token: o,
+  })
+  check(
+    'an expired request cannot be approved',
+    lateApprove.status >= 400 && lateApprove.status < 500,
+    `${lateApprove.status} ${lateApprove.text.slice(0, 100)}`,
+  )
+  const staleLogin = await login(email('stale'))
+  check('the expired joiner still cannot sign in', staleLogin.status >= 400, `${staleLogin.status}`)
+  const again = await request('Stale')
+  check(
+    'the expired joiner can ask again (not blocked)',
+    again.status < 300,
+    `${again.status} ${again.text.slice(0, 100)}`,
+  )
+  check(
+    'the new request is listed',
+    (await listed()).some((r) => r.email === email('stale')),
+  )
+  const outsider = await control('age-join-request', { email: 'someone.real@gmail.com', days: 15 })
+  check(
+    'real-looking addresses are refused by the control',
+    outsider.status === 400,
+    `${outsider.status}`,
+  )
+})
+
+scenario('16 time: monthly digest, reminder cap and restart', async () => {
+  const why = await controlsOn()
+  if (why) return skip(why)
+  const fam = await makeFamily('Yusuf', 'Archer')
+  const o = fam.org.token
+  const b = await joinAndApprove(fam, 'Zoe', 'Archer')
+  await call('POST', '/family/domains/car/records/vehicle', { token: o, body: vehicle('DIGEST 1') })
+  const since0 = new Date().toISOString()
+  const run = async (now, extra = {}) =>
+    (await control('run-digest', { cadence: 'monthly', now, ...extra })).json
+  const NOT_SEEN = /not yet seen by every adult/
+  const bodies = async (to, since) => (await mailTo(to, since)).map((m) => m.text).join('\n')
+
+  const r1 = await run('2027-03-01T08:00:00Z')
+  check('digest run reports the family', r1?.result?.tenants >= 1, JSON.stringify(r1))
+  const m1 = await bodies(fam.org.email, since0)
+  check(
+    'March: organizer gets a digest listing the family list',
+    /On your family list/.test(m1) && /1 record/.test(m1),
+    m1.slice(0, 200),
+  )
+  check('March: says not yet seen by every adult', NOT_SEEN.test(m1))
+  check('March: no names or amounts of records in the digest', !/DIGEST 1/.test(m1))
+  const b1 = await bodies(b.email, since0)
+  check('March: the second adult gets one too', b1.length > 0, 'no mail for second adult')
+
+  const again = await run('2027-03-01T08:00:00Z')
+  const since1 = new Date().toISOString()
+  check(
+    'same month again sends nothing new (once per window)',
+    (again?.result?.sent ?? 0) === 0,
+    JSON.stringify(again?.result),
+  )
+
+  await run('2027-04-01T08:00:00Z')
+  const m2 = await bodies(fam.org.email, since1)
+  check('April: reminder still shown (second mention)', NOT_SEEN.test(m2), m2.slice(0, 200))
+  const since2 = new Date().toISOString()
+  await run('2027-05-01T08:00:00Z')
+  const m3 = await bodies(fam.org.email, since2)
+  check(
+    'May: reminder stops after two mentions',
+    m3.length > 0 && !NOT_SEEN.test(m3),
+    m3.slice(0, 300),
+  )
+  check('May: the count and the list line remain', /1 record/.test(m3))
+
+  const v = (await call('GET', '/family/domains/car', { token: o })).json?.result_version
+  await call('POST', '/family/domains/car/confirm', { token: o, body: { result_version: v } })
+  await call('POST', '/family/domains/car/confirm', { token: b.token, body: { result_version: v } })
+  const since3 = new Date().toISOString()
+  await run('2027-06-01T08:00:00Z')
+  const m4 = await bodies(fam.org.email, since3)
+  check(
+    'June: after both confirm it says seen by every adult',
+    /seen by every adult/.test(m4) && !NOT_SEEN.test(m4),
+    m4.slice(0, 300),
+  )
+
+  await call('POST', '/family/domains/car/records/vehicle', { token: o, body: vehicle('DIGEST 2') })
+  const since4 = new Date().toISOString()
+  await run('2027-07-01T08:00:00Z')
+  const m5 = await bodies(fam.org.email, since4)
+  check('July: an edit starts the reminder fresh', NOT_SEEN.test(m5), m5.slice(0, 300))
+
+  const since5 = new Date().toISOString()
+  const held = await run('2030-01-01T08:00:00Z', { fresh_sweep: false })
+  const heldMail = await mailTo(fam.org.email, since5, 3)
+  check(
+    'with no recent sweep the monthly digest is held back, not sent',
+    heldMail.length === 0 && (held?.result?.sent ?? 0) === 0,
+    JSON.stringify(held?.result),
+  )
+  const badNow = await control('run-digest', { cadence: 'monthly', now: 'tomorrow-ish' })
+  check('a bad date is refused', badNow.status === 400, `${badNow.status}`)
+})
+
+scenario(
+  '17 uploads: a parallel burst never hits a false daily limit; the cap of 3 holds',
+  async () => {
+    const fam = await makeFamily('Wren', 'Holloway')
+    const o = fam.org.token
+    const N = 8
+    const init = await Promise.all(
+      Array.from({ length: N }, (_, i) =>
+        call('POST', '/documents/uploads', {
+          token: o,
+          body: { filename: `burst-${i}.png`, mime: 'image/png', size: 1024 + i },
+        }),
+      ),
+    )
+    const codes = init.map((r) => r.status)
+    check(
+      'no upload in the burst is refused with a daily limit',
+      !init.some((r) => /daily_limit|Daily upload limit/.test(r.text)),
+      codes.join(','),
+    )
+    check(
+      'no 5xx in the burst',
+      init.every((r) => r.status < 500),
+      codes.join(','),
+    )
+    if (init.every((r) => r.status === 409)) {
+      // Direct upload is not enabled for this tenant: use the older multipart route.
+      const PNG = Uint8Array.from(
+        Buffer.from(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+          'base64',
+        ),
+      )
+      const multi = await Promise.all(
+        Array.from({ length: N }, (_, i) => {
+          const fd = new FormData()
+          fd.append('file', new Blob([PNG], { type: 'image/png' }), `burst-${i}.png`)
+          return fetch(`${API}/documents/upload`, {
+            method: 'POST',
+            headers: { authorization: `Bearer ${o}` },
+            body: fd,
+          }).then(async (r) => ({ status: r.status, text: await r.text() }))
+        }),
+      )
+      const mc = multi.map((r) => r.status)
+      check(
+        'multipart burst: none refused with a daily limit',
+        !multi.some((r) => /daily_limit|Daily upload limit/.test(r.text)),
+        mc.join(','),
+      )
+      check(
+        'multipart burst: no 5xx',
+        multi.every((r) => r.status < 500),
+        mc.join(','),
+      )
+      const ok = multi.filter((r) => [200, 201, 202].includes(r.status))
+      const capped = multi.filter((r) => r.status === 429)
+      check(
+        'multipart burst: every answer is success or "too many at once", nothing else',
+        ok.length + capped.length === N,
+        mc.join(','),
+      )
+      check('multipart burst: at least one is accepted', ok.length >= 1, mc.join(','))
+      check(
+        'multipart burst: no more than 3 are in flight at once (the cap holds)',
+        ok.length <= 3,
+        mc.join(','),
+      )
+      check(
+        'multipart burst: refused ones say "too many uploads", not a daily limit',
+        capped.every((r) => /Too many uploads/.test(r.text) && !/Daily/.test(r.text)),
+        capped[0]?.text?.slice(0, 120) ?? '',
+      )
+    } else {
+      check(
+        'direct upload burst: success or "too many at once" only',
+        init.every((r) => r.status === 201 || r.status === 429),
+        codes.join(','),
+      )
+      check(
+        'direct upload burst: at least one started and no more than 3',
+        init.filter((r) => r.status === 201).length >= 1 &&
+          init.filter((r) => r.status === 201).length <= 3,
+        codes.join(','),
+      )
+    }
+    const huge = await call('POST', '/documents/uploads', {
+      token: o,
+      body: { filename: 'huge.pdf', mime: 'application/pdf', size: 60 * 1024 * 1024 },
+    })
+    check(
+      'a file over 50 MB is refused cleanly',
+      [413, 409].includes(huge.status),
+      `${huge.status} ${huge.text.slice(0, 100)}`,
+    )
+    const exe = await call('POST', '/documents/uploads', {
+      token: o,
+      body: { filename: 'run.exe', mime: 'application/x-msdownload', size: 100 },
+    })
+    check(
+      'an unsupported type is refused cleanly',
+      [422, 409].includes(exe.status),
+      `${exe.status}`,
+    )
+    const zero = await call('POST', '/documents/uploads', {
+      token: o,
+      body: { filename: 'empty.pdf', mime: 'application/pdf', size: 0 },
+    })
+    check(
+      'a zero-byte file is refused cleanly',
+      [400, 413, 409].includes(zero.status),
+      `${zero.status}`,
+    )
+  },
+)
+
 // ═════════════════════════ RUNNER ═══════════════════════════════════════════
 const started = Date.now()
 for (const s of scenarios) {
