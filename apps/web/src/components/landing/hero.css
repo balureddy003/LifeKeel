@@ -64,7 +64,7 @@
 .lk-pill { font: 500 16px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: 9px 12px; border-radius: 999px; border: 1px solid currentColor; background: color-mix(in srgb, var(--surface) 90%, transparent); white-space: nowrap; }
 .lk-pill.rough, .lk-pill.holding { color: var(--brass-text); } .lk-pill.steady { color: var(--ok-text); }
 .lk-ctl { flex-basis: 100%; display: flex; justify-content: flex-end; gap: 12px; align-items: center; flex-wrap: wrap; }
-.lk-pause { font: 500 16px var(--body); color: var(--ink); background: color-mix(in srgb, var(--surface) 90%, transparent); border: 1px solid var(--field-line); border-radius: 999px; padding: 8px 16px; min-height: 44px; cursor: pointer; }
+.lk-pause { font: 500 16px var(--body); color: var(--ink); background: color-mix(in srgb, var(--surface) 90%, transparent); border: 1px solid var(--field-line); border-radius: 999px; padding: 8px 16px; min-height: 48px; cursor: pointer; }
 
 /* chart, slips, boats */
 .lk-bm { --bx: 74%; --bw: 170px; --ad: .9s; } .lk-bf1 { --bx: 55%; --bw: 120px; --ad: 1.2s; } .lk-bf2 { --bx: 42%; --bw: 90px; --ad: 1.5s; } .lk-bf3 { --bx: 32%; --bw: 80px; --ad: 1.8s; }
