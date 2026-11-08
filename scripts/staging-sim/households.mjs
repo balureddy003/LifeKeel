@@ -1771,7 +1771,6 @@ household(
     )
     const link = msgs.flatMap((m) => m.links ?? []).find((l) => /invite\//.test(l))
     const tok = link?.split('/invite/')[1]?.split(/[?#]/)[0]
-    await call('DELETE', `/family/members/${bid}`, { token: o })
     const look = tok ? await call('GET', `/family/invite/${tok}`) : { status: 0, text: '' }
     S(
       '3 Join',
@@ -1779,6 +1778,7 @@ household(
       look.status === 200 && !/Fox family/.test(look.text),
       look.text.slice(0, 120),
     )
+    await call('DELETE', `/family/members/${bid}`, { token: o })
     const dead = tok ? await call('GET', `/family/invite/${tok}`) : { status: 0 }
     S(
       '3 Join',
