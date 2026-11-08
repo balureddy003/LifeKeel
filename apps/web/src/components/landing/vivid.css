@@ -926,7 +926,7 @@
   padding: 20px 24px;
   font-size: 15px;
   font-weight: 750;
-  min-height: 44px;
+  min-height: 48px;
 }
 .vv-faq summary::-webkit-details-marker {
   display: none;

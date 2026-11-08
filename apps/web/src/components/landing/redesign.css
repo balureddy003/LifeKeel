@@ -236,7 +236,7 @@
 .landing.landing .lk-footer-subscribe .lk-news, .landing.landing .lk-news-row { min-width: 0; }
 @media (max-width: 360px) {
   .landing.landing .lk-news-row { flex-direction: column; }
-  .landing.landing .lk-news button { min-height: 44px; }
+  .landing.landing .lk-news button { min-height: 48px; }
 }
 
 .landing.landing .lk-theme-btn, .landing.landing .lk-menu-btn { background: var(--surface); color: var(--ink); border-color: var(--line); }
