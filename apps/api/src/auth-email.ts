@@ -222,7 +222,7 @@ export async function sendPasswordResetEmail(
 export async function sendFamilyInviteEmail(
   to: string,
   name: string,
-  familyName: string,
+  inviterFirstName: string,
   inviteUrl: string,
 ): Promise<void> {
   if (!emailConfigured()) {
@@ -233,21 +233,24 @@ export async function sendFamilyInviteEmail(
   const apiKey = process.env['SENDGRID_API_KEY']
   if (apiKey) sgMail.setApiKey(apiKey)
   const firstName = name.split(' ')[0] || 'there'
+  // Says who sent it so the right person recognises it, and never the family's name:
+  // if the address was mistyped, a stranger must not learn which family this is.
+  const who = inviterFirstName.trim() || 'Someone'
 
   try {
     await sgMail.send({
       to,
       from: { email: getFromEmail(), name: 'LifeKeel' },
-      subject: `${familyName} invited you to LifeKeel`,
-      text: `Hi ${firstName},\n\n${familyName} has set you up as a member of their family on LifeKeel. Accept the invitation to create your sign-in (link expires in 7 days):\n${inviteUrl}\n\nIf you weren't expecting this, you can safely ignore it — no account is created unless you accept.`,
+      subject: `${who} invited you to LifeKeel`,
+      text: `Hi ${firstName},\n\n${who} has invited you to join their family on LifeKeel. Accept the invitation to create your sign-in (link expires in 7 days):\n${inviteUrl}\n\nIf you weren't expecting this, you can safely ignore it — no account is created unless you accept.`,
       html: renderEmail({
-        preheader: `${familyName} set you up as a family member on LifeKeel.`,
+        preheader: `${who} invited you to join their family on LifeKeel.`,
         eyebrow: 'Family invitation',
-        title: `${familyName} invited you to LifeKeel`,
+        title: `${who} invited you to LifeKeel`,
         bodyHtml:
           p(`Hi ${escapeHtml(firstName)},`) +
           p(
-            `<strong>${escapeHtml(familyName)}</strong> has set you up as a member of their family on LifeKeel. Accept the invitation to create your sign-in. This link expires in 7 days.`,
+            `<strong>${escapeHtml(who)}</strong> has invited you to join their family on LifeKeel. Accept the invitation to create your sign-in. This link expires in 7 days.`,
           ),
         cta: { url: inviteUrl, label: 'Accept invitation' },
         note: "If you weren't expecting this, you can safely ignore it — no account is created unless you accept.",

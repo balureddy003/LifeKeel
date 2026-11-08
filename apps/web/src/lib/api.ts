@@ -2568,7 +2568,8 @@ export async function inviteFamilyMember(
 
 export interface FamilyInviteInfo {
   memberName: string
-  familyName: string
+  /** First name of whoever sent the invite; null for invites sent before the family name was dropped. */
+  inviterName: string | null
   expiresAt: string
 }
 
@@ -2578,7 +2579,11 @@ export async function fetchFamilyInvite(token: string): Promise<FamilyInviteInfo
   const res = await credFetch(`${base}/family/invite/${encodeURIComponent(token)}`)
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'This invite link is invalid or has expired')
-  return { memberName: data.member_name, familyName: data.family_name, expiresAt: data.expires_at }
+  return {
+    memberName: data.member_name,
+    inviterName: (data.inviter_name as string | null) ?? null,
+    expiresAt: data.expires_at,
+  }
 }
 
 // Public — accepting both verifies the token AND proves ownership of the

@@ -1768,11 +1768,17 @@ household(
       'the email does not name the family',
       !/Fox/.test(text.replace(/Ben Fox/g, '')),
       text.slice(0, 160),
-      { decision: true },
     )
     const link = msgs.flatMap((m) => m.links ?? []).find((l) => /invite\//.test(l))
     const tok = link?.split('/invite/')[1]?.split(/[?#]/)[0]
     await call('DELETE', `/family/members/${bid}`, { token: o })
+    const look = tok ? await call('GET', `/family/invite/${tok}`) : { status: 0, text: '' }
+    S(
+      '3 Join',
+      'the page behind the link says who invited them, and does not name the family',
+      look.status === 200 && !/Fox family/.test(look.text),
+      look.text.slice(0, 120),
+    )
     const dead = tok ? await call('GET', `/family/invite/${tok}`) : { status: 0 }
     S(
       '3 Join',
