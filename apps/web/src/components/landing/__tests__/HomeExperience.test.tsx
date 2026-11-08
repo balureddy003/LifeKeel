@@ -33,14 +33,15 @@ describe('homepage live content', () => {
     expect(screen.queryByText(/deleted immediately|Deletion is immediate/i)).toBeNull()
   })
 
-  it('tells the chapters right after the hero, then the rest', () => {
+  it('tells the short story right after the hero, then the chapters, then the rest', () => {
     render(<HomeExperience />)
     const after = (a: string, b: string) =>
       screen
         .getByRole('heading', { name: a })
         .compareDocumentPosition(screen.getByRole('heading', { name: b })) &
       Node.DOCUMENT_POSITION_FOLLOWING
-    expect(after('Know where to look.', 'The things your family says out loud.')).toBeTruthy()
+    expect(after('Know where to look.', 'Marcia’s Tuesday.')).toBeTruthy()
+    expect(after('Marcia’s Tuesday.', 'The things your family says out loud.')).toBeTruthy()
     expect(
       after('The things your family says out loud.', 'One problem, one evening, one number.'),
     ).toBeTruthy()
