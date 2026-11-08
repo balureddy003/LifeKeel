@@ -1,0 +1,41 @@
+/* Three ordinary moments: calm cards, no motion. */
+.mm-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+.mm-card {
+  padding: 24px;
+  border-radius: 24px;
+  background: var(--vv-surface, #fff);
+  border: 1px solid var(--vv-line, rgba(0, 0, 0, 0.1));
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+.mm-card h3 {
+  margin: 0;
+  font-size: 19px;
+  line-height: 1.25;
+}
+.mm-card p {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.6;
+}
+.mm-card .mm-limit {
+  font-size: 14px;
+  color: var(--vv-muted);
+}
+.mm-fine {
+  text-align: center;
+  margin-top: 16px;
+}
+@media (max-width: 860px) {
+  .mm-grid {
+    grid-template-columns: 1fr;
+  }
+}
