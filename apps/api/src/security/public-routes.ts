@@ -84,10 +84,20 @@ const DOCS: PublicRoute[] = [
   { prefix: '/documentation/static', group: 'A' },
 ]
 
-export function publicRoutes(opts: { docsEnabled: boolean }): PublicRoute[] {
-  return opts.docsEnabled ? [...ALWAYS, ...DOCS] : [...ALWAYS]
+/** Present only when the staging mail sink is on; the route itself checks a test token. */
+const STAGING: PublicRoute[] = [
+  {
+    prefix: '/staging/mail',
+    group: 'F',
+    note: 'staging only: registered only when the sink is on; X-Staging-Token required',
+  },
+]
+
+export function publicRoutes(opts: { docsEnabled: boolean; stagingSink?: boolean }): PublicRoute[] {
+  const base = opts.docsEnabled ? [...ALWAYS, ...DOCS] : [...ALWAYS]
+  return opts.stagingSink ? [...base, ...STAGING] : base
 }
 
-export function openPrefixes(opts: { docsEnabled: boolean }): string[] {
+export function openPrefixes(opts: { docsEnabled: boolean; stagingSink?: boolean }): string[] {
   return publicRoutes(opts).map((r) => r.prefix)
 }
