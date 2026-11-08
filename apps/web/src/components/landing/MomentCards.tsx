@@ -63,7 +63,6 @@ export function MomentCards() {
           </li>
         ))}
       </ul>
-      <p className="vv-fine mm-fine">Made-up family. Made-up dates.</p>
     </section>
   )
 }
