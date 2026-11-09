@@ -9,6 +9,8 @@ export function cellText(cell: DomainCell): string {
       return 'Covered'
     case 'holds_and_covers':
       return 'Holds it and is covered'
+    case 'employer':
+      return 'Through their employer'
     default:
       return 'Not recorded'
   }

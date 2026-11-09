@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { confirmSummary } from '../domain-copy'
+import { cellText, confirmSummary } from '../domain-copy'
 
 const person = (id: string, name: string) => ({ id, name })
 const waitingOn = (names: string[]) =>
@@ -25,5 +25,11 @@ describe('confirmSummary: who is still to confirm', () => {
     expect(waitingOn(['A', 'B', 'C', 'D'])).toBe(
       'Waiting for A, B, C and D to confirm they have seen this version.',
     )
+  })
+})
+
+describe('cellText', () => {
+  it('says employer cover as a fact on file', () => {
+    expect(cellText('employer')).toBe('Through their employer')
   })
 })
