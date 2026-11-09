@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useRouteParam } from '@/lib/useRouteParam'
 import Link from 'next/link'
 import { PendingApproval } from './PendingApproval'
+import { InviteExplainer } from './InviteExplainer'
 import { motion } from 'framer-motion'
 import { Users, Check, X, Mail } from 'lucide-react'
 import { PasswordInput } from '@/components/PasswordInput'
@@ -118,6 +119,8 @@ function AcceptMemberInvite({ token }: { token: string }) {
         <p className="text-xs text-ink-tertiary mt-2">{WRONG_PERSON}</p>
       </div>
 
+      <InviteExplainer />
+
       <div className="mb-6">
         <label htmlFor="accept-password" className="block text-xs text-ink-tertiary mb-1.5 px-1">
           Password (min. 8 characters)
@@ -215,7 +218,9 @@ function RequestJoin({ code }: { code: string }) {
           <Users size={32} className="text-family-400" />
         </div>
         <h1 className="text-2xl font-bold">
-          {from ? `${from} invited you to see your family's plan` : 'Join your family on LifeKeel'}
+          {from
+            ? `${from} invited you to look at your family's list`
+            : 'Join your family on LifeKeel'}
         </h1>
         <p className="text-sm text-ink-tertiary mt-1">
           {from
@@ -223,6 +228,8 @@ function RequestJoin({ code }: { code: string }) {
             : 'The organizer will need to approve your request before you can sign in.'}
         </p>
       </div>
+
+      <InviteExplainer />
 
       <div className="space-y-3 mb-6">
         <label htmlFor="invite-name" className="block">
