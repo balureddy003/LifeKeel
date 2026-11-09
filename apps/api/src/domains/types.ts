@@ -120,7 +120,7 @@ export const DomainPackSchema = z
     none_on_file: z
       .array(z.object({ record: Slug, text: z.string().min(1).max(120) }).strict())
       .max(8)
-      .default([]),
+      .optional(),
     /** Who must confirm the record before it is "seen by both". */
     confirm: z.enum(['both_adults', 'organiser']),
     /** Entitlement key, or null for free. */
