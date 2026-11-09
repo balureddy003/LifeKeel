@@ -170,6 +170,13 @@ export default function DomainsPage() {
               family list. The organizer can change that in Settings, under Family.
             </p>
           )}
+          {(view.absent ?? []).length > 0 && (
+            <ul className="mt-4 space-y-1 text-base text-ink-secondary">
+              {(view.absent ?? []).map((a) => (
+                <li key={a}>{a}</li>
+              ))}
+            </ul>
+          )}
           {view.matrix && view.matrix.rows.length > 0 ? (
             <GlassCard className="mt-6 p-0">
               <div

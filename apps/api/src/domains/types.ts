@@ -77,6 +77,12 @@ export const PlanningTriggerSchema = z
     ]),
     /** Days before the date to prompt a re-check; ignored for life events. */
     lead_days: z.number().int().min(0).max(365).default(30),
+    /**
+     * How many days past the date it keeps showing. Unset: it shows until the record
+     * is changed (an MOT that has lapsed). Set it for dates that simply pass (a trip
+     * that has ended), so a finished date leaves "coming up".
+     */
+    lookback_days: z.number().int().min(0).max(365).optional(),
   })
   .strict()
 
@@ -107,6 +113,14 @@ export const DomainPackSchema = z
       .strict()
       .optional(),
     planning: z.array(PlanningTriggerSchema).max(8).default([]),
+    /**
+     * A plain fact to show when nothing of a record type is on file ("No travel policy on
+     * file."). A statement of what is absent, never a prompt or a recommendation.
+     */
+    none_on_file: z
+      .array(z.object({ record: Slug, text: z.string().min(1).max(120) }).strict())
+      .max(8)
+      .default([]),
     /** Who must confirm the record before it is "seen by both". */
     confirm: z.enum(['both_adults', 'organiser']),
     /** Entitlement key, or null for free. */

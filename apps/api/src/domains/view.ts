@@ -48,6 +48,8 @@ export interface DomainView {
     date: string
     days: number
   }>
+  /** Facts about what is not on file, from the pack's none_on_file entries. */
+  absent: string[]
   result_version: string
   confirmation: {
     required: RosterRef[]
@@ -115,7 +117,11 @@ export async function buildDomainView(
   const nameOf = (id: string | null) => roster.find((r) => r.id === id)?.name ?? ''
   const label = (r: DomainRow) => {
     const rec = pack.records.find((x) => x.key === r.record)!
-    const detail = r.values['provider'] || r.values['name_as_printed'] || r.values['type']
+    const detail =
+      r.values['provider'] ||
+      r.values['name_as_printed'] ||
+      r.values['destination'] ||
+      r.values['type']
     return [rec.label, detail?.replace(/_/g, ' ')].filter(Boolean).join(' · ')
   }
 
@@ -160,6 +166,7 @@ export async function buildDomainView(
       const at = raw && /^\d{4}-\d{2}-\d{2}/.test(raw) ? Date.parse(raw.slice(0, 10)) : NaN
       if (Number.isNaN(at)) continue
       const days = Math.round((at - today) / 86_400_000)
+      if (t.lookback_days !== undefined && days < -t.lookback_days) continue
       if (days <= t.lead_days)
         upcoming.push({
           trigger: t.key,
@@ -212,6 +219,9 @@ export async function buildDomainView(
     matrix,
     gaps,
     upcoming,
+    absent: (pack.none_on_file ?? [])
+      .filter((n) => !rows.some((r) => r.record === n.record))
+      .map((n) => n.text),
     result_version,
     confirmation: {
       required,

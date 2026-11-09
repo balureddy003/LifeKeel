@@ -6596,6 +6596,8 @@ export interface DomainView {
     rows: Array<{ id: string; label: string; cells: Record<string, DomainCell> }>
   } | null
   gaps: Array<{ row_id: string; note: string }>
+  /** Plain facts about what is not on file, e.g. "No travel policy on file." */
+  absent?: string[]
   /** The pack's shape, so one page can draw any domain. */
   pack: {
     id: string
