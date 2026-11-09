@@ -1,6 +1,7 @@
 'use client'
 
 import { VividHero } from './VividHero'
+import { CostSection } from './CostSection'
 import { FamilyStory } from './FamilyStory'
 import { AcrossTheYear } from './AcrossTheYear'
 import { MomentCards } from './MomentCards'
@@ -23,14 +24,15 @@ export function HomeExperience() {
     <main className="vv-main">
       <div className="vv-bg" aria-hidden="true" />
       <VividHero />
+      <CostSection />
       <FamilyStory />
       <AcrossTheYear />
       <MomentCards />
+      <Trust />
       <Features />
       <BadDay />
       <div id="how-it-works">
         <ThreeProblems />
-        <Trust />
         <HowItWorks />
       </div>
       <PlusBand />
