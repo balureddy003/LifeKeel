@@ -1,19 +1,27 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Pencil, Trash2 } from 'lucide-react'
 import { GlassCard } from '@/components/Glass'
 import type { DomainView } from '@/lib/api'
+import { RecordFields, ghostBtn, inputCls, primaryBtn } from './AddRecordForm'
 
 /** Every record a pack holds, grouped by record type, for packs with no matrix. */
 export function RecordList({
   view,
+  busy,
   onRemove,
+  onEdit,
 }: {
   view: DomainView
+  busy: boolean
   onRemove: (rowId: string) => void
+  onEdit: (rowId: string, holder: string | null, values: Record<string, string>) => Promise<boolean>
 }) {
   const [confirming, setConfirming] = useState<string | null>(null)
+  const [editing, setEditing] = useState<string | null>(null)
+  const [draft, setDraft] = useState<Record<string, string>>({})
+  const [draftHolder, setDraftHolder] = useState('')
   const removeButtons = useRef<Record<string, HTMLButtonElement | null>>({})
   return (
     <div className="mt-6 space-y-5">
@@ -46,20 +54,88 @@ export function RecordList({
                         )
                       })}
                     </dl>
-                    {removable && (
-                      <button
-                        type="button"
-                        ref={(el) => {
-                          removeButtons.current[r.id] = el
-                        }}
-                        onClick={() => setConfirming(r.id)}
-                        aria-label={`Remove ${rec.label}`}
-                        className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full border border-haze px-3"
-                      >
-                        <Trash2 size={16} aria-hidden="true" />
-                      </button>
-                    )}
+                    <div className="flex shrink-0 gap-2">
+                      {removable && editing !== r.id && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDraft({ ...r.values })
+                            setDraftHolder(r.holder_member_id ?? '')
+                            setEditing(r.id)
+                          }}
+                          aria-label={`Edit ${rec.label}`}
+                          className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full border border-haze px-3"
+                        >
+                          <Pencil size={16} aria-hidden="true" />
+                        </button>
+                      )}
+                      {removable && (
+                        <button
+                          type="button"
+                          ref={(el) => {
+                            removeButtons.current[r.id] = el
+                          }}
+                          onClick={() => setConfirming(r.id)}
+                          aria-label={`Remove ${rec.label}`}
+                          className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full border border-haze px-3"
+                        >
+                          <Trash2 size={16} aria-hidden="true" />
+                        </button>
+                      )}
+                    </div>
                   </div>
+                  {removable && editing === r.id && (
+                    <div className="mt-3 space-y-4 border-t border-haze pt-3">
+                      {rec.person_attribution === 'holder' && (
+                        <div>
+                          <label
+                            htmlFor={`e-${r.id}-holder`}
+                            className="block text-sm font-medium text-ink-primary"
+                          >
+                            Whose is it? (optional)
+                          </label>
+                          <select
+                            id={`e-${r.id}-holder`}
+                            className={inputCls}
+                            value={draftHolder}
+                            onChange={(e) => setDraftHolder(e.target.value)}
+                          >
+                            <option value="">Not stated</option>
+                            {view.roster.map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      <RecordFields
+                        rec={rec}
+                        view={view}
+                        values={draft}
+                        setValues={setDraft}
+                        idPrefix={`e-${r.id}`}
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          disabled={busy || Object.values(draft).every((v) => !v.trim())}
+                          className={primaryBtn}
+                          onClick={async () => {
+                            const clean = Object.fromEntries(
+                              Object.entries(draft).filter(([, v]) => v.trim()),
+                            )
+                            if (await onEdit(r.id, draftHolder || null, clean)) setEditing(null)
+                          }}
+                        >
+                          Save changes
+                        </button>
+                        <button type="button" onClick={() => setEditing(null)} className={ghostBtn}>
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   {removable && confirming === r.id && (
                     <div
                       role="group"

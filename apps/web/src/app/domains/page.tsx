@@ -6,6 +6,7 @@ import { CheckCircle2 } from 'lucide-react'
 import { GlassCard, PageHeader, Skeleton } from '@/components/Glass'
 import {
   addDomainRecord,
+  updateDomainRecord,
   confirmDomain,
   deleteDomainRecord,
   getDomains,
@@ -58,6 +59,24 @@ export default function DomainsPage() {
     if (!id) return false
     setBusy(true)
     const res = await addDomainRecord(id, record, { holder_member_id: holder, values })
+    setBusy(false)
+    if (!res.ok) {
+      toast({
+        message:
+          (res.data as { error?: string } | undefined)?.error ?? 'Could not save. Try again.',
+        variant: 'error',
+      })
+      return false
+    }
+    haptic('success')
+    setView(await getDomainView(id))
+    return true
+  }
+
+  async function edit(rowId: string, holder: string | null, values: Record<string, string>) {
+    if (!id) return false
+    setBusy(true)
+    const res = await updateDomainRecord(id, rowId, { holder_member_id: holder, values })
     setBusy(false)
     if (!res.ok) {
       toast({
@@ -232,7 +251,7 @@ export default function DomainsPage() {
               </p>
             </GlassCard>
           ) : (
-            <RecordList view={view} onRemove={remove} />
+            <RecordList view={view} busy={busy} onRemove={remove} onEdit={edit} />
           )}
 
           {view.rows.length > 0 && adapterSources(view.pack).length > 0 && (

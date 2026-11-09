@@ -6671,6 +6671,17 @@ export function addDomainRecord(
     body,
   )
 }
+export function updateDomainRecord(
+  id: string,
+  rowId: string,
+  body: { holder_member_id?: string | null; values: Record<string, string> },
+) {
+  return briefPost<{ id: string }>(
+    `/family/domains/${encodeURIComponent(id)}/records/${encodeURIComponent(rowId)}`,
+    body,
+    'PUT',
+  )
+}
 export function deleteDomainRecord(id: string, rowId: string) {
   return briefPost<unknown>(
     `/family/domains/${encodeURIComponent(id)}/records/${encodeURIComponent(rowId)}`,
