@@ -27,7 +27,7 @@ export type DomainConfirmationDoc = {
   confirmed_at: Date
 }
 
-export type Cell = 'holds' | 'covers' | 'holds_and_covers' | 'employer' | null
+export type Cell = 'holds' | 'covers' | 'holds_and_covers' | 'employer' | 'nominated' | null
 
 export interface DomainView {
   domain_id: string
@@ -153,6 +153,10 @@ export async function buildDomainView(
               roster.map((m): [string, Cell] => {
                 const h = r.holder_member_id === m.id
                 const c = r.covers_member_id === m.id
+                const nominee =
+                  !!r.values['nominated'] &&
+                  r.values['nominated'].trim().toLowerCase() === m.name.trim().toLowerCase()
+                if (nominee && !h && !c) return [m.id, 'nominated']
                 if (h && r.record !== pack.matrix!.record) return [m.id, 'employer']
                 return [m.id, h && c ? 'holds_and_covers' : h ? 'holds' : c ? 'covers' : null]
               }),

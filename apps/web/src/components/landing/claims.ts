@@ -41,6 +41,12 @@ export const CLAIMS: Claim[] = [
     status: 'live',
     evidence: 'detectors/family/policy-review.yaml',
   },
+  {
+    id: 'cover-matrix',
+    text: 'Which person each policy is held by or names, and who has no policy on file',
+    status: 'live',
+    evidence: 'apps/api/src/domains/view.ts',
+  },
   { id: 'partner-overlap', text: 'Overlap between partners’ policies', status: 'planned' },
   {
     id: 'retirement-education',

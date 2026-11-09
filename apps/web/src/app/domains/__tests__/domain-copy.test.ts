@@ -39,3 +39,9 @@ describe('noPolicyText', () => {
     expect(noPolicyText('Kit Rowan')).toBe('No policy on file for Kit Rowan')
   })
 })
+
+describe('cellText nominated', () => {
+  it('states the nomination as printed', () => {
+    expect(cellText('nominated')).toBe('Named on the policy')
+  })
+})
