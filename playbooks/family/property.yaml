@@ -9,7 +9,7 @@ intro: >
   home policies and mortgage where we have them on file.
 steps:
   - id: check_home_cover
-    title: Check your real home cover
+    title: Policies on file that relate to this
     computed: true
     contact: false
   - id: notify_insurer

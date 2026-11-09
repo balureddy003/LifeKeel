@@ -228,123 +228,52 @@ function renderBereavementStep(
   return ''
 }
 
-function renderDisabilityStep(
-  stepId: string,
-  profile: FinancialProfile,
-  affectedMemberId: string | undefined,
-): string {
-  if (stepId === 'check_cover') {
-    const earner = resolveEarner(profile, affectedMemberId)
-    const hasCriticalIllnessPolicy = profile.policies.some((p) => p.type === 'critical_illness')
-    const hasIncomeProtection = earner.income_protection_monthly_minor > 0
-
-    if (hasIncomeProtection || hasCriticalIllnessPolicy) {
-      const parts: string[] = []
-      if (hasIncomeProtection)
-        parts.push(
-          `${formatMoney(earner.income_protection_monthly_minor)}/month of income protection`,
-        )
-      if (hasCriticalIllnessPolicy) {
-        const policy = profile.policies.find((p) => p.type === 'critical_illness')!
-        parts.push(`a critical-illness policy with ${policy.provider}`)
-      }
-      return `Based on your real data, you have ${parts.join(' and ')} on file. Here's how to claim: contact the provider(s) directly, ask what documentation they need, and start the claim as soon as you're able — most have a waiting period before payments begin, so starting early matters.`
-    }
-    return "You don't have income protection or a critical-illness policy on file. Here's why that matters now: without either, there's no private cover to fall back on for lost income during this — the state disability benefit step below is worth checking regardless, and it's worth reviewing cover for the future once things stabilize."
-  }
-
-  return ''
+/**
+ * The claim step for an event: which policies ON FILE relate to it, with the
+ * provider, policy number and contact exactly as the household recorded them.
+ * Nothing else. It never says whether a policy covers the event, what to
+ * claim or what to do next (CLAUDE.md rule 2); the household reads the paper.
+ */
+const CLAIM_STEP: Partial<
+  Record<
+    LifeEventType,
+    { step: string; types: Array<FinancialProfile['policies'][number]['type']>; none: string }
+  >
+> = {
+  travel: {
+    step: 'check_travel_cover',
+    types: ['travel', 'health'],
+    none: 'No travel or health policy on file.',
+  },
+  medical: {
+    step: 'check_health_cover',
+    types: ['health', 'critical_illness'],
+    none: 'No health or critical illness policy on file.',
+  },
+  disability: {
+    step: 'check_cover',
+    types: ['income_protection', 'critical_illness'],
+    none: 'No income protection or critical illness policy on file.',
+  },
+  car: { step: 'check_car_insurance', types: ['car'], none: 'No car policy on file.' },
+  property: { step: 'check_home_cover', types: ['home'], none: 'No home policy on file.' },
 }
 
-function renderMedicalStep(
-  stepId: string,
-  profile: FinancialProfile,
-  affectedMemberId: string | undefined,
-): string {
-  if (stepId === 'check_health_cover') {
-    const earner = resolveEarner(profile, affectedMemberId)
-    const parts: string[] = []
-    const health = profile.policies.filter((p) => p.type === 'health')
-    const critical = profile.policies.filter((p) => p.type === 'critical_illness')
-    if (health.length > 0)
-      parts.push(`health insurance with ${health.map((p) => p.provider).join(', ')}`)
-    if (critical.length > 0)
-      parts.push(`critical-illness cover with ${critical.map((p) => p.provider).join(', ')}`)
-    if (earner.income_protection_monthly_minor > 0) {
-      parts.push(
-        `${formatMoney(earner.income_protection_monthly_minor)}/month of income protection`,
-      )
-    }
-    if (parts.length > 0) {
-      return `Based on your real data, you have ${parts.join(' and ')} on file. Contact the provider(s) now — many health policies require notification within days of an emergency admission.`
-    }
-    return "We don't have health insurance or income protection on file for your family. If a policy exists that we don't know about, find its emergency number now — and once things stabilize, add your policies to the financial profile so this step is grounded in real data next time."
-  }
-  return ''
-}
-
-function renderCarStep(stepId: string, profile: FinancialProfile): string {
-  if (stepId === 'check_car_insurance') {
-    const car = profile.policies.filter((p) => p.type === 'car')
-    if (car.length > 0) {
-      const list = car
-        .map((p) => p.provider + (p.policy_number ? ` (policy ${p.policy_number})` : ''))
-        .join(', ')
-      return `Based on your real data, your car insurance on file: ${list}. Report the accident to the insurer within their notification window — have the policy number and the other party's details ready.`
-    }
-    return "We don't have a car insurance policy on file for your family. If you're covered, find the policy number and the insurer's claim line now — and add the policy to your financial profile later so Keel can quote it back to you here."
-  }
-  return ''
-}
-
-function renderPropertyStep(stepId: string, profile: FinancialProfile): string {
-  if (stepId === 'check_home_cover') {
-    const home = profile.policies.filter((p) => p.type === 'home')
-    const parts: string[] = []
-    if (home.length > 0) parts.push(`home insurance with ${home.map((p) => p.provider).join(', ')}`)
-    const mortgage = profile.household.mortgage_outstanding_minor
-    if (mortgage > 0) parts.push(`a mortgage of ${formatMoney(mortgage)} outstanding`)
-    if (parts.length > 0) {
-      const lenderNote =
-        mortgage > 0 ? ' Your lender may need to be notified of major damage too.' : ''
-      // A mortgage on file but no home policy is still a gap worth naming —
-      // the What-If says it, the playbook should too (intent 50).
-      const noHomeNote =
-        home.length === 0
-          ? ' No home insurance policy is on file — if you have one, add it to your financial profile so the claim line is here next time.'
-          : ''
-      return `Based on your real data, you have ${parts.join(' and ')} on file.${lenderNote} Report the damage to the insurer before authorizing non-emergency repairs.${noHomeNote}`
-    }
-    return "We don't have home insurance on file for your family. If a policy exists, find the claim line now — and add it to your financial profile later so this step is grounded in real data next time."
-  }
-  return ''
-}
-
-function renderTravelStep(stepId: string, profile: FinancialProfile): string {
-  if (stepId === 'check_travel_cover') {
-    // 'travel' policies[] entries exist now (added once a real one showed
-    // up via a connected mailbox — see ocr/profile-mapping.ts's PolicyType)
-    // — this used to unconditionally claim "we don't track travel
-    // insurance yet", which went stale the moment that landed and was
-    // never wired up here. Checked first; health cover is still named as
-    // a secondary possibility either way.
-    const travel = profile.policies.filter((p) => p.type === 'travel')
-    const health = profile.policies.filter((p) => p.type === 'health')
-    const describe = (p: FinancialProfile['policies'][number]) =>
-      p.provider + (p.policy_number ? ` (policy ${p.policy_number})` : '')
-    if (travel.length > 0) {
-      const healthNote =
-        health.length > 0
-          ? ` You also have health insurance with ${health.map((p) => p.provider).join(', ')}, which may cover some emergency treatment abroad too.`
-          : ''
-      return `Based on your real data, you have travel insurance with ${travel.map(describe).join(', ')} on file.${healthNote} Find that policy's 24/7 assistance number and call before paying for anything — most travel insurers only reimburse what they coordinated.`
-    }
-    if (health.length > 0) {
-      return `No travel insurance is on file, but you have health insurance with ${health.map((p) => p.provider).join(', ')} — some health policies cover emergency treatment abroad, check yours. Also check whether a credit card or employer benefit includes travel cover.`
-    }
-    return "No travel insurance or health policy is on file. Check whether a credit card or employer benefit includes travel cover — that's where emergency assistance usually hides. Once you're safe, add whatever cover you find to your financial profile so this step is grounded in real data next time."
-  }
-  return ''
+function renderPoliciesOnFile(eventType: LifeEventType, profile: FinancialProfile): string | null {
+  const cfg = CLAIM_STEP[eventType]
+  if (!cfg) return null
+  const rows = profile.policies.filter((p) => cfg.types.includes(p.type))
+  if (rows.length === 0) return cfg.none
+  const line = (p: FinancialProfile['policies'][number]) =>
+    [
+      p.provider,
+      p.policy_number ? `policy ${p.policy_number}` : '',
+      p.contact_phone ? `phone ${p.contact_phone}` : '',
+      p.contact_email ? `email ${p.contact_email}` : '',
+    ]
+      .filter(Boolean)
+      .join(', ')
+  return `On file: ${rows.map(line).join('; ')}.`
 }
 
 /** A phone/email a "contact" step can put directly in front of the family, instead of "find the number". */
@@ -458,11 +387,9 @@ function renderComputedStep(
 ): string {
   if (eventType === 'job_loss') return renderJobLossStep(stepId, profile, affectedMemberId)
   if (eventType === 'bereavement') return renderBereavementStep(stepId, profile, affectedMemberId)
-  if (eventType === 'medical') return renderMedicalStep(stepId, profile, affectedMemberId)
-  if (eventType === 'car') return renderCarStep(stepId, profile)
-  if (eventType === 'property') return renderPropertyStep(stepId, profile)
-  if (eventType === 'travel') return renderTravelStep(stepId, profile)
-  return renderDisabilityStep(stepId, profile, affectedMemberId)
+  const onFile =
+    CLAIM_STEP[eventType]?.step === stepId ? renderPoliciesOnFile(eventType, profile) : null
+  return onFile ?? ''
 }
 
 // Every renderer below assumes the full schema shape — but a profile doc

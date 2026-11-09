@@ -8,7 +8,7 @@ intro: >
   against your real travel and health cover where it's on file.
 steps:
   - id: check_travel_cover
-    title: Check what cover may apply
+    title: Policies on file that relate to this
     computed: true
     contact: false
   - id: emergency_assistance

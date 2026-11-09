@@ -10,7 +10,7 @@ intro: >
   on file — not a generic checklist.
 steps:
   - id: check_cover
-    title: Check your cover
+    title: Policies on file that relate to this
     computed: true
     contact: true
   - id: notify_employer
