@@ -20,7 +20,14 @@ import { useToast } from '@/components/Toast'
 import { AddRecordForm } from './AddRecordForm'
 import { SentenceCapture } from './SentenceCapture'
 import { RecordList } from './RecordList'
-import { adapterSources, cellText, confirmSummary, daysText, rowLabel } from './domain-copy'
+import {
+  adapterSources,
+  cellText,
+  noPolicyText,
+  confirmSummary,
+  daysText,
+  rowLabel,
+} from './domain-copy'
 
 const primaryBtn =
   'inline-flex min-h-[48px] items-center justify-center rounded-full bg-family-500 px-5 text-base font-semibold text-white disabled:opacity-50'
@@ -214,6 +221,13 @@ export default function DomainsPage() {
                   </tbody>
                 </table>
               </div>
+              {(view.matrix.no_policy_on_file ?? []).length > 0 && (
+                <ul className="border-t border-haze p-3 text-sm text-ink-secondary">
+                  {view.matrix.no_policy_on_file!.map((m) => (
+                    <li key={m.id}>{noPolicyText(m.name)}</li>
+                  ))}
+                </ul>
+              )}
             </GlassCard>
           ) : view.rows.length === 0 ? (
             <GlassCard className="mt-6 p-5">

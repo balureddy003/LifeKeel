@@ -60,4 +60,27 @@ describe('life protection matrix with employer cover', () => {
     const v = await buildDomainView(db, T, getDomain('life_protection')!)
     expect(v.matrix!.rows[1]!.label).toContain('Acme Group Life')
   })
+
+  it('lists each person no policy or employer cover on file names, and nobody else', async () => {
+    await db.collection('family_groups').updateOne({ tenant_id: T }, {
+      $push: {
+        members: { id: 'kit', name: 'Kit Rowan', role: 'adult', status: 'active' },
+      },
+    } as never)
+    const v = await buildDomainView(db, T, getDomain('life_protection')!)
+    expect(v.matrix!.no_policy_on_file).toEqual([{ id: 'kit', name: 'Kit Rowan' }])
+  })
+
+  it('counts being the covered person as on file', async () => {
+    await db
+      .collection('family_groups')
+      .updateOne({ tenant_id: T }, {
+        $push: { members: { id: 'kit', name: 'Kit Rowan', role: 'child', status: 'active' } },
+      } as never)
+    await db
+      .collection('family_financial_profile')
+      .updateOne({ tenant_id: T }, { $set: { 'policies.0.beneficiary_member_id': 'kit' } })
+    const v = await buildDomainView(db, T, getDomain('life_protection')!)
+    expect(v.matrix!.no_policy_on_file).toEqual([])
+  })
 })

@@ -6593,6 +6593,7 @@ export interface DomainView {
   matrix: {
     label: string
     columns: Array<{ id: string; name: string }>
+    no_policy_on_file?: Array<{ id: string; name: string }>
     rows: Array<{ id: string; label: string; cells: Record<string, DomainCell> }>
   } | null
   gaps: Array<{ row_id: string; note: string }>
