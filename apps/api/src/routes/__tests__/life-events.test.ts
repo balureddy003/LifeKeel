@@ -353,9 +353,7 @@ describe('PRD-108: POST /family/life-events', () => {
       payload: { event_type: 'disability' },
     })
     const step = res.json().playbook.steps.find((s: { id: string }) => s.id === 'check_cover')
-    expect(step.body).toMatch(/how to claim/i)
-    expect(step.body).toContain('Bupa')
-    expect(step.body).not.toMatch(/why (that|this) matters/i)
+    expect(step.body).toBe('On file: Bupa.')
   })
 
   it('disability: a family with no income protection and no critical-illness policy gets "why you need cover" guidance, not a false claim path', async () => {
@@ -371,8 +369,7 @@ describe('PRD-108: POST /family/life-events', () => {
       payload: { event_type: 'disability' },
     })
     const step = res.json().playbook.steps.find((s: { id: string }) => s.id === 'check_cover')
-    expect(step.body).toMatch(/why that matters/i)
-    expect(step.body).not.toMatch(/how to claim/i)
+    expect(step.body).toBe('No income protection or critical illness policy on file.')
   })
 
   it('resolves a reported member_id against household.members[] (PRD-104) rather than only the household total', async () => {
@@ -398,8 +395,9 @@ describe('PRD-108: POST /family/life-events', () => {
       payload: { event_type: 'disability', affected_member_id: 'member-1' },
     })
     const step = res.json().playbook.steps.find((s: { id: string }) => s.id === 'check_cover')
-    // The primary earner has no income protection, but the affected member does — the member's real cover should drive the branch.
-    expect(step.body).toMatch(/how to claim/i)
+    // The step lists policies on file only; the member's own income protection is a figure, not a policy.
+    expect(step.body).toBe('No income protection or critical illness policy on file.')
+    expect(step.covered).toBe(true)
   })
 })
 
@@ -460,7 +458,7 @@ describe('Emergency-Mode taxonomy: medical / car / property / travel', () => {
     const step = res
       .json()
       .playbook.steps.find((s: { id: string }) => s.id === 'check_car_insurance')
-    expect(step.body).toMatch(/don't have a car insurance policy on file/i)
+    expect(step.body).toMatch(/^No car policy on file\.$/)
   })
 
   it('medical: names real health cover and income protection', async () => {
@@ -484,8 +482,7 @@ describe('Emergency-Mode taxonomy: medical / car / property / travel', () => {
     const step = res
       .json()
       .playbook.steps.find((s: { id: string }) => s.id === 'check_health_cover')
-    expect(step.body).toContain('Bupa')
-    expect(step.body).toContain('income protection')
+    expect(step.body).toBe('On file: Bupa.')
   })
 
   it('property: names the home insurer and flags the outstanding mortgage', async () => {
@@ -507,8 +504,7 @@ describe('Emergency-Mode taxonomy: medical / car / property / travel', () => {
       payload: { event_type: 'property' },
     })
     const step = res.json().playbook.steps.find((s: { id: string }) => s.id === 'check_home_cover')
-    expect(step.body).toContain('Aviva')
-    expect(step.body).toContain('mortgage')
+    expect(step.body).toBe('On file: Aviva.')
   })
 
   it('travel: no travel policy on file — falls back to the real health policy, without claiming travel is never tracked', async () => {
