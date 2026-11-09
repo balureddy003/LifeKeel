@@ -2,6 +2,7 @@
 
 import { VividHero } from './VividHero'
 import { FamilyStory } from './FamilyStory'
+import { AcrossTheYear } from './AcrossTheYear'
 import { MomentCards } from './MomentCards'
 import {
   BadDay,
@@ -23,6 +24,7 @@ export function HomeExperience() {
       <div className="vv-bg" aria-hidden="true" />
       <VividHero />
       <FamilyStory />
+      <AcrossTheYear />
       <MomentCards />
       <Features />
       <BadDay />
