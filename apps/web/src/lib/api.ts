@@ -6579,7 +6579,7 @@ export interface DomainPackInfo {
   confirm: 'both_adults' | 'organiser'
 }
 
-export type DomainCell = 'holds' | 'covers' | 'holds_and_covers' | 'employer' | null
+export type DomainCell = 'holds' | 'covers' | 'holds_and_covers' | 'employer' | 'nominated' | null
 
 export interface DomainView {
   domain_id: string

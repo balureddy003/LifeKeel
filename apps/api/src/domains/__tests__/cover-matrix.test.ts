@@ -72,15 +72,32 @@ describe('life protection matrix with employer cover', () => {
   })
 
   it('counts being the covered person as on file', async () => {
-    await db
-      .collection('family_groups')
-      .updateOne({ tenant_id: T }, {
-        $push: { members: { id: 'kit', name: 'Kit Rowan', role: 'child', status: 'active' } },
-      } as never)
+    await db.collection('family_groups').updateOne({ tenant_id: T }, {
+      $push: { members: { id: 'kit', name: 'Kit Rowan', role: 'child', status: 'active' } },
+    } as never)
     await db
       .collection('family_financial_profile')
       .updateOne({ tenant_id: T }, { $set: { 'policies.0.beneficiary_member_id': 'kit' } })
     const v = await buildDomainView(db, T, getDomain('life_protection')!)
     expect(v.matrix!.no_policy_on_file).toEqual([])
+  })
+
+  it('shows a nominated person as named on the policy, matched on full name only', async () => {
+    await db
+      .collection('family_financial_profile')
+      .updateOne(
+        { tenant_id: T },
+        { $set: { 'policies.0.nomination': { nominated_label: 'alex rowan' } } },
+      )
+    const v = await buildDomainView(db, T, getDomain('life_protection')!)
+    expect(v.matrix!.rows[0]!.cells).toEqual({ sam: 'holds', alex: 'nominated' })
+    await db
+      .collection('family_financial_profile')
+      .updateOne(
+        { tenant_id: T },
+        { $set: { 'policies.0.nomination': { nominated_label: 'Alex' } } },
+      )
+    const v2 = await buildDomainView(db, T, getDomain('life_protection')!)
+    expect(v2.matrix!.rows[0]!.cells['alex']).toBeNull()
   })
 })
