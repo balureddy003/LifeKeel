@@ -35,6 +35,8 @@ export interface DomainView {
   matrix: {
     label: string
     columns: RosterRef[]
+    /** Members no row names as holder or covered person. A fact about the list, not a judgement. */
+    no_policy_on_file: RosterRef[]
     rows: Array<{ id: string; label: string; cells: Record<string, Cell> }>
   } | null
   /** Facts about the record itself, never a judgement about adequacy. */
@@ -134,6 +136,14 @@ export async function buildDomainView(
     ? {
         label: pack.matrix.label,
         columns: roster,
+        no_policy_on_file: roster.filter(
+          (m) =>
+            !rows.some(
+              (r) =>
+                (r.record === pack.matrix!.record || pack.matrix!.also?.includes(r.record)) &&
+                (r.holder_member_id === m.id || r.covers_member_id === m.id),
+            ),
+        ),
         rows: rows
           .filter((r) => r.record === pack.matrix!.record || pack.matrix!.also?.includes(r.record))
           .map((r) => ({

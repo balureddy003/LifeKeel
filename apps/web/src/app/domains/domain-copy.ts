@@ -1,6 +1,8 @@
 import type { DomainCell, DomainView } from '@/lib/api'
 
 /** Plain-language text for a matrix cell. States a fact; never a judgement. */
+export const noPolicyText = (name: string) => `No policy on file for ${name}`
+
 export function cellText(cell: DomainCell): string {
   switch (cell) {
     case 'holds':
