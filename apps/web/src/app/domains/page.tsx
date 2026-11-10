@@ -219,16 +219,7 @@ export default function DomainsPage() {
             <GlassCard className="mt-6 p-5">
               <p className="text-ink-secondary">
                 Nothing on the family list yet.
-                {view.pack.records.some((r) => r.source.kind === 'adapter') && (
-                  <>
-                    {' '}
-                    Policies added in your{' '}
-                    <Link href="/financial-profile" className="underline">
-                      financial profile
-                    </Link>{' '}
-                    appear here.
-                  </>
-                )}
+                {view.can_edit && ' Add the first one below.'}
               </p>
             </GlassCard>
           ) : (

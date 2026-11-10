@@ -43,6 +43,7 @@ import { haptic } from '@/lib/haptics'
 import { firstStepWaitMessage, isFirstStepPath } from '@/lib/signup-destination'
 import { track } from '@/lib/growth-track'
 import { isNativeShell, biometricLockEnabled, verifyBiometric } from '@/lib/native'
+import { bannerDismissed } from './verify-banner'
 
 // Signed-in extras load after the first paint, so the first-time visitor's landing
 // download stays inside its budget (PRD-209). None render on the signed-out landing.
@@ -258,9 +259,9 @@ function MaintenanceBanner() {
 
 // Signed-in but unverified email — the other side of /verify-email.
 // Without this the verification email is a dead end: nothing in the app
-// ever told the user it existed or offered a resend. Dismisses per
-// session (not permanently — it's a trust property, not a promo) and
-// clears itself once the account flips to verified.
+// ever told the user it existed or offered a resend. A dismissal holds for
+// three days (not permanently — it's a trust property, not a promo; see
+// verify-banner.ts) and the banner clears itself once the account flips to verified.
 const VERIFY_BANNER_DISMISSED = 'keel:verify-banner-dismissed'
 
 function VerifyEmailBanner() {
@@ -270,7 +271,7 @@ function VerifyEmailBanner() {
 
   useEffect(() => {
     try {
-      setDismissed(sessionStorage.getItem(VERIFY_BANNER_DISMISSED) === '1')
+      setDismissed(bannerDismissed(localStorage.getItem(VERIFY_BANNER_DISMISSED), Date.now()))
     } catch {
       /* private mode */
     }
@@ -289,7 +290,7 @@ function VerifyEmailBanner() {
   const dismiss = () => {
     setDismissed(true)
     try {
-      sessionStorage.setItem(VERIFY_BANNER_DISMISSED, '1')
+      localStorage.setItem(VERIFY_BANNER_DISMISSED, String(Date.now()))
     } catch {
       /* private mode */
     }
