@@ -96,6 +96,7 @@ export type AuditAction =
   | 'employer_cover.updated'
   | 'employer_cover.deleted'
   | 'domain_record.created'
+  | 'domain_record.updated'
   | 'domain_record.deleted'
   | 'domain.confirmed'
   | 'family.edit_access_changed'

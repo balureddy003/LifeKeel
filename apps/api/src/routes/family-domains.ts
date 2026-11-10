@@ -65,6 +65,36 @@ export function registerFamilyDomainRoutes(
     .catch(() => {})
   const identityKey = (v: string | undefined) => (v ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
 
+  /** The checks adding and editing share: shape, known fields, real people and dates, no secrets. */
+  async function checkBody(
+    tenantId: string,
+    pack: DomainPack,
+    rec: DomainPack['records'][number],
+    body: unknown,
+  ) {
+    const parsed = RecordBody.safeParse(body)
+    if (!parsed.success) return { error: 'Check the details and try again' }
+    const { values } = parsed.data
+    const known = new Set(rec.fields.map((f) => f.key))
+    if (Object.keys(values).some((k) => !known.has(k)))
+      return { error: 'Check the details and try again' }
+    const { roster } = await loadDomainRows(db, tenantId, { ...pack, records: [] })
+    const problem = checkRecordValues(
+      rec,
+      values,
+      new Set(roster.map((m) => m.id)),
+      parsed.data.holder_member_id,
+      parsed.data.covers_member_id,
+    )
+    if (problem) return { error: problem }
+    const bad = Object.entries(values).find(([, v]) => SECRET_PATTERNS.some((re) => re.test(v)))
+    if (bad)
+      return {
+        error: 'That looks like a password or code. Record where it is kept, never the secret.',
+      }
+    return { parsed: parsed.data, values }
+  }
+
   app.get('/family/domains', async (req, reply) => {
     const ctx = req.authContext
     if (!ctx || !(await isFamilyAdult(db, ctx.tenant_id, ctx.user_id)))
@@ -113,26 +143,9 @@ export function registerFamilyDomainRoutes(
       if (!pack || !rec) return reply.code(404).send({ error: 'Not found' })
       if (rec.source.kind !== 'store')
         return reply.code(400).send({ error: 'This record is read from elsewhere' })
-      const parsed = RecordBody.safeParse(req.body)
-      if (!parsed.success) return reply.code(400).send({ error: 'Check the details and try again' })
-      const { values } = parsed.data
-      const known = new Set(rec.fields.map((f) => f.key))
-      if (Object.keys(values).some((k) => !known.has(k)))
-        return reply.code(400).send({ error: 'Check the details and try again' })
-      const { roster } = await loadDomainRows(db, ctx.tenant_id, { ...pack, records: [] })
-      const problem = checkRecordValues(
-        rec,
-        values,
-        new Set(roster.map((m) => m.id)),
-        parsed.data.holder_member_id,
-        parsed.data.covers_member_id,
-      )
-      if (problem) return reply.code(400).send({ error: problem })
-      const bad = Object.entries(values).find(([, v]) => SECRET_PATTERNS.some((re) => re.test(v)))
-      if (bad)
-        return reply.code(400).send({
-          error: 'That looks like a password or code. Record where it is kept, never the secret.',
-        })
+      const checked = await checkBody(ctx.tenant_id, pack, rec, req.body)
+      if ('error' in checked) return reply.code(400).send({ error: checked.error })
+      const { parsed, values } = checked
       const wanted = rec.identity ? identityKey(values[rec.identity]) : ''
       const already = () =>
         reply.code(409).send({ error: `That ${rec.label.toLowerCase()} is already on the list.` })
@@ -148,8 +161,8 @@ export function registerFamilyDomainRoutes(
         id: `dr_${randomUUID()}`,
         domain_id: pack.id,
         record: rec.key,
-        holder_member_id: parsed.data.holder_member_id ?? null,
-        covers_member_id: parsed.data.covers_member_id ?? null,
+        holder_member_id: parsed.holder_member_id ?? null,
+        covers_member_id: parsed.covers_member_id ?? null,
         values,
         created_by: ctx.user_id,
         created_at: now,
@@ -170,6 +183,67 @@ export function registerFamilyDomainRoutes(
         {},
       )
       return reply.code(201).send({ id: doc.id })
+    },
+  )
+
+  app.put<{ Params: { id: string; rowId: string } }>(
+    '/family/domains/:id/records/:rowId',
+    async (req, reply) => {
+      const ctx = req.authContext
+      if (!ctx) return reply.code(401).send({ error: 'Authentication required' })
+      if (!(await isHouseholdEditor(db, ctx.tenant_id, ctx.user_id, ctx.roles)))
+        return reply.code(403).send({ error: 'Only a household editor can change records' })
+      const pack = find(req.params.id)
+      const existing = pack
+        ? ((await records(ctx.tenant_id).findOne({
+            id: req.params.rowId,
+            domain_id: pack.id,
+          })) as DomainRecordDoc | null)
+        : null
+      const rec = pack?.records.find((r) => r.key === existing?.record)
+      if (!pack || !existing || !rec || rec.source.kind !== 'store')
+        return reply.code(404).send({ error: 'Not found' })
+      const checked = await checkBody(ctx.tenant_id, pack, rec, req.body)
+      if ('error' in checked) return reply.code(400).send({ error: checked.error })
+      const { parsed, values } = checked
+      const wanted = rec.identity ? identityKey(values[rec.identity]) : ''
+      const clash = () =>
+        reply.code(409).send({ error: `That ${rec.label.toLowerCase()} is already on the list.` })
+      if (wanted) {
+        const have = (await records(ctx.tenant_id)
+          .find({ domain_id: pack.id, record: rec.key })
+          .toArray()) as DomainRecordDoc[]
+        if (
+          have.some((r) => r.id !== existing.id && identityKey(r.values[rec.identity!]) === wanted)
+        )
+          return clash()
+      }
+      try {
+        await records(ctx.tenant_id).updateOne(
+          { id: existing.id, domain_id: pack.id },
+          {
+            $set: {
+              values,
+              holder_member_id: parsed.holder_member_id ?? null,
+              covers_member_id: parsed.covers_member_id ?? null,
+              updated_at: new Date(),
+              ...(wanted ? { identity_key: wanted } : {}),
+            },
+            ...(wanted ? {} : { $unset: { identity_key: '' } }),
+          },
+        )
+      } catch (err) {
+        if ((err as { code?: number }).code === 11000) return clash()
+        throw err
+      }
+      await getAuditLogger()?.fromRequest(
+        req,
+        'domain_record.updated',
+        'domain_records',
+        existing.id,
+        {},
+      )
+      return { id: existing.id }
     },
   )
 

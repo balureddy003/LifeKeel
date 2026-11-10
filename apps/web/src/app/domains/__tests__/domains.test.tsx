@@ -14,6 +14,7 @@ const confirmDomain = vi.fn()
 const getDomainPlaybook = vi.fn()
 const addDomainRecord = vi.fn()
 const deleteDomainRecord = vi.fn()
+const updateDomainRecord = vi.fn()
 const toast = vi.fn()
 vi.mock('@/lib/api', async (orig) => ({
   ...(await orig<typeof import('@/lib/api')>()),
@@ -22,6 +23,7 @@ vi.mock('@/lib/api', async (orig) => ({
   getDomainPlaybook: (id: string, m: string) => getDomainPlaybook(id, m),
   addDomainRecord: (id: string, r: string, b: unknown) => addDomainRecord(id, r, b),
   deleteDomainRecord: (id: string, r: string) => deleteDomainRecord(id, r),
+  updateDomainRecord: (id: string, r: string, b: unknown) => updateDomainRecord(id, r, b),
   confirmDomain: (id: string, v: string) => confirmDomain(id, v),
 }))
 vi.mock('@/components/Toast', () => ({ useToast: () => toast }))
@@ -316,6 +318,52 @@ describe('a second domain drawn by the same page', () => {
     expect(deleteDomainRecord).not.toHaveBeenCalled() // asks first
     fireEvent.click(screen.getByRole('button', { name: 'Yes, remove' }))
     await waitFor(() => expect(deleteDomainRecord).toHaveBeenCalledWith('car', 'v1'))
+  })
+
+  it('edits a record in place: the form starts with what is on file, and saves the whole record', async () => {
+    getDomainView.mockResolvedValue(
+      carView([
+        {
+          id: 'v1',
+          record: 'vehicle',
+          holder_member_id: 'sam',
+          covers_member_id: null,
+          values: { reg: 'AB12 CDE', mot_due: '2027-02-01' },
+        },
+      ]),
+    )
+    updateDomainRecord.mockResolvedValue({ ok: true, status: 200 })
+    render(<DomainsPage />)
+    await screen.findByText('AB12 CDE')
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Vehicle' }))
+    const mot = screen.getByLabelText(/MOT due/) as HTMLInputElement
+    expect(mot.value).toBe('2027-02-01')
+    fireEvent.change(mot, { target: { value: '2027-03-01' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() =>
+      expect(updateDomainRecord).toHaveBeenCalledWith('car', 'v1', {
+        holder_member_id: 'sam',
+        values: { reg: 'AB12 CDE', mot_due: '2027-03-01' },
+      }),
+    )
+  })
+
+  it('offers no Edit to a read-only adult, and none on rows read from elsewhere', async () => {
+    getDomainView.mockResolvedValue({
+      ...carView([
+        {
+          id: 'v1',
+          record: 'vehicle',
+          holder_member_id: null,
+          covers_member_id: null,
+          values: { reg: 'AB12 CDE' },
+        },
+      ]),
+      can_edit: false,
+    })
+    render(<DomainsPage />)
+    await screen.findByText('AB12 CDE')
+    expect(screen.queryByRole('button', { name: /^Edit/ })).toBeNull()
   })
 
   it('keeps the record when the person chooses Keep it, with Keep it focused first', async () => {

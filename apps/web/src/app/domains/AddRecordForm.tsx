@@ -6,12 +6,73 @@ import { GlassCard } from '@/components/Glass'
 import type { DomainView } from '@/lib/api'
 import { DICTATION_TIP } from './domain-copy'
 
-const inputCls =
+export const inputCls =
   'mt-1 w-full min-h-[48px] rounded-xl border border-haze bg-surface-1 px-3 text-ink-primary focus:outline-none focus:ring-2 focus:ring-family-500'
-const primaryBtn =
+export const primaryBtn =
   'inline-flex min-h-[48px] items-center justify-center rounded-full bg-family-500 px-5 text-base font-semibold text-white disabled:opacity-50'
-const ghostBtn =
+export const ghostBtn =
   'inline-flex min-h-[48px] items-center gap-2 rounded-full border border-haze px-4 text-base font-medium text-ink-primary'
+
+type Rec = DomainView['pack']['records'][number]
+
+/** The inputs for one record type, shared by adding and editing. */
+export function RecordFields({
+  rec,
+  view,
+  values,
+  setValues,
+  idPrefix,
+}: {
+  rec: Rec
+  view: DomainView
+  values: Record<string, string>
+  setValues: (v: Record<string, string>) => void
+  idPrefix: string
+}) {
+  return (
+    <>
+      {rec.fields.map((f) => (
+        <div key={f.key}>
+          <label
+            htmlFor={`${idPrefix}-${f.key}`}
+            className="block text-sm font-medium text-ink-primary"
+          >
+            {f.label} (optional)
+          </label>
+          {f.kind === 'choice' || f.kind === 'member' ? (
+            <select
+              id={`${idPrefix}-${f.key}`}
+              className={inputCls}
+              value={values[f.key] ?? ''}
+              onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}
+            >
+              <option value="">Not stated</option>
+              {(f.kind === 'member'
+                ? view.roster.map((m) => ({ v: m.id, l: m.name }))
+                : (f.choices ?? []).map((c) => ({ v: c, l: c.replace(/_/g, ' ') }))
+              ).map((o) => (
+                <option key={o.v} value={o.v}>
+                  {o.l}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              id={`${idPrefix}-${f.key}`}
+              type={f.kind === 'date' ? 'date' : 'text'}
+              autoComplete="off"
+              autoCapitalize={f.kind === 'text' ? 'sentences' : 'none'}
+              enterKeyHint="next"
+              className={inputCls}
+              value={values[f.key] ?? ''}
+              onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}
+            />
+          )}
+        </div>
+      ))}
+    </>
+  )
+}
 
 /** One form drawn from a pack's store-backed record type. */
 export function AddRecordForm({
@@ -64,42 +125,7 @@ export function AddRecordForm({
           </select>
         </div>
       )}
-      {rec.fields.map((f) => (
-        <div key={f.key}>
-          <label htmlFor={`d-${f.key}`} className="block text-sm font-medium text-ink-primary">
-            {f.label} (optional)
-          </label>
-          {f.kind === 'choice' || f.kind === 'member' ? (
-            <select
-              id={`d-${f.key}`}
-              className={inputCls}
-              value={values[f.key] ?? ''}
-              onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}
-            >
-              <option value="">Not stated</option>
-              {(f.kind === 'member'
-                ? view.roster.map((m) => ({ v: m.id, l: m.name }))
-                : (f.choices ?? []).map((c) => ({ v: c, l: c.replace(/_/g, ' ') }))
-              ).map((o) => (
-                <option key={o.v} value={o.v}>
-                  {o.l}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <input
-              id={`d-${f.key}`}
-              type={f.kind === 'date' ? 'date' : 'text'}
-              autoComplete="off"
-              autoCapitalize={f.kind === 'text' ? 'sentences' : 'none'}
-              enterKeyHint="next"
-              className={inputCls}
-              value={values[f.key] ?? ''}
-              onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}
-            />
-          )}
-        </div>
-      ))}
+      <RecordFields rec={rec} view={view} values={values} setValues={setValues} idPrefix="d" />
       <div className="flex gap-2">
         <button
           type="button"
