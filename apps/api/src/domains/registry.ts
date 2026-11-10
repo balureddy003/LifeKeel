@@ -2,15 +2,18 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { DomainPackSchema, type DomainPack } from './types.js'
 import { car } from './packs/car.js'
-import { travel } from './packs/travel.js'
+import { care } from './packs/care.js'
 import { children } from './packs/children.js'
+import { documents } from './packs/documents.js'
+import { health } from './packs/health.js'
 import { lifeProtection } from './packs/life-protection.js'
+import { travel } from './packs/travel.js'
 
 /**
  * Every pack the product ships. Adding a domain means adding a manifest here;
  * registry.test.ts then checks it against the contract and the cross-references.
  */
-const RAW: unknown[] = [lifeProtection, car, children, travel]
+const RAW: unknown[] = [lifeProtection, car, children, health, documents, care, travel]
 
 export const DOMAINS: readonly DomainPack[] = RAW.map((p) => DomainPackSchema.parse(p))
 

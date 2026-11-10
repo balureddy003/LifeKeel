@@ -665,3 +665,30 @@ describe('domain copy', () => {
     ).toMatch(/No adults/)
   })
 })
+
+describe('empty states say where to add, not where else to look', () => {
+  it('tells an editor to add the first one here, and does not send them to the financial profile', async () => {
+    window.history.pushState({}, '', '/domains?d=life_protection')
+    getDomainView.mockResolvedValue({
+      ...view(),
+      rows: [],
+      matrix: { label: 'x', columns: [], rows: [] },
+    })
+    render(<DomainsPage />)
+    expect(await screen.findByText(/Add the first one below/)).toBeTruthy()
+    expect(screen.queryByRole('link', { name: 'financial profile' })).toBeNull()
+  })
+
+  it('tells someone who cannot edit that the organizer adds it, with no add prompt', async () => {
+    window.history.pushState({}, '', '/domains?d=life_protection')
+    getDomainView.mockResolvedValue({
+      ...view(),
+      can_edit: false,
+      rows: [],
+      matrix: { label: 'x', columns: [], rows: [] },
+    })
+    render(<DomainsPage />)
+    expect(await screen.findByText(/Nothing on the family list yet/)).toBeTruthy()
+    expect(screen.queryByText(/Add the first one below/)).toBeNull()
+  })
+})
