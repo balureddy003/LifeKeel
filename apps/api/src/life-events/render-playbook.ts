@@ -259,11 +259,14 @@ const CLAIM_STEP: Partial<
   property: { step: 'check_home_cover', types: ['home'], none: 'No home policy on file.' },
 }
 
-function renderPoliciesOnFile(eventType: LifeEventType, profile: FinancialProfile): string | null {
+function renderPoliciesOnFile(
+  eventType: LifeEventType,
+  profile: FinancialProfile,
+  affectedMemberId?: string,
+): string | null {
   const cfg = CLAIM_STEP[eventType]
   if (!cfg) return null
   const rows = profile.policies.filter((p) => cfg.types.includes(p.type))
-  if (rows.length === 0) return cfg.none
   const line = (p: FinancialProfile['policies'][number]) =>
     [
       p.provider,
@@ -273,7 +276,16 @@ function renderPoliciesOnFile(eventType: LifeEventType, profile: FinancialProfil
     ]
       .filter(Boolean)
       .join(', ')
-  return `On file: ${rows.map(line).join('; ')}.`
+  // Income protection may be recorded as a household figure rather than a policy row. It is on
+  // file either way, so the step states it and never says "no policy" beside it.
+  const figure =
+    eventType === 'disability' || eventType === 'medical'
+      ? resolveEarner(profile, affectedMemberId).income_protection_monthly_minor
+      : 0
+  const parts: string[] = []
+  if (rows.length > 0) parts.push(`On file: ${rows.map(line).join('; ')}.`)
+  if (figure > 0) parts.push(`Income protection of ${formatMoney(figure)} a month is on file.`)
+  return parts.length > 0 ? parts.join(' ') : cfg.none
 }
 
 /** A phone/email a "contact" step can put directly in front of the family, instead of "find the number". */
@@ -388,7 +400,9 @@ function renderComputedStep(
   if (eventType === 'job_loss') return renderJobLossStep(stepId, profile, affectedMemberId)
   if (eventType === 'bereavement') return renderBereavementStep(stepId, profile, affectedMemberId)
   const onFile =
-    CLAIM_STEP[eventType]?.step === stepId ? renderPoliciesOnFile(eventType, profile) : null
+    CLAIM_STEP[eventType]?.step === stepId
+      ? renderPoliciesOnFile(eventType, profile, affectedMemberId)
+      : null
   return onFile ?? ''
 }
 

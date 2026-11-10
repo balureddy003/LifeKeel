@@ -353,7 +353,7 @@ describe('PRD-108: POST /family/life-events', () => {
       payload: { event_type: 'disability' },
     })
     const step = res.json().playbook.steps.find((s: { id: string }) => s.id === 'check_cover')
-    expect(step.body).toBe('On file: Bupa.')
+    expect(step.body).toBe('On file: Bupa. Income protection of £4,000 a month is on file.')
   })
 
   it('disability: a family with no income protection and no critical-illness policy gets "why you need cover" guidance, not a false claim path', async () => {
@@ -395,8 +395,8 @@ describe('PRD-108: POST /family/life-events', () => {
       payload: { event_type: 'disability', affected_member_id: 'member-1' },
     })
     const step = res.json().playbook.steps.find((s: { id: string }) => s.id === 'check_cover')
-    // The step lists policies on file only; the member's own income protection is a figure, not a policy.
-    expect(step.body).toBe('No income protection or critical illness policy on file.')
+    // The member's own income protection is a figure on file, so the step states it.
+    expect(step.body).toBe('Income protection of £3,000 a month is on file.')
     expect(step.covered).toBe(true)
   })
 })
@@ -482,7 +482,7 @@ describe('Emergency-Mode taxonomy: medical / car / property / travel', () => {
     const step = res
       .json()
       .playbook.steps.find((s: { id: string }) => s.id === 'check_health_cover')
-    expect(step.body).toBe('On file: Bupa.')
+    expect(step.body).toBe('On file: Bupa. Income protection of £4,000 a month is on file.')
   })
 
   it('property: names the home insurer and flags the outstanding mortgage', async () => {

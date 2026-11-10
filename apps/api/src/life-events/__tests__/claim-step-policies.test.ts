@@ -6,7 +6,7 @@ type Policy = FinancialProfile['policies'][number]
 const policy = (o: Partial<Policy> & Pick<Policy, 'type' | 'provider'>): Policy =>
   ({ coverage_amount_minor: 0, monthly_premium_minor: 0, ...o }) as Policy
 
-function profile(policies: Policy[]): FinancialProfile {
+function profile(policies: Policy[], incomeProtectionMonthly = 400000): FinancialProfile {
   return {
     household: {
       employment_status: 'employed',
@@ -14,7 +14,7 @@ function profile(policies: Policy[]): FinancialProfile {
       annual_living_expenses_minor: 3600000,
       mortgage_outstanding_minor: 20_000_000,
       life_cover_minor: 10_000_000,
-      income_protection_monthly_minor: 400000,
+      income_protection_monthly_minor: incomeProtectionMonthly,
       monthly_debt_payments_minor: 0,
       members: [],
     },
@@ -44,8 +44,10 @@ const STEP: Record<string, string> = {
   car: 'check_car_insurance',
   property: 'check_home_cover',
 }
-const body = (event: LifeEventType, policies: Policy[]) =>
-  renderPlaybook(event, profile(policies)).steps.find((s) => s.id === STEP[event])!.body
+const body = (event: LifeEventType, policies: Policy[], incomeProtectionMonthly?: number) =>
+  renderPlaybook(event, profile(policies, incomeProtectionMonthly)).steps.find(
+    (s) => s.id === STEP[event],
+  )!.body
 
 // Words that would turn a list of what is on file into a judgement or an instruction.
 const JUDGEMENT =
@@ -120,7 +122,7 @@ describe('the claim step lists the policies on file, and nothing else', () => {
 
   it('an empty list is a fact with no recommendation, for every event', () => {
     for (const event of Object.keys(STEP) as LifeEventType[]) {
-      const b = body(event, [policy({ type: 'life', provider: 'Elm Life' })])
+      const b = body(event, [policy({ type: 'life', provider: 'Elm Life' })], 0)
       expect(b).toMatch(/^No .* on file\.$/)
       expect(b).not.toContain('Elm Life')
     }
@@ -143,5 +145,29 @@ describe('the claim step lists the policies on file, and nothing else', () => {
   it('shows only what is on file: a policy with no number or contact prints no placeholder', () => {
     const b = body('car', [policy({ type: 'car', provider: 'Kestrel Motor' })])
     expect(b).toBe('On file: Kestrel Motor.')
+  })
+
+  it('an income-protection figure on file is stated, so a step never says "no policy" next to one', () => {
+    // Recorded as a household figure, not as a policy row.
+    const b = body('disability', [], 400000)
+    expect(b).toContain('Income protection of')
+    expect(b).toContain('4,000')
+    expect(b).not.toMatch(/^No /)
+    expect(body('medical', [], 400000)).toContain('Income protection of')
+  })
+
+  it('lists the policy and the figure together when both are on file', () => {
+    const b = body(
+      'disability',
+      [policy({ type: 'critical_illness', provider: 'Ridge Life' })],
+      400000,
+    )
+    expect(b).toContain('Ridge Life')
+    expect(b).toContain('Income protection of')
+  })
+
+  it('the figure appears only for income-protection events, not car or home', () => {
+    expect(body('car', [], 400000)).toBe('No car policy on file.')
+    expect(body('property', [], 400000)).toBe('No home policy on file.')
   })
 })

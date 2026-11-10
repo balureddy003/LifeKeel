@@ -219,7 +219,9 @@ describe('PRD-108: renderPlaybook', () => {
         },
       }),
     )
-    expect(covered.steps.find((s) => s.id === 'check_cover')!.body).toBe('On file: Bupa.')
+    expect(covered.steps.find((s) => s.id === 'check_cover')!.body).toBe(
+      'On file: Bupa. Income protection of £4,000 a month is on file.',
+    )
     expect(uncovered.steps.find((s) => s.id === 'check_cover')!.body).toBe(
       'No income protection or critical illness policy on file.',
     )
