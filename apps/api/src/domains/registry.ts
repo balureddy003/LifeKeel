@@ -7,12 +7,13 @@ import { children } from './packs/children.js'
 import { documents } from './packs/documents.js'
 import { health } from './packs/health.js'
 import { lifeProtection } from './packs/life-protection.js'
+import { travel } from './packs/travel.js'
 
 /**
  * Every pack the product ships. Adding a domain means adding a manifest here;
  * registry.test.ts then checks it against the contract and the cross-references.
  */
-const RAW: unknown[] = [lifeProtection, car, children, health, documents, care]
+const RAW: unknown[] = [lifeProtection, car, children, health, documents, care, travel]
 
 export const DOMAINS: readonly DomainPack[] = RAW.map((p) => DomainPackSchema.parse(p))
 
@@ -60,6 +61,9 @@ export function validateDomains(domains: readonly DomainPack[], playbookDir: str
       for (const k of d.playbook.show_records)
         if (!recs.has(k)) problems.push(`${d.id}: playbook shows unknown record ${k}`)
     }
+    for (const n of d.none_on_file ?? [])
+      if (!recs.has(n.record))
+        problems.push(`${d.id}: none_on_file names unknown record ${n.record}`)
     for (const t of d.planning) {
       if (t.on.kind !== 'date_field') continue
       const { record, field } = t.on

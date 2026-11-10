@@ -429,6 +429,18 @@ describe('a second domain drawn by the same page', () => {
     )
   })
 
+  it('states what is not on file as a fact, with no advice, and stops when it is', async () => {
+    getDomainView.mockResolvedValue({ ...carView(), absent: ['No travel policy on file.'] })
+    const { unmount } = render(<DomainsPage />)
+    const note = await screen.findByText('No travel policy on file.')
+    expect(note.textContent).not.toMatch(/should|recommend|buy|consider|need/i)
+    unmount()
+    getDomainView.mockResolvedValue({ ...carView(), absent: [] })
+    render(<DomainsPage />)
+    await screen.findByText('Car and transport')
+    expect(screen.queryByText('No travel policy on file.')).toBeNull()
+  })
+
   it('offers no add form to a read-only adult', async () => {
     getDomainView.mockResolvedValue({ ...carView(), can_edit: false })
     render(<DomainsPage />)
