@@ -8,7 +8,7 @@ intro: >
   against your family's real car policies where we have them on file.
 steps:
   - id: check_car_insurance
-    title: Check your real car insurance
+    title: Policies on file that relate to this
     computed: true
     contact: false
   - id: notify_insurer

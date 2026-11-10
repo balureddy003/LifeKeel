@@ -8,7 +8,7 @@ intro: >
   family's real policies and cover where we have them on file.
 steps:
   - id: check_health_cover
-    title: Check your real health cover
+    title: Policies on file that relate to this
     computed: true
     contact: false
   - id: notify_health_insurer

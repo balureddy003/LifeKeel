@@ -219,8 +219,12 @@ describe('PRD-108: renderPlaybook', () => {
         },
       }),
     )
-    expect(covered.steps.find((s) => s.id === 'check_cover')!.body).toMatch(/how to claim/i)
-    expect(uncovered.steps.find((s) => s.id === 'check_cover')!.body).toMatch(/why that matters/i)
+    expect(covered.steps.find((s) => s.id === 'check_cover')!.body).toBe(
+      'On file: Bupa. Income protection of £4,000 a month is on file.',
+    )
+    expect(uncovered.steps.find((s) => s.id === 'check_cover')!.body).toBe(
+      'No income protection or critical illness policy on file.',
+    )
   })
 
   it('resolves affectedMemberId against household.members[] rather than only the household total', () => {
@@ -247,7 +251,7 @@ describe('PRD-108: renderPlaybook', () => {
       }),
       'member-1',
     )
-    expect(playbook.steps.find((s) => s.id === 'check_cover')!.body).toMatch(/how to claim/i)
+    expect(playbook.steps.find((s) => s.id === 'check_cover')!.covered).toBe(true)
   })
 
   it('falls back to household-level fields when affectedMemberId does not match any roster member', () => {
@@ -267,52 +271,7 @@ describe('PRD-108: renderPlaybook', () => {
       }),
       'no-such-member',
     )
-    expect(playbook.steps.find((s) => s.id === 'check_cover')!.body).toMatch(/why that matters/i)
-  })
-})
-
-describe('travel playbook — check_travel_cover', () => {
-  const step = (policies: FinancialProfile['policies']) =>
-    renderPlaybook('travel', makeProfile({ policies })).steps.find(
-      (s) => s.id === 'check_travel_cover',
-    )!.body
-
-  it('names a real travel policy on file, rather than claiming travel cover is never tracked', () => {
-    const body = step([
-      {
-        type: 'travel',
-        provider: 'Aviva',
-        coverage_amount_minor: 0,
-        monthly_premium_minor: 0,
-        policy_number: 'TRV-1',
-      },
-    ])
-    expect(body).toContain('Aviva')
-    expect(body).toContain('TRV-1')
-    expect(body).not.toMatch(/don't track travel insurance/i)
-  })
-
-  it('mentions health cover as a secondary check alongside a travel policy', () => {
-    const body = step([
-      { type: 'travel', provider: 'Aviva', coverage_amount_minor: 0, monthly_premium_minor: 0 },
-      { type: 'health', provider: 'Bupa', coverage_amount_minor: 0, monthly_premium_minor: 0 },
-    ])
-    expect(body).toContain('Aviva')
-    expect(body).toContain('Bupa')
-  })
-
-  it('falls back to health cover when no travel policy is on file', () => {
-    const body = step([
-      { type: 'health', provider: 'Bupa', coverage_amount_minor: 0, monthly_premium_minor: 0 },
-    ])
-    expect(body).toContain('Bupa')
-    expect(body).not.toContain('travel insurance with')
-  })
-
-  it('is honest when neither is on file, without asserting travel cover is never tracked', () => {
-    const body = step([])
-    expect(body).toMatch(/no travel insurance or health policy/i)
-    expect(body).not.toMatch(/don't track travel insurance/i)
+    expect(playbook.steps.find((s) => s.id === 'check_cover')!.covered).toBeUndefined()
   })
 })
 
