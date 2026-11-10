@@ -95,7 +95,12 @@ export const DomainPackSchema = z
     records: z.array(RecordTypeSchema).min(1).max(8),
     /** A derived member x record view. Computed, never typed in. */
     matrix: z
-      .object({ record: Slug, label: z.string().min(1).max(80) })
+      .object({
+        record: Slug,
+        /** More records shown as extra rows, e.g. cover through an employer. */
+        also: z.array(Slug).max(3).optional(),
+        label: z.string().min(1).max(80),
+      })
       .strict()
       .optional(),
     /** playbooks/family/<playbook>.yaml and which records it may show. */

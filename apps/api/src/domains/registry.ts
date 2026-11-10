@@ -55,6 +55,8 @@ export function validateDomains(domains: readonly DomainPack[], playbookDir: str
     }
     if (d.matrix && !recs.has(d.matrix.record))
       problems.push(`${d.id}: matrix names unknown record ${d.matrix.record}`)
+    for (const k of d.matrix?.also ?? [])
+      if (!recs.has(k)) problems.push(`${d.id}: matrix names unknown record ${k}`)
     if (d.playbook) {
       if (!fs.existsSync(path.join(playbookDir, `${d.playbook.playbook}.yaml`)))
         problems.push(`${d.id}: playbook ${d.playbook.playbook}.yaml not found`)

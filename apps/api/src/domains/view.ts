@@ -27,7 +27,7 @@ export type DomainConfirmationDoc = {
   confirmed_at: Date
 }
 
-export type Cell = 'holds' | 'covers' | 'holds_and_covers' | null
+export type Cell = 'holds' | 'covers' | 'holds_and_covers' | 'employer' | null
 
 export interface DomainView {
   domain_id: string
@@ -35,6 +35,8 @@ export interface DomainView {
   matrix: {
     label: string
     columns: RosterRef[]
+    /** Members no row names as holder or covered person. A fact about the list, not a judgement. */
+    no_policy_on_file: RosterRef[]
     rows: Array<{ id: string; label: string; cells: Record<string, Cell> }>
   } | null
   /** Facts about the record itself, never a judgement about adequacy. */
@@ -140,8 +142,16 @@ export async function buildDomainView(
     ? {
         label: pack.matrix.label,
         columns: roster,
+        no_policy_on_file: roster.filter(
+          (m) =>
+            !rows.some(
+              (r) =>
+                (r.record === pack.matrix!.record || pack.matrix!.also?.includes(r.record)) &&
+                (r.holder_member_id === m.id || r.covers_member_id === m.id),
+            ),
+        ),
         rows: rows
-          .filter((r) => r.record === pack.matrix!.record)
+          .filter((r) => r.record === pack.matrix!.record || pack.matrix!.also?.includes(r.record))
           .map((r) => ({
             id: r.id,
             label: label(r),
@@ -149,6 +159,7 @@ export async function buildDomainView(
               roster.map((m): [string, Cell] => {
                 const h = r.holder_member_id === m.id
                 const c = r.covers_member_id === m.id
+                if (h && r.record !== pack.matrix!.record) return [m.id, 'employer']
                 return [m.id, h && c ? 'holds_and_covers' : h ? 'holds' : c ? 'covers' : null]
               }),
             ),
