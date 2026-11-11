@@ -120,21 +120,46 @@ export function mapExtractedFieldsToProfileSuggestions(
   const rule = rules.find((r) => r.category === category)
   if (!rule) return []
 
+  // An insurance document is only life cover when it says so: a car or home
+  // certificate's excess/premium "amount" must not be offered as life cover.
+  // No stated type keeps the old behaviour — the user still confirms.
+  if (rule.path === 'household.life_cover_minor') {
+    const policyType = findField(fields, [/^policy.?type$/i])?.raw
+    if (policyType && !/life/i.test(policyType)) return []
+  }
+
   const found = findMoneyField(fields, rule.patterns)
   if (!found) return []
 
   const valueMinor = parseMoneyToMinorUnits(found.raw)
   if (!valueMinor) return []
 
-  return [{ path: rule.path, label: rule.label, valueMinor, sourceField: found.key, sourceValue: found.raw }]
+  return [
+    {
+      path: rule.path,
+      label: rule.label,
+      valueMinor,
+      sourceField: found.key,
+      sourceValue: found.raw,
+    },
+  ]
 }
 
 // Mirrors family-financial-profile.ts's policies[].type enum exactly — kept
 // as an independent literal union rather than importing the zod-inferred
 // type, so this module has no compile-time dependency on the routes layer.
-export type PolicyType = 'life' | 'income_protection' | 'health' | 'critical_illness' | 'car' | 'home' | 'travel'
+export type PolicyType =
+  'life' | 'income_protection' | 'health' | 'critical_illness' | 'car' | 'home' | 'travel'
 
-const POLICY_TYPES: readonly PolicyType[] = ['life', 'income_protection', 'health', 'critical_illness', 'car', 'home', 'travel']
+const POLICY_TYPES: readonly PolicyType[] = [
+  'life',
+  'income_protection',
+  'health',
+  'critical_illness',
+  'car',
+  'home',
+  'travel',
+]
 
 export interface PolicySuggestion {
   /** null when OCR's policy_type guess doesn't match a known type — the user picks it in the review card. */
@@ -154,8 +179,13 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
 function normalizePolicyType(raw: string | undefined): PolicyType | null {
   if (!raw) return null
-  const normalized = raw.toLowerCase().trim().replace(/[\s-]+/g, '_')
-  return (POLICY_TYPES as readonly string[]).includes(normalized) ? (normalized as PolicyType) : null
+  const normalized = raw
+    .toLowerCase()
+    .trim()
+    .replace(/[\s-]+/g, '_')
+  return (POLICY_TYPES as readonly string[]).includes(normalized)
+    ? (normalized as PolicyType)
+    : null
 }
 
 /**
@@ -176,19 +206,48 @@ export function mapExtractedFieldsToPolicySuggestion(
 
   const type = normalizePolicyType(findField(fields, [/^policy.?type$/i])?.raw)
 
-  const policyNumber = findField(fields, [/policy.?number/i, /policy.?no\b/i, /account.?number/i])?.raw ?? null
+  const policyNumber =
+    findField(fields, [/policy.?number/i, /policy.?no\b/i, /account.?number/i])?.raw ?? null
 
-  const renewalRaw = findField(fields, [/renewal.?date/i, /maturity.?date/i, /due.?date/i, /expiry.?date/i])?.raw.trim()
+  const renewalRaw = findField(fields, [
+    /renewal.?date/i,
+    /maturity.?date/i,
+    /due.?date/i,
+    /expiry.?date/i,
+  ])?.raw.trim()
   const renewalDate = renewalRaw && ISO_DATE.test(renewalRaw) ? renewalRaw : null
 
-  const coverageMoney = findField(fields, [/coverage.?amount/i, /sum.?assured/i, /death.?benefit/i, /balance/i])
+  const coverageMoney = findField(fields, [
+    /coverage.?amount/i,
+    /sum.?assured/i,
+    /death.?benefit/i,
+    /balance/i,
+  ])
   const coverageAmountMinor = coverageMoney ? parseMoneyToMinorUnits(coverageMoney.raw) : null
 
   const premiumMoney = findField(fields, [/premium/i, /monthly.?amount/i])
   const monthlyPremiumMinor = premiumMoney ? parseMoneyToMinorUnits(premiumMoney.raw) : null
 
-  const contactPhone = findField(fields, [/claims.?phone/i, /assistance.?phone/i, /claims.?line/i, /helpline/i, /24.?hour/i, /emergency.?number/i])?.raw.trim() ?? null
-  const contactEmail = findField(fields, [/claims.?email/i, /assistance.?email/i])?.raw.trim() ?? null
+  const contactPhone =
+    findField(fields, [
+      /claims.?phone/i,
+      /assistance.?phone/i,
+      /claims.?line/i,
+      /helpline/i,
+      /24.?hour/i,
+      /emergency.?number/i,
+    ])?.raw.trim() ?? null
+  const contactEmail =
+    findField(fields, [/claims.?email/i, /assistance.?email/i])?.raw.trim() ?? null
 
-  return { type, provider, coverageAmountMinor, monthlyPremiumMinor, renewalDate, policyNumber, contactPhone, contactEmail }
+  return {
+    type,
+    provider,
+    coverageAmountMinor,
+    monthlyPremiumMinor,
+    renewalDate,
+    policyNumber,
+    contactPhone,
+    contactEmail,
+  }
 }

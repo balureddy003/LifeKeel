@@ -13,6 +13,7 @@ import {
   setFamilyGroupMemberEditAccess,
   setFamilyGroupMemberConfirmExempt,
   acceptFamilyInvite as apiAcceptFamilyInvite,
+  FamilyGroupRequestError,
   type ApiFamilyGroup,
 } from './api'
 import { getApiBase } from './env'
@@ -84,7 +85,8 @@ interface AuthContextValue {
   updateProfile: (patch: { name?: string; email?: string }) => Promise<User>
   signInWithProvider: (provider: 'google') => Promise<void>
   signOut: () => void
-  createFamily: (name: string, forUser?: User) => Promise<void>
+  /** Resolves to the account's family — the existing one when it already had one. */
+  createFamily: (name: string, forUser?: User) => Promise<FamilyGroup | null>
   inviteMember: (
     name: string,
     email: string,
@@ -552,11 +554,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     )
   }
 
-  const createFamily = async (name: string, forUser?: User) => {
+  const createFamily = async (name: string, forUser?: User): Promise<FamilyGroup | null> => {
     const owner = forUser ?? user
-    if (!owner) return
-    const apiFamily = await createFamilyGroup(name)
-    persist(owner, toFamilyGroup(apiFamily))
+    if (!owner) return null
+    let apiFamily: ApiFamilyGroup | null
+    try {
+      apiFamily = await createFamilyGroup(name)
+    } catch (err) {
+      // 409: this account already has a family (another tab, the first-step
+      // auto-create, or an earlier visit). Adopt it rather than failing.
+      if (!(err instanceof FamilyGroupRequestError && err.status === 409)) throw err
+      apiFamily = await fetchFamilyGroup()
+      if (!apiFamily) throw err
+    }
+    const group = toFamilyGroup(apiFamily)
+    persist(owner, group)
+    return group
   }
 
   // No local `!family` guard here — the API enforces that a family must

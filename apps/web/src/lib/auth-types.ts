@@ -31,7 +31,7 @@ export interface FamilyMemberUser {
   status: 'active' | 'pending'
   /** Pending members only — 'sent' until the accept page resolves the
    *  token, then 'viewed' (intent 63). */
-  inviteStatus?: 'sent' | 'viewed'
+  inviteStatus?: 'not_sent' | 'sent' | 'viewed'
   inviteViewedAt?: string
   joinedAt: string
   /** The `users.id` this entry binds to after invite acceptance (PRD-123) — id stays the roster identity. */
@@ -80,10 +80,12 @@ export const ROLE_EMOJI: Record<FamilyRole, string> = {
 export function memberStatusLabel(
   status: 'pending' | 'active' | string,
   role?: string,
-  inviteStatus?: 'sent' | 'viewed',
+  inviteStatus?: 'not_sent' | 'sent' | 'viewed',
 ): string {
   if (status !== 'pending') return 'Active'
   if (role === 'child') return 'Managed by adults'
   // Intent 63: 'sent' → 'viewed' once the accept page resolves the token.
-  return inviteStatus === 'viewed' ? 'Invite viewed' : 'Invite sent'
+  if (inviteStatus === 'viewed') return 'Invite viewed'
+  if (inviteStatus === 'sent') return 'Invite sent'
+  return 'Not invited yet'
 }

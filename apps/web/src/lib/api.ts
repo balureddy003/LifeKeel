@@ -2354,7 +2354,7 @@ export interface ApiFamilyMember {
   status: 'active' | 'pending'
   /** Pending members only — 'sent' until the accept page resolves the
    *  token, then 'viewed' (intent 63). */
-  inviteStatus?: 'sent' | 'viewed'
+  inviteStatus?: 'not_sent' | 'sent' | 'viewed'
   inviteViewedAt?: string
   joinedAt: string
   /** The `users.id` this roster entry is bound to after invite acceptance (PRD-123). */
@@ -2378,6 +2378,15 @@ export interface ApiFamilyGroup {
   contextNote?: string
 }
 
+export class FamilyGroupRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message)
+  }
+}
+
 async function familyGroupRequest(
   path: string,
   method: 'POST' | 'PATCH' | 'PUT' | 'DELETE',
@@ -2394,7 +2403,7 @@ async function familyGroupRequest(
     ...(body ? { body: JSON.stringify(body) } : {}),
   })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || 'Request failed')
+  if (!res.ok) throw new FamilyGroupRequestError(data.error || 'Request failed', res.status)
   notifyKeelDataChanged('family')
   return data.family as ApiFamilyGroup
 }

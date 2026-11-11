@@ -4,6 +4,7 @@ import { ConversationalOnboarding } from '../ConversationalOnboarding'
 
 const mocks = vi.hoisted(() => ({
   createFamily: vi.fn(),
+  inviteMember: vi.fn(),
   replace: vi.fn(),
   hasFamily: false,
 }))
@@ -14,6 +15,7 @@ vi.mock('@/lib/auth-context', () => ({
     family: mocks.hasFamily ? { id: 'existing' } : null,
     isLoading: false,
     createFamily: mocks.createFamily,
+    inviteMember: mocks.inviteMember,
   }),
 }))
 vi.mock('@/components/security/Turnstile', () => ({
@@ -26,7 +28,9 @@ vi.mock('@/lib/haptics', () => ({ haptic: vi.fn() }))
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.hasFamily = false
-  mocks.createFamily.mockResolvedValue(undefined)
+  mocks.createFamily.mockResolvedValue(null)
+  mocks.inviteMember.mockResolvedValue(undefined)
+  sessionStorage.clear()
   Element.prototype.scrollTo = vi.fn()
 })
 afterEach(cleanup)
@@ -56,5 +60,44 @@ describe('optional family setup', () => {
     expect(mocks.replace).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Skip for now' }))
     await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith('/'))
+  })
+})
+
+describe('finishing guided setup', () => {
+  // A saved draft resumes straight into the finish step for a signed-in user.
+  function resumeDraft() {
+    sessionStorage.setItem(
+      'lifekeel_onboarding_draft',
+      JSON.stringify({
+        answers: { name: 'Alex', email: 'alex@example.com' },
+        members: [
+          { id: 'spouse', emoji: '', name: 'Sam', role: 'Partner', completion: 0 },
+          { id: 'child-0', emoji: '', name: 'Kit', role: 'Child', completion: 0 },
+        ],
+      }),
+    )
+  }
+
+  it('leaves the loading screen with a message when the family cannot be created', async () => {
+    mocks.createFamily.mockRejectedValueOnce(new Error('Offline'))
+    resumeDraft()
+    render(<ConversationalOnboarding />)
+    expect(await screen.findByText(/couldn't set up your family just now/)).toBeTruthy()
+    expect(screen.queryByText('Setting up your chart…')).toBeNull()
+    expect(mocks.inviteMember).not.toHaveBeenCalled()
+  })
+
+  it('does not re-add members already on an existing family', async () => {
+    mocks.createFamily.mockResolvedValueOnce({
+      id: 'existing',
+      members: [
+        { id: 'o', name: 'Alex' },
+        { id: 'p', name: 'sam ' },
+      ],
+    })
+    resumeDraft()
+    render(<ConversationalOnboarding />)
+    await waitFor(() => expect(mocks.inviteMember).toHaveBeenCalledTimes(1))
+    expect(mocks.inviteMember).toHaveBeenCalledWith('Kit', '', 'child')
   })
 })
