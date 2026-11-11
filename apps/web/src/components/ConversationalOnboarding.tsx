@@ -506,11 +506,22 @@ export function ConversationalOnboarding() {
     addAIMessage('Your family is on the chart. Setting things up now.')
     setFinished(true)
 
-    await createFamily(`${owner.name}'s Family`, owner)
+    let group: Awaited<ReturnType<typeof createFamily>>
+    try {
+      group = await createFamily(`${owner.name}'s Family`, owner)
+    } catch {
+      setFinished(false)
+      addAIMessage("Hmm, we couldn't set up your family just now. Please try again in a moment.")
+      submittingRef.current = false
+      setSubmitting(false)
+      return
+    }
 
     // createFamily seeds the roster with just the organizer — persist the
     // partner/children collected during the chat (members state here is
     // local-only, used for the GrowingGraph animation) as real members too.
+    // When the account already had a family, skip anyone already on it.
+    const onRoster = new Set(group?.members.map((m) => m.name.trim().toLowerCase()) ?? [])
     const draftRoleToFamilyRole: Record<string, 'parent' | 'child'> = {
       Partner: 'parent',
       Child: 'child',
@@ -518,6 +529,7 @@ export function ConversationalOnboarding() {
     for (const draft of allMembers) {
       const role = draftRoleToFamilyRole[draft.role]
       if (!role) continue // skips the 'You' (self) entry — already the organizer
+      if (onRoster.has(draft.name.trim().toLowerCase())) continue
       try {
         await inviteMember(draft.name, '', role)
       } catch {

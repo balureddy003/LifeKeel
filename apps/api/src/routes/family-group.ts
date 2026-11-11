@@ -148,7 +148,14 @@ interface UserDoc extends Record<string, unknown> {
   email?: string
 }
 
-function toResponse(doc: FamilyGroupDoc, inviteViewedAt: Map<string, Date> = new Map()) {
+function toResponse(
+  doc: FamilyGroupDoc,
+  invites: { invited: Set<string>; viewedAt: Map<string, Date> } = {
+    invited: new Set(),
+    viewedAt: new Map(),
+  },
+) {
+  const inviteViewedAt = invites.viewedAt
   return {
     id: doc.id,
     name: doc.name,
@@ -160,11 +167,16 @@ function toResponse(doc: FamilyGroupDoc, inviteViewedAt: Map<string, Date> = new
       role: m.role,
       status: m.status,
       joinedAt: m.joined_at,
-      // Intent 63: a pending member's invite status — 'sent' until the
-      // accept page resolves the token, then 'viewed'.
+      // Intent 63: a pending member's invite status — 'not_sent' until an
+      // invite exists, 'sent' until the accept page resolves the token,
+      // then 'viewed'.
       ...(m.status === 'pending'
         ? {
-            inviteStatus: inviteViewedAt.has(m.id) ? 'viewed' : 'sent',
+            inviteStatus: inviteViewedAt.has(m.id)
+              ? 'viewed'
+              : invites.invited.has(m.id)
+                ? 'sent'
+                : 'not_sent',
             ...(inviteViewedAt.has(m.id)
               ? { inviteViewedAt: inviteViewedAt.get(m.id)!.toISOString() }
               : {}),
@@ -200,22 +212,25 @@ export function registerFamilyGroupRoutes(fastify: FastifyInstance, db: Db): voi
   fastify.get('/family', async (req) => {
     const { tenant_id } = req.authContext
     const doc = await groupsFor(tenant_id).findOne({})
-    // Invite views for pending members — one query, then looked up per
-    // member in toResponse (intent 63).
-    const viewed = await getTenantCollection<Record<string, unknown>>(
+    // Outstanding invites for pending members — one query, then looked up
+    // per member in toResponse (intent 63).
+    const invites = await getTenantCollection<Record<string, unknown>>(
       db,
       'family_member_invites',
       doc?.tenant_id ?? req.authContext.tenant_id,
     )
-      .find({ viewed_at: { $exists: true } })
+      .find({})
       .toArray()
       .catch(() => [] as Record<string, unknown>[])
-    const inviteViewedAt = new Map<string, Date>(
-      viewed
-        .filter((i: Record<string, unknown>) => i['member_id'] && i['viewed_at'])
-        .map((i: Record<string, unknown>) => [i['member_id'] as string, i['viewed_at'] as Date]),
-    )
-    return { family: doc ? toResponse(doc, inviteViewedAt) : null }
+    const invited = new Set<string>()
+    const viewedAt = new Map<string, Date>()
+    for (const i of invites) {
+      const memberId = i['member_id']
+      if (typeof memberId !== 'string') continue
+      invited.add(memberId)
+      if (i['viewed_at']) viewedAt.set(memberId, i['viewed_at'] as Date)
+    }
+    return { family: doc ? toResponse(doc, { invited, viewedAt }) : null }
   })
 
   // ── POST /family ─────────────────────────────────────────────────────────
