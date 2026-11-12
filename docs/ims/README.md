@@ -59,9 +59,9 @@ index lists where they will live once that system is chosen.
 | Secure SDLC / change management | [`docs/ai-native-sdlc-playbook.md`](../ai-native-sdlc-playbook.md), [`docs/sdlc/`](../sdlc/) | exists |
 | DPIA | [`docs/compliance/dpia.md`](../compliance/dpia.md) | exists (draft, unsigned — G-PRIV-01) |
 | Supplier / processor register (AI) | [`definitions/ai-processors.yaml`](../../definitions/ai-processors.yaml) | exists (AI processors only — G-SUP-03) |
-| Internal audit programme | `docs/ims/audits/` | planned (Phase 3) |
-| Management review | `docs/ims/management-reviews/` | planned (Phase 3) |
-| Objectives | `docs/ims/objectives.md` | planned (Phase 2/3) |
+| Internal audit programme | `docs/ims/audits/programme.md`, `checklist-template.md`, `evidence-pack.md` | draft (Phase 3) |
+| Management review | `docs/ims/management-reviews/template.md` | draft template (Phase 3) |
+| Objectives | `docs/ims/objectives.md` | draft (Phase 3) |
 
 ### Level 3 — Work instructions and runbooks
 
@@ -92,7 +92,7 @@ Every row of the §19 checklist, with where it lives here. Paths differ from the
 | Statement of Applicability | | 6.1.3 d) | 6.1.3 | `docs/ims/soa/iso27001-soa.yaml`, `docs/ims/soa/iso42001-soa.yaml` (§19 suggests `.md`) | draft |
 | Risk treatment plan | | 6.1.3 e) | 6.1.3 | `docs/ims/risk/risk-register.yaml` (`treatment` field) | draft |
 | AI system impact assessment process | | | 6.1.4 | ISO_AUDITABLE.md §14; records in `docs/ims/ai-impact/` | draft (process in §14) |
-| Objectives | 6.2 | 6.2 | 6.2 | `docs/ims/objectives.md` (from §20) | planned |
+| Objectives | 6.2 | 6.2 | 6.2 | `docs/ims/objectives.md` (from §20) | draft |
 | Planning of changes | 6.3 | 6.3 | 6.3 | IMS change log (ISO_AUDITABLE.md §23.8; `docs/ims/document-control.md`) | draft (log in §23.8) |
 | Evidence of competence | 7.2 | 7.2 | 7.2 | HR records system | external (TBD) |
 | Monitoring/measuring resources fitness | 7.1.5 | | | `detector-evals/`, `red-team/guard-fixtures.yaml` | exists (partial) |
@@ -103,12 +103,12 @@ Every row of the §19 checklist, with where it lives here. Paths differ from the
 | External provider evaluation | 8.4 | | | supplier register (`definitions/ai-processors.yaml` + planned non-AI register, G-SUP-03) | exists (partial) |
 | Traceability | 8.5.2 | | | Git SHA ↔ image digest (`.github/workflows/deploy-api.yml`, `ai-bom.yaml`) | exists |
 | Release authorisation | 8.6 | | | GitHub environment approvals (`.github/workflows/deploy-*.yml`, `require-ci.yml`) | exists |
-| Nonconforming outputs | 8.7 | | | NC log (template ISO_AUDITABLE.md §23.5) | planned (G-DOC-02) |
+| Nonconforming outputs | 8.7 | | | `docs/ims/nc-log.yaml` | in use, draft (G-DOC-02) |
 | Risk assessment results | | 8.2 | 8.2 | `docs/ims/risk/risk-register.yaml` | draft |
 | Risk treatment results | | 8.3 | 8.3 | `docs/ims/risk/risk-register.yaml` | draft |
 | AI impact assessment results | | | 8.4 | `docs/ims/ai-impact/assessments.yaml` | draft (unsigned) |
-| Monitoring and measurement results | 9.1 | 9.1 | 9.1 | KPI pack (from §20) | planned |
-| Internal audit programme and results | 9.2 | 9.2 | 9.2 | `docs/ims/audits/` | planned |
-| Management review results | 9.3 | 9.3 | 9.3 | `docs/ims/management-reviews/` | planned |
-| Nonconformities and corrective actions | 10.2 | 10.2 | 10.2 | NC log | planned (G-DOC-02) |
+| Monitoring and measurement results | 9.1 | 9.1 | 9.1 | `docs/ims/objectives.md` + monthly KPI records | draft; no records yet |
+| Internal audit programme and results | 9.2 | 9.2 | 9.2 | `docs/ims/audits/` | programme drafted; no audit performed |
+| Management review results | 9.3 | 9.3 | 9.3 | `docs/ims/management-reviews/` | template drafted; no review held |
+| Nonconformities and corrective actions | 10.2 | 10.2 | 10.2 | `docs/ims/nc-log.yaml` | in use, draft (G-DOC-02) |
 | Annex A documented procedures (incident, ops, etc.) | | A.5.37 | | `docs/runbooks/` | exists |

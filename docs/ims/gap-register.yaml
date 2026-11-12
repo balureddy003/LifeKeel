@@ -118,9 +118,15 @@ gaps:
     clauses: ['9.2', '9.3']
     owner_role: Internal auditor / CEO
     phase: 3
-    status: open
-    evidence: —
+    status: in_progress
+    evidence:
+      [
+        docs/ims/audits/programme.md,
+        docs/ims/audits/checklist-template.md,
+        docs/ims/management-reviews/template.md,
+      ]
     exit_criterion: One complete internal audit cycle and one management review, with records
+    note: Programme and templates drafted; no audit or review has been performed.
 
   - id: G-PRIV-01
     title: DPIA unsigned; lawful bases undecided
@@ -189,9 +195,17 @@ gaps:
     clauses: ['A.8.4', 'A.8.32']
     owner_role: Principal developer
     phase: 2
-    status: open
-    evidence: [CODEOWNERS, .github/workflows/require-ci.yml, .github/workflows/deploy-api.yml]
+    status: in_progress
+    evidence:
+      [
+        CODEOWNERS,
+        .github/workflows/require-ci.yml,
+        .github/workflows/deploy-api.yml,
+        scripts/ims/evidence-pack.sh,
+        docs/ims/nc-log.yaml,
+      ]
     exit_criterion: Screenshot/API export of settings in the evidence pack
+    note: Export exists (scripts/ims/evidence-pack.sh). First run 2026-11-12 found no branch protection, a disabled ruleset, unprotected environments and unsigned commits on main (NC-2026-005..007). Closes when a re-run shows them enforced.
 
   - id: G-SEC-02
     title: Workload identity not configured; JSON service-account keys exist
@@ -428,9 +442,10 @@ gaps:
     clauses: ['10.2']
     owner_role: IMS manager
     phase: 3
-    status: open
-    evidence: —
+    status: in_progress
+    evidence: [docs/ims/nc-log.yaml]
     exit_criterion: NC log in use (template ISO_AUDITABLE.md §23.5) with root cause and effectiveness checks
+    note: Log created with 7 open NCs; closes once entries carry root cause and verified effectiveness checks.
 
   - id: G-OPS-04
     title: 'Retention gaps: inactive households, AI eval captures, queues'
