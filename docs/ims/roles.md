@@ -16,8 +16,7 @@ small-team note) and §16 Phase 0 step 1.
 
 No person is named in this draft. Every "Holder" and "Deputy" cell stays **TBD (CEO to
 appoint)** until the CEO records the appointment; an appointment is recorded by the CEO
-approving this document with the names filled in (see `docs/ims/document-control.md` once
-it exists). Do not fill a name from memory or from commit history.
+approving this document with the names filled in (see `docs/ims/document-control.md` §3). Do not fill a name from memory or from commit history.
 
 ## 1. Roles matrix
 

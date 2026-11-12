@@ -35,27 +35,27 @@ index lists where they will live once that system is chosen.
 
 | Document | Path | Status |
 |---|---|---|
-| IMS scope | `docs/ims/scope.md` | planned (Phase 1) |
-| Quality policy | `docs/ims/policies/quality-policy.md` | planned (Phase 1) |
-| Information security policy | `docs/ims/policies/information-security-policy.md` | planned (Phase 1) |
-| AI policy | `docs/ims/policies/ai-policy.md` | planned (Phase 1) |
+| IMS scope | [`docs/ims/scope.md`](scope.md) | draft |
+| Quality policy | [`docs/ims/policies/quality-policy.md`](policies/quality-policy.md) | draft |
+| Information security policy | [`docs/ims/policies/information-security-policy.md`](policies/information-security-policy.md) | draft |
+| AI policy | [`docs/ims/policies/ai-policy.md`](policies/ai-policy.md) | draft |
 | Privacy policy (public notice) | `apps/web/src/app/privacy/page.tsx` — legal review open (G-PRIV-03) | exists (not legally reviewed) |
 
 ### Level 2 — Processes and standards
 
 | Document | Path | Status |
 |---|---|---|
-| Context: issues and interested parties | `docs/ims/context.md` | planned (Phase 1) |
+| Context: issues and interested parties | [`docs/ims/context.md`](context.md) | draft |
 | Roles, responsibilities and authorities | [`docs/ims/roles.md`](roles.md) | draft |
 | Gap register | [`docs/ims/gap-register.yaml`](gap-register.yaml) | draft |
-| Risk methodology | `docs/ims/risk/methodology.md` | planned (Phase 1) |
-| Risk register and treatment plan | `docs/ims/risk/risk-register.yaml` | planned (Phase 1) |
-| Statement of Applicability — ISO/IEC 27001 | `docs/ims/soa/iso27001-soa.yaml` | planned (Phase 1) |
-| Statement of Applicability — ISO/IEC 42001 | `docs/ims/soa/iso42001-soa.yaml` | planned (Phase 1) |
-| AI system impact assessments | `docs/ims/ai-impact/` | planned (Phase 1) |
-| Record of Processing Activities | `docs/ims/ropa.md` | planned (Phase 1) |
-| Document-control procedure | `docs/ims/document-control.md` | planned (Phase 1) |
-| Topic-specific policies (access control, cryptography, supplier, acceptable use, secure development, remote working, classification, backup, logging, incident, AI acceptable use) | `docs/ims/policies/` | planned (Phase 1) |
+| Risk methodology | [`docs/ims/risk/methodology.md`](risk/methodology.md) | draft |
+| Risk register and treatment plan | [`docs/ims/risk/risk-register.yaml`](risk/risk-register.yaml) | draft (63 risks, all acceptances pending) |
+| Statement of Applicability — ISO/IEC 27001 | [`docs/ims/soa/iso27001-soa.yaml`](soa/iso27001-soa.yaml) | draft (93 controls) |
+| Statement of Applicability — ISO/IEC 42001 | [`docs/ims/soa/iso42001-soa.yaml`](soa/iso42001-soa.yaml) | draft (38 controls) |
+| AI system impact assessments | [`docs/ims/ai-impact/assessments.yaml`](ai-impact/assessments.yaml) | draft (one per task_id, none signed) |
+| Record of Processing Activities | [`docs/ims/ropa.md`](ropa.md) | draft |
+| Document-control procedure | [`docs/ims/document-control.md`](document-control.md) | draft |
+| Topic-specific policies (access control, cryptography, supplier, acceptable use, secure development, remote working, classification, backup, logging, incident, AI acceptable use) | [`docs/ims/policies/`](policies/) | draft |
 | Secure SDLC / change management | [`docs/ai-native-sdlc-playbook.md`](../ai-native-sdlc-playbook.md), [`docs/sdlc/`](../sdlc/) | exists |
 | DPIA | [`docs/compliance/dpia.md`](../compliance/dpia.md) | exists (draft, unsigned — G-PRIV-01) |
 | Supplier / processor register (AI) | [`definitions/ai-processors.yaml`](../../definitions/ai-processors.yaml) | exists (AI processors only — G-SUP-03) |
@@ -67,7 +67,7 @@ index lists where they will live once that system is chosen.
 
 | Document | Path | Status |
 |---|---|---|
-| Runbooks | [`docs/runbooks/`](../runbooks/), `runbooks.yaml` | exists (owner/review header added in Phase 1) |
+| Runbooks | [`docs/runbooks/`](../runbooks/), `runbooks.yaml` | exists (owner/review header added; not approved) |
 | SDLC how-tos | [`docs/sdlc/`](../sdlc/) | exists |
 | Agent instructions | `CLAUDE.md`, `.devin/AGENTS.md`, `.claude/skills/*`, `.claude/settings.json` | exists |
 
@@ -83,14 +83,14 @@ Every row of the §19 checklist, with where it lives here. Paths differ from the
 
 | Documented information | 9001 | 27001 | 42001 | Path | Status |
 |---|:-:|:-:|:-:|---|---|
-| Scope of the management system | 4.3 | 4.3 | 4.3 | `docs/ims/scope.md` | planned |
-| Quality policy | 5.2 | | | `docs/ims/policies/quality-policy.md` (§19 suggests `policies/quality.md`) | planned |
-| Information security policy | | 5.2 | | `docs/ims/policies/information-security-policy.md` (§19 suggests `policies/information-security.md`) | planned |
-| AI policy | | | 5.2 | `docs/ims/policies/ai-policy.md` (§19 suggests `policies/ai.md`) | planned |
-| Risk assessment process | | 6.1.2 | 6.1.2 | `docs/ims/risk/methodology.md` (§19 suggests `risk-methodology.md`) | planned |
-| Risk treatment process | | 6.1.3 | 6.1.3 | `docs/ims/risk/methodology.md` | planned |
-| Statement of Applicability | | 6.1.3 d) | 6.1.3 | `docs/ims/soa/iso27001-soa.yaml`, `docs/ims/soa/iso42001-soa.yaml` (§19 suggests `.md`) | planned |
-| Risk treatment plan | | 6.1.3 e) | 6.1.3 | `docs/ims/risk/risk-register.yaml` (`treatment` field) | planned |
+| Scope of the management system | 4.3 | 4.3 | 4.3 | `docs/ims/scope.md` | draft |
+| Quality policy | 5.2 | | | `docs/ims/policies/quality-policy.md` (§19 suggests `policies/quality.md`) | draft |
+| Information security policy | | 5.2 | | `docs/ims/policies/information-security-policy.md` (§19 suggests `policies/information-security.md`) | draft |
+| AI policy | | | 5.2 | `docs/ims/policies/ai-policy.md` (§19 suggests `policies/ai.md`) | draft |
+| Risk assessment process | | 6.1.2 | 6.1.2 | `docs/ims/risk/methodology.md` (§19 suggests `risk-methodology.md`) | draft |
+| Risk treatment process | | 6.1.3 | 6.1.3 | `docs/ims/risk/methodology.md` | draft |
+| Statement of Applicability | | 6.1.3 d) | 6.1.3 | `docs/ims/soa/iso27001-soa.yaml`, `docs/ims/soa/iso42001-soa.yaml` (§19 suggests `.md`) | draft |
+| Risk treatment plan | | 6.1.3 e) | 6.1.3 | `docs/ims/risk/risk-register.yaml` (`treatment` field) | draft |
 | AI system impact assessment process | | | 6.1.4 | ISO_AUDITABLE.md §14; records in `docs/ims/ai-impact/` | draft (process in §14) |
 | Objectives | 6.2 | 6.2 | 6.2 | `docs/ims/objectives.md` (from §20) | planned |
 | Planning of changes | 6.3 | 6.3 | 6.3 | IMS change log (ISO_AUDITABLE.md §23.8; `docs/ims/document-control.md`) | draft (log in §23.8) |
@@ -104,9 +104,9 @@ Every row of the §19 checklist, with where it lives here. Paths differ from the
 | Traceability | 8.5.2 | | | Git SHA ↔ image digest (`.github/workflows/deploy-api.yml`, `ai-bom.yaml`) | exists |
 | Release authorisation | 8.6 | | | GitHub environment approvals (`.github/workflows/deploy-*.yml`, `require-ci.yml`) | exists |
 | Nonconforming outputs | 8.7 | | | NC log (template ISO_AUDITABLE.md §23.5) | planned (G-DOC-02) |
-| Risk assessment results | | 8.2 | 8.2 | `docs/ims/risk/risk-register.yaml` | planned |
-| Risk treatment results | | 8.3 | 8.3 | `docs/ims/risk/risk-register.yaml` | planned |
-| AI impact assessment results | | | 8.4 | `docs/ims/ai-impact/` | planned |
+| Risk assessment results | | 8.2 | 8.2 | `docs/ims/risk/risk-register.yaml` | draft |
+| Risk treatment results | | 8.3 | 8.3 | `docs/ims/risk/risk-register.yaml` | draft |
+| AI impact assessment results | | | 8.4 | `docs/ims/ai-impact/assessments.yaml` | draft (unsigned) |
 | Monitoring and measurement results | 9.1 | 9.1 | 9.1 | KPI pack (from §20) | planned |
 | Internal audit programme and results | 9.2 | 9.2 | 9.2 | `docs/ims/audits/` | planned |
 | Management review results | 9.3 | 9.3 | 9.3 | `docs/ims/management-reviews/` | planned |

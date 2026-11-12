@@ -1,0 +1,1277 @@
+# LifeKeel IMS — risk register and treatment plan
+#
+# Method: docs/ims/risk/methodology.md (ISO_AUDITABLE.md §13). Score =
+# likelihood × impact; level Low 1–4, Medium 5–9, High 10–16, Critical 20–25.
+# R-SEC-01 … R-SUP-01 are the 20 seed risks of ISO_AUDITABLE.md §13.3 with
+# their scores unchanged; the rest extend the register to every asset class
+# (ISO_AUDITABLE.md §8.2) and every AI system (definitions/ai-tasks.yaml and
+# ai-bom.yaml). Scores are the Lead Implementer's proposal from repository
+# evidence and must be re-assessed by each risk owner.
+#
+# acceptance is `pending` for every risk: no owner has accepted a residual
+# risk yet, and nobody may record an acceptance on an owner's behalf.
+#
+# control_evidence lists repository paths of the existing controls; the IMS
+# test checks they exist. annex_a = ISO/IEC 27001:2022 Annex A;
+# aims_controls = ISO/IEC 42001:2023 Annex A.
+
+document:
+  id: LK-IMS-031
+  title: Risk register and treatment plan
+  version: '0.1'
+  status: DRAFT — awaiting approval
+  owner: IMS manager (role)
+  approver: CEO / top management (role)
+  approved: —
+  next_review: —
+
+risks:
+  # ------------------------------------------------ seed risks (§13.3)
+  - id: R-SEC-01
+    title: Account takeover via phishing of an organizer
+    category: security
+    assets: [user accounts, C3 household data]
+    likelihood: 4
+    impact: 3
+    score: 12
+    level: High
+    existing_controls: MFA/TOTP, email OTP, sign-in throttling, session revocation, hashed recovery tokens
+    control_evidence:
+      [apps/api/src/auth/totp.ts, apps/api/src/auth/otp.ts, apps/api/src/auth/session-revocation.ts]
+    treatment: { option: modify, plan: Passkeys / phishing-resistant MFA; breached-password check }
+    annex_a: ['8.5', '5.17']
+    aims_controls: []
+    linked_gaps: []
+    owner_role: Principal developer
+    acceptance: pending
+
+  - id: R-SEC-02
+    title: Cross-tenant data disclosure via a missing tenant filter
+    category: security
+    assets: [C3 household data, C4 vault documents, MongoDB]
+    likelihood: 2
+    impact: 5
+    score: 10
+    level: High
+    existing_controls: Tenant-scoped collection wrapper, cross-tenant isolation tests
+    control_evidence:
+      [
+        packages/platform/src/tenant-scoped-collection.ts,
+        apps/api/src/__tests__/ml-tenant-isolation.test.ts,
+      ]
+    treatment:
+      {
+        option: modify,
+        plan: Raw-access inventory; deny-by-default repository; route contract tests,
+      }
+    annex_a: ['8.3', '8.27']
+    aims_controls: []
+    linked_gaps: [G-SEC-07]
+    owner_role: Architect
+    acceptance: pending
+
+  - id: R-SEC-03
+    title: Prompt injection through an uploaded document or email causes exfiltration or harmful output
+    category: security
+    assets: [AI task gateway, C3 household data]
+    ai_systems:
+      [
+        document.classify.v1,
+        document.extract.v1,
+        document.profile_candidate.v1,
+        email.policy_relevance.v1,
+        email.policy_summary.v1,
+        assistant.answer.v1,
+      ]
+    likelihood: 3
+    impact: 4
+    score: 12
+    level: High
+    existing_controls: Inputs treated as untrusted, symmetric input/output guards, red-team fixtures in CI
+    control_evidence:
+      [
+        packages/platform/src/llm-guards.ts,
+        red-team/guard-fixtures.yaml,
+        apps/api/src/__tests__/red-team.test.ts,
+      ]
+    treatment:
+      {
+        option: modify,
+        plan: Expand fixtures; output allow-listing; no tool calls from ingested content,
+      }
+    annex_a: ['8.26']
+    aims_controls: [A.6.2.4]
+    linked_gaps: [G-AI-01, G-SEC-04]
+    owner_role: AI governance lead
+    acceptance: pending
+
+  - id: R-SEC-04
+    title: Compromised CI/CD or dependency (supply chain)
+    category: security
+    assets: [source code, CI/CD, container images]
+    likelihood: 2
+    impact: 5
+    score: 10
+    level: High
+    existing_controls: SHA-pinned actions, digest-pinned images, SBOM/provenance, dependency audit, Dependabot
+    control_evidence:
+      [
+        .github/workflows/security.yml,
+        .github/workflows/images.yml,
+        .github/dependabot.yml,
+        ai-bom.yaml,
+      ]
+    treatment: { option: modify, plan: Workload identity; delete JSON keys; npm dependency policy }
+    annex_a: ['5.21', '8.4']
+    aims_controls: []
+    linked_gaps: [G-SEC-01, G-SEC-02]
+    owner_role: Principal developer
+    acceptance: pending
+
+  - id: R-SEC-05
+    title: Audit evidence altered or lost after an incident
+    category: security
+    assets: [audit_log, C2 internal records]
+    likelihood: 2
+    impact: 4
+    score: 8
+    level: Medium
+    existing_controls: Append-only audit convention, alert on lost audit records, 7-year TTL
+    control_evidence: [apps/api/src/audit/audit-log.ts, apps/api/src/__tests__/audit-log.test.ts]
+    treatment:
+      { option: modify, plan: WORM export or hash chain; mandatory audit for consequential actions }
+    annex_a: ['8.15', '5.28']
+    aims_controls: [A.6.2.8]
+    linked_gaps: [G-SEC-03]
+    owner_role: Architect
+    acceptance: pending
+
+  - id: R-PRIV-01
+    title: Processing without a signed DPIA / lawful basis in a launch market
+    category: privacy
+    assets: [all personal data]
+    likelihood: 4
+    impact: 4
+    score: 16
+    level: High
+    existing_controls: Draft DPIA with proposed lawful bases
+    control_evidence: [docs/compliance/dpia.md]
+    treatment: { option: modify, plan: Sign DPIA; RoPA (docs/ims/ropa.md); per-market legal review }
+    annex_a: ['5.31', '5.34']
+    aims_controls: [A.5.4]
+    linked_gaps: [G-PRIV-01, G-PRIV-03]
+    owner_role: Privacy lead / DPO
+    acceptance: pending
+
+  - id: R-PRIV-02
+    title: Children's data processed unlawfully (COPPA / AADC / DPDP)
+    category: privacy
+    assets: [roster (children), youth twin]
+    ai_systems: [assistant.youth_answer.v1]
+    likelihood: 3
+    impact: 5
+    score: 15
+    level: High
+    existing_controls: Minor detection at access boundaries, marketing exclusion, youth task quarantined to self-hosted
+    control_evidence: [docs/privacy/childrens-data-posture.md, definitions/ai-tasks.yaml]
+    treatment: { option: modify, plan: Age assurance; parental-consent design per market }
+    annex_a: ['5.34']
+    aims_controls: [A.5.4]
+    linked_gaps: [G-PRIV-02]
+    owner_role: Privacy lead / DPO
+    acceptance: pending
+
+  - id: R-PRIV-03
+    title: Special-category data arriving via uploads or email
+    category: privacy
+    assets: [documents, inbox items]
+    ai_systems: [document.extract.v1, assistant.answer.sensitive.v1]
+    likelihood: 4
+    impact: 3
+    score: 12
+    level: High
+    existing_controls: Health-term stripping before assistant model calls; sensitive queries routed to a self-hosted-only task
+    control_evidence: [apps/api/src/privacy/special-category.ts]
+    treatment: { option: modify, plan: Upload classification; Art. 9 decision }
+    annex_a: ['5.34', '5.12']
+    aims_controls: [A.7.6]
+    linked_gaps: [G-PRIV-04]
+    owner_role: Privacy lead / DPO
+    acceptance: pending
+
+  - id: R-AI-01
+    title: Assistant output reads as a personal financial/insurance recommendation
+    category: ai
+    assets: [Ask Keel]
+    ai_systems:
+      [
+        assistant.answer.v1,
+        assistant.scenario_narration.v1,
+        brief.narrate.v1,
+        support.reply_draft.v1,
+      ]
+    likelihood: 3
+    impact: 5
+    score: 15
+    level: High
+    existing_controls: Advice-rule test, informational system prompt, output guards
+    control_evidence:
+      [
+        packages/engine/src/__tests__/advice-rule.test.ts,
+        apps/api/src/routes/assistant.ts,
+        scripts/hooks/advice-check.sh,
+      ]
+    treatment: { option: modify, plan: Counsel samples real outputs; advice eval suite }
+    annex_a: ['5.31']
+    aims_controls: [A.9.4]
+    linked_gaps: [G-AI-01, G-LEG-01]
+    owner_role: AI governance lead + Product manager
+    acceptance: pending
+
+  - id: R-AI-02
+    title: Family content used to train a third-party model
+    category: ai
+    assets: [C3 household data, hosted AI processors]
+    likelihood: 2
+    impact: 5
+    score: 10
+    level: High
+    existing_controls: Processor registry checked per call, enforce mode outside dev, no-training basis recorded per processor
+    control_evidence:
+      [
+        definitions/ai-processors.yaml,
+        apps/api/src/ai/task-gateway.ts,
+        apps/api/src/__tests__/ai-task-gateway.test.ts,
+      ]
+    treatment:
+      {
+        option: modify,
+        plan: Signed contractual terms on file; annual verification; xAI exit or enterprise ZDR,
+      }
+    annex_a: ['5.20']
+    aims_controls: [A.10.3]
+    linked_gaps: [G-SUP-01, G-SUP-02]
+    owner_role: AI governance lead
+    acceptance: pending
+
+  - id: R-AI-03
+    title: Stale federated artifact warm-starts per-tenant scorers
+    category: ai
+    assets: [federated_global_models, per-tenant scorers]
+    likelihood: 2
+    impact: 4
+    score: 8
+    level: Medium
+    existing_controls: allowFederatedWarmStart defaults off; CI asserts the guard precedes the read
+    control_evidence:
+      [
+        apps/api/src/__tests__/architecture-claims.test.ts,
+        packages/engine/src/scoring/feature-hash-scorer.ts,
+        packages/engine/src/scoring/tenant-level-scorer.ts,
+      ]
+    treatment: { option: modify, plan: Delete/quarantine the stored artifact }
+    annex_a: ['5.34']
+    aims_controls: [A.7.2]
+    linked_gaps: [G-AI-05]
+    owner_role: AI governance lead
+    acceptance: pending
+
+  - id: R-AI-04
+    title: Hallucinated figure presented as sourced
+    category: ai
+    assets: [Ask Keel, briefs]
+    ai_systems:
+      [
+        assistant.answer.v1,
+        assistant.answer_verified.v1,
+        assistant.scenario_narration.v1,
+        brief.narrate.v1,
+        email.policy_summary.v1,
+      ]
+    likelihood: 3
+    impact: 3
+    score: 9
+    level: Medium
+    existing_controls: Deterministic authority (language_only); verified-answer tier renders from reviewed templates with provenance
+    control_evidence: [definitions/ai-tasks.yaml]
+    treatment: { option: modify, plan: Grounding evals; provenance display }
+    annex_a: []
+    aims_controls: [A.6.2.4]
+    linked_gaps: [G-AI-01]
+    owner_role: AI governance lead
+    acceptance: pending
+
+  - id: R-OPS-01
+    title: Region or provider outage beyond RTO
+    category: operations
+    assets: [Cloud Run services, MongoDB, Redis]
+    likelihood: 2
+    impact: 4
+    score: 8
+    level: Medium
+    existing_controls: Health probes, degraded modes, stateless replicas
+    control_evidence: [docs/runbooks/backup-restore.md]
+    treatment: { option: modify, plan: DR plan; managed PITR; tested recovery }
+    annex_a: ['5.30', '8.14']
+    aims_controls: []
+    linked_gaps: [G-OPS-01, G-OPS-05]
+    owner_role: SRE / on-call lead
+    acceptance: pending
+
+  - id: R-OPS-02
+    title: Restore resurrects erased data
+    category: operations
+    assets: [backups, erasure journal]
+    likelihood: 2
+    impact: 4
+    score: 8
+    level: Medium
+    existing_controls: Tombstone replay, erasure journal, crypto-shredding, nightly re-wipe of deleted tenants
+    control_evidence:
+      [apps/api/src/erasure.ts, scripts/ops/restore.sh, scripts/ops/restore-drill.ts]
+    treatment: { option: modify, plan: Scheduled drill; journal storage independence }
+    annex_a: ['8.10', '8.13']
+    aims_controls: []
+    linked_gaps: [G-OPS-01]
+    owner_role: SRE / on-call lead
+    acceptance: pending
+
+  - id: R-OPS-03
+    title: SendGrid outage silently disables protective notifications
+    category: operations
+    assets: [transactional email]
+    likelihood: 3
+    impact: 3
+    score: 9
+    level: Medium
+    existing_controls: Ledger records send outcomes
+    control_evidence: []
+    treatment: { option: modify, plan: Warm secondary provider }
+    annex_a: ['5.29']
+    aims_controls: []
+    linked_gaps: [G-OPS-06]
+    owner_role: Architect
+    acceptance: pending
+
+  - id: R-ORG-01
+    title: Single maintainer; no segregation of duties; key-person loss
+    category: organisation
+    assets: [source code, production access, knowledge]
+    likelihood: 4
+    impact: 4
+    score: 16
+    level: High
+    existing_controls: Operator dual control; human-approved deploys; extensive documentation
+    control_evidence:
+      [CODEOWNERS, apps/api/src/operator/dual-control.ts, .github/workflows/require-ci.yml]
+    treatment: { option: modify, plan: Second reviewer; documented knowledge; access escrow }
+    annex_a: ['5.3', '6.1']
+    aims_controls: [A.3.2]
+    linked_gaps: [G-MGT-03, G-SEC-01]
+    owner_role: CEO
+    acceptance: pending
+
+  - id: R-ORG-02
+    title: AI coding agent introduces insecure or rule-breaking code
+    category: organisation
+    assets: [source code]
+    likelihood: 3
+    impact: 4
+    score: 12
+    level: High
+    existing_controls: CLAUDE.md, PostToolUse hooks, tripwire tests, human review
+    control_evidence:
+      [
+        CLAUDE.md,
+        .claude/settings.json,
+        apps/api/src/__tests__/trust-tier-gate.test.ts,
+        packages/engine/src/__tests__/advice-rule.test.ts,
+      ]
+    treatment:
+      {
+        option: modify,
+        plan: Agent acceptable-use policy (docs/ims/policies/acceptable-use-policy.md); review evidence,
+      }
+    annex_a: ['8.25', '8.30']
+    aims_controls: [A.4.4]
+    linked_gaps: []
+    owner_role: Principal developer
+    acceptance: pending
+
+  - id: R-LEG-01
+    title: Launch in a market without local legal analysis
+    category: legal
+    assets: [service]
+    likelihood: 3
+    impact: 4
+    score: 12
+    level: High
+    existing_controls: UK-focused compliance reviews
+    control_evidence: [docs/reviews/SECURITY_AND_COMPLIANCE.md]
+    treatment: { option: modify, plan: Per-market launch gate (ISO_AUDITABLE.md §18.2) }
+    annex_a: ['5.31']
+    aims_controls: []
+    linked_gaps: [G-PRIV-03]
+    owner_role: Product manager + counsel
+    acceptance: pending
+
+  - id: R-LEG-02
+    title: FCA perimeter breach via Open Banking or drafts
+    category: legal
+    assets: [Open Banking connector, outreach drafts]
+    ai_systems: [draft.outreach.v1]
+    likelihood: 2
+    impact: 5
+    score: 10
+    level: High
+    existing_controls: Flag-gated, read-only Open Banking; rule 2; Tier-1 prepare-only drafts
+    control_evidence:
+      [docs/compliance/fca-perimeter.md, packages/engine/src/__tests__/advice-rule.test.ts]
+    treatment: { option: modify, plan: Written perimeter assessment }
+    annex_a: ['5.31']
+    aims_controls: [A.9.4]
+    linked_gaps: [G-LEG-01]
+    owner_role: CEO + counsel
+    acceptance: pending
+
+  - id: R-SUP-01
+    title: Google CASA not passed; Gmail connector blocked at scale
+    category: supplier
+    assets: [Gmail connector]
+    likelihood: 4
+    impact: 3
+    score: 12
+    level: High
+    existing_controls: Read-only Gmail scope
+    control_evidence: [docs/compliance/dpia.md]
+    treatment: { option: modify, plan: Plan CASA assessment }
+    annex_a: ['5.31', '5.19']
+    aims_controls: []
+    linked_gaps: [G-LEG-03]
+    owner_role: Product manager
+    acceptance: pending
+
+  # ------------------------------------------- extension: security assets
+  - id: R-SEC-06
+    title: Operator (insider) misuse of privileged console access
+    category: security
+    assets: [operator console, C3 household data]
+    likelihood: 2
+    impact: 4
+    score: 8
+    level: Medium
+    existing_controls: Operator RBAC, step-up authentication, dual control, operator audit trail, bootstrap expiry
+    control_evidence:
+      [
+        apps/api/src/operator/operator-auth.ts,
+        apps/api/src/operator/dual-control.ts,
+        apps/api/src/operator/operator-audit.ts,
+      ]
+    treatment:
+      { option: modify, plan: Quarterly access review; user-visible operator access history }
+    annex_a: ['8.2', '5.3', '5.18']
+    aims_controls: []
+    linked_gaps: [G-OFI-04]
+    owner_role: Architect
+    acceptance: pending
+
+  - id: R-SEC-07
+    title: Leak of a platform secret or key (KEK, provider API key, service-account key)
+    category: security
+    assets: [C4 keys and secrets, Secret Manager]
+    likelihood: 2
+    impact: 5
+    score: 10
+    level: High
+    existing_controls: Secret Manager, versioned KEK with rotation runbook, per-tenant DEKs, per-purpose keys
+    control_evidence:
+      [
+        packages/platform/src/key-registry.ts,
+        apps/api/src/crypto/envelope.ts,
+        docs/runbooks/key-rotation.md,
+      ]
+    treatment: { option: modify, plan: Workload identity; delete JSON keys; KMS/HSM-held KEK }
+    annex_a: ['8.24', '8.2', '5.17']
+    aims_controls: []
+    linked_gaps: [G-SEC-02]
+    owner_role: Principal developer
+    acceptance: pending
+
+  - id: R-SEC-08
+    title: Malware or malformed file delivered through document upload
+    category: security
+    assets: [documents, R2 buckets]
+    likelihood: 3
+    impact: 3
+    score: 9
+    level: Medium
+    existing_controls: Quarantine bucket, malware scan before promotion, parser child process without credentials
+    control_evidence:
+      [
+        apps/api/src/documents/scan-job.ts,
+        apps/api/src/documents/parser-child.ts,
+        apps/api/src/documents/parse-sandbox.ts,
+      ]
+    treatment: { option: retain, plan: Keep scan signatures current; include in pentest scope }
+    annex_a: ['8.7']
+    aims_controls: []
+    linked_gaps: [G-SEC-05]
+    owner_role: Principal developer
+    acceptance: pending
+
+  - id: R-SEC-09
+    title: Server-side request forgery or data egress through connectors
+    category: security
+    assets: [connectors, API runtime]
+    likelihood: 2
+    impact: 4
+    score: 8
+    level: Medium
+    existing_controls: Safe HTTP client; IMAP SSRF fix (R07)
+    control_evidence: [packages/platform/src/safe-http-client.ts]
+    treatment: { option: modify, plan: Infrastructure-level egress allow-list }
+    annex_a: ['8.12', '8.20']
+    aims_controls: []
+    linked_gaps: [G-SEC-09]
+    owner_role: Architect
+    acceptance: pending
+
+  - id: R-SEC-10
+    title: Bearer token stolen via XSS on cookie-blocking browsers or the native shell
+    category: security
+    assets: [user sessions]
+    likelihood: 3
+    impact: 3
+    score: 9
+    level: Medium
+    existing_controls: httpOnly session cookie preferred; Origin allow-list for cookie-authed mutations; CSP
+    control_evidence: [apps/api/src/auth/session-cookie.ts, SECURITY.md]
+    treatment: { option: modify, plan: Serve API same-origin; remove bearer fallback }
+    annex_a: ['8.5']
+    aims_controls: []
+    linked_gaps: [G-SEC-10]
+    owner_role: Principal developer
+    acceptance: pending
+
+  - id: R-SEC-11
+    title: Account enumeration through signup responses
+    category: security
+    assets: [user accounts]
+    likelihood: 3
+    impact: 2
+    score: 6
+    level: Medium
+    existing_controls: Sign-in throttling, Turnstile
+    control_evidence: [apps/api/src/routes/auth-users.ts]
+    treatment: { option: modify, plan: Uniform signup response }
+    annex_a: ['8.5']
+    aims_controls: []
+    linked_gaps: [G-OFI-01]
+    owner_role: Principal developer
+    acceptance: pending
+
+  - id: R-SEC-12
+    title: Known vulnerability in a dependency or image left unpatched and exploited
+    category: security
+    assets: [API runtime, web app, container images]
+    likelihood: 3
+    impact: 4
+    score: 12
+    level: High
+    existing_controls: Dependency audit and image scanning, weekly CodeQL, Dependabot
+    control_evidence: [.github/workflows/security.yml, .github/dependabot.yml]
+    treatment:
+      {
+        option: modify,
+        plan: Patch SLAs (Critical 7d / High 30d / Medium 90d) tracked; annual pentest,
+      }
+    annex_a: ['8.8']
+    aims_controls: []
+    linked_gaps: [G-SEC-08, G-SEC-05]
+    owner_role: Principal developer
+    acceptance: pending
+
+  - id: R-SEC-13
+    title: Within-household authorization flaw (viewer edits shared facts; member sees another's restricted data)
+    category: security
+    assets: [C3 household data, roster]
+    likelihood: 3
+    impact: 3
+    score: 9
+    level: Medium
+    existing_controls: Family roles; household-editor check on profile and policy writes (R04); removal revokes access (R03)
+    control_evidence: [apps/api/src/family/family-permissions.ts]
+    treatment:
+      {
+        option: modify,
+        plan: Server-side disclosure classification; authz contract tests per ID-bearing route,
+      }
+    annex_a: ['5.15', '8.3']
+    aims_controls: []
+    linked_gaps: [G-SEC-06]
+    owner_role: Architect
+    acceptance: pending
+
+  - id: R-SEC-14
+    title: Staff endpoint compromised or lost with access to production or source
+    category: security
+    assets: [staff laptops, source code, cloud consoles]
+    likelihood: 3
+    impact: 4
+    score: 12
+    level: High
+    existing_controls: None evidenced
+    control_evidence: []
+    treatment: { option: modify, plan: MDM, full-disk encryption, EDR, screen lock, remote wipe }
+    annex_a: ['8.1', '7.9', '7.7']
+    aims_controls: []
+    linked_gaps: [G-PEO-02]
+    owner_role: IMS manager
+    acceptance: pending
+
+  - id: R-SEC-15
+    title: Mobile shell weakness exposes session or cached household data on device
+    category: security
+    assets: [mobile shell]
+    likelihood: 2
+    impact: 3
+    score: 6
+    level: Medium
+    existing_controls: Biometric gate in the app
+    control_evidence: [apps/mobile/capacitor.config.ts]
+    treatment: { option: modify, plan: Mobile threat model; include in pentest }
+    annex_a: ['8.26', '8.29']
+    aims_controls: []
+    linked_gaps: [G-SEC-04, G-SEC-05]
+    owner_role: Architect
+    acceptance: pending
+
+  # -------------------------------------------- extension: privacy
+  - id: R-PRIV-04
+    title: Data-subject rights request not answered within one month
+    category: privacy
+    assets: [all personal data]
+    likelihood: 3
+    impact: 3
+    score: 9
+    level: Medium
+    existing_controls: Self-service export and delete; rights runbook
+    control_evidence: [docs/runbooks/rights-requests.md, apps/api/src/routes/account.ts]
+    treatment: { option: modify, plan: Name the owner; rights log with due dates (objective O13) }
+    annex_a: ['5.34']
+    aims_controls: []
+    linked_gaps: [G-MGT-03]
+    owner_role: Privacy lead / DPO
+    acceptance: pending
+
+  - id: R-PRIV-05
+    title: Erasure incomplete at processors, in backups or in uncovered classes
+    category: privacy
+    assets: [backups, AI processor logs, queues]
+    likelihood: 3
+    impact: 3
+    score: 9
+    level: Medium
+    existing_controls: Erasure with post-check and replay; receipts state backup window and processor retention honestly
+    control_evidence:
+      [apps/api/src/erasure.ts, apps/api/src/deletion/receipt.ts, docs/data-retention.md]
+    treatment:
+      {
+        option: modify,
+        plan: Set BACKUP_RETENTION_DAYS; decide inactive-household,
+        eval-capture and queue windows; contract deletion terms,
+      }
+    annex_a: ['8.10', '5.33']
+    aims_controls: []
+    linked_gaps: [G-OPS-04, G-SUP-01]
+    owner_role: Privacy lead / DPO
+    acceptance: pending
+
+  - id: R-PRIV-06
+    title: Mailbox reading over-collects correspondents' personal data
+    category: privacy
+    assets: [inbox items, connected mailboxes]
+    ai_systems: [email.policy_relevance.v1, email.policy_summary.v1]
+    likelihood: 3
+    impact: 3
+    score: 9
+    level: Medium
+    existing_controls: Gmail read-only scope; finance-only retention (R38); delete-on-disconnect option
+    control_evidence: [docs/data-retention.md, docs/compliance/dpia.md]
+    treatment: { option: modify, plan: CASA; document correspondent minimisation in the DPIA }
+    annex_a: ['5.34', '8.11']
+    aims_controls: [A.7.3]
+    linked_gaps: [G-LEG-03, G-PRIV-01]
+    owner_role: Privacy lead / DPO
+    acceptance: pending
+
+  - id: R-PRIV-07
+    title: Other adults on the roster are not told their data is processed
+    category: privacy
+    assets: [roster]
+    likelihood: 4
+    impact: 2
+    score: 8
+    level: Medium
+    existing_controls: Decision framed in DPIA §3
+    control_evidence: [docs/compliance/dpia.md]
+    treatment: { option: modify, plan: Decide notice mechanism; implement }
+    annex_a: ['5.34']
+    aims_controls: [A.5.4]
+    linked_gaps: [G-PRIV-02, G-PRIV-03]
+    owner_role: Privacy lead / DPO
+    acceptance: pending
+
+  - id: R-PRIV-08
+    title: Marketing or analytics tracking runs without valid consent
+    category: privacy
+    assets: [marketing site, leads]
+    likelihood: 2
+    impact: 3
+    score: 6
+    level: Medium
+    existing_controls: Consent gate; tags never loaded in the signed-in app (R36)
+    control_evidence: [apps/web/src/components/MarketingTags.tsx]
+    treatment: { option: retain, plan: Confirm banner wording with counsel }
+    annex_a: ['5.34']
+    aims_controls: []
+    linked_gaps: [G-PRIV-03]
+    owner_role: Privacy lead / DPO
+    acceptance: pending
+
+  - id: R-PRIV-09
+    title: International transfer without a recorded transfer mechanism
+    category: privacy
+    assets: [all personal data sent to suppliers]
+    likelihood: 3
+    impact: 3
+    score: 9
+    level: Medium
+    existing_controls: Transfer mechanism recorded for each approved AI processor
+    control_evidence: [definitions/ai-processors.yaml]
+    treatment: { option: modify, plan: Record transfer mechanisms for every non-AI supplier }
+    annex_a: ['5.14', '5.20']
+    aims_controls: []
+    linked_gaps: [G-SUP-03]
+    owner_role: Privacy lead / DPO
+    acceptance: pending
+
+  # ---------------------------------------------- extension: AI systems
+  - id: R-AI-05
+    title: Youth-facing answer exposes adult household content or unsuitable content to a minor
+    category: ai
+    assets: [youth twin]
+    ai_systems: [assistant.youth_answer.v1]
+    likelihood: 2
+    impact: 5
+    score: 10
+    level: High
+    existing_controls: youth_context_min guard policy; self-hosted-only (lifekeel_infra_required); fails closed
+    control_evidence: [definitions/ai-tasks.yaml, packages/platform/src/llm-guards.ts]
+    treatment:
+      { option: modify, plan: Youth eval suite; privacy-lead sign-off on impact assessment }
+    annex_a: ['5.34']
+    aims_controls: [A.5.4, A.6.2.4]
+    linked_gaps: [G-PRIV-02, G-AI-01]
+    owner_role: AI governance lead
+    acceptance: pending
+
+  - id: R-AI-06
+    title: Document classification/extraction error flows into the financial profile and a wrong insight
+    category: ai
+    assets: [financial profile, documents]
+    ai_systems: [document.classify.v1, document.extract.v1, document.profile_candidate.v1]
+    likelihood: 3
+    impact: 3
+    score: 9
+    level: Medium
+    existing_controls: candidate_for_review authority; user review before a profile change is applied
+    control_evidence:
+      [
+        definitions/ai-tasks.yaml,
+        apps/api/src/__tests__/documents-apply-policy.test.ts,
+        apps/api/src/__tests__/profile-review.test.ts,
+      ]
+    treatment: { option: modify, plan: Extraction eval suite with thresholds }
+    annex_a: []
+    aims_controls: [A.6.2.4, A.7.4]
+    linked_gaps: [G-AI-01]
+    owner_role: AI governance lead
+    acceptance: pending
+
+  - id: R-AI-07
+    title: Users do not know they are interacting with AI, or over-rely on it
+    category: ai
+    assets: [Ask Keel, drafts]
+    ai_systems: [assistant.answer.v1, draft.outreach.v1, support.reply_draft.v1]
+    likelihood: 3
+    impact: 3
+    score: 9
+    level: Medium
+    existing_controls: Processor disclosure page; rule-2 copy points to licensed professionals
+    control_evidence: [apps/api/src/ai/disclosure.ts, apps/web/src/app/ai-processing/page.tsx]
+    treatment:
+      {
+        option: modify,
+        plan: In-product AI disclosure (EU AI Act Art. 50); label AI-generated drafts,
+      }
+    annex_a: []
+    aims_controls: [A.8.2, A.8.5]
+    linked_gaps: [G-AI-02]
+    owner_role: Product manager
+    acceptance: pending
+
+  - id: R-AI-08
+    title: Hosted processor retains prompts in abuse/safety logs beyond what families are told
+    category: ai
+    assets: [hosted AI processors]
+    ai_systems: [assistant.answer.v1, document.extract.v1, email.policy_summary.v1]
+    likelihood: 3
+    impact: 4
+    score: 12
+    level: High
+    existing_controls: Registry records retention class (limited_abuse_log) per processor; sensitive/youth tasks self-hosted only; SECURITY.md wording
+    control_evidence: [definitions/ai-processors.yaml, definitions/ai-tasks.yaml, SECURITY.md]
+    treatment:
+      { option: modify, plan: Modified abuse monitoring / ZDR where offered; verify annually }
+    annex_a: ['5.20', '5.22']
+    aims_controls: [A.10.3]
+    linked_gaps: [G-SUP-01, G-SUP-02]
+    owner_role: AI governance lead
+    acceptance: pending
+
+  - id: R-AI-09
+    title: Runtime provider override routes a task to an unapproved or unconfigured processor
+    category: ai
+    assets: [AI task gateway]
+    likelihood: 2
+    impact: 4
+    score: 8
+    level: Medium
+    existing_controls: Processor check per task on every call; enforce default outside dev; downgrade needs recorded AI_POLICY_EXCEPTION
+    control_evidence:
+      [
+        apps/api/src/ai/task-gateway.ts,
+        packages/platform/src/ai-processors.ts,
+        apps/api/src/__tests__/ai-task-gateway.test.ts,
+      ]
+    treatment: { option: retain, plan: Sample boot logs for exceptions at each internal audit }
+    annex_a: ['8.9']
+    aims_controls: [A.10.2]
+    linked_gaps: []
+    owner_role: AI governance lead
+    acceptance: pending
+
+  - id: R-AI-10
+    title: Marketing draft publishes misleading or advice-like content externally
+    category: ai
+    assets: [social channels]
+    ai_systems: [marketing.social_draft.v1]
+    likelihood: 2
+    impact: 4
+    score: 8
+    level: Medium
+    existing_controls: external_effect task requires human approval; dry-run mode; copy guard; trust-tier allow-list
+    control_evidence:
+      [
+        apps/api/src/marketing/copy-guard.ts,
+        apps/api/src/__tests__/trust-tier-gate.test.ts,
+        docs/runbooks/first-live-social-post.md,
+      ]
+    treatment: { option: retain, plan: Sample published posts at internal audit }
+    annex_a: ['5.31']
+    aims_controls: [A.9.2]
+    linked_gaps: []
+    owner_role: Product manager
+    acceptance: pending
+
+  - id: R-AI-11
+    title: Delivery judge or score enrichment suppresses a protective insight
+    category: ai
+    assets: [insights]
+    ai_systems: [insight.delivery_judge.v1, insight.score_enrichment.v1]
+    likelihood: 2
+    impact: 3
+    score: 6
+    level: Medium
+    existing_controls: bounded_decision / candidate_for_review authority; deterministic detectors decide what exists
+    control_evidence: [definitions/ai-tasks.yaml, detector-evals/README.md]
+    treatment: { option: modify, plan: Monitor hold rate; eval of judge decisions }
+    annex_a: []
+    aims_controls: [A.6.2.6]
+    linked_gaps: [G-AI-01]
+    owner_role: AI governance lead
+    acceptance: pending
+
+  - id: R-AI-12
+    title: Sensitive or youth tasks unavailable because the self-hosted model service was decommissioned
+    category: ai
+    assets: [self-hosted model service]
+    ai_systems: [assistant.answer.sensitive.v1, assistant.youth_answer.v1]
+    likelihood: 4
+    impact: 2
+    score: 8
+    level: Medium
+    existing_controls: lifekeel_infra_required tasks fail closed rather than fall back to hosted processors
+    control_evidence:
+      [definitions/ai-tasks.yaml, docs/reviews/decision-local-interactive-closed-2026-10.md]
+    treatment:
+      { option: retain, plan: Record the availability trade-off; decide serving path before launch }
+    annex_a: ['5.30']
+    aims_controls: [A.4.5]
+    linked_gaps: []
+    owner_role: AI governance lead
+    acceptance: pending
+
+  - id: R-AI-13
+    title: Per-tenant scorer feedback loop biases which insights a household sees
+    category: ai
+    assets: [per-tenant scorers]
+    likelihood: 2
+    impact: 2
+    score: 4
+    level: Low
+    existing_controls: Per-tenant evaluation; deterministic detectors decide
+    control_evidence: [packages/engine/src/scoring/tenant-level-scorer.ts]
+    treatment: { option: retain, plan: Review at management review }
+    annex_a: []
+    aims_controls: [A.5.4, A.6.2.6]
+    linked_gaps: []
+    owner_role: AI governance lead
+    acceptance: pending
+
+  - id: R-AI-14
+    title: Pinned model artifact substituted or silently drifts
+    category: ai
+    assets: [self-hosted models, embeddings, encoder]
+    likelihood: 1
+    impact: 4
+    score: 4
+    level: Low
+    existing_controls: ai-bom.yaml digest/revision pins cross-checked in CI; model cards
+    control_evidence:
+      [ai-bom.yaml, apps/api/src/__tests__/architecture-claims.test.ts, docs/models/qwen2.5.md]
+    treatment: { option: retain, plan: — }
+    annex_a: ['5.21']
+    aims_controls: [A.4.2, A.7.5]
+    linked_gaps: []
+    owner_role: AI governance lead
+    acceptance: pending
+
+  - id: R-AI-15
+    title: Outreach draft reads as arranging or a switch recommendation
+    category: ai
+    assets: [outreach drafts]
+    ai_systems: [draft.outreach.v1, draft.crisis_on_device.v1]
+    likelihood: 2
+    impact: 5
+    score: 10
+    level: High
+    existing_controls: Tier-1 prepare-only; human sends; scoped to notifying the existing provider (PRD-103)
+    control_evidence:
+      [
+        apps/api/src/__tests__/trust-tier-gate.test.ts,
+        packages/engine/src/__tests__/advice-rule.test.ts,
+      ]
+    treatment: { option: modify, plan: Counsel review of draft templates (fca-perimeter Q3) }
+    annex_a: ['5.31']
+    aims_controls: [A.9.4]
+    linked_gaps: [G-LEG-01]
+    owner_role: AI governance lead + Product manager
+    acceptance: pending
+
+  - id: R-AI-16
+    title: Irreversible action executed without explicit human approval (rule 1)
+    category: ai
+    assets: [action executor]
+    likelihood: 1
+    impact: 5
+    score: 5
+    level: Medium
+    existing_controls: ActionExecutor caller allow-list; every execute() names approvedBy; money-moving action types removed
+    control_evidence: [apps/api/src/__tests__/trust-tier-gate.test.ts, SECURITY.md]
+    treatment:
+      {
+        option: modify,
+        plan: Impact-5 rule-1 risk is treated regardless of likelihood — keep the tripwire mandatory; sample action_receipts at audit,
+      }
+    annex_a: ['8.32']
+    aims_controls: [A.9.2]
+    linked_gaps: []
+    owner_role: Principal developer
+    acceptance: pending
+
+  # ------------------------------------------------ extension: operations
+  - id: R-OPS-04
+    title: Background job or queue fails silently (crons, scan worker, erasure replay)
+    category: operations
+    assets: [jobs role, Redis queues]
+    likelihood: 3
+    impact: 3
+    score: 9
+    level: Medium
+    existing_controls: job_runs records; operations alerts
+    control_evidence: [apps/api/src/operator/ops-alerts.ts, apps/api/src/jobs/retention-worker.ts]
+    treatment: { option: modify, plan: Security/ops monitoring use-cases with alert routing }
+    annex_a: ['8.16']
+    aims_controls: []
+    linked_gaps: [G-OPS-03]
+    owner_role: SRE / on-call lead
+    acceptance: pending
+
+  - id: R-OPS-05
+    title: AI usage cost overrun
+    category: operations
+    assets: [AI budget]
+    likelihood: 3
+    impact: 2
+    score: 6
+    level: Medium
+    existing_controls: Per-task budgets, token ceilings, circuit breakers, cost ledger
+    control_evidence: [packages/platform/src/llm-budget.ts, packages/platform/src/cost-ledger.ts]
+    treatment: { option: retain, plan: Monthly review against unit economics }
+    annex_a: ['8.6']
+    aims_controls: [A.6.2.6]
+    linked_gaps: [G-OPS-07]
+    owner_role: CEO
+    acceptance: pending
+
+  - id: R-OPS-06
+    title: Change reaches production without pre-production testing (single environment)
+    category: operations
+    assets: [production services]
+    likelihood: 3
+    impact: 3
+    score: 9
+    level: Medium
+    existing_controls: CI gate, require-ci SHA check, human-approved deploy, boot smoke test
+    control_evidence:
+      [
+        .github/workflows/ci.yml,
+        .github/workflows/require-ci.yml,
+        docs/runbooks/staging-environment.md,
+      ]
+    treatment: { option: modify, plan: Stand up staging per runbook; emergency-change procedure }
+    annex_a: ['8.31', '8.32']
+    aims_controls: [A.6.2.5]
+    linked_gaps: []
+    owner_role: Principal developer
+    acceptance: pending
+
+  # ---------------------------------------------- extension: organisation
+  - id: R-ORG-03
+    title: Policies, scope and roles remain unapproved, blocking certification
+    category: organisation
+    assets: [IMS]
+    likelihood: 5
+    impact: 3
+    score: 15
+    level: High
+    existing_controls: Draft policies and scope in docs/ims
+    control_evidence: [docs/ims/scope.md, docs/ims/roles.md]
+    treatment: { option: modify, plan: CEO approval at Phase 1 close }
+    annex_a: ['5.1', '5.2', '5.4']
+    aims_controls: [A.2.2, A.3.2]
+    linked_gaps: [G-MGT-01, G-MGT-02, G-MGT-03]
+    owner_role: CEO
+    acceptance: pending
+
+  - id: R-ORG-04
+    title: Staff and contractors lack security, privacy and AI-literacy training
+    category: organisation
+    assets: [people]
+    likelihood: 4
+    impact: 3
+    score: 12
+    level: High
+    existing_controls: CLAUDE.md read by agents; no staff training records
+    control_evidence: [CLAUDE.md]
+    treatment:
+      {
+        option: modify,
+        plan: Annual training incl. EU AI Act Art. 4 literacy; records outside the repo,
+      }
+    annex_a: ['6.3']
+    aims_controls: [A.4.6]
+    linked_gaps: [G-PEO-01]
+    owner_role: CEO
+    acceptance: pending
+
+  - id: R-ORG-05
+    title: Climate-related disruption to a cloud region or supplier
+    category: organisation
+    assets: [cloud services]
+    likelihood: 1
+    impact: 2
+    score: 2
+    level: Low
+    existing_controls: Scale-to-zero; inherited supplier resilience
+    control_evidence: []
+    treatment: { option: retain, plan: Record supplier climate posture in the supplier register }
+    annex_a: ['5.30']
+    aims_controls: []
+    linked_gaps: [G-SUP-03]
+    owner_role: IMS manager
+    acceptance: pending
+
+  # -------------------------------------------------- extension: suppliers
+  - id: R-SUP-02
+    title: AI processor review lapses or terms change unnoticed
+    category: supplier
+    assets: [hosted AI processors]
+    likelihood: 3
+    impact: 3
+    score: 9
+    level: Medium
+    existing_controls: review_due recorded per processor; lapsed processor blocked
+    control_evidence: [definitions/ai-processors.yaml, packages/platform/src/ai-processors.ts]
+    treatment: { option: retain, plan: Annual review records }
+    annex_a: ['5.22']
+    aims_controls: [A.10.3]
+    linked_gaps: [G-SUP-01]
+    owner_role: AI governance lead
+    acceptance: pending
+
+  - id: R-SUP-03
+    title: Cloud, database or messaging supplier failure with no exit plan
+    category: supplier
+    assets: [GCP, Firebase, Cloudflare, MongoDB/Redis host, SendGrid, Twilio]
+    likelihood: 2
+    impact: 4
+    score: 8
+    level: Medium
+    existing_controls: None documented for non-AI suppliers
+    control_evidence: []
+    treatment:
+      { option: modify, plan: Supplier register with certificates; vendor exit/portability table }
+    annex_a: ['5.19', '5.23']
+    aims_controls: []
+    linked_gaps: [G-SUP-03, G-SUP-04]
+    owner_role: IMS manager
+    acceptance: pending
+
+  - id: R-SUP-04
+    title: Stripe webhook or reconciliation failure causes wrong billing state
+    category: supplier
+    assets: [billing]
+    likelihood: 2
+    impact: 2
+    score: 4
+    level: Low
+    existing_controls: Idempotent webhook ids (400 days); Stripe config as code with reconciler and drift workflow
+    control_evidence:
+      [
+        definitions/stripe-config.yaml,
+        .github/workflows/stripe-drift.yml,
+        docs/runbooks/stripe-setup.md,
+      ]
+    treatment: { option: retain, plan: — }
+    annex_a: ['5.22']
+    aims_controls: []
+    linked_gaps: []
+    owner_role: Principal developer
+    acceptance: pending
+
+  # ------------------------------------------------------ extension: legal
+  - id: R-LEG-03
+    title: Card data enters LifeKeel scope, expanding PCI obligations
+    category: legal
+    assets: [billing]
+    likelihood: 1
+    impact: 4
+    score: 4
+    level: Low
+    existing_controls: Stripe-hosted Checkout; no card data handled
+    control_evidence: [docs/compliance/pci-scope.md]
+    treatment: { option: retain, plan: Complete SAQ A }
+    annex_a: ['5.31']
+    aims_controls: []
+    linked_gaps: [G-LEG-02]
+    owner_role: CEO
+    acceptance: pending
+
+  - id: R-LEG-04
+    title: EU AI Act classification wrong (e.g. Annex III 5(b)/5(c) or Art. 50 duties missed)
+    category: legal
+    assets: [AI systems]
+    likelihood: 2
+    impact: 4
+    score: 8
+    level: Medium
+    existing_controls: Working classification in ISO_AUDITABLE.md §14.4; rule 2 keeps insurance pricing and credit scoring out
+    control_evidence: [ISO_AUDITABLE.md]
+    treatment: { option: modify, plan: Counsel confirms classification; Art. 50 disclosure }
+    annex_a: ['5.31']
+    aims_controls: [A.8.2]
+    linked_gaps: [G-AI-02]
+    owner_role: AI governance lead + counsel
+    acceptance: pending
+
+  - id: R-LEG-05
+    title: Accessibility requirements (WCAG 2.2 AA / EAA) not met
+    category: legal
+    assets: [web app, mobile shell]
+    likelihood: 3
+    impact: 3
+    score: 9
+    level: Medium
+    existing_controls: None verified
+    control_evidence: []
+    treatment: { option: modify, plan: Accessibility audit before launch }
+    annex_a: ['5.31']
+    aims_controls: [A.5.4]
+    linked_gaps: [G-GLB-02]
+    owner_role: Product manager
+    acceptance: pending
+
+  - id: R-LEG-06
+    title: Licence non-compliance (dependencies without declared licence; AI-generated code IP)
+    category: legal
+    assets: [source code]
+    likelihood: 2
+    impact: 3
+    score: 6
+    level: Medium
+    existing_controls: Proprietary LICENSE, NOTICE, licence-consistency test
+    control_evidence: [LICENSE, NOTICE, packages/engine/src/__tests__/license-consistency.test.ts]
+    treatment: { option: modify, plan: Licence scanning in CI; check buffers and khroma }
+    annex_a: ['5.32']
+    aims_controls: []
+    linked_gaps: []
+    owner_role: Principal developer
+    acceptance: pending
+
+  # ---------------------------------------------------- extension: quality
+  - id: R-QMS-01
+    title: Customer complaints and dissatisfaction not captured
+    category: quality
+    assets: [service]
+    likelihood: 3
+    impact: 2
+    score: 6
+    level: Medium
+    existing_controls: Growth events only
+    control_evidence: []
+    treatment: { option: modify, plan: CSAT/NPS and complaints procedure }
+    annex_a: []
+    aims_controls: [A.8.3]
+    linked_gaps: [G-QMS-01, G-AI-03]
+    owner_role: Product manager
+    acceptance: pending
+
+  - id: R-QMS-02
+    title: Detector rule error produces a wrong gap estimate
+    category: quality
+    assets: [detectors]
+    likelihood: 3
+    impact: 3
+    score: 9
+    level: Medium
+    existing_controls: Golden detector-eval datasets; add-detector skill; advice-rule test
+    control_evidence: [detector-evals/README.md, .claude/skills/add-detector/SKILL.md]
+    treatment: { option: retain, plan: Keep eval dataset per detector mandatory }
+    annex_a: ['8.29']
+    aims_controls: [A.7.4]
+    linked_gaps: []
+    owner_role: Product manager
+    acceptance: pending

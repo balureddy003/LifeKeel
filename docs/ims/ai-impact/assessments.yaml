@@ -1,0 +1,792 @@
+# AI system impact assessments (ISO/IEC 42001 6.1.4, 8.4, A.5.2–A.5.5)
+#
+# One entry per task_id in definitions/ai-tasks.yaml, using the record template in
+# ISO_AUDITABLE.md §23.4 and the flow in §14.1 (assessment_level: full | standard |
+# lightweight). Registry fields (registry_purpose, processors, data_boundary,
+# retention_class, registry_authority, registry_risk) are copied from
+# definitions/ai-tasks.yaml and definitions/ai-processors.yaml; risks are the
+# docs/ims/risk/risk-register.yaml entries that name the task.
+# apps/api/src/__tests__/ims-documents.test.ts fails if a task has no entry.
+#
+# Every decision below is a PROPOSAL. No assessment is signed: sign_off stays
+# "—" until the AI governance lead and privacy lead record it.
+# Processors listed as `unreviewed` (anthropic, openai) are refused outside dev.
+
+document:
+  id: LK-IMS-050
+  title: AI system impact assessments
+  version: '0.1'
+  status: DRAFT — awaiting approval
+  owner: AI governance lead (role)
+  approver: CEO / top management (role)
+  approved: —
+  next_review: —
+assessments:
+  - task_id: assistant.answer.v1
+    system: Ask Keel — interactive assistant
+    version: v1
+    owner: Model owner — TBD (AI governance lead to propose, CEO to appoint)
+    assessment_level: full
+    intended_use: Explain a household's own records and estimated gaps in plain language
+    registry_purpose: Ask Keel — answer a question from the family's own records
+    prohibited_or_foreseeable_misuse: >-
+      Recommending products or providers, switching, investment transactions, payment initiation, medical or
+      legal advice (CLAUDE.md rule 2); acting on the answer without the family
+    affected_people: >-
+      Organizer and adult members; other adults and children named in household records appear in context; not
+      used by minors (youth use assistant.youth_answer.v1)
+    children: 'N'
+    special_category: 'N'
+    data_in: >-
+      Question plus task-minimised profile context; health terms stripped before the call
+      (apps/api/src/privacy/special-category.ts); no vault plaintext
+    data_out: Answer text shown to the user
+    processors:
+      - ollama (self_hosted — GCP service decommissioned 2026-10-24)
+      - anthropic (unreviewed — refused outside dev)
+      - openai (unreviewed — refused outside dev)
+      - azure (approved)
+      - vertex (approved)
+      - groq (approved)
+      - xai (approved — pre-launch testing exception only, G-SUP-02)
+    data_boundary: approved_hosted_provider
+    retention_class: limited_abuse_log
+    autonomy_trust_tier: Tier 0 — informational
+    registry_authority: language_only
+    registry_risk: user_visible
+    human_oversight_point: User reads the answer; deterministic figures come from records, not the model; no action is taken
+    risks:
+      - R-SEC-03 (12)
+      - R-AI-01 (15)
+      - R-AI-04 (9)
+      - R-AI-07 (9)
+      - R-AI-08 (12)
+    fairness_accessibility: Plain-language copy; quality across household shapes, languages and literacy levels not yet measured
+    transparency_to_users: Processor disclosure page exists; in-product Art. 50 AI disclosure open (G-AI-02)
+    evaluations_and_thresholds: Advice-rule test over copy; red-team guard fixtures. No task eval suite or thresholds yet (G-AI-01)
+    eval_runs_id: —
+    residual_risk: Medium — pending task eval suite and counsel sampling of real outputs (ISO_AUDITABLE.md §14.3)
+    decision: 'Proposed: release behind the gateway; re-assess when the eval suite lands (§14.3). Not approved.'
+    reassessment_trigger: >-
+      New model or processor, data class, audience or autonomy level; a change to this task in
+      definitions/ai-tasks.yaml; an AI incident
+    sign_off:
+      ai_governance_lead: —
+      privacy_lead: —
+      date: —
+  - task_id: assistant.answer_verified.v1
+    system: Ask Keel — deterministic verified answer (PRD-212)
+    version: v1
+    owner: Model owner — TBD (AI governance lead to propose, CEO to appoint)
+    assessment_level: lightweight
+    intended_use: >-
+      Answer a factual question by resolving it to an approved read operation and rendering a reviewed
+      template with provenance
+    registry_purpose: Ask Keel — deterministic answer from an approved read operation with provenance
+    prohibited_or_foreseeable_misuse: >-
+      Recommending products or providers, switching, investment transactions, payment initiation, medical or
+      legal advice (CLAUDE.md rule 2); acting on the answer without the family
+    affected_people: Organizer and adult members; other adults and children named in household records appear in context
+    children: 'N'
+    special_category: 'N'
+    data_in: Question; result of an approved read operation on the household records
+    data_out: Templated answer with provenance
+    processors:
+      - ollama (self_hosted — GCP service decommissioned 2026-10-24)
+    data_boundary: lifekeel_infra
+    retention_class: none
+    autonomy_trust_tier: Tier 0 — informational
+    registry_authority: language_only
+    registry_risk: user_visible
+    human_oversight_point: No model call is made; templates are reviewed before release
+    risks:
+      - R-AI-04 (9)
+    fairness_accessibility: Template wording reviewed for plain language
+    transparency_to_users: Provenance shown with the answer
+    evaluations_and_thresholds: Template and resolver tests; no model eval needed while no model is called
+    eval_runs_id: —
+    residual_risk: Low
+    decision: 'Proposed: lightweight record; re-assess if a model is ever added to the path. Not approved.'
+    reassessment_trigger: >-
+      New model or processor, data class, audience or autonomy level; a change to this task in
+      definitions/ai-tasks.yaml; an AI incident
+    sign_off:
+      ai_governance_lead: —
+      privacy_lead: —
+      date: —
+  - task_id: assistant.scenario_narration.v1
+    system: Scenario narration
+    version: v1
+    owner: Model owner — TBD (AI governance lead to propose, CEO to appoint)
+    assessment_level: full
+    intended_use: Narrate a deterministic scenario-simulator result in plain English
+    registry_purpose: Narrate a deterministic scenario-simulator result in plain English
+    prohibited_or_foreseeable_misuse: >-
+      Recommending products or providers, switching, investment transactions, payment initiation, medical or
+      legal advice (CLAUDE.md rule 2); acting on the answer without the family; changing any simulated figure
+    affected_people: Organizer and adult members; other adults and children named in household records appear in context
+    children: 'N'
+    special_category: 'N'
+    data_in: Simulator result and minimal profile context
+    data_out: Narrative text
+    processors:
+      - ollama (self_hosted — GCP service decommissioned 2026-10-24)
+      - anthropic (unreviewed — refused outside dev)
+      - openai (unreviewed — refused outside dev)
+      - azure (approved)
+      - vertex (approved)
+      - groq (approved)
+      - xai (approved — pre-launch testing exception only, G-SUP-02)
+    data_boundary: approved_hosted_provider
+    retention_class: limited_abuse_log
+    autonomy_trust_tier: Tier 0 — informational
+    registry_authority: language_only
+    registry_risk: user_visible
+    human_oversight_point: Figures are computed deterministically; the model only phrases them
+    risks:
+      - R-AI-01 (15)
+      - R-AI-04 (9)
+    fairness_accessibility: Plain-language copy
+    transparency_to_users: Art. 50 disclosure open (G-AI-02)
+    evaluations_and_thresholds: None task-specific yet (G-AI-01)
+    eval_runs_id: —
+    residual_risk: Medium
+    decision: 'Proposed: release behind the gateway pending a faithfulness eval. Not approved.'
+    reassessment_trigger: >-
+      New model or processor, data class, audience or autonomy level; a change to this task in
+      definitions/ai-tasks.yaml; an AI incident
+    sign_off:
+      ai_governance_lead: —
+      privacy_lead: —
+      date: —
+  - task_id: brief.narrate.v1
+    system: Household brief narration
+    version: v1
+    owner: Model owner — TBD (AI governance lead to propose, CEO to appoint)
+    assessment_level: full
+    intended_use: Rephrase a stored household-brief template sentence in plain English — narration only
+    registry_purpose: Rephrase a stored household-brief template sentence in plain English — narration only
+    prohibited_or_foreseeable_misuse: >-
+      Recommending products or providers, switching, investment transactions, payment initiation, medical or
+      legal advice (CLAUDE.md rule 2); acting on the answer without the family; adding facts not in the
+      template
+    affected_people: Organizer and adult members; other adults and children named in household records appear in context
+    children: 'N'
+    special_category: 'N'
+    data_in: A stored template sentence with its values
+    data_out: Rephrased sentence
+    processors:
+      - ollama (self_hosted — GCP service decommissioned 2026-10-24)
+      - anthropic (unreviewed — refused outside dev)
+      - openai (unreviewed — refused outside dev)
+      - azure (approved)
+      - vertex (approved)
+      - groq (approved)
+      - xai (approved — pre-launch testing exception only, G-SUP-02)
+    data_boundary: approved_hosted_provider
+    retention_class: limited_abuse_log
+    autonomy_trust_tier: Tier 0 — informational
+    registry_authority: language_only
+    registry_risk: user_visible
+    human_oversight_point: Template sentence is the authority; narration may be dropped in favour of the template
+    risks:
+      - R-AI-01 (15)
+      - R-AI-04 (9)
+    fairness_accessibility: Plain-language copy
+    transparency_to_users: Art. 50 disclosure open (G-AI-02)
+    evaluations_and_thresholds: None task-specific yet (G-AI-01)
+    eval_runs_id: —
+    residual_risk: Medium
+    decision: 'Proposed: release behind the gateway pending a faithfulness eval. Not approved.'
+    reassessment_trigger: >-
+      New model or processor, data class, audience or autonomy level; a change to this task in
+      definitions/ai-tasks.yaml; an AI incident
+    sign_off:
+      ai_governance_lead: —
+      privacy_lead: —
+      date: —
+  - task_id: document.classify.v1
+    system: Document classification
+    version: v1
+    owner: Model owner — TBD (AI governance lead to propose, CEO to appoint)
+    assessment_level: full
+    intended_use: Classify an uploaded document (statement, letter, bill, other)
+    registry_purpose: Classify an uploaded document (statement, letter, bill, other)
+    prohibited_or_foreseeable_misuse: Deciding anything about the family from the classification without their review
+    affected_people: Organizer; anyone named in the uploaded document
+    children: 'N'
+    special_category: Possible (incidental, in uploads)
+    data_in: Text of an uploaded document after malware scan
+    data_out: A document-type label (candidate)
+    processors:
+      - ollama (self_hosted — GCP service decommissioned 2026-10-24)
+      - anthropic (unreviewed — refused outside dev)
+      - openai (unreviewed — refused outside dev)
+      - azure (approved)
+      - vertex (approved)
+      - groq (approved)
+      - xai (approved — pre-launch testing exception only, G-SUP-02)
+    data_boundary: approved_hosted_provider
+    retention_class: limited_abuse_log
+    autonomy_trust_tier: Tier 0 — internal candidate
+    registry_authority: candidate_for_review
+    registry_risk: internal
+    human_oversight_point: candidate_for_review authority; user reviews before anything is applied to the profile
+    risks:
+      - R-SEC-03 (12)
+      - R-AI-06 (9)
+    fairness_accessibility: Varies by document layout and language — not yet measured
+    transparency_to_users: Processor disclosure page ("who processes your documents")
+    evaluations_and_thresholds: None task-specific yet (G-AI-01)
+    eval_runs_id: —
+    residual_risk: Medium
+    decision: 'Proposed: release behind the gateway; extraction eval suite required. Not approved.'
+    reassessment_trigger: >-
+      New model or processor, data class, audience or autonomy level; a change to this task in
+      definitions/ai-tasks.yaml; an AI incident
+    sign_off:
+      ai_governance_lead: —
+      privacy_lead: —
+      date: —
+  - task_id: document.extract.v1
+    system: Document field extraction
+    version: v1
+    owner: Model owner — TBD (AI governance lead to propose, CEO to appoint)
+    assessment_level: full
+    intended_use: Extract structured fields from an uploaded document
+    registry_purpose: Extract structured fields from an uploaded document
+    prohibited_or_foreseeable_misuse: Applying extracted fields to the profile without user review
+    affected_people: Organizer; anyone named in the uploaded document
+    children: 'N'
+    special_category: Possible (incidental, in uploads — G-PRIV-04)
+    data_in: Text of an uploaded document after malware scan; vault documents are excluded from OCR
+    data_out: Structured field candidates
+    processors:
+      - ollama (self_hosted — GCP service decommissioned 2026-10-24)
+      - anthropic (unreviewed — refused outside dev)
+      - openai (unreviewed — refused outside dev)
+      - azure (approved)
+      - vertex (approved)
+      - groq (approved)
+      - xai (approved — pre-launch testing exception only, G-SUP-02)
+    data_boundary: approved_hosted_provider
+    retention_class: limited_abuse_log
+    autonomy_trust_tier: Tier 0 — internal candidate
+    registry_authority: candidate_for_review
+    registry_risk: internal
+    human_oversight_point: User reviews before profile apply
+    risks:
+      - R-SEC-03 (12)
+      - R-PRIV-03 (12)
+      - R-AI-06 (9)
+      - R-AI-08 (12)
+    fairness_accessibility: Varies by document layout and language — not yet measured
+    transparency_to_users: Processor disclosure page
+    evaluations_and_thresholds: None task-specific yet (G-AI-01)
+    eval_runs_id: —
+    residual_risk: Medium
+    decision: 'Proposed: release behind the gateway; extraction eval suite required. Not approved.'
+    reassessment_trigger: >-
+      New model or processor, data class, audience or autonomy level; a change to this task in
+      definitions/ai-tasks.yaml; an AI incident
+    sign_off:
+      ai_governance_lead: —
+      privacy_lead: —
+      date: —
+  - task_id: document.profile_candidate.v1
+    system: Profile suggestions from documents
+    version: v1
+    owner: Model owner — TBD (AI governance lead to propose, CEO to appoint)
+    assessment_level: full
+    intended_use: Suggest financial-profile fields from an extracted document
+    registry_purpose: Suggest financial-profile fields from an extracted document
+    prohibited_or_foreseeable_misuse: Writing to the profile without user confirmation
+    affected_people: Household
+    children: 'N'
+    special_category: Possible (incidental)
+    data_in: Extracted fields and minimal profile context
+    data_out: Profile field suggestions
+    processors:
+      - ollama (self_hosted — GCP service decommissioned 2026-10-24)
+      - anthropic (unreviewed — refused outside dev)
+      - openai (unreviewed — refused outside dev)
+      - azure (approved)
+      - vertex (approved)
+      - groq (approved)
+      - xai (approved — pre-launch testing exception only, G-SUP-02)
+    data_boundary: approved_hosted_provider
+    retention_class: limited_abuse_log
+    autonomy_trust_tier: Tier 0 — internal candidate
+    registry_authority: candidate_for_review
+    registry_risk: internal
+    human_oversight_point: User accepts or rejects each suggestion
+    risks:
+      - R-SEC-03 (12)
+      - R-AI-06 (9)
+    fairness_accessibility: Not yet measured
+    transparency_to_users: Suggestions are shown as suggestions
+    evaluations_and_thresholds: Apply-policy tests (apps/api/src/__tests__/documents-apply-policy.test.ts); no model eval yet (G-AI-01)
+    eval_runs_id: —
+    residual_risk: Medium
+    decision: 'Proposed: release behind the gateway. Not approved.'
+    reassessment_trigger: >-
+      New model or processor, data class, audience or autonomy level; a change to this task in
+      definitions/ai-tasks.yaml; an AI incident
+    sign_off:
+      ai_governance_lead: —
+      privacy_lead: —
+      date: —
+  - task_id: email.policy_relevance.v1
+    system: Inbox policy relevance
+    version: v1
+    owner: Model owner — TBD (AI governance lead to propose, CEO to appoint)
+    assessment_level: full
+    intended_use: Decide whether an inbox email relates to the family's protection
+    registry_purpose: Decide whether an inbox email relates to the family's protection
+    prohibited_or_foreseeable_misuse: Retaining non-finance mail; reading beyond the read-only scope
+    affected_people: Account holder and their correspondents
+    children: 'N'
+    special_category: Possible (incidental)
+    data_in: Email from/subject/body of a connected mailbox (Gmail read-only or IMAP)
+    data_out: Relevance decision (candidate)
+    processors:
+      - ollama (self_hosted — GCP service decommissioned 2026-10-24)
+      - anthropic (unreviewed — refused outside dev)
+      - openai (unreviewed — refused outside dev)
+      - azure (approved)
+      - vertex (approved)
+      - groq (approved)
+      - xai (approved — pre-launch testing exception only, G-SUP-02)
+    data_boundary: approved_hosted_provider
+    retention_class: limited_abuse_log
+    autonomy_trust_tier: Tier 0 — internal candidate
+    registry_authority: candidate_for_review
+    registry_risk: internal
+    human_oversight_point: Items appear in the inbox for review; finance-only retention
+    risks:
+      - R-SEC-03 (12)
+      - R-PRIV-06 (9)
+    fairness_accessibility: Not yet measured
+    transparency_to_users: Connector consent screens; processor disclosure page
+    evaluations_and_thresholds: Encoder eval assets in infra/encoder-eval; no gateway task eval yet (G-AI-01)
+    eval_runs_id: —
+    residual_risk: Medium
+    decision: "Proposed: release behind the gateway; correspondents' data minimisation recorded in DPIA. Not approved."
+    reassessment_trigger: >-
+      New model or processor, data class, audience or autonomy level; a change to this task in
+      definitions/ai-tasks.yaml; an AI incident
+    sign_off:
+      ai_governance_lead: —
+      privacy_lead: —
+      date: —
+  - task_id: email.policy_summary.v1
+    system: Inbox card summary
+    version: v1
+    owner: Model owner — TBD (AI governance lead to propose, CEO to appoint)
+    assessment_level: full
+    intended_use: Summarise a policy-relevant email for the inbox card
+    registry_purpose: Summarise a policy-relevant email for the inbox card
+    prohibited_or_foreseeable_misuse: >-
+      Recommending products or providers, switching, investment transactions, payment initiation, medical or
+      legal advice (CLAUDE.md rule 2); acting on the answer without the family
+    affected_people: Account holder and their correspondents
+    children: 'N'
+    special_category: Possible (incidental)
+    data_in: A policy-relevant email
+    data_out: Short summary shown on the inbox card
+    processors:
+      - ollama (self_hosted — GCP service decommissioned 2026-10-24)
+      - anthropic (unreviewed — refused outside dev)
+      - openai (unreviewed — refused outside dev)
+      - azure (approved)
+      - vertex (approved)
+      - groq (approved)
+      - xai (approved — pre-launch testing exception only, G-SUP-02)
+    data_boundary: approved_hosted_provider
+    retention_class: limited_abuse_log
+    autonomy_trust_tier: Tier 0 — informational
+    registry_authority: language_only
+    registry_risk: user_visible
+    human_oversight_point: User sees the original message alongside
+    risks:
+      - R-SEC-03 (12)
+      - R-AI-04 (9)
+      - R-PRIV-06 (9)
+      - R-AI-08 (12)
+    fairness_accessibility: Not yet measured
+    transparency_to_users: Art. 50 disclosure open (G-AI-02)
+    evaluations_and_thresholds: None task-specific yet (G-AI-01)
+    eval_runs_id: —
+    residual_risk: Medium
+    decision: 'Proposed: release behind the gateway. Not approved.'
+    reassessment_trigger: >-
+      New model or processor, data class, audience or autonomy level; a change to this task in
+      definitions/ai-tasks.yaml; an AI incident
+    sign_off:
+      ai_governance_lead: —
+      privacy_lead: —
+      date: —
+  - task_id: insight.score_enrichment.v1
+    system: Insight confidence enrichment
+    version: v1
+    owner: Model owner — TBD (AI governance lead to propose, CEO to appoint)
+    assessment_level: standard
+    intended_use: LLM confidence score on a rules-engine insight candidate
+    registry_purpose: LLM confidence score on a rules-engine insight candidate
+    prohibited_or_foreseeable_misuse: Creating or deleting insights — detectors decide what exists
+    affected_people: Household
+    children: 'N'
+    special_category: 'N'
+    data_in: Insight candidate and minimal context
+    data_out: Confidence score
+    processors:
+      - anthropic (unreviewed — refused outside dev)
+      - openai (unreviewed — refused outside dev)
+      - azure (approved)
+      - vertex (approved)
+      - groq (approved)
+      - xai (approved — pre-launch testing exception only, G-SUP-02)
+    data_boundary: approved_hosted_provider
+    retention_class: limited_abuse_log
+    autonomy_trust_tier: Tier 0 — internal candidate
+    registry_authority: candidate_for_review
+    registry_risk: internal
+    human_oversight_point: Deterministic detectors remain the authority
+    risks:
+      - R-AI-11 (6)
+    fairness_accessibility: Not yet measured
+    transparency_to_users: Internal
+    evaluations_and_thresholds: detector-evals for the underlying detectors; none for the enrichment (G-AI-01)
+    eval_runs_id: —
+    residual_risk: Medium
+    decision: 'Proposed: release behind the gateway. Not approved.'
+    reassessment_trigger: >-
+      New model or processor, data class, audience or autonomy level; a change to this task in
+      definitions/ai-tasks.yaml; an AI incident
+    sign_off:
+      ai_governance_lead: —
+      privacy_lead: —
+      date: —
+  - task_id: insight.delivery_judge.v1
+    system: Insight delivery judge
+    version: v1
+    owner: Model owner — TBD (AI governance lead to propose, CEO to appoint)
+    assessment_level: standard
+    intended_use: Decide whether an insight should be delivered now or held
+    registry_purpose: Local judge — should this insight be delivered or held
+    prohibited_or_foreseeable_misuse: Suppressing a protective insight permanently
+    affected_people: Household
+    children: 'N'
+    special_category: 'N'
+    data_in: Insight and delivery context
+    data_out: Deliver/hold decision (bounded)
+    processors:
+      - ollama (self_hosted — GCP service decommissioned 2026-10-24)
+      - anthropic (unreviewed — refused outside dev)
+      - openai (unreviewed — refused outside dev)
+      - azure (approved)
+      - vertex (approved)
+      - groq (approved)
+      - xai (approved — pre-launch testing exception only, G-SUP-02)
+    data_boundary: approved_hosted_provider
+    retention_class: limited_abuse_log
+    autonomy_trust_tier: Tier 0 — workflow-affecting, bounded decision
+    registry_authority: bounded_decision
+    registry_risk: workflow_affecting
+    human_oversight_point: bounded_decision authority; monitored hold rate is the target
+    risks:
+      - R-AI-11 (6)
+    fairness_accessibility: Not yet measured
+    transparency_to_users: Internal
+    evaluations_and_thresholds: None task-specific yet (G-AI-01)
+    eval_runs_id: —
+    residual_risk: Medium
+    decision: 'Proposed: release with hold-rate monitoring. Not approved.'
+    reassessment_trigger: >-
+      New model or processor, data class, audience or autonomy level; a change to this task in
+      definitions/ai-tasks.yaml; an AI incident
+    sign_off:
+      ai_governance_lead: —
+      privacy_lead: —
+      date: —
+  - task_id: draft.outreach.v1
+    system: Outreach / prep-note drafting (PRD-103)
+    version: v1
+    owner: Model owner — TBD (AI governance lead to propose, CEO to appoint)
+    assessment_level: full
+    intended_use: >-
+      Draft a note for the family to send to their existing provider, or a prep note for a Tier-1 prepare
+      action
+    registry_purpose: Draft outreach/prep-note text for a Tier-1 prepare action
+    prohibited_or_foreseeable_misuse: >-
+      Product comparison, switch recommendation, introducing a new provider (arranging); sending without the
+      family
+    affected_people: Household; the recipient provider
+    children: 'N'
+    special_category: 'N'
+    data_in: Minimal action context
+    data_out: Draft text the family can edit and send
+    processors:
+      - ollama (self_hosted — GCP service decommissioned 2026-10-24)
+      - anthropic (unreviewed — refused outside dev)
+      - openai (unreviewed — refused outside dev)
+      - azure (approved)
+      - vertex (approved)
+      - groq (approved)
+      - xai (approved — pre-launch testing exception only, G-SUP-02)
+    data_boundary: approved_hosted_provider
+    retention_class: limited_abuse_log
+    autonomy_trust_tier: Tier 1 — prepare only; human sends
+    registry_authority: candidate_for_review
+    registry_risk: user_visible
+    human_oversight_point: Family reviews, edits and sends; approval recorded (approvedBy)
+    risks:
+      - R-LEG-02 (10)
+      - R-AI-07 (9)
+      - R-AI-15 (10)
+    fairness_accessibility: Plain-language copy
+    transparency_to_users: Label AI-generated drafts (Art. 50) — open (G-AI-02)
+    evaluations_and_thresholds: Advice-rule test; no task eval yet (G-AI-01)
+    eval_runs_id: —
+    residual_risk: Medium
+    decision: 'Proposed: release behind the gateway with counsel review of templates (fca-perimeter Q3). Not approved.'
+    reassessment_trigger: >-
+      New model or processor, data class, audience or autonomy level; a change to this task in
+      definitions/ai-tasks.yaml; an AI incident
+    sign_off:
+      ai_governance_lead: —
+      privacy_lead: —
+      date: —
+  - task_id: draft.crisis_on_device.v1
+    system: Crisis-mode on-device draft (PRD-113)
+    version: v1
+    owner: Model owner — TBD (AI governance lead to propose, CEO to appoint)
+    assessment_level: standard
+    intended_use: Generate a crisis-mode draft entirely on the user's device
+    registry_purpose: Crisis-mode draft generated on-device (PRD-113)
+    prohibited_or_foreseeable_misuse: Sending without the family; any server-side processing of the content
+    affected_people: Household
+    children: 'N'
+    special_category: Possible (crisis context)
+    data_in: On-device context only
+    data_out: Draft on the device
+    processors:
+      - none — device_only
+    data_boundary: device_only
+    retention_class: none
+    autonomy_trust_tier: Tier 1 — prepare only
+    registry_authority: candidate_for_review
+    registry_risk: user_visible
+    human_oversight_point: Family reviews and sends
+    risks:
+      - R-AI-15 (10)
+    fairness_accessibility: Device capability varies
+    transparency_to_users: Label AI-generated drafts — open (G-AI-02)
+    evaluations_and_thresholds: None task-specific yet (G-AI-01)
+    eval_runs_id: —
+    residual_risk: Low
+    decision: 'Proposed: release; no server-side processor exists (device_only). Not approved.'
+    reassessment_trigger: >-
+      New model or processor, data class, audience or autonomy level; a change to this task in
+      definitions/ai-tasks.yaml; an AI incident
+    sign_off:
+      ai_governance_lead: —
+      privacy_lead: —
+      date: —
+  - task_id: support.reply_draft.v1
+    system: Support reply drafting
+    version: v1
+    owner: Model owner — TBD (AI governance lead to propose, CEO to appoint)
+    assessment_level: full
+    intended_use: Draft a support reply from the tenant's own account context for an operator to review
+    registry_purpose: Draft a support reply from the tenant's own account context
+    prohibited_or_foreseeable_misuse: >-
+      Recommending products or providers, switching, investment transactions, payment initiation, medical or
+      legal advice (CLAUDE.md rule 2); acting on the answer without the family; sending without operator
+      review
+    affected_people: Account holder writing to support
+    children: 'N'
+    special_category: 'N'
+    data_in: The support request and the tenant's own account context
+    data_out: Draft reply for an operator
+    processors:
+      - ollama (self_hosted — GCP service decommissioned 2026-10-24)
+      - anthropic (unreviewed — refused outside dev)
+      - openai (unreviewed — refused outside dev)
+      - azure (approved)
+      - vertex (approved)
+      - groq (approved)
+      - xai (approved — pre-launch testing exception only, G-SUP-02)
+    data_boundary: approved_hosted_provider
+    retention_class: limited_abuse_log
+    autonomy_trust_tier: Tier 1 — prepare only; operator sends
+    registry_authority: candidate_for_review
+    registry_risk: user_visible
+    human_oversight_point: Operator reviews and sends (apps/api/src/operator/support-draft.ts)
+    risks:
+      - R-AI-01 (15)
+      - R-AI-07 (9)
+    fairness_accessibility: Not yet measured
+    transparency_to_users: Disclosure that replies may be AI-assisted — open (G-AI-02)
+    evaluations_and_thresholds: None task-specific yet (G-AI-01)
+    eval_runs_id: —
+    residual_risk: Medium
+    decision: 'Proposed: release with operator review. Not approved.'
+    reassessment_trigger: >-
+      New model or processor, data class, audience or autonomy level; a change to this task in
+      definitions/ai-tasks.yaml; an AI incident
+    sign_off:
+      ai_governance_lead: —
+      privacy_lead: —
+      date: —
+  - task_id: marketing.social_draft.v1
+    system: Marketing social drafting
+    version: v1
+    owner: Model owner — TBD (AI governance lead to propose, CEO to appoint)
+    assessment_level: lightweight
+    intended_use: Draft a social post from a public source link (growth automation)
+    registry_purpose: Draft a social post from a public source link (growth automation)
+    prohibited_or_foreseeable_misuse: >-
+      Any family data in the prompt; financial promotion of a regulated product; advice-like copy; autonomous
+      publishing
+    affected_people: Public audience
+    children: 'N'
+    special_category: 'N'
+    data_in: A public source link — no family data
+    data_out: Draft social post
+    processors:
+      - anthropic (unreviewed — refused outside dev)
+      - openai (unreviewed — refused outside dev)
+      - azure (approved)
+      - vertex (approved)
+      - groq (approved)
+      - xai (approved — pre-launch testing exception only, G-SUP-02)
+    data_boundary: approved_hosted_provider
+    retention_class: limited_abuse_log
+    autonomy_trust_tier: External effect — human approval required before publishing
+    registry_authority: candidate_for_review
+    registry_risk: external_effect
+    human_oversight_point: Human approve route; dry-run mode for first use; copy guard
+    risks:
+      - R-AI-10 (8)
+    fairness_accessibility: Public-facing tone review
+    transparency_to_users: Public posts; AI-assisted content labelling to decide
+    evaluations_and_thresholds: Copy guard (apps/api/src/marketing/copy-guard.ts); no task eval yet (G-AI-01)
+    eval_runs_id: —
+    residual_risk: Low
+    decision: 'Proposed: release with human approval of every post. Not approved.'
+    reassessment_trigger: >-
+      New model or processor, data class, audience or autonomy level; a change to this task in
+      definitions/ai-tasks.yaml; an AI incident
+    sign_off:
+      ai_governance_lead: —
+      privacy_lead: —
+      date: —
+  - task_id: assistant.answer.sensitive.v1
+    system: Ask Keel — special-category hints
+    version: v1
+    owner: Model owner — TBD (AI governance lead to propose, CEO to appoint)
+    assessment_level: full
+    intended_use: Answer a query flagged as containing special-category (health) hints, on self-hosted infrastructure only
+    registry_purpose: Ask Keel — answer a query flagged as containing special-category (health) hints, self-hosted only
+    prohibited_or_foreseeable_misuse: >-
+      Recommending products or providers, switching, investment transactions, payment initiation, medical or
+      legal advice (CLAUDE.md rule 2); acting on the answer without the family; routing to any hosted
+      processor
+    affected_people: Organizer and adult members; other adults and children named in household records appear in context
+    children: 'N'
+    special_category: 'Y'
+    data_in: Question with health hints and minimal context
+    data_out: Answer text
+    processors:
+      - ollama (self_hosted — GCP service decommissioned 2026-10-24)
+    data_boundary: lifekeel_infra_required
+    retention_class: none
+    autonomy_trust_tier: Tier 0 — informational
+    registry_authority: language_only
+    registry_risk: user_visible
+    human_oversight_point: Self-hosted only (lifekeel_infra_required); fails closed if unavailable
+    risks:
+      - R-PRIV-03 (12)
+      - R-AI-12 (8)
+    fairness_accessibility: Not yet measured
+    transparency_to_users: Art. 50 disclosure open (G-AI-02)
+    evaluations_and_thresholds: None task-specific yet (G-AI-01)
+    eval_runs_id: —
+    residual_risk: >-
+      Medium — and availability: the self-hosted service was decommissioned 2026-10-24, so this task fails
+      closed (R-AI-12)
+    decision: 'Proposed: keep quarantined; decide serving path before launch. Not approved.'
+    reassessment_trigger: >-
+      New model or processor, data class, audience or autonomy level; a change to this task in
+      definitions/ai-tasks.yaml; an AI incident
+    sign_off:
+      ai_governance_lead: —
+      privacy_lead: —
+      date: —
+  - task_id: assistant.youth_answer.v1
+    system: Youth-facing Ask Keel
+    version: v1
+    owner: Model owner — TBD (AI governance lead to propose, CEO to appoint)
+    assessment_level: full
+    intended_use: Answer a minor's question from their own youth twin
+    registry_purpose: Youth-facing Ask Keel — answer a minor's question from their own youth twin
+    prohibited_or_foreseeable_misuse: Exposing adult household content; marketing; any advice; routing to a hosted processor
+    affected_people: Minors in the household; their parents
+    children: 'Y'
+    special_category: 'N'
+    data_in: The minor's question and youth twin, at a reduced context budget (youth_context_min)
+    data_out: Youth-safe answer
+    processors:
+      - ollama (self_hosted — GCP service decommissioned 2026-10-24)
+    data_boundary: lifekeel_infra_required
+    retention_class: none
+    autonomy_trust_tier: Tier 0 — informational
+    registry_authority: language_only
+    registry_risk: user_visible
+    human_oversight_point: Self-hosted only; fails closed; youth-scoped access
+    risks:
+      - R-PRIV-02 (15)
+      - R-AI-05 (10)
+      - R-AI-12 (8)
+    fairness_accessibility: Age-appropriate language — not yet evaluated
+    transparency_to_users: Child-appropriate AI disclosure — open (G-AI-02)
+    evaluations_and_thresholds: None task-specific yet (G-AI-01); privacy lead sign-off required (§14.1)
+    eval_runs_id: —
+    residual_risk: High until a youth eval suite and age-assurance decisions exist (G-PRIV-02)
+    decision: 'Proposed: keep quarantined and behind privacy-lead sign-off. Not approved.'
+    reassessment_trigger: >-
+      New model or processor, data class, audience or autonomy level; a change to this task in
+      definitions/ai-tasks.yaml; an AI incident
+    sign_off:
+      ai_governance_lead: —
+      privacy_lead: —
+      date: —
+other_ai_systems:
+  - system_id: local-embedding-model
+    system: Tier-2 intent-classifier embeddings (bge-small-en-v1.5, in-process)
+    source: ai-bom.yaml; docs/models/bge-small-en-v1.5.md
+    note: 'No gateway task: runs in process with no external call. Lightweight record; risk R-AI-14.'
+  - system_id: encoder-model
+    system: Policy-relevance encoder (GLiNER2.5-Decide, infra/encoder-service)
+    source: ai-bom.yaml; docs/models/gliner2.5-decide.md
+    note: >-
+      Self-hosted CPU service behind Cloud Run IAM; reads email from/subject/body. Standard assessment to be
+      completed with email.policy_relevance.v1.
+  - system_id: local-judge-model
+    system: Self-hosted judge (qwen2.5:7b via Ollama)
+    source: ai-bom.yaml; docs/models/qwen2.5.md; definitions/ai-tasks.yaml header
+    note: >-
+      ai-bom.yaml still describes this as the path that keeps family-data tasks off hosted LLMs, but the GCP
+      Ollama service was decommissioned 2026-10-24 and those tasks moved to approved_hosted_provider.
+      Re-assess and correct the BOM wording.
+  - system_id: per-tenant-scorers
+    system: Per-tenant insight scorers (FeatureHashScorer, TenantLevelScorer)
+    source: packages/engine/src/scoring/
+    note: Derived per-tenant models from hashed features/outcomes; risk R-AI-13.
+  - system_id: federated-learning
+    system: FederatedLearningService (dormant)
+    source: SECURITY.md; apps/api/src/__tests__/architecture-claims.test.ts
+    note: >-
+      Not instantiated; warm-start read gated. High impact if enabled — requires explicit opt-in, privacy
+      review and full assessment first (CLAUDE.md rule 3). Risk R-AI-03; gap G-AI-05.

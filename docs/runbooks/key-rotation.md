@@ -1,5 +1,15 @@
 # Key rotation runbook — KEK and per-tenant DEKs
 
+| Field | Value |
+|---|---|
+| Document ID | LK-RB-005 |
+| Version | 0.1 |
+| Status | DRAFT — awaiting approval |
+| Owner | Principal developer (role) |
+| Approver | IMS manager (role) |
+| Approved | — |
+| Next review | — |
+
 Two layers exist (B4):
 
 - **KEK** — the platform key-encryption key, resolved by
