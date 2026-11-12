@@ -1,0 +1,1566 @@
+# Statement of Applicability (93 Annex A controls). Extracted from ISO_AUDITABLE.md, then maintained here.
+# apps/api/src/__tests__/ims-documents.test.ts checks the count, unique ids and that every evidence path exists.
+# implementation_status: implemented | partial | not_implemented | inherited. evidence = repository paths;
+# evidence_notes = the §10/§11 text, including evidence that is not a file (settings, records).
+# Nothing here is approved: the SoA version and date in docs/ims/scope.md are set on approval.
+
+document:
+  id: LK-IMS-041
+  title: Statement of Applicability — ISO/IEC 27001:2022 Annex A
+  standard: ISO/IEC 27001:2022
+  version: '0.1'
+  status: DRAFT — awaiting approval
+  owner: IMS manager (role)
+  approver: CEO / top management (role)
+  approved: —
+  next_review: —
+  source: ISO_AUDITABLE.md §10, verified against the repository on 2026-11-12
+controls:
+  - id: A.5.1
+    title: Policies for information security
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-ORG-03;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: not_implemented
+    evidence:
+      - CLAUDE.md
+      - SECURITY.md
+    evidence_notes: CLAUDE.md rules, SECURITY.md
+    gap_action: Approved IS policy + topic policies (access, crypto, supplier, AI, acceptable use, secure dev)
+    severity_if_unaddressed: S1
+    linked_risks:
+      - R-ORG-03
+    linked_gaps:
+      - G-MGT-02
+  - id: A.5.2
+    title: IS roles and responsibilities
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-ORG-03;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: not_implemented
+    evidence:
+      - apps/api/src/operator/operator-auth.ts
+    evidence_notes: Operator roles in code
+    gap_action: Named roles matrix
+    severity_if_unaddressed: S1
+    linked_risks:
+      - R-ORG-03
+    linked_gaps:
+      - G-MGT-03
+  - id: A.5.3
+    title: Segregation of duties
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-ORG-01,
+      R-SEC-06; legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - .github/workflows/deploy-api.yml
+      - apps/api/src/operator/dual-control.ts
+    evidence_notes: Operator dual control (`operator/dual-control.ts`); deploy needs environment approval
+    gap_action: >-
+      CODEOWNERS is one person; require a second reviewer for prod deploy and security-sensitive paths, or document
+      compensating control
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-ORG-01
+      - R-SEC-06
+    linked_gaps: []
+  - id: A.5.4
+    title: Management responsibilities
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-ORG-03;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: not_implemented
+    evidence: []
+    evidence_notes: —
+    gap_action: Management attests and enforces policies
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-ORG-03
+    linked_gaps: []
+  - id: A.5.5
+    title: Contact with authorities
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - docs/runbooks/breach-response.md
+    evidence_notes: Breach runbook names ICO
+    gap_action: Authority contact list per market (DPAs, ICO, FCA, AI Act authority, CERTs)
+    severity_if_unaddressed: S3
+    linked_risks: []
+    linked_gaps: []
+  - id: A.5.6
+    title: Contact with special interest groups
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: not_implemented
+    evidence: []
+    evidence_notes: —
+    gap_action: Subscribe to NCSC, CISA KEV, OWASP, cloud advisories; record
+    severity_if_unaddressed: S4
+    linked_risks: []
+    linked_gaps:
+      - G-OFI-03
+  - id: A.5.7
+    title: Threat intelligence
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - .github/workflows/security.yml
+    evidence_notes: Dependency audit, CodeQL, Trivy
+    gap_action: Documented intake → triage → action (incl. AI threat feeds)
+    severity_if_unaddressed: S3
+    linked_risks: []
+    linked_gaps: []
+  - id: A.5.8
+    title: IS in project management
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: implemented
+    evidence:
+      - .github/pull_request_template.md
+      - docs/templates/intent.md
+    evidence_notes: PRD template, PR template (tier + advice check), plan mode
+    gap_action: Add security/privacy/AI-impact checkbox to `docs/templates/intent.md`
+    severity_if_unaddressed: S4
+    linked_risks: []
+    linked_gaps: []
+  - id: A.5.9
+    title: Inventory of information and assets
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - ai-bom.yaml
+      - apps/api/src/erasure.ts
+    evidence_notes: '`erasure.ts` collection catalogue, `ai-bom.yaml`, `public-routes.ts`'
+    gap_action: Single asset register incl. SaaS accounts, devices, keys, owners
+    severity_if_unaddressed: S2
+    linked_risks: []
+    linked_gaps:
+      - G-OFI-02
+  - id: A.5.10
+    title: Acceptable use
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: not_implemented
+    evidence:
+      - docs/ims/policies/acceptable-use-policy.md
+    evidence_notes: —
+    gap_action: AUP for staff, contractors and AI coding agents (§17.5)
+    severity_if_unaddressed: S2
+    linked_risks: []
+    linked_gaps: []
+  - id: A.5.11
+    title: Return of assets
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: not_implemented
+    evidence: []
+    evidence_notes: —
+    gap_action: Offboarding checklist
+    severity_if_unaddressed: S3
+    linked_risks: []
+    linked_gaps: []
+  - id: A.5.12
+    title: Classification of information
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats
+      R-PRIV-03; legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - docs/ims/policies/classification-policy.md
+    evidence_notes: §8.2 draft
+    gap_action: Approve scheme; server-side disclosure classification
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-PRIV-03
+    linked_gaps:
+      - G-SEC-06
+      - G-PRIV-04
+  - id: A.5.13
+    title: Labelling of information
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - ISO_AUDITABLE.md
+      - docs/ims/document-control.md
+    evidence_notes: Document metadata header in this file
+    gap_action: Label docs/exports by class
+    severity_if_unaddressed: S4
+    linked_risks: []
+    linked_gaps: []
+  - id: A.5.14
+    title: Information transfer
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats
+      R-PRIV-09; legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - apps/api/src/documents/r2.ts
+      - apps/api/src/routes/account.ts
+    evidence_notes: TLS, presigned URLs, export endpoint, tokens in URL fragment (R22)
+    gap_action: Transfer rules incl. international transfers (SCCs/IDTA)
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-PRIV-09
+    linked_gaps: []
+  - id: A.5.15
+    title: Access control
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-SEC-13;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: implemented
+    evidence:
+      - apps/api/src/family/family-permissions.ts
+      - apps/api/src/operator/operator-auth.ts
+      - docs/ims/policies/access-control-policy.md
+      - packages/platform/src/tenant-scoped-collection.ts
+    evidence_notes: Tenant scope + family roles + operator RBAC; `isHouseholdEditor`
+    gap_action: Access control policy document
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-SEC-13
+    linked_gaps: []
+  - id: A.5.16
+    title: Identity management
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: implemented
+    evidence:
+      - apps/api/src/operator/operator-auth.ts
+    evidence_notes: Users, operators, `PLATFORM_OPERATOR_BOOTSTRAP_UNTIL` expiry
+    gap_action: Joiner/mover/leaver for staff accounts in GCP/GitHub/Stripe/etc.
+    severity_if_unaddressed: S3
+    linked_risks: []
+    linked_gaps: []
+  - id: A.5.17
+    title: Authentication information
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-SEC-01,
+      R-SEC-07; legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: implemented
+    evidence:
+      - apps/api/src/auth/totp.ts
+      - apps/api/src/routes/auth-users.ts
+    evidence_notes: scrypt hashing, hashed reset tokens (R39), encrypted MFA secrets (R40), per-purpose keys (R41)
+    gap_action: Password/secret handling standard for staff
+    severity_if_unaddressed: S4
+    linked_risks:
+      - R-SEC-01
+      - R-SEC-07
+    linked_gaps: []
+  - id: A.5.18
+    title: Access rights
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-SEC-06;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - apps/api/src/family/family-permissions.ts
+    evidence_notes: Removal revokes access (R03)
+    gap_action: Quarterly access review of staff/operator/cloud access with record
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-SEC-06
+    linked_gaps: []
+  - id: A.5.19
+    title: IS in supplier relationships
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-SUP-01,
+      R-SUP-03; legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - definitions/ai-processors.yaml
+      - docs/ims/policies/supplier-policy.md
+    evidence_notes: '`definitions/ai-processors.yaml`'
+    gap_action: Supplier register covering all vendors (§23.6), risk-tiered
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-SUP-01
+      - R-SUP-03
+    linked_gaps:
+      - G-SUP-01
+      - G-SUP-03
+  - id: A.5.20
+    title: IS within supplier agreements
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-AI-02,
+      R-PRIV-09, R-AI-08; legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - definitions/ai-processors.yaml
+    evidence_notes: Processor terms partly recorded
+    gap_action: Signed DPAs, security schedules, breach-notice SLA per supplier
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-AI-02
+      - R-PRIV-09
+      - R-AI-08
+    linked_gaps:
+      - G-SUP-01
+  - id: A.5.21
+    title: ICT supply chain
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-SEC-04,
+      R-AI-14; legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - .github/workflows/ci.yml
+      - ai-bom.yaml
+    evidence_notes: Digest pins, SBOM/provenance (R31), actions pinned by SHA, `ai-bom.yaml`
+    gap_action: npm dependency policy (allow-list, age, provenance)
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-SEC-04
+      - R-AI-14
+    linked_gaps:
+      - G-SUP-01
+  - id: A.5.22
+    title: Monitor/review supplier services
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-AI-08,
+      R-SUP-02, R-SUP-04; legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - definitions/ai-processors.yaml
+      - packages/platform/src/ai-processors.ts
+    evidence_notes: '`review_due` blocks lapsed processor'
+    gap_action: Annual supplier review records for non-AI suppliers
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-AI-08
+      - R-SUP-02
+      - R-SUP-04
+    linked_gaps:
+      - G-SUP-01
+  - id: A.5.23
+    title: IS for use of cloud services
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-SUP-03;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - docs/ims/policies/supplier-policy.md
+      - docs/infra-provisioning.md
+    evidence_notes: GCP, Firebase, Cloudflare, Mongo/Redis provider
+    gap_action: 'Cloud policy: shared-responsibility matrix, exit plan (ARCH §16 P2 vendor exit)'
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-SUP-03
+    linked_gaps:
+      - G-SUP-03
+      - G-SUP-04
+  - id: A.5.24
+    title: Incident management planning
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - docs/ims/policies/incident-management-policy.md
+      - docs/runbooks/breach-response.md
+    evidence_notes: '`docs/runbooks/breach-response.md`'
+    gap_action: Name roles; severity model; on-call; covers security, privacy **and AI incidents**
+    severity_if_unaddressed: S2
+    linked_risks: []
+    linked_gaps:
+      - G-OPS-02
+  - id: A.5.25
+    title: Assessment and decision on IS events
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - apps/api/src/audit/audit-log.ts
+    evidence_notes: Alerting on lost audit records (R33)
+    gap_action: Triage criteria and event log
+    severity_if_unaddressed: S3
+    linked_risks: []
+    linked_gaps:
+      - G-OPS-02
+  - id: A.5.26
+    title: Response to IS incidents
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - docs/runbooks/breach-response.md
+    evidence_notes: Runbook first-hour steps, maintenance mode
+    gap_action: Tabletop exercise record
+    severity_if_unaddressed: S2
+    linked_risks: []
+    linked_gaps:
+      - G-OPS-02
+  - id: A.5.27
+    title: Learning from incidents
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence: []
+    evidence_notes: '"post-incident fixture process" proposed'
+    gap_action: Post-incident review template; link to NC log
+    severity_if_unaddressed: S3
+    linked_risks: []
+    linked_gaps:
+      - G-OPS-02
+  - id: A.5.28
+    title: Collection of evidence
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-SEC-05;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - apps/api/src/audit/audit-log.ts
+    evidence_notes: Audit log, login_events, Cloud Run logs
+    gap_action: Forensic preservation procedure; tamper-evident audit (G-SEC-03)
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-SEC-05
+    linked_gaps:
+      - G-SEC-03
+  - id: A.5.29
+    title: IS during disruption
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-OPS-03;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - docs/runbooks/breach-response.md
+    evidence_notes: Degraded modes, maintenance mode
+    gap_action: BC plan maintaining security controls during outage
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-OPS-03
+    linked_gaps:
+      - G-OPS-06
+  - id: A.5.30
+    title: ICT readiness for business continuity
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-OPS-01,
+      R-AI-12, R-ORG-05; legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - docs/runbooks/backup-restore.md
+      - scripts/ops/restore-drill.ts
+    evidence_notes: RPO/RTO in backup runbook; restore drill passed once
+    gap_action: Managed PITR; scheduled drills; region-failure plan
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-OPS-01
+      - R-AI-12
+      - R-ORG-05
+    linked_gaps:
+      - G-OPS-01
+  - id: A.5.31
+    title: Legal, statutory, regulatory, contractual
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats
+      R-PRIV-01, R-AI-01, R-LEG-01, R-LEG-02, R-SUP-01, R-AI-10, R-AI-15, R-LEG-03, R-LEG-04, R-LEG-05; legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - docs/compliance/dpia.md
+      - docs/compliance/fca-perimeter.md
+      - docs/compliance/pci-scope.md
+      - docs/reviews/SECURITY_AND_COMPLIANCE.md
+    evidence_notes: Compliance review; FCA/PCI/DPIA notes
+    gap_action: Legal register per market (§18) with owner and review date
+    severity_if_unaddressed: S1
+    linked_risks:
+      - R-PRIV-01
+      - R-AI-01
+      - R-LEG-01
+      - R-LEG-02
+      - R-SUP-01
+      - R-AI-10
+      - R-AI-15
+      - R-LEG-03
+      - R-LEG-04
+      - R-LEG-05
+    linked_gaps:
+      - G-PRIV-01
+      - G-LEG-01
+      - G-LEG-02
+      - G-LEG-03
+  - id: A.5.32
+    title: Intellectual property rights
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-LEG-06;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - LICENSE
+      - NOTICE
+      - ai-bom.yaml
+    evidence_notes: LICENSE, NOTICE, model licences in `ai-bom.yaml`
+    gap_action: Licence scanning in CI; AI-generated code IP policy
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-LEG-06
+    linked_gaps: []
+  - id: A.5.33
+    title: Protection of records
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats
+      R-PRIV-05; legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - apps/api/src/audit/audit-log.ts
+      - apps/api/src/deletion/receipt.ts
+    evidence_notes: 7-year audit TTL, deletion receipts
+    gap_action: Records retention schedule incl. IMS records
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-PRIV-05
+    linked_gaps:
+      - G-OPS-04
+  - id: A.5.34
+    title: Privacy and protection of PII
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats
+      R-PRIV-01, R-PRIV-02, R-PRIV-03, R-AI-03, R-PRIV-04, R-PRIV-06, R-PRIV-07, R-PRIV-08, R-AI-05; legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - docs/compliance/dpia.md
+      - docs/data-retention.md
+      - docs/ims/ropa.md
+      - docs/runbooks/rights-requests.md
+    evidence_notes: DPIA draft, retention, erasure, export, rights runbook
+    gap_action: Sign DPIA; RoPA; lawful bases; privacy notice legal review (R11, R12)
+    severity_if_unaddressed: S1
+    linked_risks:
+      - R-PRIV-01
+      - R-PRIV-02
+      - R-PRIV-03
+      - R-AI-03
+      - R-PRIV-04
+      - R-PRIV-06
+      - R-PRIV-07
+      - R-PRIV-08
+      - R-AI-05
+    linked_gaps:
+      - G-PRIV-01
+      - G-AI-05
+      - G-PRIV-02
+      - G-PRIV-03
+      - G-PRIV-04
+  - id: A.5.35
+    title: Independent review of IS
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: not_implemented
+    evidence: []
+    evidence_notes: Reviews are self-assessments
+    gap_action: External penetration test + independent internal audit
+    severity_if_unaddressed: S2
+    linked_risks: []
+    linked_gaps:
+      - G-SEC-05
+  - id: A.5.36
+    title: Compliance with policies and standards
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - apps/api/src/__tests__/architecture-claims.test.ts
+    evidence_notes: CI tripwires
+    gap_action: Periodic compliance check results reported to mgmt review
+    severity_if_unaddressed: S3
+    linked_risks: []
+    linked_gaps: []
+  - id: A.5.37
+    title: Documented operating procedures
+    theme: organizational
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: implemented
+    evidence:
+      - docs/ims/document-control.md
+      - docs/runbooks
+      - docs/sdlc
+      - runbooks.yaml
+    evidence_notes: '`docs/runbooks/*`, `runbooks.yaml`, `docs/sdlc/*`'
+    gap_action: Owners and review dates on each runbook
+    severity_if_unaddressed: S4
+    linked_risks: []
+    linked_gaps: []
+  - id: A.6.1
+    title: Screening
+    theme: people
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-ORG-01;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: not_implemented
+    evidence: []
+    evidence_notes: —
+    gap_action: Proportionate background checks (law-dependent) for anyone with production access
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-ORG-01
+    linked_gaps:
+      - G-PEO-01
+  - id: A.6.2
+    title: Terms and conditions of employment
+    theme: people
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: not_implemented
+    evidence: []
+    evidence_notes: —
+    gap_action: Security and confidentiality clauses in contracts
+    severity_if_unaddressed: S2
+    linked_risks: []
+    linked_gaps:
+      - G-PEO-01
+  - id: A.6.3
+    title: Awareness, education and training
+    theme: people
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-ORG-04;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: not_implemented
+    evidence: []
+    evidence_notes: —
+    gap_action: Annual IS + privacy + **AI literacy (EU AI Act Art. 4)** training; records
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-ORG-04
+    linked_gaps:
+      - G-PEO-01
+  - id: A.6.4
+    title: Disciplinary process
+    theme: people
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: not_implemented
+    evidence: []
+    evidence_notes: —
+    gap_action: Documented process
+    severity_if_unaddressed: S3
+    linked_risks: []
+    linked_gaps:
+      - G-PEO-01
+  - id: A.6.5
+    title: Responsibilities after termination/change
+    theme: people
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: not_implemented
+    evidence: []
+    evidence_notes: —
+    gap_action: 'Offboarding: revoke GitHub, GCP, Stripe, Cloudflare, Mongo, SendGrid, LLM consoles same day'
+    severity_if_unaddressed: S2
+    linked_risks: []
+    linked_gaps:
+      - G-PEO-01
+  - id: A.6.6
+    title: Confidentiality / NDAs
+    theme: people
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: not_implemented
+    evidence: []
+    evidence_notes: —
+    gap_action: NDAs for staff, contractors, auditors
+    severity_if_unaddressed: S2
+    linked_risks: []
+    linked_gaps:
+      - G-PEO-01
+  - id: A.6.7
+    title: Remote working
+    theme: people
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: not_implemented
+    evidence:
+      - docs/ims/policies/remote-working-policy.md
+    evidence_notes: —
+    gap_action: Remote-working policy (device, network, screen privacy)
+    severity_if_unaddressed: S3
+    linked_risks: []
+    linked_gaps: []
+  - id: A.6.8
+    title: IS event reporting
+    theme: people
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - SECURITY.md
+    evidence_notes: SECURITY.md reporting route
+    gap_action: Internal reporting channel; external `security.txt` / vulnerability disclosure policy
+    severity_if_unaddressed: S3
+    linked_risks: []
+    linked_gaps:
+      - G-OFI-05
+  - id: A.7.1
+    title: Physical security perimeters
+    theme: physical
+    applicable: 'Y'
+    justification: 'Applicable: data-centre control implemented by cloud suppliers (inherited); see docs/ims/scope.md §5.'
+    implementation_status: inherited
+    evidence: []
+    evidence_notes: Supplier certificates
+    gap_action: Keep current supplier ISO/IEC 27001 certificates / SOC 2 Type II reports on file; review annually (A.5.22)
+    severity_if_unaddressed: S3
+    linked_risks: []
+    linked_gaps: []
+  - id: A.7.2
+    title: Physical entry
+    theme: physical
+    applicable: 'Y'
+    justification: 'Applicable: data-centre control implemented by cloud suppliers (inherited); see docs/ims/scope.md §5.'
+    implementation_status: inherited
+    evidence: []
+    evidence_notes: Supplier certificates
+    gap_action: Keep current supplier ISO/IEC 27001 certificates / SOC 2 Type II reports on file; review annually (A.5.22)
+    severity_if_unaddressed: S3
+    linked_risks: []
+    linked_gaps: []
+  - id: A.7.3
+    title: Securing offices, rooms, facilities
+    theme: physical
+    applicable: 'Y'
+    justification: 'Applicable: staff endpoints and home offices remain in scope (ISO_AUDITABLE.md §10.3).'
+    implementation_status: partial
+    evidence:
+      - docs/ims/policies/remote-working-policy.md
+    evidence_notes: 'Planned: Remote-working policy'
+    gap_action: Remote-working policy
+    severity_if_unaddressed: S3
+    linked_risks: []
+    linked_gaps: []
+  - id: A.7.4
+    title: Physical security monitoring
+    theme: physical
+    applicable: 'Y'
+    justification: 'Applicable: data-centre control implemented by cloud suppliers (inherited); see docs/ims/scope.md §5.'
+    implementation_status: inherited
+    evidence: []
+    evidence_notes: Supplier certificates
+    gap_action: Keep current supplier ISO/IEC 27001 certificates / SOC 2 Type II reports on file; review annually (A.5.22)
+    severity_if_unaddressed: S4
+    linked_risks: []
+    linked_gaps: []
+  - id: A.7.5
+    title: Physical and environmental threats
+    theme: physical
+    applicable: 'Y'
+    justification: 'Applicable: data-centre control implemented by cloud suppliers (inherited); see docs/ims/scope.md §5.'
+    implementation_status: inherited
+    evidence: []
+    evidence_notes: Supplier certificates
+    gap_action: Keep current supplier ISO/IEC 27001 certificates / SOC 2 Type II reports on file; review annually (A.5.22)
+    severity_if_unaddressed: S4
+    linked_risks: []
+    linked_gaps: []
+  - id: A.7.6
+    title: Working in secure areas
+    theme: physical
+    applicable: 'Y'
+    justification: 'Applicable: data-centre control implemented by cloud suppliers (inherited); see docs/ims/scope.md §5.'
+    implementation_status: inherited
+    evidence: []
+    evidence_notes: Supplier certificates
+    gap_action: Keep current supplier ISO/IEC 27001 certificates / SOC 2 Type II reports on file; review annually (A.5.22)
+    severity_if_unaddressed: S4
+    linked_risks: []
+    linked_gaps: []
+  - id: A.7.7
+    title: Clear desk and clear screen
+    theme: physical
+    applicable: 'Y'
+    justification: 'Applicable: staff endpoints and home offices remain in scope (ISO_AUDITABLE.md §10.3).'
+    implementation_status: not_implemented
+    evidence:
+      - docs/ims/policies/remote-working-policy.md
+    evidence_notes: 'Planned: Policy + screen-lock MDM setting'
+    gap_action: Policy + screen-lock MDM setting
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-SEC-14
+    linked_gaps: []
+  - id: A.7.8
+    title: Equipment siting and protection
+    theme: physical
+    applicable: 'Y'
+    justification: 'Applicable: staff endpoints and home offices remain in scope (ISO_AUDITABLE.md §10.3).'
+    implementation_status: partial
+    evidence:
+      - docs/ims/policies/remote-working-policy.md
+    evidence_notes: 'Planned: Remote-working policy'
+    gap_action: Remote-working policy
+    severity_if_unaddressed: S4
+    linked_risks: []
+    linked_gaps: []
+  - id: A.7.9
+    title: Security of assets off-premises
+    theme: physical
+    applicable: 'Y'
+    justification: 'Applicable: staff endpoints and home offices remain in scope (ISO_AUDITABLE.md §10.3).'
+    implementation_status: not_implemented
+    evidence:
+      - docs/ims/policies/remote-working-policy.md
+    evidence_notes: 'Planned: Laptop encryption, MDM, lost-device procedure'
+    gap_action: Laptop encryption, MDM, lost-device procedure
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-SEC-14
+    linked_gaps:
+      - G-PEO-02
+  - id: A.7.10
+    title: Storage media
+    theme: physical
+    applicable: 'Y'
+    justification: 'Applicable: staff endpoints and home offices remain in scope (ISO_AUDITABLE.md §10.3).'
+    implementation_status: not_implemented
+    evidence: []
+    evidence_notes: 'Planned: No removable media for C3/C4 data; backups encrypted with `age` (R20)'
+    gap_action: No removable media for C3/C4 data; backups encrypted with `age` (R20)
+    severity_if_unaddressed: S3
+    linked_risks: []
+    linked_gaps: []
+  - id: A.7.11
+    title: Supporting utilities
+    theme: physical
+    applicable: 'Y'
+    justification: 'Applicable: data-centre control implemented by cloud suppliers (inherited); see docs/ims/scope.md §5.'
+    implementation_status: inherited
+    evidence: []
+    evidence_notes: Supplier certificates
+    gap_action: Keep current supplier ISO/IEC 27001 certificates / SOC 2 Type II reports on file; review annually (A.5.22)
+    severity_if_unaddressed: S4
+    linked_risks: []
+    linked_gaps: []
+  - id: A.7.12
+    title: Cabling security
+    theme: physical
+    applicable: 'Y'
+    justification: 'Applicable: data-centre control implemented by cloud suppliers (inherited); see docs/ims/scope.md §5.'
+    implementation_status: inherited
+    evidence: []
+    evidence_notes: Supplier certificates
+    gap_action: Keep current supplier ISO/IEC 27001 certificates / SOC 2 Type II reports on file; review annually (A.5.22)
+    severity_if_unaddressed: S4
+    linked_risks: []
+    linked_gaps: []
+  - id: A.7.13
+    title: Equipment maintenance
+    theme: physical
+    applicable: 'Y'
+    justification: 'Applicable: staff endpoints and home offices remain in scope (ISO_AUDITABLE.md §10.3).'
+    implementation_status: partial
+    evidence:
+      - docs/ims/policies/remote-working-policy.md
+    evidence_notes: 'Planned: Laptop OS update policy'
+    gap_action: Laptop OS update policy
+    severity_if_unaddressed: S4
+    linked_risks: []
+    linked_gaps: []
+  - id: A.7.14
+    title: Secure disposal or re-use of equipment
+    theme: physical
+    applicable: 'Y'
+    justification: 'Applicable: staff endpoints and home offices remain in scope (ISO_AUDITABLE.md §10.3).'
+    implementation_status: not_implemented
+    evidence: []
+    evidence_notes: 'Planned: Wipe procedure + certificate for laptops'
+    gap_action: Wipe procedure + certificate for laptops
+    severity_if_unaddressed: S3
+    linked_risks: []
+    linked_gaps: []
+  - id: A.8.1
+    title: User endpoint devices
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-SEC-14;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: not_implemented
+    evidence:
+      - apps/mobile/capacitor.config.ts
+    evidence_notes: Mobile biometric gate (app side)
+    gap_action: 'Staff device policy: FDE, MDM, EDR, auto-update'
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-SEC-14
+    linked_gaps:
+      - G-PEO-02
+  - id: A.8.2
+    title: Privileged access rights
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-SEC-06,
+      R-SEC-07; legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - apps/api/src/operator/operator-auth.ts
+    evidence_notes: Operator step-up + dual control; break-glass expiry
+    gap_action: GCP/GitHub/DB admin roles least-privilege; **workload identity, delete JSON keys (R31)**; quarterly review
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-SEC-06
+      - R-SEC-07
+    linked_gaps:
+      - G-SEC-02
+  - id: A.8.3
+    title: Information access restriction
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-SEC-02,
+      R-SEC-13; legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - apps/api/src/__tests__/ml-tenant-isolation.test.ts
+      - packages/platform/src/tenant-scoped-collection.ts
+    evidence_notes: Tenant-scoped wrapper, cross-tenant tests, youth redaction
+    gap_action: Raw-collection access inventory; deny-by-default resource authorization (ARCH §16 P1)
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-SEC-02
+      - R-SEC-13
+    linked_gaps:
+      - G-SEC-06
+      - G-SEC-07
+  - id: A.8.4
+    title: Access to source code
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-SEC-04;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - CODEOWNERS
+    evidence_notes: Private repo; CODEOWNERS
+    gap_action: Verify branch protection, signed commits enforced, required reviews (R30 residual)
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-SEC-04
+    linked_gaps:
+      - G-SEC-01
+  - id: A.8.5
+    title: Secure authentication
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-SEC-01,
+      R-SEC-10, R-SEC-11; legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: implemented
+    evidence:
+      - apps/api/src/auth/otp.ts
+      - apps/api/src/auth/session-revocation.ts
+      - apps/api/src/auth/totp.ts
+    evidence_notes: MFA/TOTP, email OTP, Turnstile, session revocation, throttling
+    gap_action: Passkeys/phishing-resistant MFA for **operators and staff** first
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-SEC-01
+      - R-SEC-10
+      - R-SEC-11
+    linked_gaps:
+      - G-SEC-02
+      - G-SEC-10
+      - G-OFI-01
+  - id: A.8.6
+    title: Capacity management
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-OPS-05;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - packages/platform/src/llm-budget.ts
+    evidence_notes: Unit economics, plan caps, budgets
+    gap_action: Capacity model + load test baseline (ARCH §16 P2)
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-OPS-05
+    linked_gaps:
+      - G-OPS-03
+      - G-OPS-07
+  - id: A.8.7
+    title: Protection against malware
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-SEC-08;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: implemented
+    evidence:
+      - apps/api/src/documents/scan-job.ts
+    evidence_notes: ClamAV scan worker, quarantine bucket, parser child without credentials
+    gap_action: Staff endpoint AV/EDR
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-SEC-08
+    linked_gaps: []
+  - id: A.8.8
+    title: Technical vulnerability management
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-SEC-12;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - .github/workflows/security.yml
+    evidence_notes: '`security.yml` dependency audit, CodeQL (weekly), Trivy'
+    gap_action: Patch SLAs (Critical 7d / High 30d / Medium 90d), tracked; annual pentest
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-SEC-12
+    linked_gaps:
+      - G-SEC-08
+  - id: A.8.9
+    title: Configuration management
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-AI-09;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - apps/api/src/server.ts
+      - packages/platform/src/llm-guards.ts
+    evidence_notes: Boot guards, env validation, digest pins, IaC partial
+    gap_action: Baseline configs for Cloud Run/GCP/Cloudflare; drift detection
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-AI-09
+    linked_gaps: []
+  - id: A.8.10
+    title: Information deletion
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-OPS-02,
+      R-PRIV-05; legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: implemented
+    evidence:
+      - apps/api/src/erasure.ts
+    evidence_notes: '`erasure.ts`, replay cron, crypto-shredding, receipts'
+    gap_action: Provider-side deletion evidence (contract)
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-OPS-02
+      - R-PRIV-05
+    linked_gaps:
+      - G-OPS-04
+  - id: A.8.11
+    title: Data masking
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats
+      R-PRIV-06; legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - apps/api/src/observability/redact.ts
+      - apps/api/src/privacy/special-category.ts
+    evidence_notes: Log scrubbing (R22), metadata-first telemetry, special-category stripping
+    gap_action: Masking standard for non-prod and eval fixtures
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-PRIV-06
+    linked_gaps: []
+  - id: A.8.12
+    title: Data leakage prevention
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-SEC-09;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - packages/platform/src/llm-guards.ts
+    evidence_notes: Output guards, prompt/completion telemetry off, no semantic cache for sensitive data
+    gap_action: Egress allow-list (ARCH §15.5)
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-SEC-09
+    linked_gaps:
+      - G-SEC-09
+  - id: A.8.13
+    title: Information backup
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-OPS-02;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - docs/ims/policies/backup-policy.md
+      - scripts/ops/backup.sh
+      - scripts/ops/restore-drill.ts
+    evidence_notes: Encrypted `backup.sh`, erasure journal, one drill
+    gap_action: '**Managed PITR**, scheduled backups, quarterly drill with records'
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-OPS-02
+    linked_gaps:
+      - G-OPS-01
+  - id: A.8.14
+    title: Redundancy
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-OPS-01;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - .github/workflows/deploy-api.yml
+    evidence_notes: Stateless replicas, 0–4 instances
+    gap_action: Region/provider failure decision tied to RTO (ARCH §16 P2)
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-OPS-01
+    linked_gaps:
+      - G-OPS-05
+  - id: A.8.15
+    title: Logging
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-SEC-05;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - apps/api/src/audit/audit-log.ts
+      - docs/ims/policies/logging-policy.md
+    evidence_notes: Structured logs, append-only audit convention, 7-year TTL
+    gap_action: '**Tamper-evident/WORM audit export**; mandatory audit for consequential actions (R33)'
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-SEC-05
+    linked_gaps:
+      - G-SEC-03
+      - G-OFI-04
+  - id: A.8.16
+    title: Monitoring activities
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-OPS-04;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - apps/api/src/audit/audit-log.ts
+    evidence_notes: Prometheus, OTel, alert on lost audit
+    gap_action: Security monitoring use-cases (auth anomalies, operator actions, mass export) with alert routing
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-OPS-04
+    linked_gaps: []
+  - id: A.8.17
+    title: Clock synchronization
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: inherited
+    evidence: []
+    evidence_notes: Cloud-provided NTP
+    gap_action: Record reliance
+    severity_if_unaddressed: S4
+    linked_risks: []
+    linked_gaps: []
+  - id: A.8.18
+    title: Privileged utility programs
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - scripts/ops
+    evidence_notes: Ops scripts under `scripts/ops/`
+    gap_action: Restrict and log use (e.g. raw `mongorestore` bypass of `restore.sh`)
+    severity_if_unaddressed: S3
+    linked_risks: []
+    linked_gaps: []
+  - id: A.8.19
+    title: Software installation on operational systems
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: implemented
+    evidence:
+      - .github/workflows/deploy-api.yml
+    evidence_notes: Immutable images, deploy by digest
+    gap_action: null
+    severity_if_unaddressed: S4
+    linked_risks: []
+    linked_gaps: []
+  - id: A.8.20
+    title: Networks security
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-SEC-09;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - packages/platform/src/safe-http-client.ts
+    evidence_notes: HTTPS, CORS, `*.run.app` removed (R34), IMAP SSRF fix (R07)
+    gap_action: Egress controls at infrastructure level
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-SEC-09
+    linked_gaps:
+      - G-SEC-09
+  - id: A.8.21
+    title: Security of network services
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - .github/workflows/deploy-api.yml
+      - apps/api/src/__tests__/cloud-run-auth.test.ts
+    review_note: >-
+      Repository check 2026-11-12: deploy-api.yml states the always-on lifekeel-jobs service was removed (intent 92) and
+      crons are driven by Cloud Scheduler calling /internal/cron/* on the API. The "jobs service internal ingress"
+      evidence in ISO_AUDITABLE.md §10 needs correcting.
+    evidence_notes: Cloudflare, Cloud Run ingress; jobs service internal ingress
+    gap_action: Document network service security requirements
+    severity_if_unaddressed: S3
+    linked_risks: []
+    linked_gaps: []
+  - id: A.8.22
+    title: Segregation of networks
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - docs/intents/92-serverless-background-work.md
+      - scripts/ops/create-cron-scheduler.sh
+    review_note: >-
+      Repository check 2026-11-12: no lifekeel-jobs internal-ingress service is deployed by the workflows
+      (deploy-api.yml, intent 92); segregation evidence must be re-established (R2 bucket separation, Cloud Scheduler
+      auth to /internal/cron/*).
+    evidence_notes: '`lifekeel-jobs` internal ingress; separate R2 buckets'
+    gap_action: Network diagram with zones; VPC egress
+    severity_if_unaddressed: S3
+    linked_risks: []
+    linked_gaps: []
+  - id: A.8.23
+    title: Web filtering
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence: []
+    evidence_notes: Staff browsing only
+    gap_action: Proportionate DNS filtering on staff devices
+    severity_if_unaddressed: S4
+    linked_risks: []
+    linked_gaps: []
+  - id: A.8.24
+    title: Use of cryptography
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-SEC-07;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: implemented
+    evidence:
+      - apps/api/src/crypto/envelope.ts
+      - docs/ims/policies/cryptography-policy.md
+      - docs/runbooks/key-rotation.md
+    evidence_notes: AES-256-GCM per-tenant DEKs, KEK versioning, key-rotation runbook, `age` backups
+    gap_action: Cryptography policy document; KMS/HSM for KEK
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-SEC-07
+    linked_gaps: []
+  - id: A.8.25
+    title: Secure development life cycle
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-ORG-02;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: implemented
+    evidence:
+      - .github/pull_request_template.md
+      - docs/ai-native-sdlc-playbook.md
+      - docs/ims/policies/secure-development-policy.md
+    evidence_notes: '`docs/ai-native-sdlc-playbook.md`, PR template, CI gates, `/code-review`'
+    gap_action: Formalise as procedure; include threat modelling step
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-ORG-02
+    linked_gaps: []
+  - id: A.8.26
+    title: Application security requirements
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-SEC-03,
+      R-SEC-15; legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - docs/reviews/SECURITY_AND_COMPLIANCE.md
+    evidence_notes: OWASP mapping in compliance review
+    gap_action: Security requirements in PRD template
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-SEC-03
+      - R-SEC-15
+    linked_gaps: []
+  - id: A.8.27
+    title: Secure architecture and engineering principles
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-SEC-02;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - ARCHITECTURE.md
+    evidence_notes: ARCHITECTURE.md §15.2, trust boundaries
+    gap_action: '**Threat models** for twin, vault, ingestion, AI, actions, operator, mobile'
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-SEC-02
+    linked_gaps:
+      - G-SEC-04
+  - id: A.8.28
+    title: Secure coding
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: implemented
+    evidence:
+      - .github/workflows/ci.yml
+      - .github/workflows/security.yml
+    evidence_notes: Strict TypeScript, lint, CodeQL, review
+    gap_action: Secure coding standard doc
+    severity_if_unaddressed: S4
+    linked_risks: []
+    linked_gaps: []
+  - id: A.8.29
+    title: Security testing in development and acceptance
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-SEC-15,
+      R-QMS-02; legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - .github/workflows/ci.yml
+      - red-team/guard-fixtures.yaml
+    evidence_notes: Unit/integration tests, red-team fixtures, boot smoke
+    gap_action: DAST/pentest before launch; authz contract tests per ID-bearing route
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-SEC-15
+      - R-QMS-02
+    linked_gaps:
+      - G-SEC-05
+  - id: A.8.30
+    title: Outsourced development
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-ORG-02;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - CLAUDE.md
+    evidence_notes: AI coding agents governed by CLAUDE.md, hooks
+    gap_action: Contractor/agent development policy (§17.5)
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-ORG-02
+    linked_gaps: []
+  - id: A.8.31
+    title: Separation of dev, test, prod
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-OPS-06;
+      legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: implemented
+    evidence:
+      - .github/workflows/deploy-staging.yml
+      - apps/api/src/server.ts
+      - packages/platform/src/llm-guards.ts
+    evidence_notes: Staging env (`deploy-staging.yml`), boot guards refuse demo tokens outside dev
+    gap_action: Confirm no prod data in staging
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-OPS-06
+    linked_gaps: []
+  - id: A.8.32
+    title: Change management
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); treats R-AI-16,
+      R-OPS-06; legal and contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: implemented
+    evidence:
+      - .github/workflows/deploy-api.yml
+      - .github/workflows/require-ci.yml
+    evidence_notes: PR → CI → `require-ci.yml` → human-approved `workflow_dispatch`
+    gap_action: Emergency-change procedure; verify environment reviewers configured
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-AI-16
+      - R-OPS-06
+    linked_gaps:
+      - G-SEC-01
+  - id: A.8.33
+    title: Test information
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: partial
+    evidence:
+      - detector-evals/README.md
+    evidence_notes: Synthetic flow validation, detector-evals
+    gap_action: 'Rule: no production family data in tests/evals without approval'
+    severity_if_unaddressed: S3
+    linked_risks: []
+    linked_gaps: []
+  - id: A.8.34
+    title: Protection during audit testing
+    theme: technological
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel processes household personal and financial data as SaaS (docs/ims/scope.md); legal and
+      contractual requirements per ISO_AUDITABLE.md §18.
+    implementation_status: not_implemented
+    evidence: []
+    evidence_notes: —
+    gap_action: Rules of engagement for pentest/audit access
+    severity_if_unaddressed: S4
+    linked_risks: []
+    linked_gaps: []

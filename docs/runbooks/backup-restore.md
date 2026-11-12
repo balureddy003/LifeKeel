@@ -1,5 +1,15 @@
 # Runbook: backup & restore (baseline)
 
+| Field | Value |
+|---|---|
+| Document ID | LK-RB-001 |
+| Version | 0.1 |
+| Status | DRAFT — awaiting approval |
+| Owner | SRE / on-call lead (role) |
+| Approver | IMS manager (role) |
+| Approved | — |
+| Next review | — |
+
 Owner: platform/on-call. Cadence: restore drill once per quarter (first
 evidence below), or after any change to `erasure.ts`, `restore.sh`, or the
 MongoDB version.

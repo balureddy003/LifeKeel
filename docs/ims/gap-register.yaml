@@ -41,8 +41,9 @@ gaps:
     clauses: ['4.3 (9001/27001/42001)']
     owner_role: CEO
     phase: 1
-    status: open
-    evidence: —
+    status: in_progress
+    note: Draft scope in docs/ims/scope.md; awaiting CEO approval.
+    evidence: [docs/ims/scope.md]
     exit_criterion: Signed scope statement (ISO_AUDITABLE.md §6)
 
   - id: G-MGT-02
@@ -51,8 +52,15 @@ gaps:
     clauses: ['5.2', 'A.5.1', 'A.2.2 (42001)']
     owner_role: CEO
     phase: 1
-    status: open
-    evidence: [CLAUDE.md]
+    status: in_progress
+    note: Draft policies and topic-specific policies in docs/ims/policies/; awaiting CEO approval, publication and staff acknowledgement.
+    evidence:
+      [
+        CLAUDE.md,
+        docs/ims/policies/quality-policy.md,
+        docs/ims/policies/information-security-policy.md,
+        docs/ims/policies/ai-policy.md,
+      ]
     exit_criterion: Signed policies, published internally, acknowledged by staff
 
   - id: G-MGT-03
@@ -77,8 +85,9 @@ gaps:
     clauses: ['6.1.2', '6.1.3', '8.2', '8.3']
     owner_role: IMS manager
     phase: 1
-    status: open
-    evidence: [ARCHITECTURE.md, docs/reviews/SECURITY_AND_COMPLIANCE.md]
+    status: in_progress
+    note: Draft method and a register of 63 scored risks; every acceptance is pending.
+    evidence: [docs/ims/risk/methodology.md, docs/ims/risk/risk-register.yaml]
     exit_criterion: §13 approved; register ≥ 40 risks; owners sign acceptance
 
   - id: G-MGT-05
@@ -87,8 +96,9 @@ gaps:
     clauses: ['6.1.3 d) (27001/42001)']
     owner_role: IMS manager
     phase: 1
-    status: open
-    evidence: —
+    status: in_progress
+    note: Draft SoAs (93 and 38 controls); awaiting approval.
+    evidence: [docs/ims/soa/iso27001-soa.yaml, docs/ims/soa/iso42001-soa.yaml]
     exit_criterion: §10/§11 SoAs approved with versions
 
   - id: G-MGT-06
@@ -97,8 +107,9 @@ gaps:
     clauses: ['6.1.4 (42001)', '8.4 (42001)', 'A.5.2 (42001)']
     owner_role: AI governance lead
     phase: 1
-    status: open
-    evidence: [definitions/ai-tasks.yaml]
+    status: in_progress
+    note: Draft assessment per task_id; none signed.
+    evidence: [definitions/ai-tasks.yaml, docs/ims/ai-impact/assessments.yaml]
     exit_criterion: §14 assessment completed for every task in definitions/ai-tasks.yaml
 
   - id: G-MGT-07
@@ -117,8 +128,9 @@ gaps:
     clauses: ['A.5.31', 'A.5.34']
     owner_role: Privacy lead / DPO
     phase: 1
-    status: open
-    evidence: [docs/compliance/dpia.md, docs/data-retention.md]
+    status: in_progress
+    note: Draft RoPA in docs/ims/ropa.md; DPIA still unsigned and lawful bases undecided.
+    evidence: [docs/compliance/dpia.md, docs/data-retention.md, docs/ims/ropa.md]
     exit_criterion: Signed DPIA; Record of Processing Activities
 
   - id: G-AI-05
@@ -405,8 +417,9 @@ gaps:
     clauses: ['7.5']
     owner_role: IMS manager
     phase: 1
-    status: open
-    evidence: —
+    status: in_progress
+    note: Draft procedure; header block added to docs/ims/* and docs/runbooks/*; awaiting approval.
+    evidence: [docs/ims/document-control.md]
     exit_criterion: Approved document-control procedure; owner and review date on every governed document
 
   - id: G-DOC-02

@@ -1,0 +1,619 @@
+# Statement of Applicability (38 Annex A controls). Extracted from ISO_AUDITABLE.md, then maintained here.
+# apps/api/src/__tests__/ims-documents.test.ts checks the count, unique ids and that every evidence path exists.
+# implementation_status: implemented | partial | not_implemented | inherited. evidence = repository paths;
+# evidence_notes = the §10/§11 text, including evidence that is not a file (settings, records).
+# Nothing here is approved: the SoA version and date in docs/ims/scope.md are set on approval.
+
+document:
+  id: LK-IMS-042
+  title: Statement of Applicability — ISO/IEC 42001:2023 Annex A
+  standard: ISO/IEC 42001:2023
+  version: '0.1'
+  status: DRAFT — awaiting approval
+  owner: IMS manager (role)
+  approver: CEO / top management (role)
+  approved: —
+  next_review: —
+  source: ISO_AUDITABLE.md §11, verified against the repository on 2026-11-12
+controls:
+  - id: A.2.2
+    title: AI policy
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md); treats R-ORG-03.
+    implementation_status: not_implemented
+    evidence:
+      - ARCHITECTURE.md
+      - CLAUDE.md
+      - docs/ims/policies/ai-policy.md
+    evidence_notes: CLAUDE.md rules 1–3, ARCH §8
+    gap_action: Approve AI policy (§23.3)
+    severity_if_unaddressed: S1
+    linked_risks:
+      - R-ORG-03
+    linked_gaps:
+      - G-MGT-02
+  - id: A.2.3
+    title: Alignment with other policies
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md).
+    implementation_status: partial
+    evidence:
+      - CLAUDE.md
+      - docs/ims/policies/ai-policy.md
+    evidence_notes: Rules cross-reference security/privacy
+    gap_action: Cross-reference matrix in policy
+    severity_if_unaddressed: S3
+    linked_risks: []
+    linked_gaps: []
+  - id: A.2.4
+    title: Review of the AI policy
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md).
+    implementation_status: not_implemented
+    evidence: []
+    evidence_notes: —
+    gap_action: Review at each management review
+    severity_if_unaddressed: S3
+    linked_risks: []
+    linked_gaps: []
+  - id: A.3.2
+    title: AI roles and responsibilities
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md); treats R-ORG-01, R-ORG-03.
+    implementation_status: not_implemented
+    evidence:
+      - apps/api/src/__tests__/trust-tier-gate.test.ts
+    evidence_notes: '`approvedBy` in actions; operator roles'
+    gap_action: Name AI governance lead, model owners per task
+    severity_if_unaddressed: S1
+    linked_risks:
+      - R-ORG-01
+      - R-ORG-03
+    linked_gaps:
+      - G-MGT-03
+  - id: A.3.3
+    title: Reporting of concerns
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md).
+    implementation_status: not_implemented
+    evidence: []
+    evidence_notes: —
+    gap_action: Channel for staff/users to report AI harm; non-retaliation
+    severity_if_unaddressed: S2
+    linked_risks: []
+    linked_gaps:
+      - G-AI-03
+  - id: A.4.2
+    title: Resource documentation
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md); treats R-AI-14.
+    implementation_status: implemented
+    evidence:
+      - ai-bom.yaml
+      - definitions/ai-tasks.yaml
+    evidence_notes: '`ai-bom.yaml`, `definitions/ai-tasks.yaml`'
+    gap_action: null
+    severity_if_unaddressed: S4
+    linked_risks:
+      - R-AI-14
+    linked_gaps: []
+  - id: A.4.3
+    title: Data resources
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md).
+    implementation_status: partial
+    evidence:
+      - ai-bom.yaml
+      - detector-evals/README.md
+    evidence_notes: Data boundary per model in BOM; detector-evals
+    gap_action: Dataset register (source, licence, consent, PII status)
+    severity_if_unaddressed: S2
+    linked_risks: []
+    linked_gaps: []
+  - id: A.4.4
+    title: Tooling resources
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md); treats R-ORG-02.
+    implementation_status: partial
+    evidence:
+      - ARCHITECTURE.md
+      - apps/api/src/ai/task-gateway.ts
+      - packages/platform/src/llm-guards.ts
+    evidence_notes: Gateway, guards, eval tooling in ARCH §8.14
+    gap_action: List AI tooling incl. coding agents
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-ORG-02
+    linked_gaps: []
+  - id: A.4.5
+    title: System and computing resources
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md); treats R-AI-12.
+    implementation_status: implemented
+    evidence:
+      - docs/reviews/decision-local-interactive-closed-2026-10.md
+    evidence_notes: Model-serving split decision, infra docs
+    gap_action: null
+    severity_if_unaddressed: S4
+    linked_risks:
+      - R-AI-12
+    linked_gaps: []
+  - id: A.4.6
+    title: Human resources
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md); treats R-ORG-04.
+    implementation_status: not_implemented
+    evidence: []
+    evidence_notes: —
+    gap_action: AI competence matrix
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-ORG-04
+    linked_gaps: []
+  - id: A.5.2
+    title: AI system impact assessment process
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md).
+    implementation_status: not_implemented
+    evidence:
+      - docs/compliance/dpia.md
+      - docs/ims/ai-impact/assessments.yaml
+    evidence_notes: DPIA (privacy only)
+    gap_action: Process in §14
+    severity_if_unaddressed: S1
+    linked_risks: []
+    linked_gaps:
+      - G-MGT-06
+  - id: A.5.3
+    title: Documentation of impact assessments
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md).
+    implementation_status: not_implemented
+    evidence:
+      - docs/ims/ai-impact/assessments.yaml
+    evidence_notes: —
+    gap_action: Records per task, retained
+    severity_if_unaddressed: S2
+    linked_risks: []
+    linked_gaps: []
+  - id: A.5.4
+    title: Impact on individuals or groups
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md); treats R-PRIV-01, R-PRIV-02, R-PRIV-07, R-AI-05, R-AI-13, R-LEG-05.
+    implementation_status: partial
+    evidence:
+      - docs/privacy/childrens-data-posture.md
+      - packages/engine/src/__tests__/advice-rule.test.ts
+    evidence_notes: Children's posture, advice rule
+    gap_action: Fairness/accessibility/language assessment per task
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-PRIV-01
+      - R-PRIV-02
+      - R-PRIV-07
+      - R-AI-05
+      - R-AI-13
+      - R-LEG-05
+    linked_gaps: []
+  - id: A.5.5
+    title: Societal impacts
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md).
+    implementation_status: not_implemented
+    evidence: []
+    evidence_notes: —
+    gap_action: Short societal assessment (financial exclusion, over-reliance)
+    severity_if_unaddressed: S3
+    linked_risks: []
+    linked_gaps: []
+  - id: A.6.1.2
+    title: Objectives for responsible development
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md).
+    implementation_status: partial
+    evidence:
+      - packages/engine/src/scoring/cascade.ts
+    evidence_notes: Deterministic-first cascade, rules 1–3
+    gap_action: Measurable objectives (§20)
+    severity_if_unaddressed: S2
+    linked_risks: []
+    linked_gaps: []
+  - id: A.6.1.3
+    title: Processes for responsible design and development
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md).
+    implementation_status: implemented
+    evidence:
+      - .claude/skills/add-detector/SKILL.md
+      - docs/ai-native-sdlc-playbook.md
+    evidence_notes: SDLC playbook, `add-detector` skill, plan mode
+    gap_action: null
+    severity_if_unaddressed: S4
+    linked_risks: []
+    linked_gaps: []
+  - id: A.6.2.2
+    title: Requirements and specification
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md).
+    implementation_status: implemented
+    evidence:
+      - definitions/ai-tasks.yaml
+      - docs/prd/README.md
+    evidence_notes: PRDs, task policy YAML
+    gap_action: null
+    severity_if_unaddressed: S4
+    linked_risks: []
+    linked_gaps: []
+  - id: A.6.2.3
+    title: Design and development documentation
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md).
+    implementation_status: implemented
+    evidence:
+      - ARCHITECTURE.md
+      - docs/models
+      - docs/models/qwen2.5.md
+    evidence_notes: ARCH §8, model cards `docs/models/`
+    gap_action: null
+    severity_if_unaddressed: S4
+    linked_risks: []
+    linked_gaps: []
+  - id: A.6.2.4
+    title: Verification and validation
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md); treats R-SEC-03, R-AI-04, R-AI-05, R-AI-06.
+    implementation_status: partial
+    evidence:
+      - detector-evals/README.md
+      - red-team/guard-fixtures.yaml
+    evidence_notes: detector-evals, red-team CI, `eval_runs` lineage
+    gap_action: '**Task eval suites not yet wired** (ARCH §16); release criteria per task'
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-SEC-03
+      - R-AI-04
+      - R-AI-05
+      - R-AI-06
+    linked_gaps:
+      - G-AI-01
+  - id: A.6.2.5
+    title: Deployment
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md); treats R-OPS-06.
+    implementation_status: implemented
+    evidence:
+      - apps/api/src/ai/task-gateway.ts
+    evidence_notes: Gateway enforcement, shadow mode, human deploy
+    gap_action: Document deployment criteria
+    severity_if_unaddressed: S4
+    linked_risks:
+      - R-OPS-06
+    linked_gaps: []
+  - id: A.6.2.6
+    title: Operation and monitoring
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md); treats R-AI-11, R-AI-13, R-OPS-05.
+    implementation_status: partial
+    evidence:
+      - packages/platform/src/cost-ledger.ts
+      - packages/platform/src/llm-budget.ts
+      - packages/platform/src/llm-circuit-breaker.ts
+    evidence_notes: Breakers, budgets, usage ledger, guard events
+    gap_action: Drift/quality monitoring; OTel GenAI traces (metadata-only)
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-AI-11
+      - R-AI-13
+      - R-OPS-05
+    linked_gaps: []
+  - id: A.6.2.7
+    title: Technical documentation
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md).
+    implementation_status: implemented
+    evidence:
+      - docs/models/qwen2.5.md
+    evidence_notes: Model cards, BOM, architecture
+    gap_action: Per-system summary for users/regulators
+    severity_if_unaddressed: S3
+    linked_risks: []
+    linked_gaps: []
+  - id: A.6.2.8
+    title: Recording of event logs
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md); treats R-SEC-05.
+    implementation_status: partial
+    evidence:
+      - packages/platform/src/cost-ledger.ts
+      - packages/platform/src/guard-event-sink.ts
+    evidence_notes: '`llm_usage`, guard events, spans (metadata-first)'
+    gap_action: Retention for AI logs; tamper evidence
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-SEC-05
+    linked_gaps: []
+  - id: A.7.2
+    title: Data for development and enhancement
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md); treats R-AI-03.
+    implementation_status: partial
+    evidence:
+      - apps/api/src/__tests__/architecture-claims.test.ts
+    evidence_notes: Rule 3; per-tenant eval; `allowFederatedWarmStart` off
+    gap_action: '**Quarantine stale `federated_global_models` artifact**'
+    severity_if_unaddressed: S1
+    linked_risks:
+      - R-AI-03
+    linked_gaps:
+      - G-AI-05
+  - id: A.7.3
+    title: Acquisition of data
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md); treats R-PRIV-06.
+    implementation_status: partial
+    evidence:
+      - docs/compliance/dpia.md
+    evidence_notes: Gmail readonly scope (R38)
+    gap_action: Record lawful basis/licence for each dataset
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-PRIV-06
+    linked_gaps: []
+  - id: A.7.4
+    title: Quality of data
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md); treats R-AI-06, R-QMS-02.
+    implementation_status: partial
+    evidence:
+      - detector-evals/README.md
+    evidence_notes: Golden datasets, detector-evals
+    gap_action: Data-quality criteria per dataset
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-AI-06
+      - R-QMS-02
+    linked_gaps: []
+  - id: A.7.5
+    title: Data provenance
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md); treats R-AI-14.
+    implementation_status: partial
+    evidence:
+      - apps/api/src/eval/eval-runs.ts
+    evidence_notes: Dataset hash + code SHA in `eval_runs`; extraction provenance gates
+    gap_action: Provenance on all training/eval data
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-AI-14
+    linked_gaps: []
+  - id: A.7.6
+    title: Data preparation
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md); treats R-PRIV-03.
+    implementation_status: partial
+    evidence:
+      - apps/api/src/privacy/special-category.ts
+    evidence_notes: Special-category stripping, minimisation
+    gap_action: Documented preparation steps
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-PRIV-03
+    linked_gaps: []
+  - id: A.8.2
+    title: Documentation and information for users
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md); treats R-AI-07, R-LEG-04.
+    implementation_status: partial
+    evidence:
+      - SECURITY.md
+      - packages/engine/src/__tests__/advice-rule.test.ts
+    evidence_notes: Rule-2 copy; "safe user-facing wording" in SECURITY.md
+    gap_action: In-product AI disclosure (EU AI Act Art. 50); explain limits
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-AI-07
+      - R-LEG-04
+    linked_gaps:
+      - G-AI-02
+  - id: A.8.3
+    title: External reporting
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md); treats R-QMS-01.
+    implementation_status: not_implemented
+    evidence: []
+    evidence_notes: —
+    gap_action: Way for users/third parties to report adverse AI impacts
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-QMS-01
+    linked_gaps:
+      - G-AI-03
+  - id: A.8.4
+    title: Communication of incidents
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md).
+    implementation_status: partial
+    evidence:
+      - docs/runbooks/breach-response.md
+    evidence_notes: Breach runbook
+    gap_action: Include AI incidents (harmful output, advice escape, injection)
+    severity_if_unaddressed: S2
+    linked_risks: []
+    linked_gaps:
+      - G-OPS-02
+  - id: A.8.5
+    title: Information for interested parties
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md); treats R-AI-07.
+    implementation_status: partial
+    evidence:
+      - docs/models/qwen2.5.md
+    evidence_notes: Model cards
+    gap_action: Public AI transparency page
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-AI-07
+    linked_gaps:
+      - G-AI-02
+  - id: A.9.2
+    title: Processes for responsible use
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md); treats R-AI-10, R-AI-16.
+    implementation_status: implemented
+    evidence:
+      - apps/api/src/__tests__/trust-tier-gate.test.ts
+      - docs/ims/policies/ai-acceptable-use-policy.md
+      - packages/platform/src/llm-guards.ts
+    evidence_notes: Trust tiers, approval gates, guards
+    gap_action: null
+    severity_if_unaddressed: S4
+    linked_risks:
+      - R-AI-10
+      - R-AI-16
+    linked_gaps: []
+  - id: A.9.3
+    title: Objectives for responsible use
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md).
+    implementation_status: partial
+    evidence:
+      - ARCHITECTURE.md
+    evidence_notes: 'SLO: 0 regulated-boundary escapes'
+    gap_action: Formal objectives (§20)
+    severity_if_unaddressed: S3
+    linked_risks: []
+    linked_gaps: []
+  - id: A.9.4
+    title: Intended use
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md); treats R-AI-01, R-LEG-02, R-AI-15.
+    implementation_status: partial
+    evidence:
+      - CLAUDE.md
+      - docs/ims/ai-impact/assessments.yaml
+    evidence_notes: Product intent, rule 2
+    gap_action: Intended-use and foreseeable-misuse statement per system (§14)
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-AI-01
+      - R-LEG-02
+      - R-AI-15
+    linked_gaps: []
+  - id: A.10.2
+    title: Allocating responsibilities
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md); treats R-AI-09.
+    implementation_status: partial
+    evidence:
+      - definitions/ai-processors.yaml
+    evidence_notes: Processor registry
+    gap_action: Shared-responsibility matrix with each AI processor
+    severity_if_unaddressed: S3
+    linked_risks:
+      - R-AI-09
+    linked_gaps: []
+  - id: A.10.3
+    title: Suppliers
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md); treats R-AI-02, R-AI-08, R-SUP-02.
+    implementation_status: partial
+    evidence:
+      - definitions/ai-processors.yaml
+    evidence_notes: 'Registry: Azure/Vertex/Groq approved; xAI exception; Anthropic/OpenAI unreviewed'
+    gap_action: Signed DPAs with no-training terms; **xAI exit or enterprise ZDR before launch**
+    severity_if_unaddressed: S2
+    linked_risks:
+      - R-AI-02
+      - R-AI-08
+      - R-SUP-02
+    linked_gaps:
+      - G-SUP-01
+      - G-SUP-02
+  - id: A.10.4
+    title: Customers
+    applicable: 'Y'
+    justification: >-
+      Applicable: LifeKeel is an AI developer and provider, and an AI user of third-party foundation models
+      (docs/ims/scope.md).
+    implementation_status: partial
+    evidence:
+      - apps/web/src/app/privacy/page.tsx
+    evidence_notes: Terms, privacy notice (R11 partial)
+    gap_action: Customer-facing AI terms and expectations
+    severity_if_unaddressed: S2
+    linked_risks: []
+    linked_gaps: []
