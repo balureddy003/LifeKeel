@@ -534,6 +534,7 @@ gaps:
     owner_role: Product manager
     phase: 5
     status: open
+    note: 'Needs, before any non-UK market (ISO_AUDITABLE.md §18): a household timezone used for dates, reminders and scheduled jobs; an ISO 4217 currency on every stored amount (no implicit GBP); locale-aware formatting; detector thresholds and evals that hold per currency; tests for each. Product manager to write the PRD; owner decision on which markets come first (Phase 0 step 4).'
     evidence: —
     exit_criterion: Timezone and currency semantics defined and implemented before non-UK launch
 
@@ -587,8 +588,13 @@ gaps:
     clauses: ['A.8.15']
     owner_role: Product manager
     phase: 5
-    status: open
-    evidence: —
+    status: in_progress
+    note: 'Implemented in the Phase 5 PR (not merged): operator dossier and household-record views are logged, GET /audit-log/operator-access returns allow-listed operator actions on the household (no operator identity or reason), and the Activity Log page shows them. Other operator reads (support case threads, user list) are not yet logged; move to verify after merge.'
+    evidence:
+      - apps/api/src/routes/audit-log.ts
+      - apps/api/src/routes/__tests__/audit-log-operator-access.test.ts
+      - apps/web/src/app/audit-log/page.tsx
+      - apps/web/src/app/__tests__/audit-log-staff-access.test.tsx
     exit_criterion: Households can see operator access to their data
 
   - id: G-OFI-05

@@ -519,6 +519,14 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         },
       )
       if (!user) return reply.status(404).send({ error: 'User not found' })
+      // The household sees this read in its activity log (G-OFI-04).
+      await audit.log(
+        request,
+        'operator.user.view',
+        'user',
+        request.params.id,
+        'Support dossier opened',
+      )
       const tenantId = user['tenant_id'] as string
       const [tenant, recentLogins, insightCounts, ledger, userCases, userAudit] = await Promise.all(
         [
@@ -544,7 +552,12 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
             .toArray(),
           db
             .collection('operator_audit_log')
-            .find({ target_type: 'user', target_id: user['id'] }, { projection: { _id: 0 } })
+            .find(
+              // Views are recorded for the household; the dossier keeps
+              // its 10 rows for changes so they are not crowded out.
+              { target_type: 'user', target_id: user['id'], action: { $ne: 'operator.user.view' } },
+              { projection: { _id: 0 } },
+            )
             .sort({ created_at: -1 })
             .limit(10)
             .toArray(),
@@ -687,6 +700,13 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
         { projection: { _id: 0 } },
       )
       if (!tenant) return reply.status(404).send({ error: 'Tenant not found' })
+      await audit.log(
+        request,
+        'operator.tenant.view',
+        'tenant',
+        tenant['tenant_id'] as string,
+        'Household record opened',
+      )
       const [members, health] = await Promise.all([
         users
           .find(
