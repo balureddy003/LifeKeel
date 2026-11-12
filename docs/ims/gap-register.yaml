@@ -224,7 +224,7 @@ gaps:
     owner_role: Architect
     phase: 2
     status: in_progress
-    note: Closing in the principal developer's Phase 2 PR.
+    note: 'Implemented in #468 (not merged); verify after merge. #468 seals audit_log into a daily hash chain (apps/api/src/audit/audit-seal.ts on that branch).'
     evidence: [apps/api/src/audit/audit-log.ts]
     exit_criterion: WORM export or hash chain; mandatory audit for consequential actions
 
@@ -276,7 +276,7 @@ gaps:
     owner_role: Principal developer
     phase: 2
     status: in_progress
-    note: Closing in the principal developer's Phase 2 PR.
+    note: 'Implemented in #468 (not merged); verify after merge. #468 adds docs/security/vulnerability-management.md; NC-2026-007 records that Dependabot alerts are disabled, so the SLA source is not yet active.'
     evidence: [.github/workflows/security.yml]
     exit_criterion: SLA policy; tracked metrics
 
@@ -409,7 +409,7 @@ gaps:
     owner_role: Product manager
     phase: 2
     status: in_progress
-    note: Closing in the principal developer's Phase 2 PR. apps/api/src/ai/disclosure.ts already tells a family which processors handle their documents; it is not an Art. 50 "you are interacting with AI" disclosure.
+    note: 'Implemented in #468 (not merged); verify after merge. #468 adds an AI-generated label on Keel replies. apps/api/src/ai/disclosure.ts (processor disclosure) predates it and is not an Art. 50 notice on its own; the transparency page is still open.'
     evidence: [apps/api/src/ai/disclosure.ts]
     exit_criterion: Disclosure UI + transparency page
 
@@ -420,7 +420,7 @@ gaps:
     owner_role: AI governance lead
     phase: 2
     status: in_progress
-    note: Closing in the principal developer's Phase 2 PR.
+    note: 'Implemented in #468 (not merged); verify after merge. #468 adds concern reporting on Keel replies and docs/runbooks/ai-concerns.md (triage procedure).'
     evidence: —
     exit_criterion: Channel live; triage procedure
 
@@ -555,7 +555,7 @@ gaps:
     owner_role: Principal developer
     phase: 2
     status: in_progress
-    note: Closing in the principal developer's Phase 2 PR (R42 residual).
+    note: 'Risk acceptance pending. #468 keeps the 409 on purpose (KEEL-025 comment at POST /auth/signup in apps/api/src/routes/auth-users.ts: UX need; route rate limit and Turnstile raise the cost of enumeration). Close only when the CEO records the acceptance of the R42 residual in the risk register; until then in_progress.'
     evidence: [apps/api/src/routes/auth-users.ts]
     exit_criterion: Signup response does not distinguish a registered email
 
@@ -598,6 +598,6 @@ gaps:
     owner_role: Principal developer
     phase: 2
     status: in_progress
-    note: Closing in the principal developer's Phase 2 PR. A build-time security.txt generator already exists; it emits nothing until a contact is configured.
+    note: 'Generator exists (apps/web/scripts/security-txt.mjs) and emits nothing until a contact is configured. Needs an owner-supplied security contact (CEO decision) and a published vulnerability disclosure policy.'
     evidence: [apps/web/scripts/security-txt.mjs, apps/web/src/lib/__tests__/security-txt.test.ts]
     exit_criterion: security.txt served and a vulnerability disclosure policy published
