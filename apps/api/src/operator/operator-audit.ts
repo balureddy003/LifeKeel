@@ -3,6 +3,8 @@ import type { Db } from 'mongodb'
 import { hashState } from './dual-control.js'
 
 export type OperatorAuditAction =
+  | 'operator.user.view'
+  | 'operator.tenant.view'
   | 'operator.user.suspend'
   | 'operator.user.reactivate'
   | 'operator.user.password_reset'

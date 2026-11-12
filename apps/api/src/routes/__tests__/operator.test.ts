@@ -1745,7 +1745,10 @@ describe('security monitoring', () => {
     // shows metadata only; the inbox owns the thread.
     expect(body.dossier.support_cases[0].messages?.[0]?.text).toBeUndefined()
     expect(body.dossier.ledger_tail).toEqual([])
-    expect(body.dossier.audit_trail).toEqual([])
+    // Opening the dossier is itself recorded, so the household can see it (G-OFI-04).
+    expect(body.dossier.audit_trail.map((e: { action: string }) => e.action)).toEqual([
+      'operator.user.view',
+    ])
     await app.close()
   })
 
@@ -1797,6 +1800,10 @@ describe('security monitoring', () => {
     const detail = await app.inject({ method: 'GET', url: '/operator/tenants/family-1' })
     expect(detail.statusCode).toBe(200)
     expect(detail.json().health.score).toBe(20)
+    const viewed = await db
+      .collection('operator_audit_log')
+      .findOne({ action: 'operator.tenant.view', target_id: 'family-1' })
+    expect(viewed?.['operator_user_id']).toBe('operator-1')
     await app.close()
   })
 
