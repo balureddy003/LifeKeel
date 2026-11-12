@@ -552,7 +552,12 @@ export async function registerOperatorRoutes(app: FastifyInstance, db: Db): Prom
             .toArray(),
           db
             .collection('operator_audit_log')
-            .find({ target_type: 'user', target_id: user['id'] }, { projection: { _id: 0 } })
+            .find(
+              // Views are recorded for the household; the dossier keeps
+              // its 10 rows for changes so they are not crowded out.
+              { target_type: 'user', target_id: user['id'], action: { $ne: 'operator.user.view' } },
+              { projection: { _id: 0 } },
+            )
             .sort({ created_at: -1 })
             .limit(10)
             .toArray(),

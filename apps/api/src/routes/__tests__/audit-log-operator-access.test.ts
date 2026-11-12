@@ -13,10 +13,14 @@ let mongod: MongoMemoryServer
 let client: MongoClient
 let db: Db
 
-async function buildApp(tenantId = 'family-1', userId = 'user-a'): Promise<FastifyInstance> {
+async function buildApp(
+  tenantId = 'family-1',
+  userId = 'user-a',
+  roles: string[] = ['admin'],
+): Promise<FastifyInstance> {
   const app = Fastify()
   app.addHook('onRequest', async (request) => {
-    request.authContext = { tenant_id: tenantId, user_id: userId, roles: ['admin'] }
+    request.authContext = { tenant_id: tenantId, user_id: userId, roles }
   })
   registerAuditLogRoutes(app, db)
   await app.ready()
@@ -67,6 +71,9 @@ beforeEach(async () => {
     op('operator.tenant.view', 'tenant', 'family-10', 7),
     // Not about a household at all.
     op('operator.blog.publish', 'blog_post', 'post-1', 8),
+    // About this household, but not on the household-visible allow-list.
+    op('autopilot.propose', 'user', 'user-a', 9),
+    op('operator.dual_control.request', 'tenant', 'family-1', 10),
   ])
 })
 
@@ -126,5 +133,26 @@ describe('GET /audit-log/operator-access', () => {
     const app = await buildApp('fam.ly', 'nobody')
     const res = await app.inject({ method: 'GET', url: '/audit-log/operator-access' })
     expect(res.json().entries).toEqual([])
+  })
+
+  it('hides automated and unconfirmed rows that are not on the allow-list', async () => {
+    const app = await buildApp()
+    const res = await app.inject({ method: 'GET', url: '/audit-log/operator-access?limit=100' })
+    const actions = (res.json().entries as Array<{ action: string }>).map((e) => e.action)
+    expect(actions).not.toContain('autopilot.propose')
+    expect(actions).not.toContain('operator.dual_control.request')
+  })
+
+  it("shows a non-editor only staff actions on their own account, not other members'", async () => {
+    await db.collection('family_groups').insertOne({
+      tenant_id: 'family-1',
+      members: [{ id: 'm-a', user_id: 'user-a', role: 'adult', status: 'active' }],
+    })
+    const app = await buildApp('family-1', 'user-a', ['viewer'])
+    const res = await app.inject({ method: 'GET', url: '/audit-log/operator-access' })
+    const actions = (res.json().entries as Array<{ action: string }>).map((e) => e.action)
+    expect(actions).toContain('operator.user.view')
+    expect(actions).not.toContain('operator.user.password_reset')
+    expect(actions).toContain('operator.tenant.suspend')
   })
 })

@@ -11,10 +11,31 @@ import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { getTenantCollection } from '@lifekeel/platform'
 import type { AuditEntry } from '../audit/audit-log.js'
-import type { OperatorAuditEntry } from '../operator/operator-audit.js'
+import type { OperatorAuditAction, OperatorAuditEntry } from '../operator/operator-audit.js'
+import { isHouseholdEditor } from '../family/family-permissions.js'
 
 const MAX_LIMIT = 100
 const DEFAULT_LIMIT = 50
+
+/** Operator actions a household is shown. An allow-list, so automated
+ *  autopilot rows, unconfirmed dual-control requests and any new internal
+ *  action stay hidden until someone decides they belong here. */
+export const HOUSEHOLD_VISIBLE_OPERATOR_ACTIONS: readonly OperatorAuditAction[] = [
+  'operator.user.view',
+  'operator.tenant.view',
+  'operator.user.password_reset',
+  'operator.user.suspend',
+  'operator.user.reactivate',
+  'operator.tenant.suspend',
+  'operator.tenant.reactivate',
+  'operator.user.revoke_sessions',
+  'operator.user.unlock',
+  'operator.user.mfa_disable',
+  'operator.user.export',
+  'operator.user.erase',
+  'operator.connector.revoke',
+  'operator.billing.adjust_credits',
+]
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -69,7 +90,7 @@ export function registerAuditLogRoutes(app: FastifyInstance, db: Db): void {
   app.get<{ Querystring: { limit?: string; before?: string } }>(
     '/audit-log/operator-access',
     async (req, reply) => {
-      const { tenant_id } = req.authContext
+      const { tenant_id, user_id } = req.authContext
       const createdAt: Record<string, Date> = {}
       if (req.query.before) {
         const before = new Date(req.query.before)
@@ -91,9 +112,12 @@ export function registerAuditLogRoutes(app: FastifyInstance, db: Db): void {
         db.collection('tenants').findOne({ tenant_id }, { projection: { _id: 0, id: 1 } }),
       ])
       const tenantIds = [tenant_id, ...(typeof tenant?.['id'] === 'string' ? [tenant['id']] : [])]
-      const userIds = members
-        .map((m) => m['id'])
-        .filter((id): id is string => typeof id === 'string')
+      // Staff actions on another member's account (password reset, MFA off)
+      // are for the household's editors; everyone else sees only their own.
+      const editor = await isHouseholdEditor(db, tenant_id, user_id, req.authContext.roles)
+      const userIds = editor
+        ? members.map((m) => m['id']).filter((id): id is string => typeof id === 'string')
+        : [user_id]
 
       const entries = await db
         .collection<OperatorAuditEntry>('operator_audit_log')
@@ -103,6 +127,7 @@ export function registerAuditLogRoutes(app: FastifyInstance, db: Db): void {
             { target_type: 'user', target_id: { $in: userIds } },
             { target_type: 'connector', target_id: { $regex: `^${escapeRegex(tenant_id)}/` } },
           ],
+          action: { $in: [...HOUSEHOLD_VISIBLE_OPERATOR_ACTIONS] },
           ...(createdAt['$lt'] ? { created_at: createdAt } : {}),
         })
         .sort({ created_at: -1 })
@@ -113,7 +138,7 @@ export function registerAuditLogRoutes(app: FastifyInstance, db: Db): void {
         entries: entries.map((e) => ({
           action: e.action,
           target_type: e.target_type,
-          about_you: e.target_type === 'user' && e.target_id === req.authContext.user_id,
+          about_you: e.target_type === 'user' && e.target_id === user_id,
           timestamp: e.created_at.toISOString(),
         })),
       }

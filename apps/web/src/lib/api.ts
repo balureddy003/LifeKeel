@@ -3661,10 +3661,12 @@ export interface OperatorAccessEntry {
   timestamp: string
 }
 
-export async function fetchOperatorAccess(): Promise<OperatorAccessEntry[]> {
-  return apiFetch<{ entries: OperatorAccessEntry[] }>('/audit-log/operator-access', {
-    entries: [],
-  }).then((r) => r.entries ?? [])
+// null means the list could not be loaded — never shown as "no access".
+export async function fetchOperatorAccess(): Promise<OperatorAccessEntry[] | null> {
+  return apiFetch<{ entries: OperatorAccessEntry[] } | null>(
+    '/audit-log/operator-access',
+    null,
+  ).then((r) => r?.entries ?? null)
 }
 
 // ── Receipt Chain (PRD-214, M7) — what Keel did, hash-chained ─────────────

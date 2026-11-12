@@ -1745,10 +1745,13 @@ describe('security monitoring', () => {
     // shows metadata only; the inbox owns the thread.
     expect(body.dossier.support_cases[0].messages?.[0]?.text).toBeUndefined()
     expect(body.dossier.ledger_tail).toEqual([])
-    // Opening the dossier is itself recorded, so the household can see it (G-OFI-04).
-    expect(body.dossier.audit_trail.map((e: { action: string }) => e.action)).toEqual([
-      'operator.user.view',
-    ])
+    // Opening the dossier is recorded for the household (G-OFI-04) but kept
+    // out of the dossier's own trail, which is for changes.
+    expect(body.dossier.audit_trail).toEqual([])
+    const viewed = await db
+      .collection('operator_audit_log')
+      .findOne({ action: 'operator.user.view', target_id: 'user-2' })
+    expect(viewed?.['operator_user_id']).toBe('operator-1')
     await app.close()
   })
 

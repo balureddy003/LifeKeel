@@ -84,10 +84,11 @@ export default function AuditLogPage() {
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [exhausted, setExhausted] = useState(false)
-  const [staff, setStaff] = useState<OperatorAccessEntry[] | null>(null)
+  // undefined while loading; 'error' must never read as "no access".
+  const [staff, setStaff] = useState<OperatorAccessEntry[] | 'error' | undefined>(undefined)
 
   useEffect(() => {
-    fetchOperatorAccess().then(setStaff)
+    fetchOperatorAccess().then((entries) => setStaff(entries ?? 'error'))
   }, [])
 
   useEffect(() => {
@@ -136,19 +137,27 @@ export default function AuditLogPage() {
           LifeKeel staff access
         </h2>
         <p className="text-xs text-ink-tertiary">
-          Every time our support team opens or changes your family’s account, it is recorded here.
+          When our support team opens your account record or makes a change to your account, it is
+          recorded here.
         </p>
-        {staff === null && (
+        {staff === undefined && (
           <GlassCard className="p-4">
             <Skeleton className="h-3.5 w-48" />
           </GlassCard>
         )}
-        {staff?.length === 0 && (
+        {staff === 'error' && (
+          <GlassCard className="p-4 text-xs text-ink-secondary">
+            <div role="alert">
+              We couldn’t load LifeKeel staff access just now. Please try again later.
+            </div>
+          </GlassCard>
+        )}
+        {Array.isArray(staff) && staff.length === 0 && (
           <GlassCard className="p-4 text-xs text-ink-secondary">
             No one at LifeKeel has opened your family’s account.
           </GlassCard>
         )}
-        {staff && staff.length > 0 && (
+        {Array.isArray(staff) && staff.length > 0 && (
           <ul className="space-y-2">
             {staff.map((entry, i) => (
               <li key={`${entry.timestamp}-${entry.action}-${i}`}>

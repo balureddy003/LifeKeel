@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import type { OperatorAccessEntry } from '@/lib/api'
 
-const fetchOperatorAccess = vi.fn<() => Promise<OperatorAccessEntry[]>>()
+const fetchOperatorAccess = vi.fn<() => Promise<OperatorAccessEntry[] | null>>()
 vi.mock('@/lib/api', () => ({
   fetchAuditLog: () => Promise.resolve([]),
   fetchOperatorAccess: () => fetchOperatorAccess(),
@@ -55,5 +55,12 @@ describe('Activity Log — LifeKeel staff access (G-OFI-04)', () => {
     expect(
       await screen.findByText('No one at LifeKeel has opened your family’s account.'),
     ).toBeTruthy()
+  })
+
+  it('shows an error, not "no access", when the list cannot be loaded', async () => {
+    fetchOperatorAccess.mockResolvedValue(null)
+    render(<AuditLogPage />)
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    expect(screen.queryByText('No one at LifeKeel has opened your family’s account.')).toBeNull()
   })
 })
