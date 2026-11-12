@@ -387,3 +387,70 @@ describe('IMS: governed documents carry the document-control header', () => {
     expect(dupes).toEqual([])
   })
 })
+
+/* ------------------------------------------------------------------ */
+/* Phase 3 records: NC log (G-DOC-02) and objectives (6.2 / 9.1)        */
+/* ------------------------------------------------------------------ */
+
+interface NcEntry {
+  id: string
+  raised: string
+  raised_by: string
+  clause: string[]
+  severity: string
+  description: string
+  root_cause: string
+  corrective_action: string
+  owner: string
+  effectiveness_check: string
+  status: string
+  links: string[]
+}
+
+describe('IMS: nonconformity log', () => {
+  const entries = loadDoc<{ entries: NcEntry[] }>('docs/ims/nc-log.yaml').entries
+  const gapIds = new Set(
+    loadDoc<{ gaps: { id: string }[] }>('docs/ims/gap-register.yaml').gaps.map((g) => g.id),
+  )
+  const riskIds = new Set(
+    loadDoc<{ risks: { id: string }[] }>('docs/ims/risk/risk-register.yaml').risks.map((r) => r.id),
+  )
+
+  it('has uniquely numbered entries', () => {
+    expect(entries.length).toBeGreaterThan(0)
+    const ids = entries.map((e) => e.id)
+    for (const id of ids) expect(id).toMatch(/^NC-\d{4}-\d{3}$/)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  for (const e of entries) {
+    it(`${e.id} is graded, owned and linked to things that exist`, () => {
+      expect(['S1', 'S2', 'S3', 'S4']).toContain(e.severity)
+      expect(['open', 'closed']).toContain(e.status)
+      expect(e.raised).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+      expect(e.description.length).toBeGreaterThan(40)
+      expect(e.owner).toMatch(/\(role\)$/)
+      expect(e.clause.length).toBeGreaterThan(0)
+      for (const l of e.links) expect(gapIds.has(l) || riskIds.has(l), l).toBe(true)
+    })
+
+    if (e.status === 'closed') {
+      it(`${e.id} is closed only with a root cause and a verified effectiveness check`, () => {
+        for (const f of [e.root_cause, e.corrective_action, e.effectiveness_check])
+          expect(f).not.toBe('—')
+      })
+    }
+  }
+})
+
+describe('IMS: objectives', () => {
+  const src = readSrc('docs/ims/objectives.md')
+
+  it('lists O1–O15 from ISO_AUDITABLE.md §20, once each, with an owner', () => {
+    for (let i = 1; i <= 15; i++) {
+      const rows = src.split('\n').filter((l) => l.startsWith(`| O${i} |`))
+      expect(rows, `O${i}`).toHaveLength(1)
+      expect(rows[0]!.trim()).toMatch(/\| [^|]+ \|$/)
+    }
+  })
+})
