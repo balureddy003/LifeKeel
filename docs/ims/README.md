@@ -63,6 +63,15 @@ index lists where they will live once that system is chosen.
 | Management review | `docs/ims/management-reviews/template.md` | draft template (Phase 3) |
 | Objectives | `docs/ims/objectives.md` | draft (Phase 3) |
 
+### Certification (ISO_AUDITABLE.md §16 Phase 4, §22)
+
+| Document | Path | Status |
+|---|---|---|
+| Certification body selection and integrated audit request | [`docs/ims/certification/certification-body.md`](certification/certification-body.md) | draft; no CB chosen |
+| Stage 1 readiness checklist | [`docs/ims/certification/stage1-readiness.md`](certification/stage1-readiness.md) | draft; verdict **NOT READY** (gate: `apps/api/src/__tests__/ims-certification.test.ts`) |
+| Stage 2 preparation (sampling, observation, interviews) | [`docs/ims/certification/stage2-preparation.md`](certification/stage2-preparation.md) | draft |
+| Certification findings closure procedure | [`docs/ims/certification/findings-closure.md`](certification/findings-closure.md) | draft |
+
 ### Level 3 — Work instructions and runbooks
 
 | Document | Path | Status |
