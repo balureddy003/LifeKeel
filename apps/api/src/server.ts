@@ -1061,6 +1061,20 @@ try {
     )
     log.info({}, 'Erasure replay cron started')
 
+    // Audit-log seal (G-SEC-03) — seals each closed UTC day into a hash chain
+    // and re-verifies it; a failed check pages ops.
+    scheduleJob(
+      'audit-seal',
+      '20 1 * * *',
+      async () => {
+        await withCronLock(workflowDb, 'audit-seal', async () => {
+          const { runAuditSeal } = await import('./jobs/audit-seal.js')
+          await runAuditSeal(workflowDb)
+        })
+      },
+      { missedExecutionTolerance: 60_000 },
+    )
+
     // ── Calibration fitting — 3 AM nightly (D1b) ──────────────────────────────
     // Builds calibration pairs from recent approve/dismiss receipts (which now
     // carry metadata.insight_score) and calls ScoreCalibrator.fit() to update

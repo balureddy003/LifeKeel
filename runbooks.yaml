@@ -73,3 +73,23 @@ metrics-rollup:
     A stale lock here means dashboards silently serve stale series.
   safe_to_requeue: Safe — the rollup is idempotent per day and recomputes.
   escalate: If it fails twice, check whether a schema change broke an aggregation stage.
+
+audit-seal:
+  what: >-
+    The daily audit-log seal (G-SEC-03) found a sealed day whose entries or
+    anchor no longer match the hash chain. An audit record was edited,
+    deleted or inserted after sealing, or an anchor was rewritten.
+  safe_to_requeue: N/A — re-running cannot repair the chain and must not be used to hide it.
+  escalate: >-
+    Treat as a security incident (docs/runbooks/breach-response.md). Do not
+    modify audit_log or audit_anchors. Compare the `audit.anchor` log lines
+    for the reported day against audit_anchors to establish what changed.
+
+ai-concern:
+  what: >-
+    A family member reported a Keel reply (category and answer route in the
+    alert). harmful and privacy reports page as critical.
+  safe_to_requeue: N/A
+  escalate: >-
+    Follow docs/runbooks/ai-concerns.md. A privacy report that shows another
+    member's or household's data is a possible breach — start breach-response.md.

@@ -57,6 +57,8 @@ const EXEMPT_COLLECTIONS = new Set([
   'platform_markers',
   // audit + security trail (7-yr retention stated in account.ts header)
   'audit_log',
+  // G-SEC-03: daily hash-chain anchors over audit_log (day, count, digests) — no family data
+  'audit_anchors',
   // PRD-146: proof that a deletion ran (counts by category, no content), kept 7 years like audit_log
   'deletion_receipts',
   'operator_audit_log',

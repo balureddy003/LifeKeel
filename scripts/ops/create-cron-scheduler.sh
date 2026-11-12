@@ -56,6 +56,7 @@ JOBS=(
   "daily-digest|0 8 * * *"
   "calibration-drift|0 2 * * *"
   "erasure-replay|30 4 * * *"
+  "audit-seal|20 1 * * *"
   "calibration-fit|0 3 * * *"
   "billing|0 4 * * *"
   "stale-profile-evaluation|30 6 * * *"
