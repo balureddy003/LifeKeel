@@ -11,6 +11,7 @@ import { useMode } from '@/lib/mode-context'
 import { useKeelPanel } from '@/lib/keel/store'
 import type { KeelMessage } from '@/lib/keel/types'
 import { NavChip, Proposal, Provenance, SetupChecklist } from './KeelCards'
+import { KeelConcern } from './KeelConcern'
 
 const MARKDOWN: Components = {
   p: (props) => <p className="mb-2 last:mb-0" {...props} />,
@@ -63,6 +64,7 @@ function Bubble({
 }) {
   const { config } = useMode()
   const isUser = msg.role === 'user'
+  const modelWritten = msg.route === 'llm' || msg.route === 'verified'
   const text = config.showMoney ? msg.content : msg.content.replace(CURRENCY_PATTERN, '•••')
 
   return (
@@ -77,6 +79,15 @@ function Bubble({
         {!isUser && (
           <div className="mb-1 flex items-center gap-1 text-xs text-family-400">
             <Bot size={12} aria-hidden /> Keel
+            {/* G-AI-02: label model-written replies and link the processing disclosure. */}
+            {modelWritten && (
+              <a
+                href="/ai-processing"
+                className="no-min-h ml-1 inline-flex min-h-[24px] items-center text-ink-tertiary underline underline-offset-2"
+              >
+                AI-generated
+              </a>
+            )}
           </div>
         )}
         {msg.route === 'emergency' && <LifeSafetyNotice compact />}
@@ -115,6 +126,10 @@ function Bubble({
         )}
 
         {msg.isLive && msg.dataAsOf && <Provenance dataAsOf={msg.dataAsOf} />}
+
+        {modelWritten && msg.route && !msg.pending && !msg.error && msg.content && (
+          <KeelConcern route={msg.route} />
+        )}
 
         {msg.error && (
           <div className="mt-2 rounded-xl border border-ink-tertiary/15 p-3">

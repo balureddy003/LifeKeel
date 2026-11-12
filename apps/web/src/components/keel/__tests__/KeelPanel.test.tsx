@@ -8,6 +8,7 @@ const confirmProposal = vi.fn()
 const dismissProposal = vi.fn()
 const fetchSetupState = vi.fn()
 const streamTurn = vi.fn()
+const reportConcern = vi.fn()
 
 vi.mock('next/navigation', () => ({
   usePathname: () => pathname,
@@ -25,6 +26,7 @@ vi.mock('@/lib/keel/client', async (orig) => ({
   dismissProposal: (...a: unknown[]) => dismissProposal(...a),
   fetchSetupState: (...a: unknown[]) => fetchSetupState(...a),
   streamTurn: (...a: unknown[]) => streamTurn(...a),
+  reportConcern: (...a: unknown[]) => reportConcern(...a),
 }))
 vi.mock('@/lib/onDeviceLlm', () => ({
   redactForCloudEgressAsync: async (t: string) => ({
@@ -425,5 +427,59 @@ describe('model text', () => {
     )
     await screen.findByText(/Here/)
     expect(document.querySelector('img')).toBeNull()
+  })
+})
+
+describe('AI disclosure and concern reporting', () => {
+  it('labels a model-written reply as AI-generated, but not a scripted one', async () => {
+    await open()
+    act(() => {
+      useKeelPanel
+        .getState()
+        .appendLocal({ role: 'keel', content: 'Scripted', cards: [], route: 'setup' })
+      useKeelPanel
+        .getState()
+        .appendLocal({ role: 'keel', content: 'From the model', cards: [], route: 'llm' })
+    })
+    await screen.findByText('From the model')
+    const links = screen.getAllByRole('link', { name: 'AI-generated' })
+    expect(links).toHaveLength(1)
+    expect(links[0]!.getAttribute('href')).toBe('/ai-processing')
+  })
+
+  it('reports a concern with the chosen category, route and note', async () => {
+    reportConcern.mockResolvedValue(true)
+    await open()
+    act(() =>
+      useKeelPanel
+        .getState()
+        .appendLocal({ role: 'keel', content: 'Answer', cards: [], route: 'llm' }),
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Report a concern' }))
+    const send = screen.getByRole('button', { name: 'Send report' })
+    expect(send).toHaveProperty('disabled', true)
+    fireEvent.click(screen.getByLabelText('Sounded like financial advice'))
+    fireEvent.change(screen.getByLabelText(/Anything else/), {
+      target: { value: 'named a policy' },
+    })
+    fireEvent.click(send)
+    await screen.findByText(/A person at LifeKeel will review this reply/)
+    expect(reportConcern).toHaveBeenCalledWith(
+      expect.objectContaining({ category: 'advice', route: 'llm', note: 'named a policy' }),
+    )
+  })
+
+  it('keeps the form open and says so when the report fails', async () => {
+    reportConcern.mockResolvedValue(false)
+    await open()
+    act(() =>
+      useKeelPanel
+        .getState()
+        .appendLocal({ role: 'keel', content: 'Answer', cards: [], route: 'llm' }),
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Report a concern' }))
+    fireEvent.click(screen.getByLabelText('Something else'))
+    fireEvent.click(screen.getByRole('button', { name: 'Send report' }))
+    expect((await screen.findByRole('alert')).textContent).toContain("That didn't send")
   })
 })

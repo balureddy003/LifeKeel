@@ -223,5 +223,7 @@ export async function ensureKeelIndexes(db: Db): Promise<void> {
       .collection('keel_proposals')
       .createIndex({ expires_at: 1 }, { expireAfterSeconds: 7 * 24 * 60 * 60 }),
     db.collection('keel_preferences').createIndex({ tenant_id: 1, user_id: 1 }, { unique: true }),
+    db.collection('keel_concerns').createIndex({ tenant_id: 1, created_at: -1 }),
+    db.collection('keel_concerns').createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 }),
   ])
 }
