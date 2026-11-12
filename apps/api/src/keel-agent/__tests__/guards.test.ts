@@ -92,7 +92,7 @@ describe('no write path or autonomous action', () => {
   it('files that write only touch Keel collections and the reviewed notification preferences', () => {
     const allowed = (name: string) => name.startsWith('keel_') || name === 'delivery_preferences'
     for (const [file, src] of sourceFiles()) {
-      if (!['proposals.ts', 'threads.ts', 'routes.ts'].includes(file)) continue
+      if (!['proposals.ts', 'threads.ts', 'routes.ts', 'concerns.ts'].includes(file)) continue
       const names = [
         ...src.matchAll(
           /(?:getTenantCollection(?:<[^>]*>)?\(\s*db,\s*|\.collection\()\s*'([a-z_]+)'/g,
