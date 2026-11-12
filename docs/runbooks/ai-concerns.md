@@ -1,12 +1,12 @@
 # AI concern triage
 
-| | |
+| Field | Value |
 |---|---|
-| Document ID | IMS-RB-AICONCERN-01 |
+| Document ID | LK-RB-009 |
 | Version | 0.1 |
 | Status | DRAFT — awaiting approval |
-| Owner | AI governance lead |
-| Approver | CEO |
+| Owner | AI governance lead (role) |
+| Approver | CEO / top management (role) |
 | Approved | — |
 | Next review | — |
 
