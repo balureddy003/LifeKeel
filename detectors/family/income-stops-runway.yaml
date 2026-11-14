@@ -1,0 +1,31 @@
+id: family_income_stops_runway
+name: Income Stops Runway
+description: >
+  Shows how many months the household's savings would cover if earned income stopped, as an estimate from
+  the figures entered, counting income protection that is on file. Information only: it names no product
+  and recommends no action beyond checking what is on file.
+version: 1.0.0
+signal_types:
+  - family.savings
+  - family.expenses
+  - family.income
+industries: ['family', 'finance', 'wealth']
+
+rules:
+  - id: income_stops_runway_under_six_months
+    name: Income Stops Runway Under Six Months
+    # Fires only when income protection is on file; with none on file the emergency-fund detector already
+    # states the savings-only figure. 9999 means the protection on file covers the whole monthly spend.
+    condition: 'data.income_protection_monthly_minor > 0 and data.runway_months_with_income_protection < 6'
+    confidence: 0.7
+    impact_low: '(data.monthly_expenses_minor - data.income_protection_monthly_minor) * 6 - data.emergency_savings_minor'
+    impact_high: 'data.monthly_expenses_minor * 6 - data.emergency_savings_minor'
+    reasoning_template: >
+      From the figures entered, savings on file would cover about {{data.runway_months_savings_only}} months if
+      income stopped, or about {{data.runway_months_with_income_protection}} months counting the income protection
+      on file. This is an estimate: it ignores waiting periods, benefit end dates and changes in spending. It is
+      information only, not advice. A licensed professional can say what applies to your household.
+    actions:
+      - Check the income protection schedule for its waiting period and end date
+      - Confirm the monthly spend figure in your profile is current
+      - Ask a licensed professional what applies to your household

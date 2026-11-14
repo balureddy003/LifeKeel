@@ -84,7 +84,7 @@ describe('runFreshnessCheck', () => {
     await db.collection('family_financial_profile').insertOne(profileDoc())
     const s = await runFreshnessCheck(db, { now: day('2026-10-20') })
     expect(s).toMatchObject({ tenants: 1, paused_checks: 0, failed: 0 })
-    expect(await db.collection('freshness_state').countDocuments({ tenant_id: T })).toBe(9)
+    expect(await db.collection('freshness_state').countDocuments({ tenant_id: T })).toBe(10)
     expect((await row('family_protection_gap'))?.['state']).toBe('running')
     expect(JSON.stringify(await db.collection('freshness_state').find({}).toArray())).not.toContain(
       '400000',
@@ -141,7 +141,7 @@ describe('runFreshnessCheck', () => {
 
   it('a family with no profile pauses its checks instead of being skipped', async () => {
     const s = await runFreshnessCheck(db, { now: day('2026-10-20') })
-    expect(s.paused_checks).toBe(8)
+    expect(s.paused_checks).toBe(9)
     expect((await row('family_estate_readiness'))?.['state']).toBe('running')
   })
 })

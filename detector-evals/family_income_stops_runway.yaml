@@ -1,0 +1,49 @@
+# Golden eval cases for detectors/family/income-stops-runway.yaml (intent 93, B1 + B9).
+# Figures are minor units. runway_* are whole months, 9999 = income protection on file
+# covers the monthly spend (no end date from these figures).
+cases:
+  - id: short-runway-with-protection-on-file
+    description: Savings 3 months of spend; income protection on file covers part of it; runway still under 6 months
+    event_type: family.savings
+    data:
+      emergency_savings_minor: 600000
+      monthly_expenses_minor: 200000
+      income_protection_monthly_minor: 50000
+      runway_months_savings_only: 3
+      runway_months_with_income_protection: 4
+    expected_insights:
+      - rule_id: income_stops_runway_under_six_months
+        min_or_score: 0.5
+
+  - id: long-runway-silent
+    description: Savings alone cover 8 months — nothing to show
+    event_type: family.savings
+    data:
+      emergency_savings_minor: 1600000
+      monthly_expenses_minor: 200000
+      income_protection_monthly_minor: 0
+      runway_months_savings_only: 8
+      runway_months_with_income_protection: 8
+    expected_silent: true
+
+  - id: protection-covers-spend-silent
+    description: Income protection on file covers the whole monthly spend — no runway end to show
+    event_type: family.savings
+    data:
+      emergency_savings_minor: 100000
+      monthly_expenses_minor: 200000
+      income_protection_monthly_minor: 200000
+      runway_months_savings_only: 0
+      runway_months_with_income_protection: 9999
+    expected_silent: true
+
+  - id: no-protection-on-file-silent
+    description: No income protection on file — the emergency-fund detector already covers savings alone
+    event_type: family.savings
+    data:
+      emergency_savings_minor: 300000
+      monthly_expenses_minor: 200000
+      income_protection_monthly_minor: 0
+      runway_months_savings_only: 1
+      runway_months_with_income_protection: 1
+    expected_silent: true

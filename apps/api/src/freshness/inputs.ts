@@ -71,6 +71,13 @@ export const DETECTOR_INPUTS: DetectorInputs[] = [
     max_age_days: SIX_MONTHS,
   },
   {
+    detector_id: 'family_income_stops_runway',
+    label: 'Income stops runway',
+    applies: () => true,
+    required: [expenses],
+    max_age_days: SIX_MONTHS,
+  },
+  {
     detector_id: 'family_emergency_trajectory',
     label: 'Emergency fund pace',
     applies: () => true,

@@ -30,6 +30,7 @@ const FAMILY_DETECTORS = [
   'family_policy_review',
   'family_education_pacing',
   'family_emergency_trajectory',
+  'family_income_stops_runway',
 ]
 
 describe('family detector golden datasets', () => {

@@ -16,6 +16,11 @@ Repo facts checked on 2026-11-14 (main):
 
 Tier for every intent unless stated: Tier 0 (information only, no external action).
 
+**Status 2026-11-14:** owner approved A1, A2, A3 and A4 as written below. B1 layers 1 and 2 and B9 are
+built (income-stops runway: `detectors/family/income-stops-runway.yaml`, `detector-evals/`,
+`incomeStopsRunway()`); the A1 allowed-action test is `informational-actions.test.ts`. A5 to A8 and the other
+B items remain open.
+
 ## Group A: decide before any engine code (owner)
 
 ### A1. Ranked actions must not read as a recommendation (gap 1)
