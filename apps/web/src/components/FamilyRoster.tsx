@@ -142,7 +142,9 @@ export function FamilyRoster({ showFullMapLink = true }: FamilyRosterProps) {
               <div
                 className={`text-caption truncate ${m.status === 'pending' ? 'text-warning font-medium' : 'text-ink-tertiary'}`}
               >
-                {m.status === 'pending' ? memberStatusLabel(m.status, m.role) : ROLE_LABELS[m.role]}
+                {m.status === 'pending'
+                  ? memberStatusLabel(m.status, m.role, m.inviteStatus)
+                  : ROLE_LABELS[m.role]}
               </div>
             </button>
           )

@@ -725,8 +725,11 @@ export default function SettingsPage() {
           <ListSection title="Family Members">
             {family.members.map((m) => (
               <ListRow key={m.id} icon={ROLE_ICONS[m.role] ?? User}>
-                <div className="flex items-center justify-between w-full">
-                  <div className="text-left">
+                {/* Phone width can't fit the switches and the status/actions
+                    side by side — squeezing them broke words one letter per
+                    line. Stack the actions under the details until sm. */}
+                <div className="flex flex-col items-start gap-2 w-full sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                  <div className="text-left min-w-0 sm:flex-1">
                     <div className="text-base font-medium">{m.name}</div>
                     <div className="text-xs text-ink-tertiary mt-0.5">
                       {ROLE_LABELS[m.role]}
@@ -757,9 +760,9 @@ export default function SettingsPage() {
                       />
                     )}
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 shrink-0">
                     <span
-                      className={`text-xs ${m.status === 'pending' ? 'text-warning' : 'text-success'}`}
+                      className={`text-xs whitespace-nowrap ${m.status === 'pending' ? 'text-warning' : 'text-success'}`}
                     >
                       {memberStatusLabel(m.status, m.role, m.inviteStatus)}
                     </span>
@@ -774,7 +777,7 @@ export default function SettingsPage() {
                           haptic('light')
                           router.push(`/member/${m.id}`)
                         }}
-                        className="text-xs text-family-400 font-semibold px-2 py-1 rounded-lg bg-family-500/10"
+                        className="text-xs whitespace-nowrap text-family-400 font-semibold px-2 py-1 rounded-lg bg-family-500/10"
                       >
                         Invite
                       </button>
@@ -793,7 +796,7 @@ export default function SettingsPage() {
                           haptic('warning')
                           removeMember(m.id).catch(() => haptic('warning'))
                         }}
-                        className="text-xs text-danger px-2 py-1 rounded-lg bg-danger/10"
+                        className="text-xs whitespace-nowrap text-danger px-2 py-1 rounded-lg bg-danger/10"
                       >
                         Remove
                       </button>

@@ -8,7 +8,10 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { mapExtractedFieldsToPolicySuggestion, mapExtractedFieldsToProfileSuggestions } from '../profile-mapping.js'
+import {
+  mapExtractedFieldsToPolicySuggestion,
+  mapExtractedFieldsToProfileSuggestions,
+} from '../profile-mapping.js'
 
 describe('mapExtractedFieldsToPolicySuggestion', () => {
   it('returns null for non-insurance categories', () => {
@@ -148,7 +151,9 @@ describe('mapExtractedFieldsToProfileSuggestions', () => {
   })
 
   it('maps a mortgage statement to a household.mortgage_outstanding_minor suggestion', () => {
-    expect(mapExtractedFieldsToProfileSuggestions('mortgage', { outstanding_balance: '£180,000' })).toEqual([
+    expect(
+      mapExtractedFieldsToProfileSuggestions('mortgage', { outstanding_balance: '£180,000' }),
+    ).toEqual([
       {
         path: 'household.mortgage_outstanding_minor',
         label: 'Mortgage outstanding',
@@ -160,7 +165,9 @@ describe('mapExtractedFieldsToProfileSuggestions', () => {
   })
 
   it('maps a payslip to a household.monthly_salary_minor suggestion, preferring net_pay', () => {
-    expect(mapExtractedFieldsToProfileSuggestions('income', { gross_pay: '£5,000', net_pay: '£3,850' })).toEqual([
+    expect(
+      mapExtractedFieldsToProfileSuggestions('income', { gross_pay: '£5,000', net_pay: '£3,850' }),
+    ).toEqual([
       {
         path: 'household.monthly_salary_minor',
         label: 'Monthly salary',
@@ -178,6 +185,30 @@ describe('mapExtractedFieldsToProfileSuggestions', () => {
 
   it('returns no suggestion for an income document with nothing extractable', () => {
     expect(mapExtractedFieldsToProfileSuggestions('income', { provider: 'Acme Ltd' })).toEqual([])
+  })
+
+  it('does not offer a car or home policy amount as life cover', () => {
+    expect(
+      mapExtractedFieldsToProfileSuggestions('insurance', {
+        policy_type: 'car',
+        excess_amount: '£250',
+      }),
+    ).toEqual([])
+    expect(
+      mapExtractedFieldsToProfileSuggestions('insurance', {
+        policy_type: 'Home',
+        coverage_amount: '£300,000',
+      }),
+    ).toEqual([])
+  })
+
+  it('still offers life cover when the stated type is a life policy', () => {
+    const result = mapExtractedFieldsToProfileSuggestions('insurance', {
+      policy_type: 'Term life',
+      sum_assured: '£400,000',
+    })
+    expect(result[0]?.path).toBe('household.life_cover_minor')
+    expect(result[0]?.valueMinor).toBe(40_000_000)
   })
 
   it('returns no suggestion for an unrecognized category', () => {

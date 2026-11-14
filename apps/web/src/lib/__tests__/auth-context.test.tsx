@@ -518,3 +518,57 @@ describe('AuthProvider email OTP (CLOUDFLARE_INTEGRATION.md §6)', () => {
     expect(result.current.isAuthenticated).toBe(true)
   })
 })
+
+describe('AuthProvider.createFamily', () => {
+  it('adopts the existing family when the account already has one (409)', async () => {
+    const existing = { id: 'f1', name: 'The Bs', inviteCode: 'ABC123', members: [] }
+    let familyGets = 0
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: { method?: string }) => {
+      if (url.endsWith('/auth/me')) {
+        return jsonResponse({ user_id: 'u1', email: 'a@b.com', name: 'A' })
+      }
+      if (url.endsWith('/family') && init?.method === 'POST') {
+        return Promise.resolve({
+          ok: false,
+          status: 409,
+          json: () => Promise.resolve({ error: 'Family already exists for this account' }),
+        })
+      }
+      if (url.endsWith('/family')) {
+        familyGets++
+        return jsonResponse({ family: familyGets === 1 ? null : existing })
+      }
+      return jsonResponse({}, false)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    localStorage.setItem('lifekeel_token', 'existing-token')
+
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.family).toBeNull()
+
+    let group: Awaited<ReturnType<typeof result.current.createFamily>> = null
+    await act(async () => {
+      group = await result.current.createFamily("A's Family")
+    })
+    expect(group).toMatchObject({ id: 'f1' })
+    expect(result.current.family?.name).toBe('The Bs')
+  })
+
+  it('still throws on other failures', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: { method?: string }) => {
+      if (url.endsWith('/auth/me')) {
+        return jsonResponse({ user_id: 'u1', email: 'a@b.com', name: 'A' })
+      }
+      if (url.endsWith('/family') && init?.method === 'POST') return jsonResponse({}, false)
+      if (url.endsWith('/family')) return jsonResponse({ family: null })
+      return jsonResponse({}, false)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    localStorage.setItem('lifekeel_token', 'existing-token')
+
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    await expect(result.current.createFamily("A's Family")).rejects.toThrow()
+  })
+})
