@@ -118,9 +118,15 @@ gaps:
     clauses: ['9.2', '9.3']
     owner_role: Internal auditor / CEO
     phase: 3
-    status: open
-    evidence: —
+    status: in_progress
+    evidence:
+      [
+        docs/ims/audits/programme.md,
+        docs/ims/audits/checklist-template.md,
+        docs/ims/management-reviews/template.md,
+      ]
     exit_criterion: One complete internal audit cycle and one management review, with records
+    note: Programme and templates drafted; no audit or review has been performed.
 
   - id: G-PRIV-01
     title: DPIA unsigned; lawful bases undecided
@@ -189,9 +195,17 @@ gaps:
     clauses: ['A.8.4', 'A.8.32']
     owner_role: Principal developer
     phase: 2
-    status: open
-    evidence: [CODEOWNERS, .github/workflows/require-ci.yml, .github/workflows/deploy-api.yml]
+    status: in_progress
+    evidence:
+      [
+        CODEOWNERS,
+        .github/workflows/require-ci.yml,
+        .github/workflows/deploy-api.yml,
+        scripts/ims/evidence-pack.sh,
+        docs/ims/nc-log.yaml,
+      ]
     exit_criterion: Screenshot/API export of settings in the evidence pack
+    note: Export exists (scripts/ims/evidence-pack.sh). First run 2026-11-12 found no branch protection, a disabled ruleset, unprotected environments and unsigned commits on main (NC-2026-005..007). Closes when a re-run shows them enforced.
 
   - id: G-SEC-02
     title: Workload identity not configured; JSON service-account keys exist
@@ -210,7 +224,7 @@ gaps:
     owner_role: Architect
     phase: 2
     status: in_progress
-    note: Closing in the principal developer's Phase 2 PR.
+    note: 'Implemented in #468 (not merged); verify after merge. #468 seals audit_log into a daily hash chain (apps/api/src/audit/audit-seal.ts on that branch).'
     evidence: [apps/api/src/audit/audit-log.ts]
     exit_criterion: WORM export or hash chain; mandatory audit for consequential actions
 
@@ -262,7 +276,7 @@ gaps:
     owner_role: Principal developer
     phase: 2
     status: in_progress
-    note: Closing in the principal developer's Phase 2 PR.
+    note: 'Implemented in #468 (not merged); verify after merge. #468 adds docs/security/vulnerability-management.md; NC-2026-007 records that Dependabot alerts are disabled, so the SLA source is not yet active.'
     evidence: [.github/workflows/security.yml]
     exit_criterion: SLA policy; tracked metrics
 
@@ -395,7 +409,7 @@ gaps:
     owner_role: Product manager
     phase: 2
     status: in_progress
-    note: Closing in the principal developer's Phase 2 PR. apps/api/src/ai/disclosure.ts already tells a family which processors handle their documents; it is not an Art. 50 "you are interacting with AI" disclosure.
+    note: 'Implemented in #468 (not merged); verify after merge. #468 adds an AI-generated label on Keel replies. apps/api/src/ai/disclosure.ts (processor disclosure) predates it and is not an Art. 50 notice on its own; the transparency page is still open.'
     evidence: [apps/api/src/ai/disclosure.ts]
     exit_criterion: Disclosure UI + transparency page
 
@@ -406,7 +420,7 @@ gaps:
     owner_role: AI governance lead
     phase: 2
     status: in_progress
-    note: Closing in the principal developer's Phase 2 PR.
+    note: 'Implemented in #468 (not merged); verify after merge. #468 adds concern reporting on Keel replies and docs/runbooks/ai-concerns.md (triage procedure).'
     evidence: —
     exit_criterion: Channel live; triage procedure
 
@@ -428,9 +442,10 @@ gaps:
     clauses: ['10.2']
     owner_role: IMS manager
     phase: 3
-    status: open
-    evidence: —
+    status: in_progress
+    evidence: [docs/ims/nc-log.yaml]
     exit_criterion: NC log in use (template ISO_AUDITABLE.md §23.5) with root cause and effectiveness checks
+    note: Log created with 7 open NCs; closes once entries carry root cause and verified effectiveness checks.
 
   - id: G-OPS-04
     title: 'Retention gaps: inactive households, AI eval captures, queues'
@@ -519,6 +534,7 @@ gaps:
     owner_role: Product manager
     phase: 5
     status: open
+    note: 'Needs, before any non-UK market (ISO_AUDITABLE.md §18): a household timezone used for dates, reminders and scheduled jobs; an ISO 4217 currency on every stored amount (no implicit GBP); locale-aware formatting; detector thresholds and evals that hold per currency; tests for each. Product manager to write the PRD; owner decision on which markets come first (Phase 0 step 4).'
     evidence: —
     exit_criterion: Timezone and currency semantics defined and implemented before non-UK launch
 
@@ -540,7 +556,7 @@ gaps:
     owner_role: Principal developer
     phase: 2
     status: in_progress
-    note: Closing in the principal developer's Phase 2 PR (R42 residual).
+    note: 'Risk acceptance pending. #468 keeps the 409 on purpose (KEEL-025 comment at POST /auth/signup in apps/api/src/routes/auth-users.ts: UX need; route rate limit and Turnstile raise the cost of enumeration). Close only when the CEO records the acceptance of the R42 residual in the risk register; until then in_progress.'
     evidence: [apps/api/src/routes/auth-users.ts]
     exit_criterion: Signup response does not distinguish a registered email
 
@@ -572,8 +588,13 @@ gaps:
     clauses: ['A.8.15']
     owner_role: Product manager
     phase: 5
-    status: open
-    evidence: —
+    status: in_progress
+    note: 'Implemented in the Phase 5 PR (not merged): operator dossier and household-record views are logged, GET /audit-log/operator-access returns allow-listed operator actions on the household (no operator identity or reason), and the Activity Log page shows them. Other operator reads (support case threads, user list) are not yet logged; move to verify after merge.'
+    evidence:
+      - apps/api/src/routes/audit-log.ts
+      - apps/api/src/routes/__tests__/audit-log-operator-access.test.ts
+      - apps/web/src/app/audit-log/page.tsx
+      - apps/web/src/app/__tests__/audit-log-staff-access.test.tsx
     exit_criterion: Households can see operator access to their data
 
   - id: G-OFI-05
@@ -583,6 +604,6 @@ gaps:
     owner_role: Principal developer
     phase: 2
     status: in_progress
-    note: Closing in the principal developer's Phase 2 PR. A build-time security.txt generator already exists; it emits nothing until a contact is configured.
+    note: 'Generator exists (apps/web/scripts/security-txt.mjs) and emits nothing until a contact is configured. Needs an owner-supplied security contact (CEO decision) and a published vulnerability disclosure policy.'
     evidence: [apps/web/scripts/security-txt.mjs, apps/web/src/lib/__tests__/security-txt.test.ts]
     exit_criterion: security.txt served and a vulnerability disclosure policy published

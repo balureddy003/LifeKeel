@@ -3652,6 +3652,23 @@ export async function fetchAuditLog(before?: string): Promise<AuditLogEntry[]> {
   )
 }
 
+// When LifeKeel staff opened or changed this household's account (G-OFI-04).
+// The API returns what and when only — never which operator or their reason.
+export interface OperatorAccessEntry {
+  action: string
+  target_type: string
+  about_you: boolean
+  timestamp: string
+}
+
+// null means the list could not be loaded — never shown as "no access".
+export async function fetchOperatorAccess(): Promise<OperatorAccessEntry[] | null> {
+  return apiFetch<{ entries: OperatorAccessEntry[] } | null>(
+    '/audit-log/operator-access',
+    null,
+  ).then((r) => r?.entries ?? null)
+}
+
 // ── Receipt Chain (PRD-214, M7) — what Keel did, hash-chained ─────────────
 
 export interface FamilyReceipt {
