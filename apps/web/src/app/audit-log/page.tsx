@@ -3,9 +3,14 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { PageHeader, GlassCard, GlassButton, EmptyState, Skeleton } from '@/components/Glass'
-import { ScrollText, Loader2, Printer } from 'lucide-react'
+import { ScrollText, Loader2, Printer, ShieldCheck } from 'lucide-react'
 import { haptic } from '@/lib/haptics'
-import { fetchAuditLog, type AuditLogEntry } from '@/lib/api'
+import {
+  fetchAuditLog,
+  fetchOperatorAccess,
+  type AuditLogEntry,
+  type OperatorAccessEntry,
+} from '@/lib/api'
 
 // The raw action ids (insight.approve, billing.plan_upgraded, …) are
 // developer-facing; the viewer translates them into what actually happened.
@@ -36,6 +41,30 @@ function actionLabel(action: string): string {
   return ACTION_LABELS[action] ?? action.replace(/[._]/g, ' ')
 }
 
+const STAFF_LABELS: Record<string, string> = {
+  'operator.user.view': 'opened the account to help with support',
+  'operator.tenant.view': 'opened your family’s record to help with support',
+  'operator.user.password_reset': 'sent a password reset',
+  'operator.user.suspend': 'paused an account',
+  'operator.user.reactivate': 'restored an account',
+  'operator.tenant.suspend': 'paused your family’s account',
+  'operator.tenant.reactivate': 'restored your family’s account',
+  'operator.user.revoke_sessions': 'signed an account out everywhere',
+  'operator.user.unlock': 'unlocked sign-in',
+  'operator.user.mfa_disable': 'turned off two-step sign-in',
+  'operator.user.export': 'exported account data',
+  'operator.user.erase': 'erased an account',
+  'operator.connector.revoke': 'disconnected a connected service',
+}
+
+function staffLabel(entry: OperatorAccessEntry): string {
+  const what =
+    STAFF_LABELS[entry.action] ?? entry.action.replace(/^operator\./, '').replace(/[._]/g, ' ')
+  const whose =
+    entry.target_type === 'user' ? (entry.about_you ? ' (yours)' : ' (a family member’s)') : ''
+  return `LifeKeel staff ${what}${whose}`
+}
+
 function when(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
@@ -55,6 +84,12 @@ export default function AuditLogPage() {
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [exhausted, setExhausted] = useState(false)
+  // undefined while loading; 'error' must never read as "no access".
+  const [staff, setStaff] = useState<OperatorAccessEntry[] | 'error' | undefined>(undefined)
+
+  useEffect(() => {
+    fetchOperatorAccess().then((entries) => setStaff(entries ?? 'error'))
+  }, [])
 
   useEffect(() => {
     fetchAuditLog().then((first) => {
@@ -85,7 +120,10 @@ export default function AuditLogPage() {
       {!loading && entries.length > 0 && (
         <div className="flex justify-end print:hidden">
           <button
-            onClick={() => { haptic('light'); window.print() }}
+            onClick={() => {
+              haptic('light')
+              window.print()
+            }}
             className="text-xs font-semibold text-family-400 flex items-center gap-1"
             aria-label="Print this activity log"
           >
@@ -93,6 +131,54 @@ export default function AuditLogPage() {
           </button>
         </div>
       )}
+
+      <section aria-labelledby="staff-access-heading" className="space-y-2">
+        <h2 id="staff-access-heading" className="text-sm font-semibold text-ink-primary">
+          LifeKeel staff access
+        </h2>
+        <p className="text-xs text-ink-tertiary">
+          When our support team opens your account record or makes a change to your account, it is
+          recorded here.
+        </p>
+        {staff === undefined && (
+          <GlassCard className="p-4">
+            <Skeleton className="h-3.5 w-48" />
+          </GlassCard>
+        )}
+        {staff === 'error' && (
+          <GlassCard className="p-4 text-xs text-ink-secondary">
+            <div role="alert">
+              We couldn’t load LifeKeel staff access just now. Please try again later.
+            </div>
+          </GlassCard>
+        )}
+        {Array.isArray(staff) && staff.length === 0 && (
+          <GlassCard className="p-4 text-xs text-ink-secondary">
+            No one at LifeKeel has opened your family’s account.
+          </GlassCard>
+        )}
+        {Array.isArray(staff) && staff.length > 0 && (
+          <ul className="space-y-2">
+            {staff.map((entry, i) => (
+              <li key={`${entry.timestamp}-${entry.action}-${i}`}>
+                <GlassCard className="p-4 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-tint/[0.05] flex items-center justify-center flex-shrink-0">
+                    <ShieldCheck size={14} className="text-ink-tertiary" aria-hidden />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-ink-primary">
+                      {staffLabel(entry)}
+                    </div>
+                    <div className="text-xs text-ink-tertiary mt-0.5">{when(entry.timestamp)}</div>
+                  </div>
+                </GlassCard>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <h2 className="text-sm font-semibold text-ink-primary pt-2">Your family’s activity</h2>
 
       {loading && (
         <div className="space-y-2">
@@ -132,7 +218,9 @@ export default function AuditLogPage() {
                   <ScrollText size={14} className="text-ink-tertiary" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-ink-primary">{actionLabel(entry.action)}</div>
+                  <div className="text-sm font-semibold text-ink-primary">
+                    {actionLabel(entry.action)}
+                  </div>
                   <div className="text-xs text-ink-tertiary mt-0.5">
                     {entry.resource_type.replace(/_/g, ' ')} · {when(entry.timestamp)}
                   </div>
