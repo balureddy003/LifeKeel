@@ -36,7 +36,7 @@ describe('cellText', () => {
 
 describe('noPolicyText', () => {
   it('states what is on file, with no advice', () => {
-    expect(noPolicyText('Kit Rowan')).toBe('No policy on file for Kit Rowan')
+    expect(noPolicyText('Kit Rowan')).toBe('No policy in the family list for Kit Rowan')
   })
 })
 
