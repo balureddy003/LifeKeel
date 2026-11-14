@@ -39,51 +39,76 @@ function whole(label: string, n: number): void {
   }
 }
 
-function loseIncome(m: MonthFlow, lost: number): MonthFlow {
-  return { ...m, inflowMinor: m.inflowMinor - Math.min(m.inflowMinor, lost) }
-}
+/**
+ * What an event does to the money, as order-independent effects: losses are taken from the household's
+ * own inflow (capped at what it receives), spend rises add, credits (protection, a payout) arrive on top.
+ * Combining events sums effects, so the result never depends on the order events are listed in.
+ */
+export type Effect =
+  | { type: 'loss'; fromMonth: number; amountMinor: number }
+  | { type: 'spend'; fromMonth: number; amountMinor: number }
+  | { type: 'credit'; month: number; amountMinor: number }
 
-export function applyEvent(timeline: MonthFlow[], event: EngineEvent): MonthFlow[] {
+export function effectsOf(event: EngineEvent, months: number): Effect[] {
   whole('fromMonth', event.fromMonth)
   switch (event.kind) {
     case 'income_stops': {
       whole('monthlyIncomeLostMinor', event.monthlyIncomeLostMinor)
+      const effects: Effect[] = [
+        { type: 'loss', fromMonth: event.fromMonth, amountMinor: event.monthlyIncomeLostMinor },
+      ]
       const p = event.protection
       if (p) {
         whole('protection.monthlyMinor', p.monthlyMinor)
         whole('protection.waitMonths', p.waitMonths)
         if (p.maxMonths !== undefined) whole('protection.maxMonths', p.maxMonths)
+        const start = event.fromMonth + p.waitMonths
+        const end = p.maxMonths === undefined ? months : Math.min(months, start + p.maxMonths)
+        for (let m = start; m < end; m++) {
+          effects.push({ type: 'credit', month: m, amountMinor: p.monthlyMinor })
+        }
       }
-      return timeline.map((m, i) => {
-        if (i < event.fromMonth) return m
-        const lostNow = loseIncome(m, event.monthlyIncomeLostMinor)
-        if (!p) return lostNow
-        const since = i - event.fromMonth
-        const started = since >= p.waitMonths
-        const ended = p.maxMonths !== undefined && since >= p.waitMonths + p.maxMonths
-        return started && !ended
-          ? { ...lostNow, inflowMinor: lostNow.inflowMinor + p.monthlyMinor }
-          : lostNow
-      })
+      return effects
     }
     case 'mortgage_fix_ends': {
       whole('monthlyIncreaseMinor', event.monthlyIncreaseMinor)
-      return timeline.map((m, i) =>
-        i >= event.fromMonth ? { ...m, spendMinor: m.spendMinor + event.monthlyIncreaseMinor } : m,
-      )
+      return [
+        { type: 'spend', fromMonth: event.fromMonth, amountMinor: event.monthlyIncreaseMinor },
+      ]
     }
     case 'earner_dies': {
       whole('monthlyIncomeLostMinor', event.monthlyIncomeLostMinor)
       whole('lumpSumOnFileMinor', event.lumpSumOnFileMinor)
       whole('payoutAfterMonths', event.payoutAfterMonths)
-      const payoutMonth = event.fromMonth + event.payoutAfterMonths
-      return timeline.map((m, i) => {
-        if (i < event.fromMonth) return m
-        const lostNow = loseIncome(m, event.monthlyIncomeLostMinor)
-        return i === payoutMonth
-          ? { ...lostNow, inflowMinor: lostNow.inflowMinor + event.lumpSumOnFileMinor }
-          : lostNow
-      })
+      return [
+        { type: 'loss', fromMonth: event.fromMonth, amountMinor: event.monthlyIncomeLostMinor },
+        {
+          type: 'credit',
+          month: event.fromMonth + event.payoutAfterMonths,
+          amountMinor: event.lumpSumOnFileMinor,
+        },
+      ]
     }
   }
+}
+
+export function applyEffects(timeline: MonthFlow[], effects: Effect[]): MonthFlow[] {
+  return timeline.map((m, i) => {
+    let lost = 0
+    let spend = 0
+    let credit = 0
+    for (const e of effects) {
+      if (e.type === 'loss' && i >= e.fromMonth) lost += e.amountMinor
+      else if (e.type === 'spend' && i >= e.fromMonth) spend += e.amountMinor
+      else if (e.type === 'credit' && i === e.month) credit += e.amountMinor
+    }
+    return {
+      inflowMinor: m.inflowMinor - Math.min(m.inflowMinor, lost) + credit,
+      spendMinor: m.spendMinor + spend,
+    }
+  })
+}
+
+export function applyEvent(timeline: MonthFlow[], event: EngineEvent): MonthFlow[] {
+  return applyEffects(timeline, effectsOf(event, timeline.length))
 }
