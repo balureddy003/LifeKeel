@@ -166,3 +166,6 @@ record a recurring reason to be reopened.
 Note: `78-factual-brief-catalogue.md` is shipped (PRs #308) but is not yet listed in
 the table above; add its row when this index is next reconciled.
 
+## 93: Resilience Engine blueprint gaps
+
+[93-resilience-engine-gaps.md](93-resilience-engine-gaps.md): 17 gap-closing intents from the 2026-11-14 blueprint review, grouped into owner decisions (A) and design intents (B). No engine code until A1 to A4 are decided.
