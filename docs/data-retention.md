@@ -11,6 +11,7 @@ benchmarks.
 | Documents (files, what was read from them, their text) | the family deletes it, or deletes the account | `DELETE /documents/:id` returns a receipt. **Never swept by age.** |
 | Mailbox connection and what was read from it (inbox summaries, saved attachments, sync state, scan failure log) | the family disconnects with "delete what was read", or deletes the account | `POST /connectors/:id/disconnect` with `delete_data: true` returns a receipt. A plain disconnect revokes access only and keeps the rest, and says so. |
 | Financial profile, family roster, vault | the family changes or removes them, or deletes the account | account deletion |
+| Keel concern reports (`keel_concerns`: category, answer route, encrypted note) | 365 days (TTL), or the account is deleted | TTL index; account deletion |
 | Everything above and every other tenant-scoped collection | the family deletes the account | `POST /account/delete` (see below) |
 
 Details a family saved to their profile from a document or message are the family's own
@@ -58,6 +59,7 @@ Each run is recorded in `job_runs` (counts only). The sweep never deletes docume
 | Data | Kept | Reason | Where |
 |---|---|---|---|
 | Audit log | 7 years (TTL) | project policy: evidence of approvals and deletions; not a universal legal requirement, review per action class | `audit/audit-log.ts` |
+| Audit-log anchors (`audit_anchors`: day, entry count, digests) | not swept; no family data | tamper evidence for the audit log (G-SEC-03); verification skips content checks for days past the audit-log TTL | `audit/audit-seal.ts` |
 | Deletion receipts | 7 years (TTL) | answering a later "was I deleted?" request | `deletion/receipt.ts` |
 | Credit ledger and Stripe identifiers of a deleted household | 7 years after deletion, then swept | UK company record-keeping (6 years after the financial year end) | `jobs/retention-worker.ts` |
 | Stripe revenue copies for marketing intelligence (`revenue_events`, `revenue_subscriptions`: invoice id, amount, date, tenant) | same as the credit ledger: 7 years after the household's deletion, then swept | the same payments, read-only from Stripe, to measure what each channel earns; no content, no card data | `marketing/revenue.ts`, `jobs/retention-worker.ts` |

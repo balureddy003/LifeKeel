@@ -235,3 +235,29 @@ export function onKeelDataChanged(cb: (area: KeelDataArea) => void): () => void 
   window.addEventListener(EVENT, handler)
   return () => window.removeEventListener(EVENT, handler)
 }
+
+export type ConcernCategory = 'incorrect' | 'harmful' | 'advice' | 'privacy' | 'other'
+
+/** G-AI-03: report a concern about a Keel reply. True once the report is stored. */
+export async function reportConcern(input: {
+  category: ConcernCategory
+  route?: KeelRoute
+  threadId?: string | null
+  note?: string
+}): Promise<boolean> {
+  try {
+    const res = await credFetch(url('/keel/concerns'), {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({
+        category: input.category,
+        ...(input.route ? { route: input.route } : {}),
+        ...(input.threadId ? { thread_id: input.threadId } : {}),
+        ...(input.note?.trim() ? { note: input.note.trim() } : {}),
+      }),
+    })
+    return res.status === 201
+  } catch {
+    return false
+  }
+}

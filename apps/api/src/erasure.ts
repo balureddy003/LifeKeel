@@ -69,6 +69,7 @@ export const DELETABLE_COLLECTIONS = [
   'keel_messages',
   'keel_proposals',
   'keel_preferences',
+  'keel_concerns', // G-AI-03 concern reports
   'external_accounts',
   'pending_trades',
   // ── product state derived from the family ──

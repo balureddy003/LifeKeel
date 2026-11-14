@@ -15,7 +15,9 @@ import { getTenantCollection } from '@lifekeel/platform'
 import { getAuditLogger } from '../audit/audit-log.js'
 import { buildKeelContext, type KeelContext } from './context.js'
 import { runTurn, type AssistantReply, type KeelEvent, type TurnInput } from './orchestrator.js'
+import { CONCERN_CATEGORIES, recordConcern } from './concerns.js'
 import { confirmProposal, dismissProposal } from './proposals.js'
+import { sendOpsAlert } from '../operator/ops-alerts.js'
 import { STEP_IDS, getSetupState, type StepId } from './setup-state.js'
 import {
   appendMessage,
@@ -59,6 +61,17 @@ const TurnBody = z.object({
 })
 
 const NO_STORE = 'private, no-store'
+const ConcernBody = z.object({
+  category: z.enum(CONCERN_CATEGORIES),
+  route: z
+    .string()
+    .max(32)
+    .regex(/^[a-z_]+$/)
+    .optional(),
+  thread_id: z.string().uuid().optional(),
+  note: z.string().trim().max(1000).optional(),
+})
+
 const rateLimit = (max: number) => ({ config: { rateLimit: { max, timeWindow: '1 minute' } } })
 
 type AskAssistant = (req: FastifyRequest, input: TurnInput) => Promise<AssistantReply>
@@ -244,11 +257,9 @@ export function registerKeelRoutes(
       if (result.code === 'forbidden')
         return reply.status(403).send({ error: 'Only the household organizer can apply this.' })
       if (result.code === 'conflict')
-        return reply
-          .status(409)
-          .send({
-            error: 'Your settings changed since this was prepared. Ask Keel again for a fresh one.',
-          })
+        return reply.status(409).send({
+          error: 'Your settings changed since this was prepared. Ask Keel again for a fresh one.',
+        })
       return reply.status(500).send({ error: 'Could not apply that right now.' })
     },
   )
@@ -313,5 +324,31 @@ export function registerKeelRoutes(
   app.delete('/keel/threads', rateLimit(10), async (req) => {
     await deleteAllThreads(db, await ctxOf(req))
     return { ok: true }
+  })
+
+  // G-AI-03: report a concern about a Keel reply. The alert and audit record
+  // carry the category and answer route only, never the note.
+  app.post('/keel/concerns', rateLimit(5), async (req, reply) => {
+    const parsed = ConcernBody.safeParse(req.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid request' })
+    const { category, route, thread_id, note } = parsed.data
+    const id = await recordConcern(db, await ctxOf(req), {
+      category,
+      ...(route ? { route } : {}),
+      ...(thread_id ? { thread_id } : {}),
+      ...(note ? { note } : {}),
+    })
+    audit()?.fromRequest(req, 'keel.concern_reported', 'ai_concern', id, {
+      category,
+      ...(route ? { route } : {}),
+    })
+    void sendOpsAlert({
+      title: 'AI concern reported',
+      message: `A family reported a Keel reply as "${category}"${route ? ` (route ${route})` : ''}. Triage per docs/runbooks/ai-concerns.md.`,
+      severity: category === 'harmful' || category === 'privacy' ? 'critical' : 'warning',
+      fingerprint: 'ai-concern',
+      tenant_id: req.authContext.tenant_id,
+    }).catch(() => {})
+    return reply.status(201).send({ id })
   })
 }

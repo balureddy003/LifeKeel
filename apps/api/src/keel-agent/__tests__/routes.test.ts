@@ -332,3 +332,49 @@ describe('proposal routes', () => {
     ).toBe(404)
   })
 })
+
+describe('POST /keel/concerns', () => {
+  const report = (
+    app: ReturnType<typeof build>['app'],
+    payload: object,
+    headers = as('A', 'A-org'),
+  ) => app.inject({ method: 'POST', url: '/keel/concerns', headers, payload })
+
+  it("stores the report under the caller's tenant with the note encrypted", async () => {
+    const { app, fake } = build()
+    const res = await report(app, {
+      category: 'advice',
+      route: 'llm',
+      thread_id: '6f1c2b8e-1d2a-4c3b-9e8f-0a1b2c3d4e5f',
+      note: 'It told me which policy to buy',
+    })
+    expect(res.statusCode).toBe(201)
+    const [doc] = fake.data['keel_concerns']!
+    expect(doc).toMatchObject({
+      id: res.json().id,
+      tenant_id: 'A',
+      user_id: 'A-org',
+      category: 'advice',
+      answer_route: 'llm',
+      status: 'open',
+    })
+    expect(String(doc!['note_enc'])).toMatch(/^dek:/)
+    expect(JSON.stringify(doc)).not.toContain('which policy')
+    const days =
+      ((doc!['expires_at'] as Date).getTime() - (doc!['created_at'] as Date).getTime()) / 86_400_000
+    expect(days).toBe(365)
+  })
+
+  it('ignores a tenant id in the body', async () => {
+    const { app, fake } = build()
+    await report(app, { category: 'incorrect', tenant_id: 'B' })
+    expect(fake.data['keel_concerns']![0]).toMatchObject({ tenant_id: 'A' })
+  })
+
+  it('rejects an unknown category or an oversized note', async () => {
+    const { app, fake } = build()
+    expect((await report(app, { category: 'spam' })).statusCode).toBe(400)
+    expect((await report(app, { category: 'other', note: 'x'.repeat(1001) })).statusCode).toBe(400)
+    expect(fake.data['keel_concerns'] ?? []).toHaveLength(0)
+  })
+})

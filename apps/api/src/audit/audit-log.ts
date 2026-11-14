@@ -34,6 +34,7 @@ export type AuditAction =
   | 'keel.proposal.applied'
   | 'keel.proposal.dismissed'
   | 'keel.access_denied'
+  | 'keel.concern_reported'
   | 'detector.create'
   | 'detector.eval'
   | 'detector.update'
@@ -165,6 +166,13 @@ export interface AuditEntry {
 
 import { createLogger } from '@lifekeel/platform'
 import { sendOpsAlert } from '../operator/ops-alerts.js'
+import { entryHash } from './audit-seal.js'
+
+/** A copy carrying `entry_hash`, so the daily anchor can prove it was not edited (G-SEC-03). */
+const sealed = (entry: AuditEntry): AuditEntry & { entry_hash: string } => ({
+  ...entry,
+  entry_hash: entryHash(entry),
+})
 
 const auditLog = createLogger({ service: 'audit', version: '0.0.0' })
 
@@ -214,7 +222,7 @@ export class AuditLogger {
   /** Write a structured audit event. Fire-and-forget — never blocks the request. */
   log(entry: AuditEntry): void {
     if (!this.enabled) return
-    this.col.insertOne(entry).catch((err: unknown) => {
+    this.col.insertOne(sealed(entry)).catch((err: unknown) => {
       // Never crashes the request, but never silent either.
       reportLostAudit(entry, err)
     })
@@ -234,7 +242,7 @@ export class AuditLogger {
     if (!this.enabled) return
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        await this.col.insertOne(entry)
+        await this.col.insertOne(sealed(entry))
         return
       } catch (err) {
         if (attempt === maxRetries) {
@@ -257,7 +265,7 @@ export class AuditLogger {
     let lastErr: unknown
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        await this.col.insertOne(entry)
+        await this.col.insertOne(sealed(entry))
         return
       } catch (err) {
         lastErr = err
