@@ -1,5 +1,15 @@
 # Stripe setup as code
 
+| Field | Value |
+|---|---|
+| Document ID | LK-RB-008 |
+| Version | 0.1 |
+| Status | DRAFT — awaiting approval |
+| Owner | Principal developer (role) |
+| Approver | IMS manager (role) |
+| Approved | — |
+| Next review | — |
+
 Billing setup (product, price, webhook endpoint, Customer Portal) is declared in
 [`definitions/stripe-config.yaml`](../../definitions/stripe-config.yaml) and applied by an idempotent
 reconciler. Nobody needs to click through the Stripe Dashboard to set LifeKeel up, in a sandbox or in live

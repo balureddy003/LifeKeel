@@ -1,5 +1,15 @@
 # Personal data breach response
 
+| Field | Value |
+|---|---|
+| Document ID | LK-RB-002 |
+| Version | 0.1 |
+| Status | DRAFT — awaiting approval |
+| Owner | Incident lead (role) |
+| Approver | IMS manager (role) |
+| Approved | — |
+| Next review | — |
+
 Status: **owners and contacts to be named before launch** (R32). UK GDPR Art. 33–34: a
 reportable breach goes to the ICO within 72 hours of becoming aware; people at high risk
 are told without undue delay; every breach is recorded, reportable or not.

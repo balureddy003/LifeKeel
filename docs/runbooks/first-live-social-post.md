@@ -1,5 +1,15 @@
 # Runbook: connect a network and publish the first post
 
+| Field | Value |
+|---|---|
+| Document ID | LK-RB-004 |
+| Version | 0.1 |
+| Status | DRAFT — awaiting approval |
+| Owner | Product manager (role) |
+| Approver | IMS manager (role) |
+| Approved | — |
+| Next review | — |
+
 For a person with operator access. Accounts are created by a person first (see
 [the social presence kit](../marketing/social-presence-kit.md)); this runbook starts once a profile exists.
 Start with **Bluesky**: it needs only a handle and an app password. Do not paste an account password anywhere.

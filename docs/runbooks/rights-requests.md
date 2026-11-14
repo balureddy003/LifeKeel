@@ -1,5 +1,15 @@
 # Data subject rights requests
 
+| Field | Value |
+|---|---|
+| Document ID | LK-RB-006 |
+| Version | 0.1 |
+| Status | DRAFT — awaiting approval |
+| Owner | Privacy lead / DPO (role) |
+| Approver | IMS manager (role) |
+| Approved | — |
+| Next review | — |
+
 Status: **owner to be named before launch** (R32). One month to respond (extendable by two
 for complex requests, with notice). Free of charge in nearly all cases.
 

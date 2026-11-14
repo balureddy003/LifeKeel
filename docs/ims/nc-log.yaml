@@ -1,0 +1,152 @@
+# Nonconformity and corrective-action log (G-DOC-02). ISO 9001 / 27001 / 42001 Clause 10.2.
+#
+# One entry per nonconformity, whatever raised it: internal audit, incident, CI or code
+# review, an AI concern (docs/runbooks/ai-concerns.md), or a supplier review. Fields follow
+# ISO_AUDITABLE.md §23.5. An entry is closed only after its effectiveness check has
+# been done and recorded. Fixing the symptom (`correction`) does not close it.
+#
+# Severity and due dates follow ISO_AUDITABLE.md §17.4: S1 before next deploy, S2 30 days,
+# S3 90 days, S4 backlog.
+
+document:
+  id: LK-IMS-071
+  version: '0.1'
+  status: DRAFT — awaiting approval
+  owner: IMS manager (role)
+  approver: CEO / top management (role)
+  approved: —
+  next_review: —
+
+entries:
+  # Raised 2026-11-12 by the Phase 1 document review (PR #467): documented information
+  # that no longer matches the system. Each is a 7.5 nonconformity: a document that an
+  # auditor would sample and find wrong.
+  - id: NC-2026-001
+    raised: '2026-11-12'
+    raised_by: review
+    clause: ['7.5', 'A.5.37']
+    severity: S3
+    description: >-
+      ARCHITECTURE.md §16 and docs/runbooks/staging-environment.md still describe a
+      lifekeel-jobs internal-ingress service; .github/workflows/deploy-api.yml records
+      that it was removed (intent 92) and crons now run through Cloud Scheduler calling
+      /internal/cron/*.
+    correction: —
+    root_cause: —
+    corrective_action: —
+    owner: Senior solutions architect (role)
+    due: —
+    effectiveness_check: —
+    status: open
+    links: [G-DOC-01]
+  - id: NC-2026-002
+    raised: '2026-11-12'
+    raised_by: review
+    clause: ['7.5', 'A.4.2 (42001)']
+    severity: S3
+    description: >-
+      ai-bom.yaml states the local Qwen judge keeps family-data tasks off hosted LLMs;
+      definitions/ai-tasks.yaml moved non-sensitive batch tasks to
+      approved_hosted_provider on 2026-10-24 when the Ollama service was decommissioned.
+    correction: —
+    root_cause: —
+    corrective_action: —
+    owner: AI governance lead (role)
+    due: —
+    effectiveness_check: —
+    status: open
+    links: [R-AI-12]
+  - id: NC-2026-003
+    raised: '2026-11-12'
+    raised_by: review
+    clause: ['8.1', 'A.6.2.6 (42001)']
+    severity: S2
+    description: >-
+      assistant.answer.sensitive.v1 and assistant.youth_answer.v1 require the
+      self-hosted path (lifekeel_infra_required), which no longer exists, so they fail
+      closed in production. The behaviour is safe but the service is not delivered as
+      designed and no decision is recorded.
+    correction: —
+    root_cause: —
+    corrective_action: —
+    owner: AI governance lead (role)
+    due: —
+    effectiveness_check: —
+    status: open
+    links: [R-AI-12]
+  - id: NC-2026-004
+    raised: '2026-11-12'
+    raised_by: review
+    clause: ['7.5']
+    severity: S4
+    description: >-
+      SECURITY.md cites apps/api/src/lib/session-cookie.ts and apps/api/src/lib/totp.ts;
+      the files are under apps/api/src/auth/. CLAUDE.md and the ai-tasks.yaml header name
+      different gateway paths (apps/api/src/ai/task-gateway.ts vs
+      packages/platform/src/task-gateway.ts).
+    correction: —
+    root_cause: —
+    corrective_action: —
+    owner: Principal developer (role)
+    due: —
+    effectiveness_check: —
+    status: open
+    links: [G-DOC-01]
+  # Raised 2026-11-12 by the first run of scripts/ims/evidence-pack.sh against main.
+  # These are the controls CLAUDE.md and ISO_AUDITABLE.md §17 describe as in place
+  # (human-gated merge and deploy, signed commits). The export shows they are not
+  # enforced by configuration.
+  - id: NC-2026-005
+    raised: '2026-11-12'
+    raised_by: evidence-pack
+    clause: ['A.8.32', 'A.8.4', '8.3 (9001)']
+    severity: S2
+    description: >-
+      main has no branch protection (GET branches/main/protection → 404) and the only
+      repository ruleset has enforcement "disabled". None of the last 10 merged PRs has
+      an approving review (reviewDecision empty), so "human review + merge" is practice,
+      not a control.
+    correction: —
+    root_cause: —
+    corrective_action: —
+    owner: Principal developer (role)
+    due: —
+    effectiveness_check: Re-run scripts/ims/evidence-pack.sh; protection or an active ruleset requires an approving review and the CI checks
+    status: open
+    links: [G-SEC-01]
+  - id: NC-2026-006
+    raised: '2026-11-12'
+    raised_by: evidence-pack
+    clause: ['A.8.32', 'A.8.31']
+    severity: S2
+    description: >-
+      GitHub environments "Production" and "staging" have no protection rules (no
+      required reviewers, no branch policy). Deploys are manually triggered
+      (workflow_dispatch) but no second person approves them in a recorded way.
+    correction: —
+    root_cause: —
+    corrective_action: —
+    owner: Principal developer (role)
+    due: —
+    effectiveness_check: environments.json shows required_reviewers on Production
+    status: open
+    links: [G-SEC-01]
+  - id: NC-2026-007
+    raised: '2026-11-12'
+    raised_by: evidence-pack
+    clause: ['A.8.4', 'A.8.8']
+    severity: S3
+    description: >-
+      Of the last 100 commits on main, 58 carry no signature (%G? = N); 42 are signed
+      but unverifiable with the local keyring (E, includes GitHub-signed merge commits).
+      Signed commits are not required by configuration. Dependabot alerts are disabled
+      (HTTP 403), so the alert source in docs/security/vulnerability-management.md is
+      not active.
+    correction: —
+    root_cause: —
+    corrective_action: —
+    owner: Principal developer (role)
+    due: —
+    effectiveness_check: signed-commits-summary.txt shows no N entries for commits after the fix date; dependabot-alerts.json returns a list
+    status: open
+    links: [G-SEC-01, G-SEC-08]

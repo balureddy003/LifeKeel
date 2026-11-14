@@ -1,5 +1,15 @@
 # Runbook: Cloudflare integration rollout (Turnstile, email OTP, R2)
 
+| Field | Value |
+|---|---|
+| Document ID | LK-RB-003 |
+| Version | 0.1 |
+| Status | DRAFT — awaiting approval |
+| Owner | Principal developer (role) |
+| Approver | IMS manager (role) |
+| Approved | — |
+| Next review | — |
+
 Design: [CLOUDFLARE_INTEGRATION.md](../../CLOUDFLARE_INTEGRATION.md). This runbook is the
 part only a person can do: accounts, secrets, buckets, deploys, drills, sign-offs. Each phase
 is turned on by configuration; the code for all phases ships together.

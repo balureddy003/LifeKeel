@@ -1,5 +1,15 @@
 # Staging environment for agent and tester testing
 
+| Field | Value |
+|---|---|
+| Document ID | LK-RB-007 |
+| Version | 0.1 |
+| Status | DRAFT — awaiting approval |
+| Owner | Principal developer (role) |
+| Approver | IMS manager (role) |
+| Approved | — |
+| Next review | — |
+
 Status: design plus first code switch. Date: 2026-11-08. Nothing in this runbook has been
 created or run. Steps that change Google Cloud, Firebase, GitHub or secrets are for the
 owner to approve and run; they are written as an outline to adapt, not as tested commands.
