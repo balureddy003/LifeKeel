@@ -36,6 +36,8 @@ const log = createLogger({ service: 'queue-manager', version: '0.0.0' })
 
 const MAX_ATTEMPTS = 3
 const DELAYED_POLL_MS = 1000
+/** How long an over-cap tenant's job waits in the delayed zset. */
+const TENANT_DEFER_MS = 1_000
 const INLINE_RETRY_MS = 500
 // Visibility lease on :processing entries — a worker crash leaves a job
 // reclaimable only after its lease expires, and a live worker's long job
@@ -79,6 +81,19 @@ export interface PublishOpts {
 
 export interface SubscribeOpts {
   concurrency?: number
+  /**
+   * Fairness partition: extract a tenant/group key from a job payload.
+   * Return undefined for jobs that should not be capped.
+   */
+  tenantKey?: (payload: unknown) => string | undefined
+  /**
+   * Max jobs one tenantKey may have in flight across this process's
+   * workers for this queue. Excess jobs defer to the delayed zset for
+   * ~1s rather than running — a burst from one tenant cannot occupy
+   * every worker slot and starve the rest. Per-process: with R API
+   * replicas the effective cap is R × perTenantConcurrency.
+   */
+  perTenantConcurrency?: number
 }
 
 interface QueueJob {
@@ -130,7 +145,13 @@ if ARGV[3] == 'zset' then
 else
   removed = redis.call('LREM', KEYS[1], 1, ARGV[1])
 end
-if removed == 1 then redis.call('LPUSH', KEYS[2], ARGV[2]) end
+if removed == 1 then
+  if ARGV[4] == 'zset' then
+    redis.call('ZADD', KEYS[2], ARGV[5], ARGV[2])
+  else
+    redis.call('LPUSH', KEYS[2], ARGV[2])
+  end
+end
 return removed
 `
 
@@ -141,8 +162,24 @@ export async function moveJob(
   raw: string,
   next: string = raw,
   sourceKind: 'list' | 'zset' = 'list',
+  destKind: 'list' | 'zset' = 'list',
+  destScore = 0,
 ): Promise<boolean> {
-  return Number(await client.eval(MOVE_SCRIPT, 2, source, dest, raw, next, sourceKind)) === 1
+  return (
+    Number(
+      await client.eval(
+        MOVE_SCRIPT,
+        2,
+        source,
+        dest,
+        raw,
+        next,
+        sourceKind,
+        destKind,
+        String(destScore),
+      ),
+    ) === 1
+  )
 }
 
 // ── Redis loader ──────────────────────────────────────────────────────────────
@@ -211,6 +248,8 @@ export class QueueManager {
   private subscriberClients: RedisClient[] = []
   private delayedTimer: ReturnType<typeof setInterval> | null = null
   private recoveryTimer: ReturnType<typeof setInterval> | null = null
+  /** queueName → tenantKey → in-flight handler count (per-process). */
+  private tenantInFlight = new Map<string, Map<string, number>>()
 
   async connect(): Promise<void> {
     await loadRedis()
@@ -284,7 +323,7 @@ export class QueueManager {
     for (let i = 0; i < concurrency; i++) {
       const sub = client.duplicate()
       this.subscriberClients.push(sub)
-      void this.pollLoop(sub, queueName, handler)
+      void this.pollLoop(sub, queueName, handler, opts)
     }
 
     log.info({ queue: queueName }, 'Subscribed to queue')
@@ -338,8 +377,11 @@ export class QueueManager {
     client: RedisClient,
     queueName: string,
     handler: (payload: unknown) => Promise<void>,
+    opts?: SubscribeOpts,
   ): Promise<void> {
     const processingKey = `${queueName}:processing`
+    const tenantCap = opts?.perTenantConcurrency
+    const tenantKeyOf = opts?.tenantKey
     while (this.subscriptions.get(queueName)) {
       try {
         const raw = await client.brpoplpush(queueName, processingKey, 5)
@@ -352,6 +394,41 @@ export class QueueManager {
           await moveJob(client, processingKey, `${queueName}:dead`, raw)
           log.error({ queue: queueName }, 'Malformed job dead-lettered')
           continue
+        }
+
+        // Per-tenant fairness: a tenant already holding its share of the
+        // workers defers this job ~1s via the delayed zset rather than
+        // occupying the slot. Not a failure — attempts are untouched.
+        // The defer sits between brpoplpush and the lease, same small
+        // no-lease window the parse step already had.
+        let tenant: string | undefined
+        if (tenantCap && tenantCap > 0 && tenantKeyOf) {
+          try {
+            tenant = tenantKeyOf(job.payload)
+          } catch {
+            tenant = undefined
+          }
+          if (tenant !== undefined) {
+            const inFlight = this.tenantInFlight.get(queueName)?.get(tenant) ?? 0
+            if (inFlight >= tenantCap) {
+              const deferred = await moveJob(
+                client,
+                processingKey,
+                `${queueName}:delayed`,
+                raw,
+                raw,
+                'list',
+                'zset',
+                Date.now() + TENANT_DEFER_MS,
+              )
+              if (!deferred) continue // recovered elsewhere — nothing to do
+              log.debug(
+                { queue: queueName, job_id: job.id, tenant, inFlight },
+                'Tenant at concurrency cap — job deferred',
+              )
+              continue
+            }
+          }
         }
 
         // Visibility lease: recovery leaves this entry alone while a live
@@ -368,6 +445,12 @@ export class QueueManager {
             .catch(() => {})
         }, LEASE_RENEW_MS)
         renew.unref()
+
+        if (tenant !== undefined) {
+          const counts = this.tenantInFlight.get(queueName) ?? new Map<string, number>()
+          counts.set(tenant, (counts.get(tenant) ?? 0) + 1)
+          this.tenantInFlight.set(queueName, counts)
+        }
 
         try {
           await handler(job.payload)
@@ -390,6 +473,14 @@ export class QueueManager {
           }
         } finally {
           clearInterval(renew)
+          if (tenant !== undefined) {
+            const counts = this.tenantInFlight.get(queueName)
+            if (counts) {
+              const left = (counts.get(tenant) ?? 1) - 1
+              if (left <= 0) counts.delete(tenant)
+              else counts.set(tenant, left)
+            }
+          }
           await client.del(leaseKey).catch(() => 0)
         }
       } catch {

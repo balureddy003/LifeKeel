@@ -387,7 +387,7 @@ describe('architecture claims: production deliverability', () => {
 
 describe('architecture claims: erasure survives backup restore', () => {
   it('erasure-replay is scheduled daily and re-wipes tombstoned tenants', () => {
-    expect(readSrc('apps/api/src/server.ts')).toContain("'erasure-replay'")
+    expect(readSrc('apps/api/src/boot/background-work.ts')).toContain("'erasure-replay'")
     const job = readSrc('apps/api/src/jobs/erasure-replay.ts')
     // The replay keys on the durable marker — the tenants tombstone that
     // restore.sh re-applies after a --drop restore.
@@ -491,9 +491,9 @@ describe('architecture claims: queue durability and migration gate', () => {
 
 describe('architecture claims: service-role split (B7)', () => {
   it('inline timers and queue consumers stay gated; every role registers jobs for Scheduler', () => {
-    const src = readSrc('apps/api/src/server.ts')
+    const src = readSrc('apps/api/src/boot/background-work.ts')
     const open = src.indexOf('const scheduleJob = (')
-    const close = src.indexOf('} // end background-work block')
+    const close = src.indexOf('return { persistAndDeliverInsights')
     expect(open).toBeGreaterThan(-1)
     expect(close).toBeGreaterThan(open)
     const gated = src.slice(open, close)
@@ -508,12 +508,12 @@ describe('architecture claims: service-role split (B7)', () => {
     expect(consumerIdx).toBeGreaterThan(-1)
     expect(gated.slice(0, consumerIdx)).toContain('if (consumersEnabled)')
     // The trigger route exists so Scheduler can reach the registry.
-    expect(src).toContain("'/internal/cron/:name'")
+    expect(readSrc('apps/api/src/server.ts')).toContain("'/internal/cron/:name'")
   })
 
   it('the queue connection stays role-agnostic — api publishes, jobs consumes', () => {
     const src = readSrc('apps/api/src/server.ts')
-    const open = src.indexOf('const scheduleJob = (')
+    const open = src.indexOf('startBackgroundWork(')
     expect(src.slice(0, open)).toContain('queueManager.connect()')
   })
 })

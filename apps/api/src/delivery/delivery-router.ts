@@ -404,7 +404,12 @@ export class DeliveryRouter {
   ): InsightNotification {
     const insightId = insight['id'] as string
     const cb = (insight['confidence_breakdown'] ?? {}) as Record<string, number>
-    const impact = (insight['estimated_impact'] ?? {}) as Record<string, number>
+    // Two shapes reach here: the engine's flat estimated_impact_low/high
+    // (every insight produced since detectors emit InsightSchema) and a
+    // legacy nested estimated_impact{low,high} some stored rows still carry.
+    const nested = (insight['estimated_impact'] ?? {}) as Record<string, number>
+    const impactLow = nested['low'] ?? (insight['estimated_impact_low'] as number | undefined)
+    const impactHigh = nested['high'] ?? (insight['estimated_impact_high'] as number | undefined)
 
     return {
       insight_id: insightId,
@@ -412,12 +417,16 @@ export class DeliveryRouter {
       hypothesis: this.humanize((insight['hypothesis'] as string) ?? 'Opportunity'),
       urgency: (insight['urgency'] as InsightNotification['urgency']) ?? 'medium',
       or_score: cb['or_score'] ?? 0,
-      ...(impact['low'] !== undefined ? { estimated_impact_low: impact['low'] } : {}),
-      ...(impact['high'] !== undefined ? { estimated_impact_high: impact['high'] } : {}),
+      ...(impactLow !== undefined ? { estimated_impact_low: impactLow } : {}),
+      ...(impactHigh !== undefined ? { estimated_impact_high: impactHigh } : {}),
       currency: (insight['currency'] as string) ?? 'GBP',
       ...(insight['reasoning'] ? { reasoning: insight['reasoning'] as string } : {}),
-      ...(Array.isArray(insight['recommended_actions'])
-        ? { recommended_actions: insight['recommended_actions'] as string[] }
+      // Engine insights carry `actions` (InsightSchema); some older stored
+      // rows carry `recommended_actions`. Read both.
+      ...(Array.isArray(insight['recommended_actions'] ?? insight['actions'])
+        ? {
+            recommended_actions: (insight['recommended_actions'] ?? insight['actions']) as string[],
+          }
         : {}),
       // Deep-links to the insight detail screen in apps/web (/insights/[id]
       // → InsightGateClient) — not Studio's old /?insight= shape, which
@@ -1117,13 +1126,22 @@ export class DeliveryRouter {
   // ─── Digest queue ──────────────────────────────────────────────────────────
 
   private async queueForDigest(insight: Record<string, unknown>, tenantId: string): Promise<void> {
-    await this.db.collection('digest_queue').insertOne({
-      tenant_id: tenantId,
-      insight_id: insight['id'],
-      insight,
-      queued_at: new Date(),
-      sent: false,
-    })
+    // Upsert, not insert: the delivery-retry worker re-runs deliver() on
+    // 'identified' insights, and quiet-hours/budget paths land here — a
+    // retried insight must not stack a second row into the same digest.
+    await this.db.collection('digest_queue').updateOne(
+      { tenant_id: tenantId, insight_id: insight['id'], sent: false },
+      {
+        $setOnInsert: {
+          tenant_id: tenantId,
+          insight_id: insight['id'],
+          insight,
+          queued_at: new Date(),
+          sent: false,
+        },
+      },
+      { upsert: true },
+    )
   }
 
   /** Send a daily digest email of all queued insights for a tenant. */
@@ -1141,7 +1159,7 @@ export class DeliveryRouter {
     // Build a digest notification (summary of N insights)
     const totalImpact = queued.reduce((sum, q) => {
       const impact = (q.insight['estimated_impact'] ?? {}) as Record<string, number>
-      return sum + (impact['high'] ?? 0)
+      return sum + (impact['high'] ?? (q.insight['estimated_impact_high'] as number) ?? 0)
     }, 0)
 
     const digestNotification: InsightNotification = {

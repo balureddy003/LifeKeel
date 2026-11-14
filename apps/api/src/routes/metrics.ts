@@ -24,9 +24,11 @@
 
 import type { FastifyInstance } from 'fastify'
 import { timingSafeEqual } from 'node:crypto'
+import type { Db } from 'mongodb'
 import { Registry, Counter, Gauge, Histogram, collectDefaultMetrics } from 'prom-client'
 import type { Engine, ScoreCalibrator } from '@lifekeel/engine'
 import { getAllCircuitBreakers } from '@lifekeel/platform'
+import { readDailyRollup } from '../jobs/metrics-rollup.js'
 
 // ── Singleton registry (created once, reused on hot-reload) ──────────────────
 
@@ -103,6 +105,10 @@ let emailClassifyFailures: Counter | null = null
 let documentExtractionRetries: Counter | null = null
 let deviceEscalations: Counter | null = null
 let assistantAnswerRoutes: Counter | null = null
+let briefConfirmedOpenRate: Gauge | null = null
+let briefGateConversionRate: Gauge | null = null
+let briefReturnRate: Gauge | null = null
+let cohortFirstInsightRate: Gauge | null = null
 
 function initMetrics(registry: Registry): void {
   if (evaluationsTotal) return // already initialised
@@ -328,6 +334,30 @@ function initMetrics(registry: Registry): void {
     labelNames: ['route'],
     registers: [registry],
   })
+  // Product SLIs — the Stage-1 success metrics the PRDs define, exported
+  // so they alert instead of living only in the operator console. Values
+  // come from the metrics_daily rollup (jobs/metrics-rollup.ts), refreshed
+  // on scrape with a TTL — never recomputed per request.
+  briefConfirmedOpenRate = new Gauge({
+    name: 'lifekeel_brief_confirmed_open_rate',
+    help: 'brief_confirmed_open / brief_link_fetched over the trailing 30 days (PRD-222 SLI)',
+    registers: [registry],
+  })
+  briefGateConversionRate = new Gauge({
+    name: 'lifekeel_brief_gate_conversion_rate',
+    help: 'brief_gate_converted / brief_gate_hit over the trailing 30 days (PRD-222 SLI)',
+    registers: [registry],
+  })
+  briefReturnRate = new Gauge({
+    name: 'lifekeel_brief_return_rate',
+    help: '(brief_next_started + brief_update_started) / brief_created over the trailing 30 days — the second-brief return SLI',
+    registers: [registry],
+  })
+  cohortFirstInsightRate = new Gauge({
+    name: 'lifekeel_cohort_first_insight_rate',
+    help: 'first_insight / signup across the trailing 30 signup-cohort days; the newest cohorts read low until they mature',
+    registers: [registry],
+  })
 }
 
 /** M5: Record a credit consumption for Prometheus metrics. */
@@ -527,10 +557,69 @@ export function buildFeatureHashScorerMetrics(): import('@lifekeel/engine').Feat
 // Track previous evaluation total to compute delta for the counter
 const _prevEvaluations: { value: number } = { value: 0 }
 
+// ── Product SLIs ────────────────────────────────────────────────────────────
+
+interface RollupRow {
+  day: string
+  dim: string
+  count: number
+}
+
+/** Pure SLI math over rollup rows, exported for tests. Ratios are 0 when the denominator is empty. */
+export function computeProductSlis(
+  events: RollupRow[],
+  funnel: RollupRow[],
+): {
+  confirmed_open_rate: number
+  gate_conversion_rate: number
+  return_rate: number
+  cohort_first_insight_rate: number
+} {
+  const sum = (rows: RollupRow[], pred: (dim: string) => boolean) =>
+    rows.reduce((s, r) => (pred(r.dim) ? s + r.count : s), 0)
+  const ratio = (num: number, den: number) => (den > 0 ? num / den : 0)
+  const event = (name: string) => sum(events, (d) => d === name)
+  const step = (s: string) => sum(funnel, (d) => d.startsWith(`${s}|`))
+  return {
+    confirmed_open_rate: ratio(event('brief_confirmed_open'), event('brief_link_fetched')),
+    gate_conversion_rate: ratio(event('brief_gate_converted'), event('brief_gate_hit')),
+    return_rate: ratio(
+      event('brief_next_started') + event('brief_update_started'),
+      event('brief_created'),
+    ),
+    cohort_first_insight_rate: ratio(step('first_insight'), step('signup')),
+  }
+}
+
+const SLI_REFRESH_MS = 60_000
+const SLI_WINDOW_DAYS = 30
+let sliRefreshedAt = 0
+
+/** Recompute product SLI gauges from the daily rollup — TTL-throttled so a
+ *  scrape storm never becomes a metrics_daily read storm. */
+async function refreshProductSliGauges(db: Db, now = Date.now()): Promise<void> {
+  if (now - sliRefreshedAt < SLI_REFRESH_MS) return
+  sliRefreshedAt = now
+  try {
+    const [events, funnel] = await Promise.all([
+      readDailyRollup(db, 'growth_event', SLI_WINDOW_DAYS),
+      readDailyRollup(db, 'funnel', SLI_WINDOW_DAYS),
+    ])
+    const sli = computeProductSlis(events, funnel)
+    briefConfirmedOpenRate!.set(sli.confirmed_open_rate)
+    briefGateConversionRate!.set(sli.gate_conversion_rate)
+    briefReturnRate!.set(sli.return_rate)
+    cohortFirstInsightRate!.set(sli.cohort_first_insight_rate)
+  } catch {
+    // metrics_daily unavailable — gauges hold their last values
+  }
+}
+
 export async function registerMetricsRoutes(
   app: FastifyInstance,
   engine: Engine,
   calibrator?: ScoreCalibrator,
+  db?: Db,
 ): Promise<void> {
   const registry = getRegistry()
   initMetrics(registry)
@@ -572,6 +661,9 @@ export async function registerMetricsRoutes(
     for (const [key, cb] of getAllCircuitBreakers()) {
       circuitBreakerState!.set({ provider: key }, cb.getStateNumeric())
     }
+
+    // ── Product SLIs (rollup-backed, TTL-throttled) ─────────────────────────
+    if (db) await refreshProductSliGauges(db)
 
     // ── Render ──────────────────────────────────────────────────────────────
     const output = await registry.metrics()
