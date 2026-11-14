@@ -177,3 +177,23 @@ covers savings today; the new part is adding income protection on file and a ran
 
 No engine code, no data store, no MCP server, no external claims. Source figures in the blueprint were not
 re-verified.
+
+## Owner decisions, 2026-11-14
+
+- **B4 datastore:** MongoDB. No second datastore. Two dates (`valid_from`, `recorded_at`) live on each fact.
+  Built as `apps/api/src/resilience/fact-store.ts` (B3): append-only, tenant-keyed, in the erasure wipe,
+  allow-listed money figures only.
+- **B6 ingestion:** upload or mailbox, either. Rules that stay either way are in
+  `docs/research/engine-ingestion-note-2026-11-14.md`.
+- **B7 benefits estimate:** the owner will take a commercial licence for PolicyEngine UK. Not resolved until a
+  signed licence is on file and covers a hosted service; no integration before then. Whether "convert to
+  commercial" means a dual licence from PolicyEngine or something else was not stated and is open.
+- **B2 statistics sources:** both ONS and DWP are approved. Every rate or duration in the table cites its
+  source, table and date, or it is absent (ledger row R10). Population rates only, never an individual's
+  health or job.
+- **A5 visibility:** within the family, adults can see each other's figures. Read narrowly: adult members of
+  the same family see the household's engine output. Not covered, so they see nothing until you decide: a
+  lodger's limited view (H29), a viewer or child role, anyone leaving (H23), handover lock-out (H25),
+  re-asking after a decline (H26), the no-account external link (PRD-229). One safeguarding point to settle
+  before any screen: if an adult is leaving or in a dispute, they should not keep a live view of the other
+  adult's figures. Ledger row R11 builds only the narrow rule.
