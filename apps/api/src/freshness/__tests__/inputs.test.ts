@@ -108,7 +108,7 @@ describe('evaluateFreshness', () => {
     const rows = evaluateFreshness(null, null, NOW)
     expect(stateOf(rows, 'family_estate_readiness').state).toBe('running')
     expect(stateOf(rows, 'family_protection_gap').state).toBe('paused_missing')
-    expect(freshnessShare(rows)).toBeCloseTo(1 / 9)
+    expect(freshnessShare(rows)).toBeCloseTo(1 / 10)
   })
 
   it('share is null when nothing applies', () => {

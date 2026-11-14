@@ -574,6 +574,9 @@ export async function evaluateProfileAndGenerateInsights(
       cashflowEntries.length > 0
         ? monthlyFromEntries('income') - monthlyFromEntries('expense')
         : monthlyIncome - monthlyExpenses
+    const incomeProtectionMonthlyMinor =
+      profile.household.income_protection_monthly_minor +
+      profile.household.members.reduce((s, m) => s + m.income_protection_monthly_minor, 0)
     const sixMonthTargetMinor = monthlyExpenses * 6
     const shortfallMinor = Math.max(
       0,
@@ -598,6 +601,12 @@ export async function evaluateProfileAndGenerateInsights(
       // sentinel, same posture as soonest_renewal_days.
       monthly_surplus_minor: monthlySurplusMinor,
       months_to_six_month_target: monthsToTarget,
+      // family_income_stops_runway: whole months, 9999 when the protection on file covers the spend.
+      ...incomeStopsRunway(
+        profile.emergency_fund.emergency_savings_minor,
+        monthlyExpenses,
+        incomeProtectionMonthlyMinor,
+      ),
     }
     const signalId = await persistSignal({
       tenant_id: tenantId,
@@ -1143,6 +1152,30 @@ export async function evaluateProfileAndGenerateInsights(
   }
 
   return generatedInsights.length
+}
+
+/**
+ * Months the savings would last if earned income stopped, as an estimate from the figures entered.
+ * `with_income_protection` counts the monthly protection on file against the spend; 9999 means that
+ * figure covers the whole spend, so these numbers give no end date. Information only (intent 93, B9).
+ */
+export function incomeStopsRunway(
+  savingsMinor: number,
+  monthlyExpensesMinor: number,
+  incomeProtectionMonthlyMinor: number,
+): {
+  income_protection_monthly_minor: number
+  runway_months_savings_only: number
+  runway_months_with_income_protection: number
+} {
+  const months = (spend: number) =>
+    spend <= 0 ? 9999 : Math.min(9999, Math.floor(savingsMinor / spend))
+  const gap = monthlyExpensesMinor - incomeProtectionMonthlyMinor
+  return {
+    income_protection_monthly_minor: incomeProtectionMonthlyMinor,
+    runway_months_savings_only: months(monthlyExpensesMinor),
+    runway_months_with_income_protection: months(gap),
+  }
 }
 
 // PRD-111: reduces a full profile doc down to just the fields the
