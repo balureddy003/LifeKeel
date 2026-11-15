@@ -10,14 +10,14 @@ model call, any output showing one adult's figures to another, any action naming
 
 | Row | What | file | verify | Status |
 |---|---|---|---|---|
-| R1 | Monthly cash-flow model: months of runway from savings, spend, monthly inflows | `apps/api/src/resilience/cashflow.ts` | `pnpm --filter @lifekeel/api exec vitest run src/resilience/__tests__/cashflow.test.ts` | todo |
-| R2 | Event: income stops (an earner's pay ends; protection on file applies after a stated wait) | `apps/api/src/resilience/events.ts` | `... vitest run src/resilience/__tests__/events.test.ts` | todo |
-| R3 | Event: mortgage fix ends (payment rises by a stated figure) | `apps/api/src/resilience/events.ts` | same | todo |
-| R4 | Event: death of an earner (pay ends; cover payout on file arrives as a lump sum) | `apps/api/src/resilience/events.ts` | same | todo |
-| R5 | Events in combination, same month and staggered | `apps/api/src/resilience/combine.ts` | `... vitest run src/resilience/__tests__/combine.test.ts` | todo |
-| R6 | With-and-without ranking over informational action kinds only | `apps/api/src/resilience/rank.ts` | `... vitest run src/resilience/__tests__/rank.test.ts` | todo |
-| R7 | Range display: low and high runway, never a single point; states what is left out | `apps/api/src/resilience/range.ts` | `... vitest run src/resilience/__tests__/range.test.ts` | todo |
-| R8 | One verifier command that runs R1 to R7, the detector evals and the A1 tripwire | `scripts/engine-verify.sh` | `bash scripts/engine-verify.sh` | todo |
+| R1 | Monthly cash-flow model: months of runway from savings, spend, monthly inflows | `apps/api/src/resilience/cashflow.ts` | `pnpm --filter @lifekeel/api exec vitest run src/resilience/__tests__/cashflow.test.ts` | done (2026-11-14) |
+| R2 | Event: income stops (an earner's pay ends; protection on file applies after a stated wait) | `apps/api/src/resilience/events.ts` | `... vitest run src/resilience/__tests__/events.test.ts` | done (2026-11-14) |
+| R3 | Event: mortgage fix ends (payment rises by a stated figure) | `apps/api/src/resilience/events.ts` | same | done (2026-11-14) |
+| R4 | Event: death of an earner (pay ends; cover payout on file arrives as a lump sum) | `apps/api/src/resilience/events.ts` | same | done (2026-11-14) |
+| R5 | Events in combination, same month and staggered | `apps/api/src/resilience/combine.ts` | `... vitest run src/resilience/__tests__/combine.test.ts` | done (2026-11-14) |
+| R6 | With-and-without ranking over informational action kinds only | `apps/api/src/resilience/rank.ts` | `... vitest run src/resilience/__tests__/rank.test.ts` | done (2026-11-14) |
+| R7 | Range display: low and high runway, never a single point; states what is left out | `apps/api/src/resilience/range.ts` | `... vitest run src/resilience/__tests__/range.test.ts` | done (2026-11-14) |
+| R8 | One verifier command that runs R1 to R7, the detector evals and the A1 tripwire | `scripts/engine-verify.sh` | `bash scripts/engine-verify.sh` | done (2026-11-14) |
 | R9 | Mechanical extraction checks (dates real, totals add up, monthly times twelve, amounts whole) applied to a fixed per-document schema, before any user confirm | `apps/api/src/resilience/extraction-checks.ts` | `... vitest run src/resilience/__tests__/extraction-checks.test.ts` | todo |
 | R10 | Event rates data file: each row has event, rate or duration, source (ONS or DWP), table, date and range; rows without a source are absent, never guessed | `apps/api/data/resilience/event-rates.json` | see B2 | todo |
 | R11 | Visibility rule: adult family members see the household's engine output; every other role sees none until decided | `apps/api/src/resilience/visibility.ts` | see A5 | todo |
@@ -33,3 +33,5 @@ model call, any output showing one adult's figures to another, any action naming
 | A8 | Activation path | n/a | n/a | blocked: owner |
 
 Stop condition: every row done or blocked, and `bash scripts/engine-verify.sh` passes on main.
+
+Checked 2026-11-14 on main: R1 to R8 files exist and `bash scripts/engine-verify.sh` passes. R9 to R11 are the next rows. Rows marked blocked wait on the owner decisions listed.
