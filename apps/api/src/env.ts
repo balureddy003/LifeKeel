@@ -99,6 +99,8 @@ const ConfigSchema = z.object({
   // Keep the cloud judge authoritative and measure the local one behind it (shadow mode).
   JUDGE_SHADOW: optionalFlag(),
   LOCAL_TEXT_ENABLED: optionalFlag(),
+  /** Read-only MCP endpoint at POST /mcp. Off unless 'true' (intent 96, CLAUDE.md rule 3). */
+  LIFEKEEL_MCP_ENABLED: optionalFlag(),
   /** Cross-tenant learning plumbing. Off unless 'true' AND LEARNING_PRIVACY_REVIEW_REF is set (intent 96, rule 3). */
   LIFEKEEL_CROSS_TENANT_LEARNING: optionalFlag(),
   LOCAL_TEXT_MODEL: z.string().optional(),
