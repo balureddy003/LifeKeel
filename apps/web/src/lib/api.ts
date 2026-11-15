@@ -2767,6 +2767,39 @@ export async function confirmResilienceFigures(): Promise<boolean> {
   return res.ok
 }
 
+export interface FamilyBusinesses {
+  businesses: { id: string; name: string }[]
+  incomeEdges: { businessId: string; memberId: string; monthlyMinor: number }[]
+  adults: { id: string; name: string }[]
+  shocks: {
+    businessId: string
+    name: string
+    range: { lowMonths: number | null; highMonths: number | null }
+    text: string
+  }[]
+}
+
+/** Null when the server refuses (not an adult in the family) or the call fails. */
+export async function fetchFamilyBusinesses(): Promise<FamilyBusinesses | null> {
+  return apiFetch<FamilyBusinesses | null>('/family/businesses', null)
+}
+
+export async function saveFamilyBusinesses(
+  graph: Pick<FamilyBusinesses, 'businesses' | 'incomeEdges'>,
+): Promise<boolean> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await credFetch(`${base}/family/businesses`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(graph),
+  })
+  return res.ok
+}
+
 export async function addCashflowEntry(input: {
   kind: 'income' | 'expense'
   label: string

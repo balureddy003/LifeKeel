@@ -135,6 +135,11 @@ export default function ResiliencePage() {
               )}
             </GlassCard>
           )}
+          <GlassCard className="p-4 text-sm">
+            <Link href="/resilience/businesses" className="text-accent underline">
+              Does a business pay part of your income? Add it
+            </Link>
+          </GlassCard>
           <GlassCard className="p-4 space-y-2">
             <h2 className="text-sm font-semibold text-ink-tertiary uppercase tracking-wide">
               What to check next
