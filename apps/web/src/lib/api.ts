@@ -1387,6 +1387,10 @@ export interface FamilyDocument {
   /** Optional renewal date (YYYY-MM-DD) — free tier sets it manually;
    *  the renewal detectors read it (intent 59). */
   renewalDate?: string | null
+  /** Where the extraction job is (intent 97 slice 2): waiting, reading, or
+   *  dead-lettered — 'dead' is the "could not read this, enter the figures
+   *  by hand" state. Absent on documents that never queued. */
+  extractionStatus?: 'queued' | 'processing' | 'dead' | null
 }
 
 /** Accepted by the upload pipeline; the server enforces the same list. */

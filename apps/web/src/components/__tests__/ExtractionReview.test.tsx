@@ -342,3 +342,53 @@ describe('review copy', () => {
     }
   })
 })
+
+describe('queued extraction (intent 97 slice 2)', () => {
+  it('a document waiting in the extraction queue says Keel is still reading, never that nothing was found', () => {
+    render(
+      <ExtractionReview
+        doc={doc({ status: 'uploaded', extractionStatus: 'queued', candidates: [] })}
+        onChange={() => {}}
+        api={fakeApi()}
+      />,
+    )
+    expect(screen.getByText(copy.READING_TITLE)).toBeTruthy()
+    expect(screen.getByText(copy.READING_TEXT)).toBeTruthy()
+    expect(screen.queryByText(copy.NO_FIELDS_TEXT)).toBeNull()
+    expect(screen.queryByText(copy.READ_FAILED_TITLE)).toBeNull()
+  })
+
+  it('a document being read right now shows the same in-progress card', () => {
+    render(
+      <ExtractionReview
+        doc={doc({ status: 'processing', extractionStatus: 'processing', candidates: [] })}
+        onChange={() => {}}
+        api={fakeApi()}
+      />,
+    )
+    expect(screen.getByText(copy.READING_TITLE)).toBeTruthy()
+  })
+
+  it('a dead-lettered job says Keel could not read this, with the manual-entry way out', () => {
+    render(
+      <ExtractionReview
+        doc={doc({ status: 'error', extractionStatus: 'dead', candidates: [] })}
+        onChange={() => {}}
+        api={fakeApi()}
+      />,
+    )
+    expect(screen.getByText(copy.READ_FAILED_TITLE)).toBeTruthy()
+    expect(screen.getByText(copy.READ_FAILED_TEXT)).toBeTruthy()
+    expect(
+      within(document.body).getByRole('link', { name: 'Enter the details myself' }),
+    ).toBeTruthy()
+  })
+
+  it('the in-progress copy stays informational — no recommendation, no certainty', () => {
+    const all = [copy.READING_TITLE, copy.READING_TEXT].join(' ')
+    expect(all).not.toMatch(
+      /\b(you should|we recommend|buy|switch to|better policy|best (policy|provider))\b/i,
+    )
+    expect(all).not.toMatch(/\b(guarantee|certain|always correct|verified by)\b/i)
+  })
+})

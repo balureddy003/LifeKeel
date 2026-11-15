@@ -9,7 +9,7 @@
  */
 import { useState, type ReactNode } from 'react'
 import Link from 'next/link'
-import { AlertCircle, Check, Pencil, X } from 'lucide-react'
+import { AlertCircle, Check, Loader2, Pencil, X } from 'lucide-react'
 import { GlassCard } from '@/components/Glass'
 import { CATEGORY_LABELS } from '@/lib/document-categories'
 import {
@@ -26,6 +26,8 @@ import {
   NO_FIELDS_TEXT,
   READ_FAILED_TEXT,
   READ_FAILED_TITLE,
+  READING_TEXT,
+  READING_TITLE,
   REVIEW_INTRO,
   REVIEW_TITLE,
   SAVE_HINT,
@@ -213,7 +215,7 @@ export function ExtractionReview({
   const candidates = doc.candidates ?? []
 
   // Nothing readable: say so, offer manual entry, and never imply anything was saved.
-  if (doc.scan === 'error' || doc.status === 'error') {
+  if (doc.scan === 'error' || doc.status === 'error' || doc.extractionStatus === 'dead') {
     return (
       <GlassCard className="p-4 border-warning/20">
         <div className="flex items-start gap-2">
@@ -229,6 +231,27 @@ export function ExtractionReview({
             >
               Enter the details myself
             </Link>
+          </div>
+        </div>
+      </GlassCard>
+    )
+  }
+
+  // Still in the extraction queue (intent 97 slice 2): say it is being read —
+  // never "nothing could be read", and only while there is nothing to review yet.
+  if (
+    candidates.length === 0 &&
+    (doc.extractionStatus === 'queued' ||
+      doc.extractionStatus === 'processing' ||
+      doc.status === 'processing')
+  ) {
+    return (
+      <GlassCard className="p-4">
+        <div className="flex items-start gap-2">
+          <Loader2 size={16} className="text-family-400 flex-shrink-0 mt-0.5 animate-spin" />
+          <div>
+            <div className="text-sm font-semibold text-ink-primary">{READING_TITLE}</div>
+            <p className="text-xs text-ink-secondary mt-1">{READING_TEXT}</p>
           </div>
         </div>
       </GlassCard>

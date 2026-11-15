@@ -33,6 +33,10 @@ export const ENGINE_METRIC_EVENTS = [
   'figures_confirmed_one_adult',
   'figures_confirmed_all_adults',
   'figures_confirm_latency',
+  // Slice 2: extraction-queue job outcomes — a run either completes (any
+  // terminal doc status) or dead-letters after the attempt cap.
+  'extraction_run_completed',
+  'extraction_run_dead',
 ] as const
 export type EngineMetricEvent = (typeof ENGINE_METRIC_EVENTS)[number]
 

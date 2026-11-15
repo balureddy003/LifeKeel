@@ -59,10 +59,16 @@ function statusIcon(status: FamilyDocument['status']) {
   }
 }
 
-function statusLabel(status: FamilyDocument['status'], extractedData?: Record<string, string>) {
+function statusLabel(
+  status: FamilyDocument['status'],
+  extractedData?: Record<string, string>,
+  extractionStatus?: FamilyDocument['extractionStatus'],
+) {
   switch (status) {
     case 'uploaded':
-      return 'Uploading...'
+      // Slice 2: stored and waiting for the extraction worker — the upload
+      // itself already finished.
+      return extractionStatus === 'queued' ? 'Queued to be read…' : 'Uploading...'
     case 'processing':
       return 'Processing...'
     case 'extracted':
@@ -79,8 +85,12 @@ function statusLabel(status: FamilyDocument['status'], extractedData?: Record<st
       return 'Uploading...'
     case 'scan_queued':
     case 'scanning':
-    case 'clean':
       return 'Checking file...'
+    case 'clean':
+      // Scan finished; the extraction job may already be queued or running.
+      return extractionStatus === 'queued' || extractionStatus === 'processing'
+        ? 'Queued to be read…'
+        : 'Checking file...'
     case 'scan_error':
       return 'Check delayed, retrying...'
     case 'infected':
@@ -418,7 +428,8 @@ export default function UploadPage() {
                                     : '#ffda87',
                           }}
                         >
-                          {statusIcon(doc.status)} {statusLabel(doc.status, doc.extractedData)}
+                          {statusIcon(doc.status)}{' '}
+                          {statusLabel(doc.status, doc.extractedData, doc.extractionStatus)}
                         </span>
                         {doc.renewalDate && (
                           <span className="text-xs text-ink-tertiary">

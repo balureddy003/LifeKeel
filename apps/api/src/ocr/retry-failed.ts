@@ -4,6 +4,7 @@ import { effectivePlan, hasFeature } from '../entitlements.js'
 import { mayParse, type ScanResult } from '../extraction/scan.js'
 import { createLogger, type DecisionFn, type VisionFn } from '@lifekeel/platform'
 import { processDocument } from './extract.js'
+import { enqueueExtraction } from './extraction-queue.js'
 import { recordDocumentExtractionRetries } from '../routes/metrics.js'
 
 const log = createLogger({ service: 'ocr-retry', version: '0.0.0' })
@@ -88,11 +89,15 @@ export async function retryFailedDocuments(
  * replica runs the sweep. Same free/paid split as the upload route: without
  * `document_ai_extraction` (or with a scan that doesn't allow parsing) the
  * document is kept as `stored` and never sent to a model.
+ *
+ * Intent 97 slice 2: dispatching means enqueuing the extraction job, not
+ * running it here — the queue worker reads the stored bytes itself. A publish
+ * failure leaves the doc 'pending' for the reconciler; the row is the durable
+ * record of work owed.
  */
 export async function dispatchPendingOcr(
   db: Db,
-  decideFor: (tenantId: string) => DecisionFn | undefined,
-  visionFor: (tenantId: string) => Promise<VisionFn | undefined>,
+  publish?: (queue: string, payload: { documentId: string; tenantId: string }) => Promise<void>,
   limit = 10,
 ): Promise<number> {
   const documents = db.collection('documents')
@@ -112,34 +117,8 @@ export async function dispatchPendingOcr(
       await documents.updateOne({ _id: doc._id, status: 'clean' }, { $set: { status: 'stored' } })
       continue
     }
-    try {
-      const bytes = await readDocumentBytes(db, doc)
-      if (!bytes) throw new Error('clean object missing')
-      dispatched++
-      await processDocument(
-        db,
-        String(doc['id']),
-        tenantId,
-        bytes,
-        String((doc['storage'] as { mime?: string } | undefined)?.mime ?? doc['mime_type'] ?? ''),
-        String(doc['filename'] ?? 'document'),
-        decideFor(tenantId),
-        await visionFor(tenantId),
-        doc['client_screen'] as 'clear' | 'flagged' | 'unscreened' | undefined,
-      )
-    } catch (err) {
-      log.error({ err, documentId: doc['id'], tenantId }, 'OCR dispatch failed')
-      await documents.updateOne(
-        { _id: doc._id },
-        {
-          $set: {
-            status: 'error',
-            processing_completed_at: new Date(),
-            error_message: 'OCR dispatch failed',
-          },
-        },
-      )
-    }
+    const r = await enqueueExtraction(db, String(doc['id']), tenantId, publish)
+    if (r !== 'skipped') dispatched++
   }
   return dispatched
 }

@@ -24,6 +24,7 @@ import { randomUUID } from 'node:crypto'
 import type { Engine, Insight } from '@lifekeel/engine'
 import { createLogger, getTenantCollection } from '@lifekeel/platform'
 import { processDocument } from '../ocr/extract.js'
+import { enqueueExtraction, extractionStatusOf } from '../ocr/extraction-queue.js'
 import { mayParse, scanUpload } from '../extraction/scan.js'
 import { signatureMatchesMime } from '../extraction/file-signature.js'
 import {
@@ -363,6 +364,9 @@ export function registerDocumentRoutes(
           file_id: fileId,
           scan: { ...scan, at: new Date() },
           reservation: { size: fileBuffer.length, state: 'held' },
+          // The queue job carries ids only (intent 97 slice 2): the worker
+          // re-reads the screen outcome from the record, never the payload.
+          ...(clientScreen ? { client_screen: clientScreen } : {}),
         })
       } catch (metaErr) {
         // KEEL-019: the GridFS write above already succeeded — without this,
@@ -394,23 +398,14 @@ export function registerDocumentRoutes(
       const aiExtractionEnabled = hasFeature('document_ai_extraction', plan) && mayParse(scan)
 
       if (aiExtractionEnabled) {
-        log.info({ documentId, tenant_id }, 'Document stored, starting OCR processing')
-        // Trigger async OCR processing (non-blocking — errors handled in processDocument)
-        void (async () => {
-          await processDocument(
-            db,
-            documentId,
-            tenant_id,
-            fileBuffer,
-            mimeType,
-            filename,
-            taskDecide('document.extract.v1', tenant_id, localDecisionFromEnv('ocr')),
-            await taskVision('document.extract.v1', tenant_id),
-            clientScreen,
-          )
-        })().catch((err) => {
-          log.error({ err, documentId }, 'OCR processing threw unhandled error')
-        })
+        // Intent 97 slice 2: extraction is a queue job — never the request
+        // path. A publish that fails leaves the doc 'pending' for the
+        // reconciler; the upload still succeeds and nothing is lost silently.
+        const enqueued = await enqueueExtraction(db, documentId, tenant_id)
+        log.info(
+          { documentId, tenant_id, extraction: enqueued },
+          'Document stored, extraction queued',
+        )
       } else {
         log.info(
           { documentId, tenant_id, plan, scan: scan.result },
@@ -541,6 +536,8 @@ export function registerDocumentRoutes(
           extractedData: doc['extracted_data'] ?? {},
           // Free tier can set this manually — the renewal detectors read it.
           renewalDate: doc['renewal_date'] ?? null,
+          // Slice 2: where its extraction job is — queued, reading, or dead.
+          extractionStatus: extractionStatusOf(doc),
         })),
         aiExtractionEnabled,
       }
@@ -588,6 +585,9 @@ export function registerDocumentRoutes(
       // 'stored' instead of silently looking like a failed read.
       specialCategory: doc['special_category'] ?? null,
       extractionHeldReason: doc['extraction_held_reason'] ?? null,
+      // Slice 2: 'queued' | 'processing' | 'dead' | null — the dead-letter is
+      // what the page shows as "could not read this, enter the figures by hand".
+      extractionStatus: extractionStatusOf(doc),
     }
   })
 
@@ -715,6 +715,15 @@ export function registerDocumentRoutes(
       await taskVision('document.extract.v1', tenant_id),
     )
     const after = await documents.findOne({ id: req.params.id })
+    // A manual reprocess replaces whatever the queue had queued — retire the
+    // job record so a still-pending delivery cannot re-run extraction on top
+    // of this result. A failed reprocess leaves the job alone to retry.
+    if (after?.['status'] && after['status'] !== 'error' && after['extraction_job']) {
+      await documents.updateOne(
+        { id: req.params.id },
+        { $set: { 'extraction_job.state': 'done', 'extraction_job.done_at': new Date() } },
+      )
+    }
     return {
       id: req.params.id,
       category: after?.['category'],
