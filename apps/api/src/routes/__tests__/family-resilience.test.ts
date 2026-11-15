@@ -207,3 +207,45 @@ describe('engine_facts index', () => {
     expect(indexes).toContainEqual({ tenant_id: 1, figures_version: 1 })
   })
 })
+
+describe('if the main earner dies', () => {
+  const body = async (who = 'u1') =>
+    (await (await appFor(who)).inject({ method: 'GET', url: '/family/resilience' })).json()
+
+  it('is left out when no life cover is entered', async () => {
+    expect((await body()).earner_dies).toBeUndefined()
+  })
+
+  it('shows a range because the payout timing is 1 to 2 months', async () => {
+    profile = fullProfile({ life_cover_minor: 1_200_000 })
+    ;(
+      profile as { emergency_fund: { emergency_savings_minor: number } }
+    ).emergency_fund.emergency_savings_minor = 450_000
+    const d = (await body()).earner_dies
+    expect(d.range).toEqual({ lowMonths: 1, highMonths: 5 })
+    expect(d.text).toMatch(/^Savings and the cover payout would cover 1 to 5 months/)
+    expect(d.assumptions.join(' ')).toMatch(/1 to 2 months/)
+    expect(d.assumptions.join(' ')).toMatch(/main earner/)
+  })
+
+  it('adds the payout timing check to the next checks, before the closing line', async () => {
+    profile = fullProfile({ life_cover_minor: 1_200_000 })
+    ;(
+      profile as { emergency_fund: { emergency_savings_minor: number } }
+    ).emergency_fund.emergency_savings_minor = 450_000
+    const checks: string[] = (await body()).next_checks
+    expect(checks.some((c) => /how long the cover takes to pay out/.test(c))).toBe(true)
+    expect(checks.at(-1)).toMatch(/licensed professional/)
+  })
+
+  it('the life cover amount is one of the figures confirmed, so changing it needs confirming again', async () => {
+    profile = fullProfile({ life_cover_minor: 1_200_000 })
+    expect((await body()).figures.map((f: { label: string }) => f.label)).toContain(
+      'Life cover amount',
+    )
+    await (await appFor('u1')).inject({ method: 'POST', url: '/family/resilience/confirm' })
+    expect((await body()).confirmation.youConfirmed).toBe(true)
+    profile = fullProfile({ life_cover_minor: 1_000_000 })
+    expect((await body()).confirmation.youConfirmed).toBe(false)
+  })
+})

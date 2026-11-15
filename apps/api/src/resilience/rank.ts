@@ -8,7 +8,13 @@ import { DEFAULT_HORIZON_MONTHS } from './cashflow.js'
 import { runwayRange, type Bounded, type RangeInput, type UncertainEvent } from './range.js'
 
 export type UnknownFigure =
-  'savings' | 'inflow' | 'spend' | 'protection_benefit' | 'payout' | 'mortgage_rise'
+  | 'savings'
+  | 'inflow'
+  | 'spend'
+  | 'protection_benefit'
+  | 'payout'
+  | 'payout_timing'
+  | 'mortgage_rise'
 
 export interface RankedAction {
   unknown: UnknownFigure
@@ -24,6 +30,7 @@ export const ACTION_TEXT: Record<UnknownFigure, string> = {
   protection_benefit:
     'Find the income protection schedule: the monthly benefit, waiting period and end date',
   payout: 'Find the payout amount on the cover schedule',
+  payout_timing: 'Find how long the cover takes to pay out once a claim is made',
   mortgage_rise: 'Check the mortgage offer for the new monthly payment',
 }
 
@@ -43,6 +50,12 @@ function unknownsOf(input: RangeInput): UnknownFigure[] {
     if (e.kind === 'income_stops' && e.protection && !exact(e.protection.monthlyMinor))
       out.push('protection_benefit')
     if (e.kind === 'earner_dies' && !exact(e.lumpSumOnFileMinor)) out.push('payout')
+    if (
+      e.kind === 'earner_dies' &&
+      typeof e.payoutAfterMonths !== 'number' &&
+      e.payoutAfterMonths.lowMonths !== e.payoutAfterMonths.highMonths
+    )
+      out.push('payout_timing')
     if (e.kind === 'mortgage_fix_ends' && !exact(e.monthlyIncreaseMinor)) out.push('mortgage_rise')
   }
   return [...new Set(out)]
@@ -58,6 +71,16 @@ function pinned(input: RangeInput, u: UnknownFigure, side: Side): RangeInput {
     }
     if (u === 'payout' && e.kind === 'earner_dies')
       return { ...e, lumpSumOnFileMinor: pin(e.lumpSumOnFileMinor, side) }
+    if (
+      u === 'payout_timing' &&
+      e.kind === 'earner_dies' &&
+      typeof e.payoutAfterMonths !== 'number'
+    )
+      return {
+        ...e,
+        payoutAfterMonths:
+          side === 'lowMinor' ? e.payoutAfterMonths.lowMonths : e.payoutAfterMonths.highMonths,
+      }
     if (u === 'mortgage_rise' && e.kind === 'mortgage_fix_ends') {
       return { ...e, monthlyIncreaseMinor: pin(e.monthlyIncreaseMinor, side) }
     }

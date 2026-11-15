@@ -96,3 +96,25 @@ describe('rankInformationActions (R6)', () => {
     expect(JSON.stringify(input)).toBe(copy)
   })
 })
+
+describe('payout timing is rankable', () => {
+  it('asks for the claim timescale when the timing is a range that matters', () => {
+    const out = rankInformationActions({
+      savingsMinor: 300000,
+      monthlyInflowMinor: 250000,
+      monthlySpendMinor: 200000,
+      events: [
+        {
+          kind: 'earner_dies',
+          fromMonth: 0,
+          monthlyIncomeLostMinor: 250000,
+          lumpSumOnFileMinor: 1200000,
+          payoutAfterMonths: { lowMonths: 1, highMonths: 2 },
+        },
+      ],
+    })
+    expect(out.map((a) => a.unknown)).toEqual(['payout_timing'])
+    expect(out[0]!.narrowingMonths).toBeGreaterThan(0)
+    expect(out[0]!.action).toMatch(/^Find /)
+  })
+})

@@ -2729,6 +2729,11 @@ export type FamilyResilience =
       text: string
       left_out: string[]
       next_checks: string[]
+      earner_dies?: {
+        range: { lowMonths: number | null; highMonths: number | null }
+        text: string
+        assumptions: string[]
+      }
       figures?: { label: string; valueMinor: number }[]
       confirmation?: {
         confirmedBy: string[]
