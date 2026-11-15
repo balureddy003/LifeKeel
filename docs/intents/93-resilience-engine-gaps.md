@@ -197,3 +197,15 @@ re-verified.
   re-asking after a decline (H26), the no-account external link (PRD-229). One safeguarding point to settle
   before any screen: if an adult is leaving or in a dispute, they should not keep a live view of the other
   adult's figures. Ledger row R11 builds only the narrow rule.
+- **A6 business graph (2026-11-15):** owner-managed firms are in scope (go). Not yet done, and still required
+  before any business node is stored: a data classification for business nodes (customers and suppliers are
+  third-party personal data) and an erasure plan. Nothing is built; phase 5 of the blueprint stays unbuilt until
+  both exist.
+- **B7 (2026-11-15):** parked by the owner ("for now ignore"). No PolicyEngine integration and no benefits
+  estimate. The licence question stays open and is not tracked as a blocker for the rest of the engine.
+- **A5 leaving or disputed adult (2026-11-15):** the answer is a way to split the account. When adults part,
+  the household splits into two, so no adult keeps a live view of the other's figures after the split. Design
+  still open, to settle before any build: who may start a split and whether the other adult is told; which
+  figures each side keeps; whether a split can be undone; what happens to shared history and to children's
+  records. The lodger's view (H29) and the no-account external link (PRD-229) are still undecided and see
+  nothing.
