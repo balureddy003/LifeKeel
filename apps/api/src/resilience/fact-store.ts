@@ -25,6 +25,9 @@ export interface EngineFactDoc {
   valid_from: Date
   recorded_at: Date
   entered_by: string
+  /** Set when the person confirmed this figure; `figures_version` ties it to the exact set confirmed. */
+  confirmed_at?: Date
+  figures_version?: string
 }
 
 export interface NewFact {
@@ -34,6 +37,8 @@ export interface NewFact {
   enteredBy: string
   /** Defaults to now; settable so tests and imports can state when a figure was learned. */
   recordedAt?: Date
+  confirmedAt?: Date
+  figuresVersion?: string
 }
 
 const validDate = (d: Date) => d instanceof Date && !Number.isNaN(d.getTime())
@@ -56,7 +61,22 @@ export async function recordFact(db: Db, tenantId: string, fact: NewFact): Promi
     valid_from: fact.validFrom,
     recorded_at: recordedAt,
     entered_by: fact.enteredBy,
+    ...(fact.confirmedAt ? { confirmed_at: fact.confirmedAt } : {}),
+    ...(fact.figuresVersion ? { figures_version: fact.figuresVersion } : {}),
   })
+}
+
+/** Who confirmed exactly this set of figures. A changed figure is a new version, so nobody has confirmed it yet. */
+export async function confirmersOf(
+  db: Db,
+  tenantId: string,
+  figuresVersion: string,
+): Promise<string[]> {
+  const rows = await db
+    .collection<EngineFactDoc>('engine_facts')
+    .find({ tenant_id: tenantId, figures_version: figuresVersion })
+    .toArray()
+  return [...new Set(rows.filter((r) => r.confirmed_at).map((r) => r.entered_by))]
 }
 
 /**

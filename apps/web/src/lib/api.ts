@@ -2729,11 +2729,33 @@ export type FamilyResilience =
       text: string
       left_out: string[]
       next_checks: string[]
+      figures?: { label: string; valueMinor: number }[]
+      confirmation?: {
+        confirmedBy: string[]
+        youConfirmed: boolean
+        adultsTotal: number
+        allAdultsConfirmed: boolean
+      }
     }
 
 /** Null when the server refuses (not an adult in the family) or the call fails. */
 export async function fetchFamilyResilience(): Promise<FamilyResilience | null> {
   return apiFetch<FamilyResilience | null>('/family/resilience', null)
+}
+
+/** An adult confirms the exact figures the estimate used. */
+export async function confirmResilienceFigures(): Promise<boolean> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await credFetch(`${base}/family/resilience/confirm`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: '{}',
+  })
+  return res.ok
 }
 
 export async function addCashflowEntry(input: {

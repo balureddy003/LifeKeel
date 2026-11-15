@@ -10,17 +10,33 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { PageHeader, GlassCard } from '@/components/Glass'
-import { fetchFamilyResilience, type FamilyResilience } from '@/lib/api'
+import { confirmResilienceFigures, fetchFamilyResilience, type FamilyResilience } from '@/lib/api'
+
+const gbp = (minor: number) => `£${Math.round(minor / 100).toLocaleString('en-GB')}`
 
 export default function ResiliencePage() {
   const [data, setData] = useState<FamilyResilience | null>(null)
   const [loaded, setLoaded] = useState(false)
 
-  useEffect(() => {
+  const [busy, setBusy] = useState(false)
+  const [failed, setFailed] = useState(false)
+
+  const reload = () =>
     fetchFamilyResilience()
       .then(setData)
       .finally(() => setLoaded(true))
+  useEffect(() => {
+    void reload()
   }, [])
+
+  const confirm = async () => {
+    setBusy(true)
+    setFailed(false)
+    const ok = await confirmResilienceFigures()
+    if (ok) await reload()
+    else setFailed(true)
+    setBusy(false)
+  }
 
   return (
     <div className="px-5 pt-2 pb-10 space-y-5">
@@ -60,6 +76,45 @@ export default function ResiliencePage() {
               Left out of this estimate: {data.left_out.join(', ')}.
             </p>
           </GlassCard>
+          {data.figures && data.confirmation && (
+            <GlassCard className="p-4 space-y-3">
+              <h2 className="text-sm font-semibold text-ink-tertiary uppercase tracking-wide">
+                Figures used
+              </h2>
+              <dl className="space-y-1 text-sm">
+                {data.figures.map((f) => (
+                  <div key={f.label} className="flex justify-between">
+                    <dt className="text-ink-secondary">{f.label}</dt>
+                    <dd className="text-ink-primary">{gbp(f.valueMinor)}</dd>
+                  </div>
+                ))}
+              </dl>
+              {data.confirmation.confirmedBy.length > 0 && (
+                <p className="text-sm text-ink-secondary">
+                  Confirmed by {data.confirmation.confirmedBy.join(' and ')}.
+                </p>
+              )}
+              {data.confirmation.allAdultsConfirmed ? (
+                <p className="text-sm text-success">Both adults have confirmed these figures.</p>
+              ) : data.confirmation.youConfirmed ? (
+                <p className="text-sm text-ink-secondary">
+                  You confirmed these figures. Waiting for the other adult.
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={confirm}
+                  className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                >
+                  Confirm these figures
+                </button>
+              )}
+              {failed && (
+                <p className="text-sm text-danger">Could not save that. Try again in a moment.</p>
+              )}
+            </GlassCard>
+          )}
           <GlassCard className="p-4 space-y-2">
             <h2 className="text-sm font-semibold text-ink-tertiary uppercase tracking-wide">
               What to check next

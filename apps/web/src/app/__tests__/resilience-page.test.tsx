@@ -1,14 +1,19 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 const fetchFamilyResilience = vi.fn()
-vi.mock('@/lib/api', () => ({ fetchFamilyResilience: () => fetchFamilyResilience() }))
+const confirmResilienceFigures = vi.fn()
+vi.mock('@/lib/api', () => ({
+  fetchFamilyResilience: () => fetchFamilyResilience(),
+  confirmResilienceFigures: () => confirmResilienceFigures(),
+}))
 
 import ResiliencePage from '../resilience/page'
 
 afterEach(() => {
   cleanup()
   fetchFamilyResilience.mockReset()
+  confirmResilienceFigures.mockReset()
 })
 
 describe('/resilience', () => {
@@ -45,5 +50,62 @@ describe('/resilience', () => {
     fetchFamilyResilience.mockResolvedValue(null)
     render(<ResiliencePage />)
     await waitFor(() => expect(screen.getByText(/adults in your family/i)).toBeTruthy())
+  })
+
+  describe('confirming', () => {
+    const ready = (over: object = {}) => ({
+      status: 'ready',
+      scenario: 'income_stops',
+      range: { lowMonths: 3, highMonths: 3 },
+      text: 'Savings would cover about 3 months. This is an estimate.',
+      left_out: [],
+      next_checks: [],
+      figures: [{ label: 'Savings', valueMinor: 900000 }],
+      confirmation: {
+        confirmedBy: [],
+        youConfirmed: false,
+        adultsTotal: 2,
+        allAdultsConfirmed: false,
+      },
+      ...over,
+    })
+
+    it('shows the figures used and confirms them, then reloads', async () => {
+      fetchFamilyResilience
+        .mockResolvedValueOnce(ready())
+        .mockResolvedValueOnce(
+          ready({
+            confirmation: {
+              confirmedBy: ['Alex'],
+              youConfirmed: true,
+              adultsTotal: 2,
+              allAdultsConfirmed: false,
+            },
+          }),
+        )
+      confirmResilienceFigures.mockResolvedValue(true)
+      render(<ResiliencePage />)
+      await waitFor(() => expect(screen.getByText('£9,000')).toBeTruthy())
+      fireEvent.click(screen.getByRole('button', { name: /confirm these figures/i }))
+      await waitFor(() => expect(screen.getByText(/You confirmed/)).toBeTruthy())
+      expect(confirmResilienceFigures).toHaveBeenCalledTimes(1)
+      expect(screen.getByText(/Alex/)).toBeTruthy()
+      expect(screen.queryByRole('button', { name: /confirm these figures/i })).toBeNull()
+    })
+
+    it('says when both adults have confirmed', async () => {
+      fetchFamilyResilience.mockResolvedValue(
+        ready({
+          confirmation: {
+            confirmedBy: ['Alex', 'Sam'],
+            youConfirmed: true,
+            adultsTotal: 2,
+            allAdultsConfirmed: true,
+          },
+        }),
+      )
+      render(<ResiliencePage />)
+      await waitFor(() => expect(screen.getByText(/Both adults have confirmed/)).toBeTruthy())
+    })
   })
 })
