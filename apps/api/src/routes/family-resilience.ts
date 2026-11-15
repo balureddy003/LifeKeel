@@ -116,6 +116,10 @@ export function buildResilienceView(profile: ProfileShape | null): ResilienceVie
 type Family = { members?: (VisibilityMember & { name?: string })[] } | null
 
 export function registerFamilyResilienceRoutes(app: FastifyInstance, db: Db): void {
+  // Confirmations are looked up by tenant and version on every read.
+  db.collection('engine_facts')
+    .createIndex({ tenant_id: 1, figures_version: 1 })
+    .catch(() => {})
   const load = async (tenant_id: string) => {
     const family = (await db.collection('family_groups').findOne({ tenant_id })) as Family
     const profile = (await db
