@@ -217,3 +217,36 @@ re-verified.
   "if the main earner dies" estimate.
 - **A5 account split, who starts it (2026-11-15):** either adult can start a split and the other adult is told.
   Still open: which figures each side keeps, whether it can be undone, shared history, children's records.
+
+## Defaults adopted on the owner's instruction, 2026-11-15
+
+The owner asked for the best option to be chosen and to proceed. These are provisional: each is the safest
+or cheapest choice, each is reversible by editing this section, and none is legal or safeguarding sign-off.
+
+- **B8 cost ceiling: GBP 2 per household per month**, and at most three fields to confirm per document in the
+  first session. Measured in staging with fictional households before any real household is read. Provisional
+  until real model costs are known; if staging shows it cannot be met, the document count is cut first, not
+  the accuracy checks.
+- **A8 activation path:** the first session asks for one bank statement. In two minutes the user sees the
+  extracted income and spend, confirms at most three fields, and reaches `/resilience`. The measure is a second
+  adult looking within 7 days. Reading the statement stays unbuilt until a model task is registered in the AI
+  gateway for it (rule 3).
+- **A5 lodger's view (H29):** no engine view. Already how the code behaves (`canSeeEngineOutput` fails closed).
+- **A5 no-account external link (PRD-229):** stays off until the safeguarding review. Nothing serves it.
+- **A5 account split:** design in `docs/intents/95-account-split-spec.md`. Not built; needs the safeguarding
+  review (H23, H25, H26) first.
+- **A6 business nodes:** classification and erasure plan below. Nothing built.
+  - Customers and suppliers are third-party personal data when they are individuals. A business node stores
+    shares and counts (for example the largest customer as a share of income, number of customers, owner pay),
+    never names, contact details or per-person amounts, unless a later intent says otherwise.
+  - Business nodes are tenant-scoped, sit in `DELETABLE_COLLECTIONS` and `architecture-claims`, and go with the
+    account. A request from a named third party is met by deleting the record that names them; because none is
+    stored by default, there is normally nothing to find.
+  - Same retention as `docs/data-retention.md`. No cross-tenant use (rule 3).
+- **A7 patent secrecy (interim rule):** nothing that describes how the engine works (how ranges are
+  calculated, how events combine, how the two graphs interact) is published before an attorney has advised.
+  The Trust page and landing may state behaviour and limits only ("an estimate, a range, what it leaves out").
+  An attorney still has to confirm this; it is a holding rule, not legal advice.
+- **Mortgage-fix scenario:** not built. It needs a new profile field for the fix end date and the new monthly
+  payment, and the new payment is not known to the user until the lender quotes it, so it would have to be a
+  guess. Left out until the profile can hold a figure the user has.
