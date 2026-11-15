@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 /**
  * Population event rates for the resilience engine (intent 94, R10). Owner decision 2026-11-14: ONS and DWP are
  * both approved sources. Each row below was read from the source page on the date given and cites the series,
@@ -45,6 +47,38 @@ export const EVENT_RATES: readonly EventRate[] = [
     fetchedOn: '2026-11-14',
   },
 ]
+
+/**
+ * A hash of the exact rate rows, in id order so row order never matters —
+ * same style as `figuresVersion`. Any change to any row is a new version,
+ * which is what an estimate cites as its "rates version" (intent 97, slice
+ * 6). Updating rates is a reviewed PR to this file; nothing edits them at
+ * runtime.
+ */
+export function ratesVersion(rates: readonly EventRate[] = EVENT_RATES): string {
+  return createHash('sha256')
+    .update(
+      [...rates]
+        .sort((a, b) => a.id.localeCompare(b.id))
+        .map((r) =>
+          [
+            r.id,
+            r.source,
+            r.series,
+            r.population,
+            r.value,
+            r.unit,
+            r.period,
+            r.releaseDate,
+            r.url,
+            r.fetchedOn,
+          ].join('='),
+        )
+        .join(';'),
+    )
+    .digest('hex')
+    .slice(0, 16)
+}
 
 export interface RateGap {
   event: string

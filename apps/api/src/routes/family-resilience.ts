@@ -21,6 +21,7 @@ import {
 } from '../resilience/fact-store.js'
 import { confirmLatencyBucket, emitEngineMetric } from '../resilience/engine-metrics.js'
 import { SCENARIO_FACTS, scenarioVersion, type Scenario } from '../resilience/dependencies.js'
+import { ratesVersion } from '../resilience/event-rates.js'
 import { canSeeEngineOutput, type VisibilityMember } from '../resilience/visibility.js'
 
 interface ProfileShape {
@@ -113,6 +114,8 @@ export type ResilienceView =
       confirmation?: Confirmation
       /** One confirmation per estimate, so a changed figure only unconfirms the estimates that read it. */
       scenarios?: Partial<Record<Scenario, Confirmation>>
+      /** Hash of the population event-rate rows this build carries (intent 97, slice 6). */
+      rates_version?: string
     }
 
 export function buildResilienceView(profile: ProfileShape | null): ResilienceView {
@@ -171,6 +174,9 @@ export function buildResilienceView(profile: ProfileShape | null): ResilienceVie
     scenario: 'income_stops',
     range: { lowMonths: open(r.lowMonths), highMonths: open(r.highMonths) },
     text: describeRange(r),
+    // The estimate says which rate set it was produced against; a rate PR
+    // changes this hash, so an estimate can be traced to its rates.
+    rates_version: ratesVersion(),
     left_out: [...LEFT_OUT],
     next_checks: [...checks, CLOSING_ACTION],
     ...(dr

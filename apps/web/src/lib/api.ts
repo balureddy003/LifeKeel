@@ -2742,6 +2742,8 @@ export type FamilyResilience =
       confirmation?: ResilienceConfirmation
       /** Per estimate, so a changed figure only unconfirms the estimates that read it. */
       scenarios?: { income_stops?: ResilienceConfirmation; earner_dies?: ResilienceConfirmation }
+      /** Hash of the population event-rate rows this build carries (intent 97, slice 6). */
+      rates_version?: string
     }
 
 export interface ResilienceConfirmation {
