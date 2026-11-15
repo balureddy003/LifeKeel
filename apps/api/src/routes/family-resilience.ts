@@ -184,6 +184,49 @@ export function buildResilienceView(profile: ProfileShape | null): ResilienceVie
 
 type Family = { members?: (VisibilityMember & { name?: string })[] } | null
 
+/**
+ * What a signed-in user may see: null when they are not an adult in the family (fails closed), otherwise the
+ * estimate with the figures used and each estimate's confirmation. Shared by the web route and the MCP tool
+ * so both apply the same visibility rule.
+ */
+export async function resilienceForUser(
+  db: Db,
+  tenant_id: string,
+  user_id: string,
+): Promise<ResilienceView | null> {
+  const family = (await db.collection('family_groups').findOne({ tenant_id })) as Family
+  const profile = (await db
+    .collection('family_financial_profile')
+    .findOne({ tenant_id })) as ProfileShape | null
+  const members = family?.members ?? []
+  if (!canSeeEngineOutput(members, user_id)) return null
+  const view = buildResilienceView(profile)
+  if (view.status !== 'ready') return view
+  const figures = figuresOf(profile)
+  const adults = members.filter((m) => canSeeEngineOutput(members, m.id))
+  const confirmationFor = async (version: string): Promise<Confirmation> => {
+    const confirmers = await confirmersOf(db, tenant_id, version)
+    const isConfirmer = (m: (typeof adults)[number]) =>
+      confirmers.includes(m.id) || (m.user_id !== undefined && confirmers.includes(m.user_id))
+    const me = adults.find((m) => m.id === user_id || m.user_id === user_id)
+    return {
+      confirmedBy: adults.filter(isConfirmer).map((m) => m.name ?? 'An adult'),
+      youConfirmed: me ? isConfirmer(me) : false,
+      adultsTotal: adults.length,
+      allAdultsConfirmed: adults.length > 0 && adults.every(isConfirmer),
+    }
+  }
+  const scenarios: Partial<Record<Scenario, Confirmation>> = {}
+  for (const sc of scenariosFor(figures))
+    scenarios[sc] = await confirmationFor(scenarioVersion(figures, sc))
+  return {
+    ...view,
+    figures: figures.map(({ label, valueMinor }) => ({ label, valueMinor })),
+    confirmation: await confirmationFor(figuresVersion(figures)),
+    scenarios,
+  }
+}
+
 export function registerFamilyResilienceRoutes(app: FastifyInstance, db: Db): void {
   // Confirmations are looked up by tenant and version on every read.
   db.collection('engine_facts')
@@ -199,34 +242,9 @@ export function registerFamilyResilienceRoutes(app: FastifyInstance, db: Db): vo
 
   app.get('/family/resilience', async (req, reply) => {
     const { tenant_id, user_id } = req.authContext
-    const { members, profile } = await load(tenant_id)
-    if (!canSeeEngineOutput(members, user_id))
-      return reply.status(403).send({ error: 'Only adults in this family can see this' })
-    const view = buildResilienceView(profile)
-    if (view.status !== 'ready') return view
-    const figures = figuresOf(profile)
-    const adults = members.filter((m) => canSeeEngineOutput(members, m.id))
-    const confirmationFor = async (version: string): Promise<Confirmation> => {
-      const confirmers = await confirmersOf(db, tenant_id, version)
-      const isConfirmer = (m: (typeof adults)[number]) =>
-        confirmers.includes(m.id) || (m.user_id !== undefined && confirmers.includes(m.user_id))
-      const me = adults.find((m) => m.id === user_id || m.user_id === user_id)
-      return {
-        confirmedBy: adults.filter(isConfirmer).map((m) => m.name ?? 'An adult'),
-        youConfirmed: me ? isConfirmer(me) : false,
-        adultsTotal: adults.length,
-        allAdultsConfirmed: adults.length > 0 && adults.every(isConfirmer),
-      }
-    }
-    const scenarios: Partial<Record<Scenario, Confirmation>> = {}
-    for (const sc of scenariosFor(figures))
-      scenarios[sc] = await confirmationFor(scenarioVersion(figures, sc))
-    return {
-      ...view,
-      figures: figures.map(({ label, valueMinor }) => ({ label, valueMinor })),
-      confirmation: await confirmationFor(figuresVersion(figures)),
-      scenarios,
-    }
+    const view = await resilienceForUser(db, tenant_id, user_id)
+    if (!view) return reply.status(403).send({ error: 'Only adults in this family can see this' })
+    return view
   })
 
   // An adult confirms the exact figures the estimate used. Append-only facts; confirming twice writes nothing.
