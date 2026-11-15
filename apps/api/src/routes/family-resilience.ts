@@ -17,7 +17,11 @@ import { confirmersOf, recordFact, type FactKey } from '../resilience/fact-store
 import { canSeeEngineOutput, type VisibilityMember } from '../resilience/visibility.js'
 
 interface ProfileShape {
-  household?: { monthly_salary_minor?: number; income_protection_monthly_minor?: number }
+  household?: {
+    monthly_salary_minor?: number
+    income_protection_monthly_minor?: number
+    life_cover_minor?: number
+  }
   emergency_fund?: { emergency_savings_minor?: number; monthly_expenses_minor?: number }
 }
 
@@ -36,6 +40,7 @@ export function figuresOf(profile: ProfileShape | null): Figure[] {
   const income = profile?.household?.monthly_salary_minor
   if (!positive(savings) || !positive(spend) || !positive(income)) return []
   const protection = profile?.household?.income_protection_monthly_minor
+  const cover = profile?.household?.life_cover_minor
   return [
     { label: 'Savings', valueMinor: savings, key: 'savings_minor' },
     { label: 'Monthly spend', valueMinor: spend, key: 'monthly_spend_minor' },
@@ -45,6 +50,16 @@ export function figuresOf(profile: ProfileShape | null): Figure[] {
       valueMinor: positive(protection) ? protection : 0,
       key: 'income_protection_monthly_minor',
     },
+    // Only when entered: the "if the main earner dies" estimate uses it, so it is confirmed with the rest.
+    ...(positive(cover)
+      ? [
+          {
+            label: 'Life cover amount',
+            valueMinor: cover,
+            key: 'life_cover_lump_sum_minor' as const,
+          },
+        ]
+      : []),
   ]
 }
 
@@ -56,6 +71,9 @@ export function figuresVersion(figures: Figure[]): string {
     .slice(0, 16)
 }
 
+/** Owner decision 2026-11-15: a life-cover payout arrives 1 to 2 months after the death, shown as a range. */
+export const PAYOUT_TIMING = { lowMonths: 1, highMonths: 2 } as const
+
 export type ResilienceView =
   | { status: 'needs_figures'; missing: string[] }
   | {
@@ -65,6 +83,11 @@ export type ResilienceView =
       text: string
       left_out: string[]
       next_checks: string[]
+      earner_dies?: {
+        range: { lowMonths: number | null; highMonths: number | null }
+        text: string
+        assumptions: string[]
+      }
       figures?: { label: string; valueMinor: number }[]
       confirmation?: {
         confirmedBy: string[]
@@ -103,13 +126,47 @@ export function buildResilienceView(profile: ProfileShape | null): ResilienceVie
   }
   const r = runwayRange(input)
   const open = (n: number) => (n >= NO_END ? null : n)
+  const cover = profile?.household?.life_cover_minor
+  const deathInput: RangeInput | null = positive(cover)
+    ? {
+        ...input,
+        events: [
+          {
+            kind: 'earner_dies',
+            fromMonth: 0,
+            monthlyIncomeLostMinor: income,
+            lumpSumOnFileMinor: cover,
+            payoutAfterMonths: PAYOUT_TIMING,
+          },
+        ],
+      }
+    : null
+  const dr = deathInput ? runwayRange(deathInput) : null
+  const checks = [
+    ...new Set([
+      ...rankInformationActions(input).map((a) => a.action),
+      ...(deathInput ? rankInformationActions(deathInput).map((a) => a.action) : []),
+    ]),
+  ]
   return {
     status: 'ready',
     scenario: 'income_stops',
     range: { lowMonths: open(r.lowMonths), highMonths: open(r.highMonths) },
     text: describeRange(r),
     left_out: [...LEFT_OUT],
-    next_checks: [...rankInformationActions(input).map((a) => a.action), CLOSING_ACTION],
+    next_checks: [...checks, CLOSING_ACTION],
+    ...(dr
+      ? {
+          earner_dies: {
+            range: { lowMonths: open(dr.lowMonths), highMonths: open(dr.highMonths) },
+            text: describeRange(dr, 'Savings and the cover payout'),
+            assumptions: [
+              'Assumes the main income stops and the cover amount you entered is on the main earner.',
+              'Assumes the cover pays out 1 to 2 months after a claim.',
+            ],
+          },
+        }
+      : {}),
   }
 }
 

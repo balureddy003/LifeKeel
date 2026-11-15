@@ -14,6 +14,13 @@ export interface Interval {
 }
 export type Bounded = number | Interval
 
+/** Whole months, as one number or a range (a later payout is worse for the household). */
+export interface MonthsRange {
+  lowMonths: number
+  highMonths: number
+}
+export type BoundedMonths = number | MonthsRange
+
 /** An event whose "on file" figures may be unconfirmed (carried as intervals). */
 export type UncertainEvent =
   | {
@@ -28,7 +35,7 @@ export type UncertainEvent =
       fromMonth: number
       monthlyIncomeLostMinor: number
       lumpSumOnFileMinor: Bounded
-      payoutAfterMonths: number
+      payoutAfterMonths: BoundedMonths
     }
 
 export interface RangeInput {
@@ -52,6 +59,14 @@ function bounds(label: string, b: Bounded): Interval {
   const i = typeof b === 'number' ? { lowMinor: b, highMinor: b } : b
   if (i.lowMinor > i.highMinor) throw new RangeError(`${label}: low is above high`)
   return i
+}
+const monthsOf = (b: BoundedMonths): MonthsRange =>
+  typeof b === 'number' ? { lowMonths: b, highMonths: b } : b
+const isExactMonths = (b: BoundedMonths) => typeof b === 'number' || b.lowMonths === b.highMonths
+function payoutMonths(b: BoundedMonths, s: Side): number {
+  const m = monthsOf(b)
+  if (m.lowMonths > m.highMonths) throw new RangeError('payout timing: low is above high')
+  return s === 'pessimistic' ? m.highMonths : m.lowMonths
 }
 const isExact = (b: Bounded) => typeof b === 'number' || b.lowMinor === b.highMinor
 
@@ -77,7 +92,11 @@ function resolve(e: UncertainEvent, s: Side): EngineEvent {
     case 'mortgage_fix_ends':
       return { ...e, monthlyIncreaseMinor: bad('mortgage rise', e.monthlyIncreaseMinor, s) }
     case 'earner_dies':
-      return { ...e, lumpSumOnFileMinor: good('payout', e.lumpSumOnFileMinor, s) }
+      return {
+        ...e,
+        lumpSumOnFileMinor: good('payout', e.lumpSumOnFileMinor, s),
+        payoutAfterMonths: payoutMonths(e.payoutAfterMonths, s),
+      }
   }
 }
 
@@ -101,7 +120,7 @@ export function runwayRange(input: RangeInput): RunwayRange {
     input.events.every((e) => {
       if (e.kind === 'income_stops') return !e.protection || isExact(e.protection.monthlyMinor)
       if (e.kind === 'mortgage_fix_ends') return isExact(e.monthlyIncreaseMinor)
-      return isExact(e.lumpSumOnFileMinor)
+      return isExact(e.lumpSumOnFileMinor) && isExactMonths(e.payoutAfterMonths)
     })
   return {
     lowMonths: run(input, 'pessimistic'),
@@ -120,7 +139,7 @@ export const LEFT_OUT = [
 const months = (n: number) => `${n} month${n === 1 ? '' : 's'}`
 const OPEN = `${DEFAULT_HORIZON_MONTHS / 12} years or more`
 
-export function describeRange(r: RunwayRange): string {
+export function describeRange(r: RunwayRange, subject = 'Savings'): string {
   let body: string
   if (r.lowMonths === NO_END) body = `about ${OPEN}`
   else if (r.highMonths === NO_END) body = `from ${months(r.lowMonths)} to ${OPEN}`
@@ -129,5 +148,5 @@ export function describeRange(r: RunwayRange): string {
   const basis = r.exactInputs
     ? 'This is an estimate from the exact figures entered, so real life will vary.'
     : 'This is an estimate from the figures entered, with the unconfirmed ones shown as a range.'
-  return `Savings would cover ${body}. ${basis} It leaves out ${LEFT_OUT.join(', ')}.`
+  return `${subject} would cover ${body}. ${basis} It leaves out ${LEFT_OUT.join(', ')}.`
 }

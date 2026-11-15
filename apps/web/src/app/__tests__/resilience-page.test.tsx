@@ -52,6 +52,34 @@ describe('/resilience', () => {
     await waitFor(() => expect(screen.getByText(/adults in your family/i)).toBeTruthy())
   })
 
+  it('shows the earner scenario with its assumptions only when the server sends it', async () => {
+    const base = {
+      status: 'ready',
+      scenario: 'income_stops',
+      range: { lowMonths: 3, highMonths: 3 },
+      text: 'Savings would cover about 3 months. This is an estimate.',
+      left_out: [],
+      next_checks: [],
+    }
+    fetchFamilyResilience.mockResolvedValueOnce(base)
+    const { unmount } = render(<ResiliencePage />)
+    await waitFor(() => expect(screen.getByText(/about 3 months/)).toBeTruthy())
+    expect(screen.queryByText(/If the main earner dies/)).toBeNull()
+    unmount()
+    fetchFamilyResilience.mockResolvedValueOnce({
+      ...base,
+      earner_dies: {
+        range: { lowMonths: 1, highMonths: 5 },
+        text: 'Savings and the cover payout would cover 1 to 5 months. This is an estimate.',
+        assumptions: ['Assumes the cover pays out 1 to 2 months after a claim.'],
+      },
+    })
+    render(<ResiliencePage />)
+    await waitFor(() => expect(screen.getByText(/1 to 5 months/)).toBeTruthy())
+    expect(screen.getByText(/If the main earner dies/)).toBeTruthy()
+    expect(screen.getByText(/1 to 2 months after a claim/)).toBeTruthy()
+  })
+
   describe('confirming', () => {
     const ready = (over: object = {}) => ({
       status: 'ready',
@@ -71,18 +99,16 @@ describe('/resilience', () => {
     })
 
     it('shows the figures used and confirms them, then reloads', async () => {
-      fetchFamilyResilience
-        .mockResolvedValueOnce(ready())
-        .mockResolvedValueOnce(
-          ready({
-            confirmation: {
-              confirmedBy: ['Alex'],
-              youConfirmed: true,
-              adultsTotal: 2,
-              allAdultsConfirmed: false,
-            },
-          }),
-        )
+      fetchFamilyResilience.mockResolvedValueOnce(ready()).mockResolvedValueOnce(
+        ready({
+          confirmation: {
+            confirmedBy: ['Alex'],
+            youConfirmed: true,
+            adultsTotal: 2,
+            allAdultsConfirmed: false,
+          },
+        }),
+      )
       confirmResilienceFigures.mockResolvedValue(true)
       render(<ResiliencePage />)
       await waitFor(() => expect(screen.getByText('£9,000')).toBeTruthy())

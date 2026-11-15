@@ -115,3 +115,49 @@ describe('describeRange (R7)', () => {
     }
   })
 })
+
+describe('payout timing as a range (owner decision 2026-11-15: 1 to 2 months)', () => {
+  const dies = (
+    payoutAfterMonths: number | { lowMonths: number; highMonths: number },
+  ): UncertainEvent => ({
+    kind: 'earner_dies',
+    fromMonth: 0,
+    monthlyIncomeLostMinor: 250000,
+    lumpSumOnFileMinor: 1200000,
+    payoutAfterMonths,
+  })
+  const tight = { savingsMinor: 300000, monthlyInflowMinor: 250000, monthlySpendMinor: 200000 }
+
+  it('a later payout is the low end and an earlier one the high end', () => {
+    const r = runwayRange({ ...tight, events: [dies({ lowMonths: 1, highMonths: 2 })] })
+    expect(r.lowMonths).toBe(1) // money runs out before a month-2 payout arrives
+    expect(r.highMonths).toBe(7)
+    expect(r.exactInputs).toBe(false)
+  })
+
+  it('a single number behaves as before and counts as exact', () => {
+    const r = runwayRange({ ...tight, events: [dies(1)] })
+    expect(r.lowMonths).toBe(7)
+    expect(r.exactInputs).toBe(true)
+  })
+
+  it('an equal low and high is exact', () => {
+    expect(
+      runwayRange({ ...tight, events: [dies({ lowMonths: 2, highMonths: 2 })] }).exactInputs,
+    ).toBe(true)
+  })
+
+  it('rejects low above high', () => {
+    expect(() =>
+      runwayRange({ ...tight, events: [dies({ lowMonths: 3, highMonths: 2 })] }),
+    ).toThrow(RangeError)
+  })
+
+  it('describeRange can name what the range is about', () => {
+    const t = describeRange(
+      { lowMonths: 1, highMonths: 7, exactInputs: false },
+      'Savings and the cover payout',
+    )
+    expect(t.startsWith('Savings and the cover payout would cover 1 to 7 months.')).toBe(true)
+  })
+})

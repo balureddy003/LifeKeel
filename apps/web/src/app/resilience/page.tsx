@@ -76,6 +76,19 @@ export default function ResiliencePage() {
               Left out of this estimate: {data.left_out.join(', ')}.
             </p>
           </GlassCard>
+          {data.earner_dies && (
+            <GlassCard className="p-4 space-y-3">
+              <h2 className="text-sm font-semibold text-ink-tertiary uppercase tracking-wide">
+                If the main earner dies
+              </h2>
+              <p className="text-base text-ink-primary">{data.earner_dies.text}</p>
+              <ul className="space-y-1 text-sm text-ink-tertiary list-disc pl-5">
+                {data.earner_dies.assumptions.map((a) => (
+                  <li key={a}>{a}</li>
+                ))}
+              </ul>
+            </GlassCard>
+          )}
           {data.figures && data.confirmation && (
             <GlassCard className="p-4 space-y-3">
               <h2 className="text-sm font-semibold text-ink-tertiary uppercase tracking-wide">
