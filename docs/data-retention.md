@@ -69,6 +69,7 @@ Each run is recorded in `job_runs` (counts only). The sweep never deletes docume
 | Marketing leads | 2 years after last activity; removed at once on account deletion | consented marketing; stale consent isn't relied on | `jobs/retention-worker.ts`, `erasure.ts` |
 | Lifecycle email ledger | 2 years | stops a sequence being sent twice | `jobs/retention-worker.ts` |
 | Growth events | 13 months | product analytics, aggregate | `jobs/retention-worker.ts` |
+| Engine metric events (`engine_metrics_events`: content-free counters — event kind, field class, outcome, date) | 24 months, then rolled into `metrics_daily` counts and the raw rows deleted | measuring whether extraction is getting better (intent 97) | `jobs/retention-worker.ts`, `resilience/engine-metrics.ts` |
 | Stripe webhook event ids | 400 days once completed | idempotency across Stripe's retry window, plus a year for reconciliation | `jobs/retention-worker.ts` |
 | Invitation send counter | 7 days | daily invitation limit | `jobs/retention-worker.ts` |
 | Saved quiz answers awaiting an email link | 24 hours | completing the link | `routes/magic-link.ts` |

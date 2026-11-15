@@ -61,6 +61,7 @@ import {
   type ReviewDecision,
 } from '../extraction/pipeline.js'
 import { extractorLabel, policyRef, saveProvenance } from '../extraction/provenance.js'
+import { asCategory, emitEngineMetric, type FieldClass } from '../resilience/engine-metrics.js'
 import { localDecisionFromEnv } from '../local-model.js'
 import { taskDecide, taskVision } from '../ai/task-gateway.js'
 import {
@@ -783,6 +784,22 @@ export function registerDocumentRoutes(
       if (!result.ok)
         return reply.status(400).send({ error: 'Invalid review', problems: result.errors })
       await saveCandidates(db, result.candidates)
+      // Engine metrics (intent 97, slice 1): exactly one content-free event per
+      // confirm or edit decision; rejections carry no event.
+      const reviewCategory = asCategory(result.candidates.classification.category)
+      await Promise.all(
+        decisions
+          .filter((d) => d.action === 'confirm' || d.action === 'edit')
+          .map((d) =>
+            emitEngineMetric(db, {
+              tenantId: tenant_id,
+              event:
+                d.action === 'confirm' ? 'extraction_confirmed_unchanged' : 'extraction_corrected',
+              fieldClass: d.key as FieldClass,
+              documentCategory: reviewCategory,
+            }),
+          ),
+      )
       auditStep(tenant_id, user_id, 'document.reviewed', req.params.id, {
         confirmed: decisions.filter((d) => d.action === 'confirm').length,
         edited: decisions.filter((d) => d.action === 'edit').length,
@@ -872,6 +889,20 @@ export function registerDocumentRoutes(
 
       if (checked.candidates) {
         const used = new Set(toApply.map((s) => s.sourceField))
+        // Fields the apply moves from proposed to confirmed count as
+        // confirmed-unchanged (intent 97, slice 1) — one event each.
+        await Promise.all(
+          checked.candidates.fields
+            .filter((f) => used.has(f.key) && f.status === 'proposed')
+            .map((f) =>
+              emitEngineMetric(db, {
+                tenantId: tenant_id,
+                event: 'extraction_confirmed_unchanged',
+                fieldClass: f.key as FieldClass,
+                documentCategory: asCategory(checked.candidates!.classification.category),
+              }),
+            ),
+        )
         await saveCandidates(db, {
           ...checked.candidates,
           updated_at: confirmedAt,

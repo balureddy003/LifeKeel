@@ -31,6 +31,8 @@ import { isOcrableImage, ocrImageToText } from './local-ocr.js'
 import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
 import { CATEGORIES, FIELD_KEYS, POLICY_TYPE_VALUES } from '../extraction/schema.js'
 import { auditStep, buildCandidates, saveCandidates } from '../extraction/pipeline.js'
+import { asCategory, emitEngineMetric } from '../resilience/engine-metrics.js'
+import { statementVerdict } from './profile-mapping.js'
 import { DEFAULT_LOCAL_MODEL } from '../local-model.js'
 
 const log = createLogger({ service: 'ocr', version: '0.0.0' })
@@ -555,6 +557,41 @@ export async function processDocument(
     await saveCandidates(db, candidates)
     const proposed = Object.fromEntries(candidates.fields.map((f) => [f.key, f.value]))
     const documentDate = proposed['document_date']
+
+    // Engine metrics (intent 97, slice 1): one content-free event per field the
+    // run proposed, and for a bank statement the mechanical check's verdict —
+    // once, at extraction time. Emits never throw.
+    const category = asCategory(candidates.classification.category)
+    await Promise.all(
+      candidates.fields.map((f) =>
+        emitEngineMetric(db, {
+          tenantId,
+          event: 'extraction_suggested',
+          fieldClass: f.key,
+          documentCategory: category,
+        }),
+      ),
+    )
+    if (category === 'banking') {
+      const verdict = statementVerdict(proposed)
+      if (!verdict.ok) {
+        for (const p of verdict.problems) {
+          await emitEngineMetric(db, {
+            tenantId,
+            event: 'extraction_check_failed',
+            fieldClass: p.field,
+            documentCategory: 'banking',
+            check: p.code,
+          })
+        }
+        await emitEngineMetric(db, {
+          tenantId,
+          event: 'statement_rejected',
+          documentCategory: 'banking',
+          reason: verdict.reason,
+        })
+      }
+    }
 
     await documents.updateOne(
       { id: docId },

@@ -79,6 +79,24 @@ export async function confirmersOf(
   return [...new Set(rows.filter((r) => r.confirmed_at).map((r) => r.entered_by))]
 }
 
+/** When the first adult confirmed this set of figures — the start of the both-adult latency measure. */
+export async function firstConfirmedAt(
+  db: Db,
+  tenantId: string,
+  figuresVersion: string,
+): Promise<Date | null> {
+  const rows = await db
+    .collection<EngineFactDoc>('engine_facts')
+    .find({ tenant_id: tenantId, figures_version: figuresVersion })
+    .toArray()
+  let first: Date | null = null
+  for (const r of rows) {
+    const c = r.confirmed_at
+    if (c instanceof Date && (first === null || c < first)) first = c
+  }
+  return first
+}
+
 /**
  * The figures as they stood: true by `validAt`, and known by `knownAt`. Per key, the latest `valid_from`
  * wins; a later entry for the same `valid_from` (a correction) wins once it is known.

@@ -46,6 +46,7 @@ export const DELETABLE_COLLECTIONS = [
   'employer_cover_facts', // PRD-232
   'domain_records', // domain packs: household-entered records
   'engine_facts', // intent 94 B3: two-date money figures for the resilience engine
+  'engine_metrics_events', // intent 97: content-free extraction/confirmation counters
   'business_graph', // intent 96: a member's businesses and the income each pays the household
   'learning_consent', // intent 96: which adults opted in to share a coarse band (gated off)
   'learning_contributions', // intent 96: one coarse band per consenting household

@@ -19,7 +19,7 @@
  * added, never applied silently — same posture as the scalar suggestions.
  */
 
-import { checkExtraction } from '../resilience/extraction-checks.js'
+import { checkExtraction, type Problem } from '../resilience/extraction-checks.js'
 
 const APPLICABLE_PATHS = [
   'household.life_cover_minor',
@@ -118,7 +118,20 @@ function parseStatementDay(raw: string | undefined): number | null {
  * reconcile (opening + in - out = closing) and it covers about one month. Money in can include transfers,
  * so the label asks the person to check it. Anything unclear gives no suggestion.
  */
-function statementSuggestions(fields: Record<string, string>): ProfileSuggestion[] {
+/**
+ * Whether a bank statement's own figures can back a suggestion at all. Same
+ * parsing and checks statementSuggestions uses — exported so the extraction
+ * pipeline can count the outcome once, at extraction time (intent 97, slice 1).
+ */
+export type StatementVerdict =
+  | { ok: true; moneyIn: number; moneyOut: number }
+  | {
+      ok: false
+      reason: 'fields_unparsable' | 'period_out_of_range' | 'check_failed'
+      problems: Problem[]
+    }
+
+export function statementVerdict(fields: Record<string, string>): StatementVerdict {
   const opening = parseMoneyToMinorUnits(fields['statement_opening_balance'])
   const closing = parseMoneyToMinorUnits(fields['statement_closing_balance'])
   const moneyIn = parseMoneyToMinorUnits(fields['statement_money_in'])
@@ -133,9 +146,9 @@ function statementSuggestions(fields: Record<string, string>): ProfileSuggestion
     start === null ||
     end === null
   )
-    return []
+    return { ok: false, reason: 'fields_unparsable', problems: [] }
   const days = end - start + 1
-  if (days < 25 || days > 35) return []
+  if (days < 25 || days > 35) return { ok: false, reason: 'period_out_of_range', problems: [] }
   // The statement's own arithmetic is checked in one place (intent 94, R9).
   const iso = (day: number) => new Date(day * 86_400_000).toISOString().slice(0, 10)
   const problems = checkExtraction('bank_statement', {
@@ -146,19 +159,25 @@ function statementSuggestions(fields: Record<string, string>): ProfileSuggestion
     period_start: iso(start),
     period_end: iso(end),
   })
-  if (problems.length > 0) return []
+  if (problems.length > 0) return { ok: false, reason: 'check_failed', problems }
+  return { ok: true, moneyIn, moneyOut }
+}
+
+function statementSuggestions(fields: Record<string, string>): ProfileSuggestion[] {
+  const verdict = statementVerdict(fields)
+  if (!verdict.ok) return []
   return [
     {
       path: 'emergency_fund.monthly_expenses_minor',
       label: 'Monthly spend (money out last month)',
-      valueMinor: moneyOut,
+      valueMinor: verdict.moneyOut,
       sourceField: 'statement_money_out',
       sourceValue: fields['statement_money_out']!,
     },
     {
       path: 'household.monthly_salary_minor',
       label: 'Monthly income (money in last month; check it is your income)',
-      valueMinor: moneyIn,
+      valueMinor: verdict.moneyIn,
       sourceField: 'statement_money_in',
       sourceValue: fields['statement_money_in']!,
     },

@@ -13,7 +13,13 @@ import type { Db } from 'mongodb'
 import { NO_END } from '../resilience/cashflow.js'
 import { LEFT_OUT, describeRange, runwayRange, type RangeInput } from '../resilience/range.js'
 import { CLOSING_ACTION, rankInformationActions } from '../resilience/rank.js'
-import { confirmersOf, recordFact, type FactKey } from '../resilience/fact-store.js'
+import {
+  confirmersOf,
+  firstConfirmedAt,
+  recordFact,
+  type FactKey,
+} from '../resilience/fact-store.js'
+import { confirmLatencyBucket, emitEngineMetric } from '../resilience/engine-metrics.js'
 import { SCENARIO_FACTS, scenarioVersion, type Scenario } from '../resilience/dependencies.js'
 import { canSeeEngineOutput, type VisibilityMember } from '../resilience/visibility.js'
 
@@ -258,6 +264,7 @@ export function registerFamilyResilienceRoutes(app: FastifyInstance, db: Db): vo
       return reply.status(400).send({ error: 'Enter your savings, spend and income first' })
     const now = new Date()
     // One set of facts per estimate, each under that estimate's own version.
+    let wrote = false
     for (const sc of scenariosFor(figures)) {
       const version = scenarioVersion(figures, sc)
       if ((await confirmersOf(db, tenant_id, version)).includes(user_id)) continue
@@ -270,6 +277,37 @@ export function registerFamilyResilienceRoutes(app: FastifyInstance, db: Db): vo
           confirmedAt: now,
           figuresVersion: version,
         })
+      wrote = true
+    }
+    // Engine metrics (intent 97, slice 1): one event per adult's confirmation,
+    // plus the all-adults completion and the bucketed time to get there.
+    // Emits never throw.
+    if (wrote) {
+      await emitEngineMetric(db, {
+        tenantId: tenant_id,
+        event: 'figures_confirmed_one_adult',
+        fieldClass: 'figures',
+      })
+      const version = figuresVersion(figures)
+      const confirmers = await confirmersOf(db, tenant_id, version)
+      const adults = members.filter((m) => canSeeEngineOutput(members, m.id))
+      const isConfirmer = (m: (typeof adults)[number]) =>
+        confirmers.includes(m.id) || (m.user_id !== undefined && confirmers.includes(m.user_id))
+      if (adults.length > 0 && adults.every(isConfirmer)) {
+        await emitEngineMetric(db, {
+          tenantId: tenant_id,
+          event: 'figures_confirmed_all_adults',
+          fieldClass: 'figures',
+        })
+        const first = await firstConfirmedAt(db, tenant_id, version)
+        if (first)
+          await emitEngineMetric(db, {
+            tenantId: tenant_id,
+            event: 'figures_confirm_latency',
+            fieldClass: 'figures',
+            bucket: confirmLatencyBucket(now.getTime() - first.getTime()),
+          })
+      }
     }
     return { ok: true }
   })
