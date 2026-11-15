@@ -171,6 +171,7 @@ import { registerMemberTwinRoutes } from './routes/member-twin.js'
 import { registerFamilyContinuityRoutes } from './routes/family-continuity.js'
 import { registerFamilyCashflowRoutes } from './routes/family-cashflow.js'
 import { registerFamilyResilienceRoutes } from './routes/family-resilience.js'
+import { registerMcpRoutes } from './mcp/resilience-mcp.js'
 import { registerFamilyLearningRoutes } from './routes/family-learning.js'
 import { learningGate } from './learning/gate.js'
 import { registerFamilyAssetRoutes } from './routes/family-assets.js'
@@ -1290,6 +1291,8 @@ if (workflowDb) {
   registerFamilyContinuityRoutes(app, workflowDb)
   registerFamilyCashflowRoutes(app, workflowDb)
   registerFamilyResilienceRoutes(app, workflowDb)
+  // Read-only MCP endpoint: off unless LIFEKEEL_MCP_ENABLED=true (intent 96; CLAUDE.md rule 3).
+  registerMcpRoutes(app, workflowDb, { enabled: process.env['LIFEKEEL_MCP_ENABLED'] === 'true' })
   // Cross-tenant learning plumbing: off unless the flag AND a recorded privacy review (intent 96, rule 3).
   const learning = learningGate(process.env)
   if (process.env['LIFEKEEL_CROSS_TENANT_LEARNING'] === 'true' && !learning.open)
