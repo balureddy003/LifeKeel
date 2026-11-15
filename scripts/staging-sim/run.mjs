@@ -1356,6 +1356,301 @@ scenario(
   },
 )
 
+// ═════════════════════════ RESILIENCE (intent 94, 96, 97) ═══════════════════
+// Fictional families from resilience-families.json. Each expected answer is worked out by hand;
+// apps/api/src/resilience/__tests__/synthetic-families.test.ts keeps them honest against the engine.
+import { readFileSync } from 'node:fs'
+const RES_FAMILIES = JSON.parse(
+  readFileSync(new URL('./resilience-families.json', import.meta.url), 'utf8'),
+).families
+const resFamilyCache = new Map()
+
+function profileBody(f, overrides = {}) {
+  const p = { ...f.profile, ...overrides }
+  return {
+    household: {
+      employment_status: p.employment_status,
+      monthly_salary_minor: p.monthly_salary_minor,
+      annual_living_expenses_minor: p.monthly_expenses_minor * 12,
+      life_cover_minor: p.life_cover_minor,
+      income_protection_monthly_minor: p.income_protection_monthly_minor,
+    },
+    emergency_fund: {
+      emergency_savings_minor: p.emergency_savings_minor,
+      monthly_expenses_minor: p.monthly_expenses_minor,
+    },
+    retirement: {
+      current_age: 40,
+      target_retirement_age: 67,
+      pension_balance_minor: 0,
+      monthly_contribution_minor: 0,
+      target_retirement_income_minor: 0,
+    },
+    policies: [],
+  }
+}
+async function saveProfile(tok, f, overrides = {}) {
+  const cur = await call('GET', '/family/financial-profile', { token: tok })
+  const version = cur.json?.version
+  return call('POST', '/family/financial-profile', {
+    token: tok,
+    body: { ...profileBody(f, overrides), ...(version ? { version } : {}) },
+  })
+}
+
+/** Builds the family once and reuses it across scenarios (signup and join are rate limited). */
+function resilienceFamily(id) {
+  if (!resFamilyCache.has(id)) {
+    resFamilyCache.set(
+      id,
+      (async () => {
+        const f = RES_FAMILIES.find((x) => x.id === id)
+        const [first, ...rest] = f.adults[0].split(' ')
+        const fam = await makeFamily(first, rest.join(' '))
+        const tokens = [fam.org.token]
+        for (const name of f.adults.slice(1)) {
+          const [a, ...b] = name.split(' ')
+          const j = await joinAndApprove(fam, a, b.join(' '))
+          if (!j.token) throw new Error(`could not add ${name}: ${j.login?.text}`)
+          tokens.push(j.token)
+        }
+        for (const name of f.children) {
+          const k = await call('POST', '/family/members', {
+            token: fam.org.token,
+            body: {
+              name,
+              email: `${name.split(' ')[0].toLowerCase()}.${RUN}@example.test`,
+              role: 'child',
+              date_of_birth: '2016-05-04',
+              relationship_label: 'my_child',
+            },
+          })
+          if (k.status >= 300) throw new Error(`could not add child ${name}: ${k.status}`)
+        }
+        const saved = await saveProfile(fam.org.token, f)
+        if (saved.status >= 300)
+          throw new Error(`profile save failed: ${saved.status} ${saved.text.slice(0, 200)}`)
+        const roster = (await call('GET', '/family', { token: fam.org.token })).json.family.members
+        return { f, fam, tokens, roster }
+      })(),
+    )
+  }
+  return resFamilyCache.get(id)
+}
+const resilienceOf = (tok) => call('GET', '/family/resilience', { token: tok })
+
+scenario('18 resilience: each family gets the hand-worked estimate', async () => {
+  for (const id of ['okafor', 'lindqvist', 'rahman', 'petrovic', 'adeyemi']) {
+    const { f, tokens } = await resilienceFamily(id)
+    const r = await resilienceOf(tokens[0])
+    expectStatus(`${id}: adult sees the estimate`, r, 200)
+    if (f.expected.needs_figures) {
+      check(
+        `${id}: asks for the missing figures, never guesses`,
+        r.json?.status === 'needs_figures' &&
+          JSON.stringify(r.json.missing) === JSON.stringify(f.expected.needs_figures),
+        r.text,
+      )
+      continue
+    }
+    check(`${id}: ready`, r.json?.status === 'ready', r.text)
+    const e = f.expected.income_stops
+    check(
+      `${id}: income stops ${e.low} to ${e.high} months (${e.why})`,
+      r.json?.range?.lowMonths === e.low && r.json?.range?.highMonths === e.high,
+      JSON.stringify(r.json?.range),
+    )
+    check(`${id}: labelled an estimate`, /estimate/i.test(r.json?.text ?? ''), r.json?.text)
+    check(
+      `${id}: ends with the licensed-professional line`,
+      /licensed professional/i.test(r.json?.next_checks?.at(-1) ?? ''),
+      JSON.stringify(r.json?.next_checks?.slice(-1)),
+    )
+    if (f.expected.earner_dies) {
+      const d = f.expected.earner_dies
+      check(
+        `${id}: earner dies ${d.low} to ${d.high} months (${d.why})`,
+        r.json?.earner_dies?.range?.lowMonths === d.low &&
+          r.json?.earner_dies?.range?.highMonths === d.high,
+        JSON.stringify(r.json?.earner_dies?.range),
+      )
+    } else {
+      check(`${id}: no earner-dies estimate without life cover`, !r.json?.earner_dies, r.text)
+    }
+  }
+})
+
+scenario(
+  '19 resilience: both adults confirm; a changed figure unconfirms only what it touches',
+  async () => {
+    const { f, tokens } = await resilienceFamily('rahman')
+    const [a, b] = tokens
+    let ra = await resilienceOf(a)
+    check('nobody has confirmed yet', ra.json?.confirmation?.confirmedBy?.length === 0, ra.text)
+    expectStatus(
+      'adult A confirms',
+      await call('POST', '/family/resilience/confirm', { token: a, body: {} }),
+      200,
+    )
+    ra = await resilienceOf(a)
+    const rb = await resilienceOf(b)
+    check('A sees their own confirmation', ra.json?.confirmation?.youConfirmed === true, ra.text)
+    check('B has not confirmed', rb.json?.confirmation?.youConfirmed === false, rb.text)
+    check('not all adults yet', rb.json?.confirmation?.allAdultsConfirmed === false, rb.text)
+    const again = await call('POST', '/family/resilience/confirm', { token: a, body: {} })
+    expectStatus('confirming twice is harmless', again, 200)
+    expectStatus(
+      'adult B confirms',
+      await call('POST', '/family/resilience/confirm', { token: b, body: {} }),
+      200,
+    )
+    const done = await resilienceOf(b)
+    check(
+      'every adult has confirmed',
+      done.json?.confirmation?.allAdultsConfirmed === true,
+      done.text,
+    )
+    check(
+      'both estimates are confirmed',
+      done.json?.scenarios?.income_stops?.allAdultsConfirmed === true &&
+        done.json?.scenarios?.earner_dies?.allAdultsConfirmed === true,
+      JSON.stringify(done.json?.scenarios),
+    )
+    // Change only the life cover: the income-stops estimate does not read it.
+    const saved = await saveProfile(a, f, { life_cover_minor: 1200000 })
+    expectStatus('life cover changed', saved, 200, 201)
+    const after = await resilienceOf(a)
+    check(
+      'income-stops confirmation stands (it does not read life cover)',
+      after.json?.scenarios?.income_stops?.allAdultsConfirmed === true,
+      JSON.stringify(after.json?.scenarios),
+    )
+    check(
+      'earner-dies confirmation is gone (it reads life cover)',
+      after.json?.scenarios?.earner_dies?.youConfirmed === false,
+      JSON.stringify(after.json?.scenarios),
+    )
+    // Change savings: both estimates read it.
+    const saved2 = await saveProfile(a, f, {
+      life_cover_minor: 1200000,
+      emergency_savings_minor: 450000,
+    })
+    expectStatus('savings changed', saved2, 200, 201)
+    const after2 = await resilienceOf(a)
+    check(
+      'a changed saving unconfirms both estimates',
+      after2.json?.scenarios?.income_stops?.youConfirmed === false &&
+        after2.json?.scenarios?.earner_dies?.youConfirmed === false,
+      JSON.stringify(after2.json?.scenarios),
+    )
+  },
+)
+
+scenario('20 resilience: a business that pays part of the income', async () => {
+  const { f, tokens, roster } = await resilienceFamily('petrovic')
+  const o = tokens[0]
+  const adult0 = roster.find((m) => m.name === f.adults[0])
+  check(
+    'found the first adult on the roster',
+    !!adult0?.id,
+    JSON.stringify(roster.map((m) => m.name)),
+  )
+  const biz = f.businesses[0]
+  const put = await call('PUT', '/family/businesses', {
+    token: o,
+    body: {
+      businesses: [{ id: 'b1', name: biz.name }],
+      incomeEdges: [
+        { businessId: 'b1', memberId: adult0.id, monthlyMinor: biz.pays[0].monthly_minor },
+      ],
+    },
+  })
+  expectStatus('adult saves the business', put, 200)
+  const got = await call('GET', '/family/businesses', { token: o })
+  const sh = got.json?.shocks?.[0]
+  const e = f.expected.business_stops[0]
+  check(
+    `if ${biz.name} stops: ${e.low} to ${e.high} months (${e.why})`,
+    sh?.range?.lowMonths === e.low && sh?.range?.highMonths === e.high,
+    got.text,
+  )
+  check('labelled an estimate', /estimate/i.test(sh?.text ?? ''), sh?.text)
+  const bad = await call('PUT', '/family/businesses', {
+    token: o,
+    body: {
+      businesses: [{ id: 'b1', name: biz.name }],
+      incomeEdges: [{ businessId: 'ghost', memberId: adult0.id, monthlyMinor: 1 }],
+    },
+  })
+  expectStatus('an edge to an unknown business is refused', bad, 400)
+  const still = await call('GET', '/family/businesses', { token: o })
+  check(
+    'the old graph is kept after a refused save',
+    still.json?.businesses?.length === 1,
+    still.text,
+  )
+  const nonAdult = await call('PUT', '/family/businesses', {
+    token: o,
+    body: {
+      businesses: [{ id: 'b1', name: biz.name }],
+      incomeEdges: [{ businessId: 'b1', memberId: 'member-nobody', monthlyMinor: 100 }],
+    },
+  })
+  expectStatus('income to someone who is not an adult in the family is refused', nonAdult, 400)
+  const unauth = await call('GET', '/family/businesses', {})
+  expectStatus('no token is refused', unauth, 401, 403)
+})
+
+scenario('21 resilience: families only ever see their own figures', async () => {
+  const ok = await resilienceFamily('okafor')
+  const li = await resilienceFamily('lindqvist')
+  const a = await resilienceOf(ok.tokens[0])
+  const b = await resilienceOf(li.tokens[0])
+  check('Okafor sees 4 months', a.json?.range?.lowMonths === 4, a.text)
+  check('Lindqvist sees 6 months, not the Okafor answer', b.json?.range?.lowMonths === 6, b.text)
+  check(
+    'Lindqvist cannot see the Okafor figures',
+    !JSON.stringify(b.json).includes('1000000'),
+    b.text.slice(0, 200),
+  )
+  expectStatus(
+    'no token on the estimate is refused',
+    await call('GET', '/family/resilience', {}),
+    401,
+    403,
+  )
+  const tamper = await call('GET', '/family/resilience', {
+    token: ok.tokens[0].slice(0, -3) + 'abc',
+  })
+  expectStatus('a tampered token is refused', tamper, 401, 403)
+})
+
+scenario('22 resilience: switched-off features stay off', async () => {
+  const { tokens } = await resilienceFamily('okafor')
+  const o = tokens[0]
+  const mcp = await call('POST', '/mcp', {
+    token: o,
+    body: { jsonrpc: '2.0', id: 1, method: 'tools/list' },
+  })
+  check(
+    'the MCP endpoint does not exist unless switched on',
+    mcp.status === 404,
+    `got ${mcp.status}`,
+  )
+  const learn = await call('GET', '/family/learning', { token: o })
+  check(
+    'anonymous sharing does not exist unless switched on',
+    learn.status === 404,
+    `got ${learn.status}`,
+  )
+  const put = await call('PUT', '/family/learning', { token: o, body: { optIn: true } })
+  check(
+    'opting in to sharing does nothing while it is off',
+    put.status === 404,
+    `got ${put.status}`,
+  )
+})
+
 // ═════════════════════════ RUNNER ═══════════════════════════════════════════
 const started = Date.now()
 for (const s of scenarios) {
