@@ -5,6 +5,7 @@
 import { describe, expect, it, beforeEach } from 'vitest'
 import Fastify from 'fastify'
 import { registerFamilyResilienceRoutes } from '../family-resilience.js'
+import { ratesVersion } from '../../resilience/event-rates.js'
 
 const TENANT = 't-resilience'
 let profile: Record<string, unknown> | null
@@ -140,6 +141,22 @@ describe('GET /family/resilience', () => {
       await (await appFor('u1')).inject({ method: 'GET', url: '/family/resilience' })
     ).json()
     expect(body.status).toBe('needs_figures')
+  })
+
+  // Intent 97, slice 6: an estimate says which population rates it carries,
+  // so a rate change is a new version an estimate can be traced to.
+  it('reports the rates version of the rate set it carries', async () => {
+    const body = (
+      await (await appFor('u1')).inject({ method: 'GET', url: '/family/resilience' })
+    ).json()
+    expect(body.status).toBe('ready')
+    expect(body.rates_version).toBe(ratesVersion())
+    // needs_figures carries no estimate, so no rates version either.
+    profile = null
+    const none = (
+      await (await appFor('u1')).inject({ method: 'GET', url: '/family/resilience' })
+    ).json()
+    expect(none.rates_version).toBeUndefined()
   })
 })
 
