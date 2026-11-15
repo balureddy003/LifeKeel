@@ -35,7 +35,17 @@ import {
   documentAgeText,
 } from '@/lib/extraction-review-copy'
 
-const TYPES = ['insurance', 'pension', 'mortgage', 'income', 'investment', 'tax', 'will', 'other']
+const TYPES = [
+  'insurance',
+  'pension',
+  'mortgage',
+  'income',
+  'investment',
+  'tax',
+  'will',
+  'banking',
+  'other',
+]
 
 export interface ExtractionReviewApi {
   confirmType: typeof confirmDocumentType
