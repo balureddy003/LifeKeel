@@ -248,4 +248,23 @@ describe('if the main earner dies', () => {
     profile = fullProfile({ life_cover_minor: 1_000_000 })
     expect((await body()).confirmation.youConfirmed).toBe(false)
   })
+
+  it('changing life cover leaves the income-stops estimate confirmed; only earner-dies needs it again', async () => {
+    profile = fullProfile({ life_cover_minor: 1_200_000 })
+    await (await appFor('u1')).inject({ method: 'POST', url: '/family/resilience/confirm' })
+    const before = (await body()).scenarios
+    expect(before.income_stops.youConfirmed).toBe(true)
+    expect(before.earner_dies.youConfirmed).toBe(true)
+    profile = fullProfile({ life_cover_minor: 1_000_000 })
+    const after = (await body()).scenarios
+    expect(after.income_stops.youConfirmed).toBe(true)
+    expect(after.earner_dies.youConfirmed).toBe(false)
+  })
+
+  it('without life cover there is only the income-stops estimate to confirm', async () => {
+    await (await appFor('u1')).inject({ method: 'POST', url: '/family/resilience/confirm' })
+    const s = (await body()).scenarios
+    expect(Object.keys(s)).toEqual(['income_stops'])
+    expect(s.income_stops.youConfirmed).toBe(true)
+  })
 })

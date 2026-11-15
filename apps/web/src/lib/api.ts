@@ -2735,13 +2735,17 @@ export type FamilyResilience =
         assumptions: string[]
       }
       figures?: { label: string; valueMinor: number }[]
-      confirmation?: {
-        confirmedBy: string[]
-        youConfirmed: boolean
-        adultsTotal: number
-        allAdultsConfirmed: boolean
-      }
+      confirmation?: ResilienceConfirmation
+      /** Per estimate, so a changed figure only unconfirms the estimates that read it. */
+      scenarios?: { income_stops?: ResilienceConfirmation; earner_dies?: ResilienceConfirmation }
     }
+
+export interface ResilienceConfirmation {
+  confirmedBy: string[]
+  youConfirmed: boolean
+  adultsTotal: number
+  allAdultsConfirmed: boolean
+}
 
 /** Null when the server refuses (not an adult in the family) or the call fails. */
 export async function fetchFamilyResilience(): Promise<FamilyResilience | null> {

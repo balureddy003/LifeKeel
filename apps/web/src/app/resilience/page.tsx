@@ -10,7 +10,12 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { PageHeader, GlassCard } from '@/components/Glass'
-import { confirmResilienceFigures, fetchFamilyResilience, type FamilyResilience } from '@/lib/api'
+import {
+  confirmResilienceFigures,
+  fetchFamilyResilience,
+  type FamilyResilience,
+  type ResilienceConfirmation,
+} from '@/lib/api'
 
 const gbp = (minor: number) => `£${Math.round(minor / 100).toLocaleString('en-GB')}`
 
@@ -75,6 +80,7 @@ export default function ResiliencePage() {
             <p className="text-sm text-ink-tertiary">
               Left out of this estimate: {data.left_out.join(', ')}.
             </p>
+            <EstimateStatus c={data.scenarios?.income_stops} />
           </GlassCard>
           {data.earner_dies && (
             <GlassCard className="p-4 space-y-3">
@@ -82,6 +88,7 @@ export default function ResiliencePage() {
                 If the main earner dies
               </h2>
               <p className="text-base text-ink-primary">{data.earner_dies.text}</p>
+              <EstimateStatus c={data.scenarios?.earner_dies} />
               <ul className="space-y-1 text-sm text-ink-tertiary list-disc pl-5">
                 {data.earner_dies.assumptions.map((a) => (
                   <li key={a}>{a}</li>
@@ -141,5 +148,17 @@ export default function ResiliencePage() {
         </>
       )}
     </div>
+  )
+}
+
+/** Whether both adults have confirmed the exact figures this estimate reads. */
+function EstimateStatus({ c }: { c: ResilienceConfirmation | undefined }) {
+  if (!c) return null
+  return (
+    <p className="text-xs text-ink-tertiary" data-testid="estimate-status">
+      {c.allAdultsConfirmed
+        ? 'The figures behind this are confirmed by both adults.'
+        : 'The figures behind this need confirming.'}
+    </p>
   )
 }
