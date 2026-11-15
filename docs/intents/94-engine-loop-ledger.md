@@ -19,16 +19,16 @@ model call, any output showing one adult's figures to another, any action naming
 | R7 | Range display: low and high runway, never a single point; states what is left out | `apps/api/src/resilience/range.ts` | `... vitest run src/resilience/__tests__/range.test.ts` | done (2026-11-14) |
 | R8 | One verifier command that runs R1 to R7, the detector evals and the A1 tripwire | `scripts/engine-verify.sh` | `bash scripts/engine-verify.sh` | done (2026-11-14) |
 | R9 | Mechanical extraction checks (dates real, totals add up, monthly times twelve, amounts whole) applied to a fixed per-document schema, before any user confirm | `apps/api/src/resilience/extraction-checks.ts` | `... vitest run src/resilience/__tests__/extraction-checks.test.ts` | todo |
-| R10 | Event rates data file: each row has event, rate or duration, source (ONS or DWP), table, date and range; rows without a source are absent, never guessed | `apps/api/src/resilience/event-rates.ts` | see B2 | todo |
-| R11 | Visibility rule: adult family members see the household's engine output; every other role sees none until decided | `apps/api/src/resilience/visibility.ts` | see A5 | todo |
+| R10 | Event rates data file: each row has event, rate or duration, source (ONS or DWP), table, date and range; rows without a source are absent, never guessed | `apps/api/src/resilience/event-rates.ts` | see B2 | done (2026-11-15). Gaps left out, no sourced figure read: durations of redundancy and long-term sickness, benefit offsets (DWP) |
+| R11 | Visibility rule: adult family members see the household's engine output; every other role sees none until decided | `apps/api/src/resilience/visibility.ts` | see A5 | done (2026-11-15) |
 | B2 | Event frequency and duration table | `apps/api/src/resilience/event-rates.ts` | `... vitest run src/resilience/__tests__/event-rates.test.ts` | decided 2026-11-14: ONS and DWP both approved; build row R10 |
 | B3 | Two-date fact store and erasure (MongoDB, `valid_from` + `recorded_at`, allow-listed money figures only) | `apps/api/src/resilience/fact-store.ts` | `pnpm --filter @lifekeel/api exec vitest run src/resilience/__tests__/fact-store.test.ts` | done (2026-11-14) |
 | B4 | Datastore | n/a | n/a | decided 2026-11-14: MongoDB, no second datastore |
 | B6 | Document ingestion | n/a | n/a | decided 2026-11-14: upload or mailbox, either; rules in `docs/research/engine-ingestion-note-2026-11-14.md`. Build row R9 below |
-| B7 | Benefits estimate (PolicyEngine UK) | n/a | n/a | blocked: owner will take a commercial licence. No integration until a signed licence is on file; question: from whom, and does it cover a hosted service? |
+| B7 | Benefits estimate (PolicyEngine UK) | n/a | n/a | parked 2026-11-15 by owner ("for now ignore"); no integration, not a blocker for the rest |
 | B8 | Friction cap and cost ceiling | n/a | n/a | blocked: owner sets the per-household monthly cost ceiling |
-| A5 | Visibility of engine output | `apps/api/src/resilience/visibility.ts` | `... vitest run src/resilience/__tests__/visibility.test.ts` | decided 2026-11-14 for adult family members (see intent 93); build row R11. Other roles and the safeguarding cases stay blocked |
-| A6 | Business graph | n/a | n/a | blocked: segment decision |
+| A5 | Visibility of engine output | `apps/api/src/resilience/visibility.ts` | `... vitest run src/resilience/__tests__/visibility.test.ts` | decided 2026-11-14 for adult family members (see intent 93); build row R11. Leaving or disputed adult: decided 2026-11-15 as a way to split the account (design open, see intent 93). Lodger (H29) and external link (PRD-229) stay blocked |
+| A6 | Business graph | n/a | n/a | decided 2026-11-15: owner-managed firms in scope. Still needed before any build: data classification for business nodes and an erasure plan |
 | A7 | Patent secrecy rule | n/a | n/a | blocked: attorney |
 | A8 | Activation path | n/a | n/a | blocked: owner |
 
