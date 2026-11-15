@@ -77,6 +77,8 @@ function webCopyFiles(): string[] {
     'apps/web/src/components/DeletionReceiptCard.tsx',
     // PRD-235: the claim packet states what is on file and names no outcome.
     'apps/web/src/app/packet/page.tsx',
+    // Intent 94: the income-stops estimate states a range and what it leaves out, and names no product.
+    'apps/web/src/app/resilience/page.tsx',
     // PRD-231: the obligations map states who is named and what is due.
     'apps/web/src/app/map/page.tsx',
     // PRD-232: cover facts state what is on file and when it may end.

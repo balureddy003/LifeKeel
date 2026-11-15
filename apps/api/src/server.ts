@@ -170,6 +170,7 @@ import { registerFamilyNotificationRoutes } from './routes/family-notifications.
 import { registerMemberTwinRoutes } from './routes/member-twin.js'
 import { registerFamilyContinuityRoutes } from './routes/family-continuity.js'
 import { registerFamilyCashflowRoutes } from './routes/family-cashflow.js'
+import { registerFamilyResilienceRoutes } from './routes/family-resilience.js'
 import { registerFamilyAssetRoutes } from './routes/family-assets.js'
 import { registerFamilyLegacyRoutes } from './routes/family-legacy.js'
 import { registerFamilyReceiptRoutes } from './routes/family-receipts.js'
@@ -1286,6 +1287,7 @@ if (workflowDb) {
   registerMemberTwinRoutes(app, workflowDb)
   registerFamilyContinuityRoutes(app, workflowDb)
   registerFamilyCashflowRoutes(app, workflowDb)
+  registerFamilyResilienceRoutes(app, workflowDb)
   registerFamilyAssetRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerFamilyLegacyRoutes(app, workflowDb, engine, insightsDeliveryHook)
   registerFamilyReceiptRoutes(app, workflowDb)
