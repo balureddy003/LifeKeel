@@ -139,6 +139,11 @@ export default function ResiliencePage() {
               )}
             </GlassCard>
           )}
+          <GlassCard className="p-4 text-sm">
+            <Link href="/resilience/businesses" className="text-accent underline">
+              Does a business pay part of your income? Add it
+            </Link>
+          </GlassCard>
           {sharingOn && (
             <GlassCard className="p-4 text-sm">
               <Link href="/resilience/sharing" className="text-accent underline">
