@@ -106,6 +106,21 @@ export default function DocumentDetailClient() {
     load()
   }, [load])
 
+  // While the extraction job is queued or running, refresh so the status
+  // flips to the review card (or the dead-letter card) without a reload.
+  const stillReading =
+    doc != null &&
+    (doc.extractionStatus === 'queued' ||
+      doc.extractionStatus === 'processing' ||
+      doc.status === 'processing')
+  useEffect(() => {
+    if (!stillReading) return
+    const interval = setInterval(() => {
+      void load()
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [stillReading, load])
+
   // Split-view review: the source file next to what Keel extracted from it,
   // so approving a suggestion doesn't require trusting OCR blind. Fetched
   // separately from the metadata load above since it's a binary blob, not
@@ -343,7 +358,8 @@ export default function DocumentDetailClient() {
           {(doc.candidates && doc.candidates.length > 0) ||
           doc.classification ||
           doc.status === 'error' ||
-          doc.scan === 'error' ? (
+          doc.scan === 'error' ||
+          stillReading ? (
             // PRD-143: values are reviewed against their source before they can be used.
             <ExtractionReview doc={doc} onChange={setDoc} />
           ) : fields.length > 0 ? (
@@ -646,7 +662,7 @@ export default function DocumentDetailClient() {
           ) : null}
         </AnimatePresence>
 
-        {fields.length === 0 && suggestions.length === 0 && !policyDraft && (
+        {fields.length === 0 && suggestions.length === 0 && !policyDraft && !stillReading && (
           <GlassCard>
             <EmptyState
               icon={FileQuestion}

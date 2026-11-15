@@ -55,6 +55,12 @@ export const READ_FAILED_TITLE = 'Keel could not read this document'
 export const READ_FAILED_TEXT =
   'Nothing was saved. You can enter the details yourself in your Financial Profile.'
 
+// Intent 97 slice 2: extraction runs as a background job — a document still
+// in the queue says it is being read, never that nothing was found.
+export const READING_TITLE = 'Keel is reading this document'
+export const READING_TEXT =
+  'This can take a minute. Whatever Keel finds will appear here for you to check — nothing is saved until you confirm it.'
+
 export const SCAN_FAILED_TEXT =
   'This file could not be checked by the security scan, so it was kept but not read.'
 

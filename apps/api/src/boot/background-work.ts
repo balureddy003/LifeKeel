@@ -50,6 +50,7 @@ import {
   type CampaignSendJob,
 } from '../marketing/campaigns.js'
 import { dispatchPendingOcr, retryFailedDocuments } from '../ocr/retry-failed.js'
+import { requeueStuckExtractions, startExtractionWorker } from '../ocr/extraction-queue.js'
 import {
   withCronLock,
   acquireCronLock,
@@ -301,20 +302,20 @@ export async function startBackgroundWork(deps: BackgroundWorkDeps): Promise<Bac
   }
 
   // OCR hand-off for documents the scan worker promoted to 'clean'
-  // (CLOUDFLARE_INTEGRATION.md §7.3). Claimed per row, so one dispatch
-  // per document across replicas; free plans go to 'stored'.
+  // (CLOUDFLARE_INTEGRATION.md §7.3), plus the reconciler that republishes
+  // extraction jobs the queue lost (intent 97 slice 2 — the document row is
+  // the durable outbox, so a Redis outage defers work, never drops it).
+  // Claimed per row, so one dispatch per document across replicas; free
+  // plans go to 'stored'.
   scheduleJob(
     'document-ocr-dispatch',
     '* * * * *',
     async () => {
       try {
-        await withCronLock(workflowDb, 'document-ocr-dispatch', () =>
-          dispatchPendingOcr(
-            workflowDb,
-            taskDecideFor('document.extract.v1', localDecisionFromEnv('ocr')),
-            (tenantId) => taskVision('document.extract.v1', tenantId),
-          ),
-        )
+        await withCronLock(workflowDb, 'document-ocr-dispatch', async () => {
+          await dispatchPendingOcr(workflowDb)
+          await requeueStuckExtractions(workflowDb)
+        })
       } catch (err) {
         log.error({ err }, 'Document OCR dispatch cron failed')
       }
@@ -1200,6 +1201,13 @@ export async function startBackgroundWork(deps: BackgroundWorkDeps): Promise<Bac
   // moot — intent 92's follow-up is Cloud Tasks for these queues).
   if (consumersEnabled) {
     startWebhookWorker(engine, connectorLoader, eventGenerator, workflowDb, deliveryRouter)
+    // Intent 97 slice 2: extraction jobs enqueued by uploads and the
+    // dispatch sweep run here — decide/vision are the same governed task
+    // fns the request path used.
+    startExtractionWorker(workflowDb, {
+      decideFor: taskDecideFor('document.extract.v1', localDecisionFromEnv('ocr')),
+      visionFor: (tenantId) => taskVision('document.extract.v1', tenantId),
+    })
     if (emailScanFanout) {
       // Per-process concurrency; total parallelism is this x replicas. Size it with the
       // model service: each in-flight scan can hold one local-model call (see

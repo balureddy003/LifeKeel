@@ -186,22 +186,10 @@ describe('happy path', () => {
     )
     expect((await scanNext()).outcome).toBe('clean')
     // Free plan: no model call, the document is kept as 'stored'.
-    expect(
-      await dispatchPendingOcr(
-        db,
-        () => undefined,
-        async () => undefined,
-      ),
-    ).toBe(0)
+    expect(await dispatchPendingOcr(db, async () => {})).toBe(0)
     expect((await doc(free))?.['status']).toBe('stored')
     // A second sweep finds nothing left to dispatch.
-    expect(
-      await dispatchPendingOcr(
-        db,
-        () => undefined,
-        async () => undefined,
-      ),
-    ).toBe(0)
+    expect(await dispatchPendingOcr(db, async () => {})).toBe(0)
   }, 30_000)
 })
 
