@@ -11,7 +11,12 @@ let profile: Record<string, unknown> | null
 let family: Record<string, unknown> | null
 
 let facts: Record<string, unknown>[] = []
+const indexes: unknown[] = []
 const col = (store: Record<string, unknown>[]) => ({
+  createIndex: async (spec: unknown) => {
+    indexes.push(spec)
+    return ''
+  },
   findOne: async () => store[0] ?? null,
   find: (filter: Record<string, unknown> = {}) => ({
     toArray: async () => store.filter((d) => Object.entries(filter).every(([k, v]) => d[k] === v)),
@@ -192,5 +197,13 @@ describe('confirming the figures (both adults)', () => {
     profile = { tenant_id: TENANT, household: {}, emergency_fund: {} }
     expect((await post('u1')).statusCode).toBe(400)
     expect(facts.length).toBe(0)
+  })
+})
+
+describe('engine_facts index', () => {
+  it('is created on tenant and version at registration', async () => {
+    indexes.length = 0
+    await appFor('u1')
+    expect(indexes).toContainEqual({ tenant_id: 1, figures_version: 1 })
   })
 })
