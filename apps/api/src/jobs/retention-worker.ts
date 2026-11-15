@@ -1,6 +1,7 @@
 import type { Db } from 'mongodb'
 import { recordJobRun } from './job-runs.js'
 import { sweepPendingRegistrations } from './pending-registrations.js'
+import { rollupEngineMetricEvents } from '../resilience/engine-metrics.js'
 
 export interface DataRetention {
   events_days: number
@@ -43,6 +44,7 @@ export class RetentionWorker {
       this.db.collection('insights').createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 }),
       this.db.collection('workflow_runs').createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 }),
       this.db.collection('agent_memory').createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 }),
+      this.db.collection('engine_metrics_events').createIndex({ at: 1 }),
     ])
   }
 
@@ -71,6 +73,9 @@ export class RetentionWorker {
         deleted[collection] = (deleted[collection] ?? 0) + result.deletedCount
       }
     }
+    // Engine metric events: 24 months, then rolled up into aggregate counts
+    // and the raw rows deleted (owner decision 2026-11-15).
+    deleted['engine_metrics_events'] = await rollupEngineMetricEvents(this.db)
     Object.assign(deleted, await this.sweepPlatformRecords())
     // Unverified email-OTP signups older than 7 days (docs/data-retention.md).
     Object.assign(deleted, await sweepPendingRegistrations(this.db))

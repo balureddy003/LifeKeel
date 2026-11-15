@@ -11,6 +11,8 @@ let profile: Record<string, unknown> | null
 let family: Record<string, unknown> | null
 
 let facts: Record<string, unknown>[] = []
+let metricEvents: Record<string, unknown>[] = []
+let metricsWritesFail = false
 const indexes: unknown[] = []
 const col = (store: Record<string, unknown>[]) => ({
   createIndex: async (spec: unknown) => {
@@ -35,7 +37,15 @@ const makeDb = () =>
           ? col(family ? [family] : [])
           : name === 'engine_facts'
             ? col(facts)
-            : col([]),
+            : name === 'engine_metrics_events'
+              ? metricsWritesFail
+                ? {
+                    insertOne: async () => {
+                      throw new Error('metrics store down')
+                    },
+                  }
+                : col(metricEvents)
+              : col([]),
   }) as never
 
 async function appFor(user_id: string) {
@@ -63,6 +73,8 @@ const fullProfile = (over: Record<string, unknown> = {}) => ({
 
 beforeEach(() => {
   facts = []
+  metricEvents = []
+  metricsWritesFail = false
   profile = fullProfile()
   family = {
     tenant_id: TENANT,
@@ -197,6 +209,47 @@ describe('confirming the figures (both adults)', () => {
     profile = { tenant_id: TENANT, household: {}, emergency_fund: {} }
     expect((await post('u1')).statusCode).toBe(400)
     expect(facts.length).toBe(0)
+  })
+})
+
+describe('engine metrics on confirmation (intent 97, slice 1)', () => {
+  const post = async (who: string) =>
+    (await appFor(who)).inject({ method: 'POST', url: '/family/resilience/confirm' })
+  const events = (name: string) => metricEvents.filter((e) => e['event'] === name)
+
+  it('one adult confirming writes exactly one one-adult event and nothing else', async () => {
+    expect((await post('u1')).statusCode).toBe(200)
+    expect(events('figures_confirmed_one_adult')).toHaveLength(1)
+    expect(events('figures_confirmed_all_adults')).toHaveLength(0)
+    expect(events('figures_confirm_latency')).toHaveLength(0)
+    expect(metricEvents.every((e) => e['tenant_id'] === TENANT)).toBe(true)
+    // The event carries an outcome and a date — never a figure or a name.
+    expect(JSON.stringify(metricEvents)).not.toMatch(/900|300|Alex|Sam/)
+  })
+
+  it('the last adult confirming writes one one-adult, one all-adults and one bucketed latency event', async () => {
+    await post('u1')
+    await post('u2')
+    expect(events('figures_confirmed_one_adult')).toHaveLength(2)
+    expect(events('figures_confirmed_all_adults')).toHaveLength(1)
+    const latency = events('figures_confirm_latency')
+    expect(latency).toHaveLength(1)
+    expect(latency[0]!['bucket']).toMatch(/^(lt_1h|1h_1d|1d_7d|7d_plus)$/)
+  })
+
+  it('confirming again writes no further events', async () => {
+    await post('u1')
+    await post('u2')
+    metricEvents = []
+    await post('u1')
+    await post('u2')
+    expect(metricEvents).toHaveLength(0)
+  })
+
+  it('a metrics write failure never fails the confirm request', async () => {
+    metricsWritesFail = true
+    expect((await post('u1')).statusCode).toBe(200)
+    expect(facts.length).toBe(4)
   })
 })
 
