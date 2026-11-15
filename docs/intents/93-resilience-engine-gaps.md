@@ -209,3 +209,11 @@ re-verified.
   figures each side keeps; whether a split can be undone; what happens to shared history and to children's
   records. The lodger's view (H29) and the no-account external link (PRD-229) are still undecided and see
   nothing.
+- **B8 cost ceiling (2026-11-15):** decide later. Document reading by a model stays unbuilt until a ceiling is set.
+- **A8 activation path (2026-11-15):** the first session asks for a bank statement (income and spend together).
+  Still to state: what the user sees in two minutes and the measure (second adult looks within 7 days).
+  Reading it is blocked on B8.
+- **Life-cover payout timing (2026-11-15):** 1 to 2 months after a claim, shown as a range. Built in the
+  "if the main earner dies" estimate.
+- **A5 account split, who starts it (2026-11-15):** either adult can start a split and the other adult is told.
+  Still open: which figures each side keeps, whether it can be undone, shared history, children's records.
