@@ -2719,6 +2719,23 @@ export async function fetchFamilyCashflow(): Promise<CashflowSummary | null> {
   return apiFetch<CashflowSummary | null>('/family/cashflow', null)
 }
 
+export type FamilyResilience =
+  | { status: 'needs_figures'; missing: string[] }
+  | {
+      status: 'ready'
+      scenario: 'income_stops'
+      /** Whole months; null means 10 years or more. */
+      range: { lowMonths: number | null; highMonths: number | null }
+      text: string
+      left_out: string[]
+      next_checks: string[]
+    }
+
+/** Null when the server refuses (not an adult in the family) or the call fails. */
+export async function fetchFamilyResilience(): Promise<FamilyResilience | null> {
+  return apiFetch<FamilyResilience | null>('/family/resilience', null)
+}
+
 export async function addCashflowEntry(input: {
   kind: 'income' | 'expense'
   label: string
