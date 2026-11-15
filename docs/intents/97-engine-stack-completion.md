@@ -119,14 +119,30 @@ Per slice below. Overall: a household's statement is parsed locally, checked mec
 
 **Owner action.** Licence decision from counsel.
 
-## Slice 8. Tabular anomaly helper (optional, behind a flag)
+## Slice 8. Tabular anomaly helper: CatBoost (owner decision 2026-11-15)
+**Decision.** Use CatBoost (Apache-2.0, a standard open licence with no copyleft; the owner chose it over TabICLv2). Run it locally in a Python worker. TabICLv2 is dropped from this intent.
+
 **Problem.** Statement totals that look unusual are worth a second look before a person confirms them.
 
-**Done looks like.** An anomaly flag only. A Python worker running CatBoost (Apache) or TabICLv2 (BSD, licence to be re-checked at the version used), locally, never sending content out. It can flag "this total is unusual compared with the other months you uploaded", for a person to check. It never fills, changes or proposes a figure. It is off by default, behind a flag, and not part of the core calculation (the blueprint's own recommendation).
+**What CatBoost can and cannot do here.** CatBoost is a supervised model. It has no built-in anomaly detector, so it would be used as a forecaster: predict what a household's monthly money-in or money-out should be from its earlier months and calendar features, then flag a month whose actual total is far outside the prediction. That has two honest limits:
+- A single household has few months of statements. A model trained on 3 to 12 rows of one household is weak. A pooled model trained across households would be cross-tenant learning, which CLAUDE.md rule 3 only allows with the opt-in consent in intent 96, so it is not assumed here.
+- A plain deterministic rule (median and median absolute deviation over the household's own months) may do as well. So the build order is: deterministic rule first as the baseline, then CatBoost only if it measurably beats the baseline on the fixtures.
 
-**Verifier.** A test that the flag output type has no value field to apply, a test that disabling it changes no estimate, and an evaluation on the synthetic fixtures showing the false-flag rate before it is switched on.
+**Done looks like**
+- An anomaly flag only. It never fills, changes or proposes a figure. The output type has no value field that could be applied.
+- A Python worker (`services/`, same pattern as the existing python services), local, no network egress, no content logged, temp files deleted after the job.
+- Off by default, behind a flag, not part of the core calculation.
+- Trained only on data that rule 3 allows: the household's own statements, or synthetic fixtures. Never pooled family content without the intent 96 opt-in.
+- Shown as "this total is unusual compared with your other months, check it", with the licensed-professional line only where money advice could be read in.
 
-**Dependencies.** Real statements across several months per household, and the owner's licence decision. Blocked until then.
+**Verifier**
+- A test that the flag type has no applicable value, and that disabling the helper changes no estimate.
+- A fixture evaluation (synthetic multi-month statements with planted errors): detection rate and false-flag rate for the deterministic baseline and for CatBoost, side by side. CatBoost ships only if it beats the baseline by a margin the owner sets (proposed: at least 10 points better recall at the same false-flag rate), otherwise the baseline ships and CatBoost is dropped.
+- A licence check recorded in `NOTICE` for CatBoost and its dependencies at the pinned version.
+
+**Dependencies.** Slice 3 (parsing) and real or synthetic multi-month statements. No code is written for this slice until the fixtures exist, so the evaluation cannot be skipped.
+
+**Out of scope.** Filling missing values with a model (the blueprint keeps that out of the core calculation), per-person tracking, any hosted tabular API.
 
 ## Slice 9. Observability dashboards and alerts (after slices 1 to 4)
 Aggregate the slice 1 events into the operator view the owner already has. No per-household drill-down of content. Alerts on rising check-failure rate. Done only when a human can answer "is extraction getting better" from one screen.
@@ -140,7 +156,7 @@ Aggregate the slice 1 events into the operator view the owner already has. No pe
 4. Slice 6 (rates version). Independent, small.
 5. Slice 5 (Zod). Independent, optional.
 6. Slice 4 (selective risk). Blocked on real history from slice 1.
-7. Slices 7 and 8. Blocked on a licence decision and on real data.
+7. Slice 7 blocked on a licence decision. Slice 8 (CatBoost chosen) blocked on slice 3 and on fixtures to evaluate against.
 8. Slice 9. After 1 to 4.
 
 ## Decisions needed from the owner
@@ -148,7 +164,7 @@ Aggregate the slice 1 events into the operator view the owner already has. No pe
 - Where the Docling worker runs and its monthly cost ceiling (ties to B8).
 - The accuracy target on the synthetic statements (proposed 90 percent) before Docling becomes the default.
 - α, minimum sample and the first low-consequence classes for the selective-risk gate.
-- PolicyEngine licence position, and the licence check for any tabular library.
+- PolicyEngine licence position. (Tabular library decided: CatBoost, 2026-11-15. The baseline margin for it to ship is still the owner's to set.)
 
 ## Not in this intent
 MCP, business graph and cross-tenant sharing are covered by intent 96 and built. Product-steering stays unbuilt (rule 2). The account split, lodger view and external link wait on a safeguarding review. The result cache stays unbuilt until the solver is measured slow.
