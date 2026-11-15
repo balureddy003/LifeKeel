@@ -18,6 +18,7 @@ export const CATEGORIES = [
   'investment',
   'tax',
   'will',
+  'banking',
   'other',
 ] as const
 export type Category = (typeof CATEGORIES)[number]
@@ -133,6 +134,50 @@ export const FIELD_SPECS = [
     categories: ['income'],
     max: 30,
     used_by: 'protection-gap detector (income fallback)',
+  },
+  // Bank statement (owner decision 2026-11-15: the first document a family is asked for). Whole-statement
+  // totals only: no transactions, no payee names, no account numbers.
+  {
+    key: 'statement_opening_balance',
+    kind: 'money',
+    categories: ['banking'],
+    max: 30,
+    used_by: 'statement check: opening plus money in minus money out equals closing',
+  },
+  {
+    key: 'statement_closing_balance',
+    kind: 'money',
+    categories: ['banking'],
+    max: 30,
+    used_by: 'statement check (see statement_opening_balance)',
+  },
+  {
+    key: 'statement_money_in',
+    kind: 'money',
+    categories: ['banking'],
+    max: 30,
+    used_by: 'suggested monthly income, which the person checks',
+  },
+  {
+    key: 'statement_money_out',
+    kind: 'money',
+    categories: ['banking'],
+    max: 30,
+    used_by: 'suggested monthly spend, which the person checks',
+  },
+  {
+    key: 'statement_period_start',
+    kind: 'date',
+    categories: ['banking'],
+    max: 30,
+    used_by: 'statement check: the period must be about one month',
+  },
+  {
+    key: 'statement_period_end',
+    kind: 'date',
+    categories: ['banking'],
+    max: 30,
+    used_by: 'statement check (see statement_period_start)',
   },
   {
     key: 'document_date',

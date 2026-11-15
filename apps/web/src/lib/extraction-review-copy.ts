@@ -28,6 +28,12 @@ export const FIELD_LABELS: Record<string, string> = {
   balance: 'Balance',
   net_pay: 'Net pay',
   gross_pay: 'Gross pay',
+  statement_opening_balance: 'Opening balance',
+  statement_closing_balance: 'Closing balance',
+  statement_money_in: 'Total money in',
+  statement_money_out: 'Total money out',
+  statement_period_start: 'Statement starts',
+  statement_period_end: 'Statement ends',
   document_date: 'Document date',
 }
 

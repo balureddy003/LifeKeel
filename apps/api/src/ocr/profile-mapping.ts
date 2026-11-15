@@ -19,11 +19,14 @@
  * added, never applied silently — same posture as the scalar suggestions.
  */
 
+import { checkExtraction } from '../resilience/extraction-checks.js'
+
 const APPLICABLE_PATHS = [
   'household.life_cover_minor',
   'household.mortgage_outstanding_minor',
   'retirement.pension_balance_minor',
   'household.monthly_salary_minor',
+  'emergency_fund.monthly_expenses_minor',
 ] as const
 
 export type ApplicableProfilePath = (typeof APPLICABLE_PATHS)[number]
@@ -74,6 +77,94 @@ function findMoneyField(
   return findField(fields, patterns)
 }
 
+const MONTHS = [
+  'january',
+  'february',
+  'march',
+  'april',
+  'may',
+  'june',
+  'july',
+  'august',
+  'september',
+  'october',
+  'november',
+  'december',
+]
+
+/** A statement date as written ("1 October 2026", "01/10/2026", "2026-10-01") to a UTC day number, or null. */
+function parseStatementDay(raw: string | undefined): number | null {
+  if (!raw) return null
+  const t = raw.trim().toLowerCase()
+  let y: number, m: number, d: number
+  let hit = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t)
+  if (hit) [y, m, d] = [Number(hit[1]), Number(hit[2]), Number(hit[3])] as [number, number, number]
+  else if ((hit = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(t)))
+    [d, m, y] = [Number(hit[1]), Number(hit[2]), Number(hit[3])] as [number, number, number]
+  else if ((hit = /^(\d{1,2})(?:st|nd|rd|th)? ([a-z]+),? (\d{4})$/.exec(t))) {
+    const idx = MONTHS.findIndex((n) => n === hit![2] || n.slice(0, 3) === hit![2])
+    if (idx < 0) return null
+    ;[d, m, y] = [Number(hit[1]), idx + 1, Number(hit[3])] as [number, number, number]
+  } else return null
+  const ms = Date.UTC(y, m - 1, d)
+  const back = new Date(ms)
+  return back.getUTCFullYear() === y && back.getUTCMonth() === m - 1 && back.getUTCDate() === d
+    ? ms / 86_400_000
+    : null
+}
+
+/**
+ * A bank statement suggests monthly spend (money out) and income (money in) only when its own figures
+ * reconcile (opening + in - out = closing) and it covers about one month. Money in can include transfers,
+ * so the label asks the person to check it. Anything unclear gives no suggestion.
+ */
+function statementSuggestions(fields: Record<string, string>): ProfileSuggestion[] {
+  const opening = parseMoneyToMinorUnits(fields['statement_opening_balance'])
+  const closing = parseMoneyToMinorUnits(fields['statement_closing_balance'])
+  const moneyIn = parseMoneyToMinorUnits(fields['statement_money_in'])
+  const moneyOut = parseMoneyToMinorUnits(fields['statement_money_out'])
+  const start = parseStatementDay(fields['statement_period_start'])
+  const end = parseStatementDay(fields['statement_period_end'])
+  if (
+    opening === null ||
+    closing === null ||
+    moneyIn === null ||
+    moneyOut === null ||
+    start === null ||
+    end === null
+  )
+    return []
+  const days = end - start + 1
+  if (days < 25 || days > 35) return []
+  // The statement's own arithmetic is checked in one place (intent 94, R9).
+  const iso = (day: number) => new Date(day * 86_400_000).toISOString().slice(0, 10)
+  const problems = checkExtraction('bank_statement', {
+    opening_minor: opening,
+    closing_minor: closing,
+    credits_minor: moneyIn,
+    debits_minor: moneyOut,
+    period_start: iso(start),
+    period_end: iso(end),
+  })
+  if (problems.length > 0) return []
+  return [
+    {
+      path: 'emergency_fund.monthly_expenses_minor',
+      label: 'Monthly spend (money out last month)',
+      valueMinor: moneyOut,
+      sourceField: 'statement_money_out',
+      sourceValue: fields['statement_money_out']!,
+    },
+    {
+      path: 'household.monthly_salary_minor',
+      label: 'Monthly income (money in last month; check it is your income)',
+      valueMinor: moneyIn,
+      sourceField: 'statement_money_in',
+      sourceValue: fields['statement_money_in']!,
+    },
+  ]
+}
+
 /**
  * At most one suggestion per document — pick the first candidate field name
  * (by priority order) that both exists and parses as a plausible amount.
@@ -116,6 +207,8 @@ export function mapExtractedFieldsToProfileSuggestions(
       patterns: [/monthly.?salary/i, /net.?pay/i, /gross.?pay/i, /salary/i, /amount/i],
     },
   ]
+
+  if (category === 'banking') return statementSuggestions(fields)
 
   const rule = rules.find((r) => r.category === category)
   if (!rule) return []

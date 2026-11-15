@@ -37,6 +37,12 @@ describe('the v1 field set', () => {
         'premium',
         'provider',
         'renewal_date',
+        'statement_closing_balance',
+        'statement_money_in',
+        'statement_money_out',
+        'statement_opening_balance',
+        'statement_period_end',
+        'statement_period_start',
       ].sort(),
     )
     const forbidden =
