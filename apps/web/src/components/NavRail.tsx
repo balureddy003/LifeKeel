@@ -30,6 +30,7 @@ const ROUTE_TAB_OVERRIDES: Record<string, string> = {
   '/vault': '/finances',
   '/cashflow': '/finances',
   '/resilience': '/finances',
+  '/resilience/sharing': '/finances',
   '/assets': '/finances',
   '/documents': '/finances',
   '/upload': '/finances',

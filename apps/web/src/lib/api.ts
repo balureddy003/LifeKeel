@@ -2767,6 +2767,42 @@ export async function confirmResilienceFigures(): Promise<boolean> {
   return res.ok
 }
 
+export interface FamilyLearning {
+  optedIn: boolean
+  adultsOptedIn: number
+  adultsTotal: number
+  contributing: boolean
+}
+
+export interface LearningBenchmark {
+  available: boolean
+  total?: number
+  bands?: Record<'0-3' | '3-6' | '6-12' | '12+', number | null>
+}
+
+/** Null when sharing is switched off on the server, or the person is not an adult in the family. */
+export async function fetchFamilyLearning(): Promise<FamilyLearning | null> {
+  return apiFetch<FamilyLearning | null>('/family/learning', null)
+}
+
+export async function setFamilyLearning(optIn: boolean): Promise<boolean> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  const res = await credFetch(`${base}/family/learning`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ optIn }),
+  })
+  return res.ok
+}
+
+export async function fetchLearningBenchmark(): Promise<LearningBenchmark | null> {
+  return apiFetch<LearningBenchmark | null>('/family/learning/benchmark', null)
+}
+
 export async function addCashflowEntry(input: {
   kind: 'income' | 'expense'
   label: string

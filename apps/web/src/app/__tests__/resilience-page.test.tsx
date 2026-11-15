@@ -3,7 +3,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 
 const fetchFamilyResilience = vi.fn()
 const confirmResilienceFigures = vi.fn()
+const fetchFamilyLearning = vi.fn()
 vi.mock('@/lib/api', () => ({
+  fetchFamilyLearning: () => fetchFamilyLearning() ?? Promise.resolve(null),
   fetchFamilyResilience: () => fetchFamilyResilience(),
   confirmResilienceFigures: () => confirmResilienceFigures(),
 }))
@@ -14,6 +16,7 @@ afterEach(() => {
   cleanup()
   fetchFamilyResilience.mockReset()
   confirmResilienceFigures.mockReset()
+  fetchFamilyLearning.mockReset()
 })
 
 describe('/resilience', () => {
@@ -161,5 +164,30 @@ describe('/resilience', () => {
       render(<ResiliencePage />)
       await waitFor(() => expect(screen.getByText(/Both adults have confirmed/)).toBeTruthy())
     })
+  })
+
+  it('offers the sharing link only when the server says sharing exists', async () => {
+    const ready = {
+      status: 'ready',
+      scenario: 'income_stops',
+      range: { lowMonths: 3, highMonths: 3 },
+      text: 'Savings would cover about 3 months. This is an estimate.',
+      left_out: [],
+      next_checks: [],
+    }
+    fetchFamilyResilience.mockResolvedValue(ready)
+    fetchFamilyLearning.mockResolvedValue(null)
+    const { unmount } = render(<ResiliencePage />)
+    await waitFor(() => expect(screen.getByText(/about 3 months/)).toBeTruthy())
+    expect(screen.queryByText(/Share your range anonymously/)).toBeNull()
+    unmount()
+    fetchFamilyLearning.mockResolvedValue({
+      optedIn: false,
+      adultsOptedIn: 0,
+      adultsTotal: 2,
+      contributing: false,
+    })
+    render(<ResiliencePage />)
+    await waitFor(() => expect(screen.getByText(/Share your range anonymously/)).toBeTruthy())
   })
 })

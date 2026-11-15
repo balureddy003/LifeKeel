@@ -12,6 +12,7 @@ import { Loader2 } from 'lucide-react'
 import { PageHeader, GlassCard } from '@/components/Glass'
 import {
   confirmResilienceFigures,
+  fetchFamilyLearning,
   fetchFamilyResilience,
   type FamilyResilience,
   type ResilienceConfirmation,
@@ -22,6 +23,8 @@ const gbp = (minor: number) => `£${Math.round(minor / 100).toLocaleString('en-G
 export default function ResiliencePage() {
   const [data, setData] = useState<FamilyResilience | null>(null)
   const [loaded, setLoaded] = useState(false)
+  // Sharing is switched off by default; only offer the link when the server says it exists.
+  const [sharingOn, setSharingOn] = useState(false)
 
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
@@ -32,6 +35,7 @@ export default function ResiliencePage() {
       .finally(() => setLoaded(true))
   useEffect(() => {
     void reload()
+    void fetchFamilyLearning().then((l) => setSharingOn(l !== null))
   }, [])
 
   const confirm = async () => {
@@ -133,6 +137,13 @@ export default function ResiliencePage() {
               {failed && (
                 <p className="text-sm text-danger">Could not save that. Try again in a moment.</p>
               )}
+            </GlassCard>
+          )}
+          {sharingOn && (
+            <GlassCard className="p-4 text-sm">
+              <Link href="/resilience/sharing" className="text-accent underline">
+                Share your range anonymously with other households
+              </Link>
             </GlassCard>
           )}
           <GlassCard className="p-4 space-y-2">
