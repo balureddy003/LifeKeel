@@ -18,7 +18,7 @@ model call, any output showing one adult's figures to another, any action naming
 | R6 | With-and-without ranking over informational action kinds only | `apps/api/src/resilience/rank.ts` | `... vitest run src/resilience/__tests__/rank.test.ts` | done (2026-11-14) |
 | R7 | Range display: low and high runway, never a single point; states what is left out | `apps/api/src/resilience/range.ts` | `... vitest run src/resilience/__tests__/range.test.ts` | done (2026-11-14) |
 | R8 | One verifier command that runs R1 to R7, the detector evals and the A1 tripwire | `scripts/engine-verify.sh` | `bash scripts/engine-verify.sh` | done (2026-11-14) |
-| R9 | Mechanical extraction checks (dates real, totals add up, monthly times twelve, amounts whole) applied to a fixed per-document schema, before any user confirm | `apps/api/src/resilience/extraction-checks.ts` | `... vitest run src/resilience/__tests__/extraction-checks.test.ts` | todo |
+| R9 | Mechanical extraction checks (dates real, totals add up, monthly times twelve, amounts whole) applied to a fixed per-document schema, before any user confirm | `apps/api/src/resilience/extraction-checks.ts` | `... vitest run src/resilience/__tests__/extraction-checks.test.ts` | done (2026-11-15) |
 | R10 | Event rates data file: each row has event, rate or duration, source (ONS or DWP), table, date and range; rows without a source are absent, never guessed | `apps/api/src/resilience/event-rates.ts` | see B2 | done (2026-11-15). Gaps left out, no sourced figure read: durations of redundancy and long-term sickness, benefit offsets (DWP) |
 | R11 | Visibility rule: adult family members see the household's engine output; every other role sees none until decided | `apps/api/src/resilience/visibility.ts` | see A5 | done (2026-11-15) |
 | B2 | Event frequency and duration table | `apps/api/src/resilience/event-rates.ts` | `... vitest run src/resilience/__tests__/event-rates.test.ts` | decided 2026-11-14: ONS and DWP both approved; build row R10 |
@@ -35,3 +35,5 @@ model call, any output showing one adult's figures to another, any action naming
 Stop condition: every row done or blocked, and `bash scripts/engine-verify.sh` passes on main.
 
 Checked 2026-11-14 on main: R1 to R8 files exist and `bash scripts/engine-verify.sh` passes. R9 to R11 are the next rows. Rows marked blocked wait on the owner decisions listed.
+
+Final check 2026-11-15 on main (63fd9aa4): R1 to R11 done, `bash scripts/engine-verify.sh` passes. Loop stopped. Still blocked on the owner: B8, A7, A8, A5 (split design, lodger, external link), A6 (classification, erasure plan). B7 parked.
