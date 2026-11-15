@@ -15,3 +15,13 @@ Decision by the product owner, in chat, on 2026-11-15.
 
 ## Unchanged
 Tier 0 only, no autonomous action, merges and deploys stay with the owner.
+
+## Addendum: what the gated cross-tenant plumbing is (and is not)
+Built, off by default (`apps/api/src/learning/`, `routes/family-learning.ts`):
+- **Gate:** opens only with `LIFEKEEL_CROSS_TENANT_LEARNING=true` AND a non-blank `LEARNING_PRIVACY_REVIEW_REF`. Otherwise the routes do not exist.
+- **Consent:** every active adult in the household must opt in; any one adult withdrawing deletes the household's contribution at once.
+- **What is shared:** one coarse band of months ("0-3", "3-6", "6-12", "12+"). No figures, no names. Stored with the household key only so withdrawal and erasure can delete it.
+- **What is shown:** counts per band, only above a minimum cohort (`MIN_COHORT`, provisional 20) with cells under 5 hidden, and only to households that contribute.
+- **Not a model.** Nothing is trained or fine-tuned, and no family content goes to any model. This is a count of bands.
+
+Before the flag may be turned on (owner, procedural): privacy review recorded and its reference set; user-facing disclosure and a consent screen (not built); a decision on `MIN_COHORT`; a deletion check in the erasure tests against a real database.
