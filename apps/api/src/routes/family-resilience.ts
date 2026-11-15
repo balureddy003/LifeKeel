@@ -14,6 +14,7 @@ import { NO_END } from '../resilience/cashflow.js'
 import { LEFT_OUT, describeRange, runwayRange, type RangeInput } from '../resilience/range.js'
 import { CLOSING_ACTION, rankInformationActions } from '../resilience/rank.js'
 import { confirmersOf, recordFact, type FactKey } from '../resilience/fact-store.js'
+import { SCENARIO_FACTS, scenarioVersion, type Scenario } from '../resilience/dependencies.js'
 import { canSeeEngineOutput, type VisibilityMember } from '../resilience/visibility.js'
 
 interface ProfileShape {
@@ -74,6 +75,20 @@ export function figuresVersion(figures: Figure[]): string {
 /** Owner decision 2026-11-15: a life-cover payout arrives 1 to 2 months after the death, shown as a range. */
 export const PAYOUT_TIMING = { lowMonths: 1, highMonths: 2 } as const
 
+export interface Confirmation {
+  confirmedBy: string[]
+  youConfirmed: boolean
+  adultsTotal: number
+  allAdultsConfirmed: boolean
+}
+
+/** The estimates this household has figures for: income stops always, earner dies once life cover is entered. */
+function scenariosFor(figures: Figure[]): Scenario[] {
+  return figures.some((f) => f.key === 'life_cover_lump_sum_minor')
+    ? ['income_stops', 'earner_dies']
+    : ['income_stops']
+}
+
 export type ResilienceView =
   | { status: 'needs_figures'; missing: string[] }
   | {
@@ -89,12 +104,9 @@ export type ResilienceView =
         assumptions: string[]
       }
       figures?: { label: string; valueMinor: number }[]
-      confirmation?: {
-        confirmedBy: string[]
-        youConfirmed: boolean
-        adultsTotal: number
-        allAdultsConfirmed: boolean
-      }
+      confirmation?: Confirmation
+      /** One confirmation per estimate, so a changed figure only unconfirms the estimates that read it. */
+      scenarios?: Partial<Record<Scenario, Confirmation>>
     }
 
 export function buildResilienceView(profile: ProfileShape | null): ResilienceView {
@@ -194,19 +206,26 @@ export function registerFamilyResilienceRoutes(app: FastifyInstance, db: Db): vo
     if (view.status !== 'ready') return view
     const figures = figuresOf(profile)
     const adults = members.filter((m) => canSeeEngineOutput(members, m.id))
-    const confirmers = await confirmersOf(db, tenant_id, figuresVersion(figures))
-    const isConfirmer = (m: (typeof adults)[number]) =>
-      confirmers.includes(m.id) || (m.user_id !== undefined && confirmers.includes(m.user_id))
-    const me = adults.find((m) => m.id === user_id || m.user_id === user_id)
-    return {
-      ...view,
-      figures: figures.map(({ label, valueMinor }) => ({ label, valueMinor })),
-      confirmation: {
+    const confirmationFor = async (version: string): Promise<Confirmation> => {
+      const confirmers = await confirmersOf(db, tenant_id, version)
+      const isConfirmer = (m: (typeof adults)[number]) =>
+        confirmers.includes(m.id) || (m.user_id !== undefined && confirmers.includes(m.user_id))
+      const me = adults.find((m) => m.id === user_id || m.user_id === user_id)
+      return {
         confirmedBy: adults.filter(isConfirmer).map((m) => m.name ?? 'An adult'),
         youConfirmed: me ? isConfirmer(me) : false,
         adultsTotal: adults.length,
         allAdultsConfirmed: adults.length > 0 && adults.every(isConfirmer),
-      },
+      }
+    }
+    const scenarios: Partial<Record<Scenario, Confirmation>> = {}
+    for (const sc of scenariosFor(figures))
+      scenarios[sc] = await confirmationFor(scenarioVersion(figures, sc))
+    return {
+      ...view,
+      figures: figures.map(({ label, valueMinor }) => ({ label, valueMinor })),
+      confirmation: await confirmationFor(figuresVersion(figures)),
+      scenarios,
     }
   })
 
@@ -219,18 +238,21 @@ export function registerFamilyResilienceRoutes(app: FastifyInstance, db: Db): vo
     const figures = figuresOf(profile)
     if (figures.length === 0)
       return reply.status(400).send({ error: 'Enter your savings, spend and income first' })
-    const version = figuresVersion(figures)
-    if ((await confirmersOf(db, tenant_id, version)).includes(user_id)) return { ok: true }
     const now = new Date()
-    for (const f of figures)
-      await recordFact(db, tenant_id, {
-        key: f.key,
-        valueMinor: f.valueMinor,
-        validFrom: now,
-        enteredBy: user_id,
-        confirmedAt: now,
-        figuresVersion: version,
-      })
+    // One set of facts per estimate, each under that estimate's own version.
+    for (const sc of scenariosFor(figures)) {
+      const version = scenarioVersion(figures, sc)
+      if ((await confirmersOf(db, tenant_id, version)).includes(user_id)) continue
+      for (const f of figures.filter((x) => SCENARIO_FACTS[sc].includes(x.key)))
+        await recordFact(db, tenant_id, {
+          key: f.key,
+          valueMinor: f.valueMinor,
+          validFrom: now,
+          enteredBy: user_id,
+          confirmedAt: now,
+          figuresVersion: version,
+        })
+    }
     return { ok: true }
   })
 }

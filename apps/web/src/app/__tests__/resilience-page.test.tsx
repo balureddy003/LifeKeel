@@ -80,6 +80,34 @@ describe('/resilience', () => {
     expect(screen.getByText(/1 to 2 months after a claim/)).toBeTruthy()
   })
 
+  it('shows each estimate with its own confirmation status', async () => {
+    const c = (all: boolean) => ({
+      confirmedBy: all ? ['Alex', 'Sam'] : [],
+      youConfirmed: all,
+      adultsTotal: 2,
+      allAdultsConfirmed: all,
+    })
+    fetchFamilyResilience.mockResolvedValue({
+      status: 'ready',
+      scenario: 'income_stops',
+      range: { lowMonths: 3, highMonths: 3 },
+      text: 'Savings would cover about 3 months. This is an estimate.',
+      left_out: [],
+      next_checks: [],
+      earner_dies: {
+        range: { lowMonths: 1, highMonths: 5 },
+        text: 'Savings and the cover payout would cover 1 to 5 months. This is an estimate.',
+        assumptions: [],
+      },
+      scenarios: { income_stops: c(true), earner_dies: c(false) },
+    })
+    render(<ResiliencePage />)
+    await waitFor(() => expect(screen.getAllByTestId('estimate-status')).toHaveLength(2))
+    const [first, second] = screen.getAllByTestId('estimate-status')
+    expect(first?.textContent).toMatch(/confirmed by both adults/)
+    expect(second?.textContent).toMatch(/need confirming/)
+  })
+
   describe('confirming', () => {
     const ready = (over: object = {}) => ({
       status: 'ready',
