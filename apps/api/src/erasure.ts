@@ -46,6 +46,7 @@ export const DELETABLE_COLLECTIONS = [
   'employer_cover_facts', // PRD-232
   'domain_records', // domain packs: household-entered records
   'engine_facts', // intent 94 B3: two-date money figures for the resilience engine
+  'business_graph', // intent 96: a member's businesses and the income each pays the household
   'domain_confirmations', // domain packs: per-adult seen stamps
   'digest_unseen_mentions', // digest: how often "not yet seen" was said per list version
   'family_continuity_state',
