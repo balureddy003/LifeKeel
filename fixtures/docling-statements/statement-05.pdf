@@ -1,0 +1,75 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 1014 >>
+stream
+BT
+/F1 10 Tf
+50 750 Td
+14 TL
+(MERCER & DALE BANK) Tj
+T*
+(Current Account MDBC-100548 42208066) Tj
+T*
+(Account holder: J. Pemberton) Tj
+T*
+() Tj
+T*
+(Statement period: 01 May 2026 to 31 May 2026) Tj
+T*
+(Opening balance: \2432,399.40) Tj
+T*
+() Tj
+T*
+(Date        Description                Money in    Money out) Tj
+T*
+(03 May 26  Salary credit 1               \243398.94            ) Tj
+T*
+(07 May 26  Credit ref 1041               \243864.17            ) Tj
+T*
+(11 May 26  Credit ref 1042               \243459.18            ) Tj
+T*
+(05 May 26  Direct debit 1                            \243318.52) Tj
+T*
+(09 May 26  Debit ref 2041                            \243131.82) Tj
+T*
+(13 May 26  Debit ref 2042                            \243538.41) Tj
+T*
+(17 May 26  Debit ref 2043                            \243468.99) Tj
+T*
+(21 May 26  Debit ref 2044                            \243239.82) Tj
+T*
+() Tj
+T*
+(Total money in:  \2431,722.29) Tj
+T*
+(Total money out: \2431,697.56) Tj
+T*
+(Closing balance: \2432,424.13) Tj
+ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000311 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1377
+%%EOF

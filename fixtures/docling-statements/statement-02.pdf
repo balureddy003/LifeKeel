@@ -1,0 +1,69 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 794 >>
+stream
+BT
+/F1 10 Tf
+50 750 Td
+14 TL
+(Thornbury Mutual) Tj
+T*
+(Statement for R. Okafor — account 59408279 \(THMB-100137\)) Tj
+T*
+(Period 2026-02-01 - 2026-02-28) Tj
+T*
+(Balance brought forward \243772.33) Tj
+T*
+() Tj
+T*
+(Credits total \2432,673.56   Debits total \2431,159.54) Tj
+T*
+(Balance carried forward \2432,286.35) Tj
+T*
+() Tj
+T*
+(Transactions:) Tj
+T*
+(2026-02-03 | Salary credit 1 | in | \243773.94) Tj
+T*
+(2026-02-07 | Credit ref 1011 | in | \243817.93) Tj
+T*
+(2026-02-11 | Credit ref 1012 | in | \2431,081.69) Tj
+T*
+(2026-02-05 | Direct debit 1 | out | \243154.14) Tj
+T*
+(2026-02-09 | Debit ref 2011 | out | \243286.62) Tj
+T*
+(2026-02-13 | Debit ref 2012 | out | \243238.77) Tj
+T*
+(2026-02-17 | Debit ref 2013 | out | \243280.25) Tj
+T*
+(2026-02-21 | Debit ref 2014 | out | \243199.76) Tj
+ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000311 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1156
+%%EOF

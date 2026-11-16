@@ -1,0 +1,75 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 1007 >>
+stream
+BT
+/F1 10 Tf
+50 750 Td
+14 TL
+(ALDERNEY SAVINGS) Tj
+T*
+(Current Account ALDS-101370 70838889) Tj
+T*
+(Account holder: D. Achebe) Tj
+T*
+() Tj
+T*
+(Statement period: 01 Nov 2026 to 30 Nov 2026) Tj
+T*
+(Opening balance: \2433,575.53) Tj
+T*
+() Tj
+T*
+(Date        Description                Money in    Money out) Tj
+T*
+(03 Nov 26  Salary credit 1               \243434.74            ) Tj
+T*
+(07 Nov 26  Credit ref 1101               \243904.64            ) Tj
+T*
+(11 Nov 26  Credit ref 1102               \243592.74            ) Tj
+T*
+(15 Nov 26  Credit ref 1103               \243867.61            ) Tj
+T*
+(19 Nov 26  Credit ref 1104               \243242.07            ) Tj
+T*
+(05 Nov 26  Direct debit 1                            \243144.64) Tj
+T*
+(09 Nov 26  Debit ref 2101                            \243429.79) Tj
+T*
+(13 Nov 26  Debit ref 2102                            \243256.95) Tj
+T*
+() Tj
+T*
+(Total money in:  \2433,041.80) Tj
+T*
+(Total money out: \243831.38) Tj
+T*
+(Closing balance: \2435,785.95) Tj
+ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000311 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1370
+%%EOF
