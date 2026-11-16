@@ -89,3 +89,5 @@ jobs:
           python-version: '3.11'
       - name: Encoder service tests
         run: python -m unittest discover -s infra/encoder-service -p 'test_server.py' -v
+      - name: Docling service tests
+        run: python -m unittest discover -s infra/docling-service -p 'test_server.py' -v

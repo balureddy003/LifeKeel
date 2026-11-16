@@ -155,6 +155,7 @@ import { registerTrustRoutes } from './routes/trust.js'
 import { registerFamilyChannelRoutes } from './routes/family-channels.js'
 import { registerOperatorRetentionRoutes } from './routes/operator-retention.js'
 import { registerOperatorDeletionRoutes } from './routes/operator-deletion.js'
+import { registerOperatorEngineRoutes } from './routes/operator-engine.js'
 import { registerAssistantRoutes } from './routes/assistant.js'
 import { registerKeelRoutes } from './keel-agent/routes.js'
 import { registerSupportRoutes } from './routes/support.js'
@@ -1323,6 +1324,7 @@ if (workflowDb) {
   void ensureRevenueIndexes(workflowDb)
   void ensureMarketingSpendIndexes(workflowDb)
   await registerOperatorRoutes(app, workflowDb)
+  registerOperatorEngineRoutes(app, workflowDb)
   registerOperatorStripeRoutes(app, workflowDb)
   registerOperatorRetentionRoutes(app, workflowDb)
   registerOperatorDeletionRoutes(app, workflowDb)
