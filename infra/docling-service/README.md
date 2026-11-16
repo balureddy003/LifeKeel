@@ -35,4 +35,27 @@ python3 -m unittest discover -s infra/docling-service -p 'test_server.py' -v
 ```
 
 runs without docling installed (conversion is injected). CI runs the same
-command in the `python-services` job.
+command in the `python-services` job, and `images.yml` builds the image and
+runs the tests inside it (`docling-image` job).
+
+## Deployment: Cloud Run sidecar (owner decision 2026-11-16)
+
+Docling runs as a **sidecar container in the API's Cloud Run service** — one
+deployable, two containers. It cannot share the Node process (Python vs
+TypeScript); the sidecar is the closest honest equivalent.
+
+- The API calls it at `http://localhost:<port>` — set
+  `DOCLING_SERVICE_URL=http://localhost:8080` in the service env. The flag
+  stays off until that var exists, so the sidecar can deploy dark.
+- The sidecar needs its own CPU/memory allocation (Docling + torch wants
+  ~2-4 GiB); size it in the container spec, not the API's.
+- Cloud Run routes ingress to the API container only; the sidecar port is
+  internal to the instance. Still deploy the service with authenticated
+  ingress off for the sidecar's port — it binds localhost inside the
+  instance regardless.
+- Apply via `gcloud run services replace` with a two-container spec (export
+  the current service YAML, add the docling container under `containers:`,
+  keep the API container first). Deploys remain human-gated as usual.
+- Cost note: sidecar CPU is billed while the instance runs; with
+  `min-instances=0` it only costs during requests/scale-down tail. Docling's
+  model load is lazy (`load_converter` thread) so idle instances stay cheap.
