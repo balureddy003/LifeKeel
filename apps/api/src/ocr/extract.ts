@@ -31,6 +31,7 @@ import { isOcrableImage, ocrImageToText } from './local-ocr.js'
 import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
 import { CATEGORIES, FIELD_KEYS, POLICY_TYPE_VALUES } from '../extraction/schema.js'
 import { auditStep, buildCandidates, saveCandidates } from '../extraction/pipeline.js'
+import { doclingParseText } from '../extraction/docling.js'
 import { asCategory, emitEngineMetric } from '../resilience/engine-metrics.js'
 import { statementVerdict } from './profile-mapping.js'
 import { DEFAULT_LOCAL_MODEL } from '../local-model.js'
@@ -249,7 +250,7 @@ export async function extractDocumentFieldsLocal(
   let text: string
   try {
     if (mimeType === 'application/pdf') {
-      text = await extractPdfText(fileBuffer)
+      text = await pdfText(fileBuffer)
       if (!text)
         return { category: 'other', fields: {}, rawText: 'Scanned PDF — no text layer to read' }
     } else if (mimeType === DOCX_MIME) {
@@ -337,7 +338,7 @@ export async function screenDocumentForSpecialCategory(
   let text = ''
   try {
     if (mimeType === 'application/pdf') {
-      text = await extractPdfText(fileBuffer)
+      text = await pdfText(fileBuffer)
     } else if (mimeType === DOCX_MIME) {
       text = await extractDocxText(fileBuffer)
     } else if (isOcrableImage(mimeType)) {
@@ -384,6 +385,16 @@ export async function extractPdfText(pdf: Buffer): Promise<string> {
 }
 
 /**
+ * PDF text for extraction and screening: the Docling worker when
+ * DOCLING_SERVICE_URL is configured (intent 97 slice 3 — flag-off until the
+ * owner decides hosting/cost), otherwise the local text layer. Docling
+ * failure falls back silently; it never fails the document.
+ */
+async function pdfText(pdf: Buffer): Promise<string> {
+  return (await doclingParseText(pdf, 'application/pdf')) ?? (await extractPdfText(pdf))
+}
+
+/**
  * Extract structured fields from a document image or PDF using OpenAI vision.
  *
  * @param fileBuffer - Raw file bytes (image or PDF)
@@ -406,8 +417,7 @@ export async function extractDocumentFields(
   let userContent: Parameters<VisionFn>[0]
   let text: string | null = null
   if (mimeType === 'application/pdf' || mimeType === DOCX_MIME) {
-    text =
-      mimeType === DOCX_MIME ? await extractDocxText(fileBuffer) : await extractPdfText(fileBuffer)
+    text = mimeType === DOCX_MIME ? await extractDocxText(fileBuffer) : await pdfText(fileBuffer)
     if (!text) {
       log.warn({}, 'Document has no extractable text (likely a scan) — skipping extraction')
       return { category: 'other', fields: {}, rawText: 'Scanned PDF — no text layer to read' }

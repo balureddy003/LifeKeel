@@ -1,0 +1,4 @@
+# Docling worker dependencies. The exact pin is set at first deploy, together
+# with the hosting/cost decision (intent 97 slice 3 is flag-off until then) —
+# do not float `latest`.
+docling
