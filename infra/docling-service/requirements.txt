@@ -1,4 +1,4 @@
-# Docling worker dependencies. The exact pin is set at first deploy, together
-# with the hosting/cost decision (intent 97 slice 3 is flag-off until then) —
-# do not float `latest`.
-docling
+# Pinned to a release >=7 days old at time of writing (2.148.0, 2026-11-05).
+# Bump deliberately: docling pulls torch and friends, so a new pin is a
+# supply-chain and image-size decision, not a routine update.
+docling==2.148.0
