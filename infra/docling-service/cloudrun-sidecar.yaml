@@ -1,0 +1,54 @@
+# Cloud Run two-container spec for the Docling sidecar (intent 97, slice 3).
+#
+# This is a TEMPLATE, not the live service definition. Cloud Run service YAML
+# carries the API container's full env/secrets wiring, which lives in GitHub
+# secrets — do not hand-maintain a copy here. The supported flow:
+#
+#   1. Build and push the worker image (context is infra/docling-service):
+#        gcloud builds submit infra/docling-service \
+#          --tag REGION-docker.pkg.dev/PROJECT/lifekeel-docker/docling:TAG \
+#          --project PROJECT
+#
+#   2. Export the CURRENT live service (never edit from memory):
+#        gcloud run services describe SERVICE \
+#          --region REGION --project PROJECT --format=export > svc.yaml
+#
+#   3. In svc.yaml, under spec.template.spec.containers:
+#      - keep the existing API container FIRST and unchanged except adding
+#        the env var in phase 2 below;
+#      - append the docling container block shown at the bottom of this file;
+#      - the docling container must NOT declare `ports` — sidecars take no
+#        ingress; the API reaches it at http://localhost:8080 inside the
+#        instance.
+#
+#   4. Phase 1 — deploy DARK (no DOCLING_SERVICE_URL): apply as-is, confirm
+#      the API revision is healthy, then run the fixture accuracy eval.
+#
+#   5. Phase 2 — go live: add to the API container's env list
+#        - name: DOCLING_SERVICE_URL
+#          value: http://localhost:8080
+#      and apply again. From then on every queued extraction tries Docling
+#      first and silently falls back to local extraction on any failure.
+#
+#   6. Apply:
+#        gcloud run services replace svc.yaml \
+#          --region REGION --project PROJECT
+#
+# Sizing notes: cpu "2" / memory "4Gi" for docling is a starting point
+# (torch + model ~2-4 GiB); watch OOM kills in Cloud Run logs and adjust.
+# With min-instances=0 the sidecar only bills while an instance runs; the
+# worker lazy-loads its model on first request so idle cost stays near zero.
+
+# --- docling container block (merge into spec.template.spec.containers) ---
+# - name: docling
+#   image: REGION-docker.pkg.dev/PROJECT/lifekeel-docker/docling:TAG
+#   resources:
+#     limits:
+#       cpu: "2"
+#       memory: 4Gi
+#   startupProbe:
+#     httpGet:
+#       path: /healthz
+#       port: 8080
+#     periodSeconds: 10
+#     failureThreshold: 30
