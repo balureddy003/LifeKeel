@@ -67,6 +67,7 @@ import {
   pollMarketingEngagement,
 } from '../routes/marketing-posts.js'
 import { runMetricsRollup } from '../jobs/metrics-rollup.js'
+import { watchEngineMetrics } from '../jobs/engine-metrics-watch.js'
 import { runAiHealthAlert } from '../jobs/ai-health-alert.js'
 import { runWeeklyDigest } from '../operator/weekly-digest.js'
 import { runLifecycleSweep } from '../marketing/lifecycle-emails.js'
@@ -482,6 +483,25 @@ export async function startBackgroundWork(deps: BackgroundWorkDeps): Promise<Bac
     { missedExecutionTolerance: 1_800_000 },
   )
   log.info({}, 'Metrics rollup cron started')
+
+  // Engine-metrics watch daily (intent 97, slice 9): alert when the
+  // extraction check-failure rate doubles week over week. Content-free
+  // counts only; the alert goes through the rate-limited ops channel.
+  scheduleJob(
+    'engine-metrics-watch',
+    '50 6 * * *',
+    async () => {
+      try {
+        await withCronLock(workflowDb, 'engine-metrics-watch', async () => {
+          await watchEngineMetrics(workflowDb)
+        })
+      } catch (err) {
+        log.error({ err }, 'Engine metrics watch failed')
+      }
+    },
+    { missedExecutionTolerance: 1_800_000 },
+  )
+  log.info({}, 'Engine metrics watch cron started')
 
   // AI task failure-share check every 10 minutes (PRD-217) — the October
   // outage fell back on every call for days before a manual probe found
