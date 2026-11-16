@@ -1,0 +1,158 @@
+[
+  {
+    "file": "statement-01.pdf",
+    "category": "banking",
+    "layout": "A",
+    "expected": {
+      "statement_opening_balance": "4998.01",
+      "statement_closing_balance": "6449.14",
+      "statement_money_in": "2367.40",
+      "statement_money_out": "916.27",
+      "statement_period_start": "2026-01-01",
+      "statement_period_end": "2026-01-31"
+    }
+  },
+  {
+    "file": "statement-02.pdf",
+    "category": "banking",
+    "layout": "B",
+    "expected": {
+      "statement_opening_balance": "772.33",
+      "statement_closing_balance": "2286.35",
+      "statement_money_in": "2673.56",
+      "statement_money_out": "1159.54",
+      "statement_period_start": "2026-02-01",
+      "statement_period_end": "2026-02-28"
+    }
+  },
+  {
+    "file": "statement-03.pdf",
+    "category": "banking",
+    "layout": "A",
+    "expected": {
+      "statement_opening_balance": "8498.80",
+      "statement_closing_balance": "8456.51",
+      "statement_money_in": "1725.08",
+      "statement_money_out": "1767.37",
+      "statement_period_start": "2026-03-01",
+      "statement_period_end": "2026-03-31"
+    }
+  },
+  {
+    "file": "statement-04.pdf",
+    "category": "banking",
+    "layout": "B",
+    "expected": {
+      "statement_opening_balance": "1646.22",
+      "statement_closing_balance": "2793.67",
+      "statement_money_in": "2475.49",
+      "statement_money_out": "1328.04",
+      "statement_period_start": "2026-04-01",
+      "statement_period_end": "2026-04-30"
+    }
+  },
+  {
+    "file": "statement-05.pdf",
+    "category": "banking",
+    "layout": "A",
+    "expected": {
+      "statement_opening_balance": "2399.40",
+      "statement_closing_balance": "2424.13",
+      "statement_money_in": "1722.29",
+      "statement_money_out": "1697.56",
+      "statement_period_start": "2026-05-01",
+      "statement_period_end": "2026-05-31"
+    }
+  },
+  {
+    "file": "statement-06.pdf",
+    "category": "banking",
+    "layout": "B",
+    "expected": {
+      "statement_opening_balance": "1975.92",
+      "statement_closing_balance": "4680.04",
+      "statement_money_in": "3605.23",
+      "statement_money_out": "901.11",
+      "statement_period_start": "2026-06-01",
+      "statement_period_end": "2026-06-30"
+    }
+  },
+  {
+    "file": "statement-07.pdf",
+    "category": "banking",
+    "layout": "A",
+    "expected": {
+      "statement_opening_balance": "6323.47",
+      "statement_closing_balance": "7237.81",
+      "statement_money_in": "2492.04",
+      "statement_money_out": "1577.70",
+      "statement_period_start": "2026-07-01",
+      "statement_period_end": "2026-07-31"
+    }
+  },
+  {
+    "file": "statement-08.pdf",
+    "category": "banking",
+    "layout": "B",
+    "expected": {
+      "statement_opening_balance": "6151.76",
+      "statement_closing_balance": "7945.87",
+      "statement_money_in": "3593.42",
+      "statement_money_out": "1799.31",
+      "statement_period_start": "2026-08-01",
+      "statement_period_end": "2026-08-31"
+    }
+  },
+  {
+    "file": "statement-09.pdf",
+    "category": "banking",
+    "layout": "A",
+    "expected": {
+      "statement_opening_balance": "6818.39",
+      "statement_closing_balance": "7399.55",
+      "statement_money_in": "1696.08",
+      "statement_money_out": "1114.92",
+      "statement_period_start": "2026-09-01",
+      "statement_period_end": "2026-09-30"
+    }
+  },
+  {
+    "file": "statement-10.pdf",
+    "category": "banking",
+    "layout": "B",
+    "expected": {
+      "statement_opening_balance": "5795.17",
+      "statement_closing_balance": "8373.01",
+      "statement_money_in": "3714.17",
+      "statement_money_out": "1136.33",
+      "statement_period_start": "2026-10-01",
+      "statement_period_end": "2026-10-31"
+    }
+  },
+  {
+    "file": "statement-11.pdf",
+    "category": "banking",
+    "layout": "A",
+    "expected": {
+      "statement_opening_balance": "3575.53",
+      "statement_closing_balance": "5785.95",
+      "statement_money_in": "3041.80",
+      "statement_money_out": "831.38",
+      "statement_period_start": "2026-11-01",
+      "statement_period_end": "2026-11-30"
+    }
+  },
+  {
+    "file": "statement-12.pdf",
+    "category": "banking",
+    "layout": "B",
+    "expected": {
+      "statement_opening_balance": "2469.36",
+      "statement_closing_balance": "3690.80",
+      "statement_money_in": "2600.51",
+      "statement_money_out": "1379.07",
+      "statement_period_start": "2026-12-01",
+      "statement_period_end": "2026-12-31"
+    }
+  }
+]

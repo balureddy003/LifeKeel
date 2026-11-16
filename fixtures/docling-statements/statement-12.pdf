@@ -1,0 +1,71 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 856 >>
+stream
+BT
+/F1 10 Tf
+50 750 Td
+14 TL
+(Kestrel Current Account) Tj
+T*
+(Statement for N. Sorensen — account 64285277 \(KCA-101507\)) Tj
+T*
+(Period 2026-12-01 - 2026-12-31) Tj
+T*
+(Balance brought forward \2432,469.36) Tj
+T*
+() Tj
+T*
+(Credits total \2432,600.51   Debits total \2431,379.07) Tj
+T*
+(Balance carried forward \2433,690.80) Tj
+T*
+() Tj
+T*
+(Transactions:) Tj
+T*
+(2026-12-03 | Salary credit 1 | in | \243312.02) Tj
+T*
+(2026-12-07 | Credit ref 1111 | in | \243884.87) Tj
+T*
+(2026-12-11 | Credit ref 1112 | in | \243993.01) Tj
+T*
+(2026-12-15 | Credit ref 1113 | in | \243410.61) Tj
+T*
+(2026-12-05 | Direct debit 1 | out | \243333.31) Tj
+T*
+(2026-12-09 | Debit ref 2111 | out | \243409.87) Tj
+T*
+(2026-12-13 | Debit ref 2112 | out | \24386.42) Tj
+T*
+(2026-12-17 | Debit ref 2113 | out | \243180.94) Tj
+T*
+(2026-12-21 | Debit ref 2114 | out | \243368.53) Tj
+ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000311 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1218
+%%EOF
