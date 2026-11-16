@@ -1,0 +1,73 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 940 >>
+stream
+BT
+/F1 10 Tf
+50 750 Td
+14 TL
+(MERCER & DALE BANK) Tj
+T*
+(Current Account MDBC-100000 36110347) Tj
+T*
+(Account holder: A. Whitfield) Tj
+T*
+() Tj
+T*
+(Statement period: 01 Jan 2026 to 31 Jan 2026) Tj
+T*
+(Opening balance: \2434,998.01) Tj
+T*
+() Tj
+T*
+(Date        Description                Money in    Money out) Tj
+T*
+(03 Jan 26  Salary credit 1               \243952.80            ) Tj
+T*
+(07 Jan 26  Credit ref 1001               \243228.85            ) Tj
+T*
+(11 Jan 26  Credit ref 1002               \243931.24            ) Tj
+T*
+(15 Jan 26  Credit ref 1003               \243254.51            ) Tj
+T*
+(05 Jan 26  Direct debit 1                             \24390.85) Tj
+T*
+(09 Jan 26  Debit ref 2001                            \243566.94) Tj
+T*
+(13 Jan 26  Debit ref 2002                            \243258.48) Tj
+T*
+() Tj
+T*
+(Total money in:  \2432,367.40) Tj
+T*
+(Total money out: \243916.27) Tj
+T*
+(Closing balance: \2436,449.14) Tj
+ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000311 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1302
+%%EOF

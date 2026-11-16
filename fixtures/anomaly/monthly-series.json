@@ -1,0 +1,1002 @@
+{
+  "households": [
+    {
+      "id": "hh-01",
+      "months": [
+        {
+          "period": "2025-01",
+          "money_in_minor": 355711,
+          "money_out_minor": 277952
+        },
+        {
+          "period": "2025-02",
+          "money_in_minor": 287493,
+          "money_out_minor": 298394
+        },
+        {
+          "period": "2025-03",
+          "money_in_minor": 301562,
+          "money_out_minor": 286683
+        },
+        {
+          "period": "2025-04",
+          "money_in_minor": 321349,
+          "money_out_minor": 304521
+        },
+        {
+          "period": "2025-05",
+          "money_in_minor": 302628,
+          "money_out_minor": 310724
+        },
+        {
+          "period": "2025-06",
+          "money_in_minor": 352928,
+          "money_out_minor": 264672
+        },
+        {
+          "period": "2025-07",
+          "money_in_minor": 272033,
+          "money_out_minor": 275834
+        },
+        {
+          "period": "2025-08",
+          "money_in_minor": 279479,
+          "money_out_minor": 286893
+        },
+        {
+          "period": "2025-09",
+          "money_in_minor": 275952,
+          "money_out_minor": 316680
+        },
+        {
+          "period": "2025-10",
+          "money_in_minor": 284344,
+          "money_out_minor": 1126561
+        },
+        {
+          "period": "2025-11",
+          "money_in_minor": 338726,
+          "money_out_minor": 276394
+        },
+        {
+          "period": "2025-12",
+          "money_in_minor": 344612,
+          "money_out_minor": 250706
+        },
+        {
+          "period": "2026-01",
+          "money_in_minor": 359487,
+          "money_out_minor": 307804
+        },
+        {
+          "period": "2026-02",
+          "money_in_minor": 274903,
+          "money_out_minor": 245563
+        }
+      ]
+    },
+    {
+      "id": "hh-02",
+      "months": [
+        {
+          "period": "2025-01",
+          "money_in_minor": 399991,
+          "money_out_minor": 197402
+        },
+        {
+          "period": "2025-02",
+          "money_in_minor": 394496,
+          "money_out_minor": 231742
+        },
+        {
+          "period": "2025-03",
+          "money_in_minor": 338194,
+          "money_out_minor": 240484
+        },
+        {
+          "period": "2025-04",
+          "money_in_minor": 383544,
+          "money_out_minor": 166491
+        },
+        {
+          "period": "2025-05",
+          "money_in_minor": 350641,
+          "money_out_minor": 185762
+        },
+        {
+          "period": "2025-06",
+          "money_in_minor": 55607,
+          "money_out_minor": 232274
+        },
+        {
+          "period": "2025-07",
+          "money_in_minor": 406822,
+          "money_out_minor": 179398
+        },
+        {
+          "period": "2025-08",
+          "money_in_minor": 341745,
+          "money_out_minor": 232552
+        },
+        {
+          "period": "2025-09",
+          "money_in_minor": 362773,
+          "money_out_minor": 307172
+        },
+        {
+          "period": "2025-10",
+          "money_in_minor": 331239,
+          "money_out_minor": 183453
+        },
+        {
+          "period": "2025-11",
+          "money_in_minor": 388413,
+          "money_out_minor": 236058
+        },
+        {
+          "period": "2025-12",
+          "money_in_minor": 392982,
+          "money_out_minor": 220878
+        },
+        {
+          "period": "2026-01",
+          "money_in_minor": 386792,
+          "money_out_minor": 190775
+        },
+        {
+          "period": "2026-02",
+          "money_in_minor": 386788,
+          "money_out_minor": 239640
+        }
+      ]
+    },
+    {
+      "id": "hh-03",
+      "months": [
+        {
+          "period": "2025-01",
+          "money_in_minor": 335736,
+          "money_out_minor": 180855
+        },
+        {
+          "period": "2025-02",
+          "money_in_minor": 339330,
+          "money_out_minor": 186705
+        },
+        {
+          "period": "2025-03",
+          "money_in_minor": 273091,
+          "money_out_minor": 184688
+        },
+        {
+          "period": "2025-04",
+          "money_in_minor": 282627,
+          "money_out_minor": 153318
+        },
+        {
+          "period": "2025-05",
+          "money_in_minor": 278436,
+          "money_out_minor": 150807
+        },
+        {
+          "period": "2025-06",
+          "money_in_minor": 304838,
+          "money_out_minor": 194094
+        },
+        {
+          "period": "2025-07",
+          "money_in_minor": 353532,
+          "money_out_minor": 198905
+        },
+        {
+          "period": "2025-08",
+          "money_in_minor": 342856,
+          "money_out_minor": 167552
+        },
+        {
+          "period": "2025-09",
+          "money_in_minor": 293864,
+          "money_out_minor": 173174
+        },
+        {
+          "period": "2025-10",
+          "money_in_minor": 312418,
+          "money_out_minor": 193766
+        },
+        {
+          "period": "2025-11",
+          "money_in_minor": 306453,
+          "money_out_minor": 181242
+        },
+        {
+          "period": "2025-12",
+          "money_in_minor": 328291,
+          "money_out_minor": 573853
+        },
+        {
+          "period": "2026-01",
+          "money_in_minor": 339319,
+          "money_out_minor": 186381
+        },
+        {
+          "period": "2026-02",
+          "money_in_minor": 283174,
+          "money_out_minor": 125968
+        }
+      ]
+    },
+    {
+      "id": "hh-04",
+      "months": [
+        {
+          "period": "2025-01",
+          "money_in_minor": 377278,
+          "money_out_minor": 238227
+        },
+        {
+          "period": "2025-02",
+          "money_in_minor": 350048,
+          "money_out_minor": 231919
+        },
+        {
+          "period": "2025-03",
+          "money_in_minor": 330406,
+          "money_out_minor": 256021
+        },
+        {
+          "period": "2025-04",
+          "money_in_minor": 336305,
+          "money_out_minor": 239619
+        },
+        {
+          "period": "2025-05",
+          "money_in_minor": 323861,
+          "money_out_minor": 224990
+        },
+        {
+          "period": "2025-06",
+          "money_in_minor": 388614,
+          "money_out_minor": 250676
+        },
+        {
+          "period": "2025-07",
+          "money_in_minor": 397217,
+          "money_out_minor": 261180
+        },
+        {
+          "period": "2025-08",
+          "money_in_minor": 536523,
+          "money_out_minor": 232826
+        },
+        {
+          "period": "2025-09",
+          "money_in_minor": 411198,
+          "money_out_minor": 248105
+        },
+        {
+          "period": "2025-10",
+          "money_in_minor": 395013,
+          "money_out_minor": 260003
+        },
+        {
+          "period": "2025-11",
+          "money_in_minor": 323690,
+          "money_out_minor": 263414
+        },
+        {
+          "period": "2025-12",
+          "money_in_minor": 398556,
+          "money_out_minor": 247957
+        },
+        {
+          "period": "2026-01",
+          "money_in_minor": 326448,
+          "money_out_minor": 228106
+        },
+        {
+          "period": "2026-02",
+          "money_in_minor": 407649,
+          "money_out_minor": 227897
+        }
+      ]
+    },
+    {
+      "id": "hh-05",
+      "months": [
+        {
+          "period": "2025-01",
+          "money_in_minor": 331156,
+          "money_out_minor": 271006
+        },
+        {
+          "period": "2025-02",
+          "money_in_minor": 358024,
+          "money_out_minor": 260158
+        },
+        {
+          "period": "2025-03",
+          "money_in_minor": 375073,
+          "money_out_minor": 305177
+        },
+        {
+          "period": "2025-04",
+          "money_in_minor": 393331,
+          "money_out_minor": 289650
+        },
+        {
+          "period": "2025-05",
+          "money_in_minor": 318178,
+          "money_out_minor": 60753
+        },
+        {
+          "period": "2025-06",
+          "money_in_minor": 350534,
+          "money_out_minor": 242972
+        },
+        {
+          "period": "2025-07",
+          "money_in_minor": 339278,
+          "money_out_minor": 307101
+        },
+        {
+          "period": "2025-08",
+          "money_in_minor": 374825,
+          "money_out_minor": 269011
+        },
+        {
+          "period": "2025-09",
+          "money_in_minor": 336939,
+          "money_out_minor": 302719
+        },
+        {
+          "period": "2025-10",
+          "money_in_minor": 256613,
+          "money_out_minor": 304224
+        },
+        {
+          "period": "2025-11",
+          "money_in_minor": 354493,
+          "money_out_minor": 287060
+        },
+        {
+          "period": "2025-12",
+          "money_in_minor": 330257,
+          "money_out_minor": 255537
+        },
+        {
+          "period": "2026-01",
+          "money_in_minor": 383712,
+          "money_out_minor": 245823
+        },
+        {
+          "period": "2026-02",
+          "money_in_minor": 377141,
+          "money_out_minor": 275242
+        }
+      ]
+    },
+    {
+      "id": "hh-06",
+      "months": [
+        {
+          "period": "2025-01",
+          "money_in_minor": 354596,
+          "money_out_minor": 267204
+        },
+        {
+          "period": "2025-02",
+          "money_in_minor": 286941,
+          "money_out_minor": 261449
+        },
+        {
+          "period": "2025-03",
+          "money_in_minor": 365123,
+          "money_out_minor": 239549
+        },
+        {
+          "period": "2025-04",
+          "money_in_minor": 308338,
+          "money_out_minor": 291031
+        },
+        {
+          "period": "2025-05",
+          "money_in_minor": 315957,
+          "money_out_minor": 255127
+        },
+        {
+          "period": "2025-06",
+          "money_in_minor": 299921,
+          "money_out_minor": 281472
+        },
+        {
+          "period": "2025-07",
+          "money_in_minor": 348042,
+          "money_out_minor": 232234
+        },
+        {
+          "period": "2025-08",
+          "money_in_minor": 372518,
+          "money_out_minor": 232059
+        },
+        {
+          "period": "2025-09",
+          "money_in_minor": 351764,
+          "money_out_minor": 251611
+        },
+        {
+          "period": "2025-10",
+          "money_in_minor": 335118,
+          "money_out_minor": 289702
+        },
+        {
+          "period": "2025-11",
+          "money_in_minor": 316130,
+          "money_out_minor": 289955
+        },
+        {
+          "period": "2025-12",
+          "money_in_minor": 318028,
+          "money_out_minor": 231677
+        },
+        {
+          "period": "2026-01",
+          "money_in_minor": 284726,
+          "money_out_minor": 1282745
+        },
+        {
+          "period": "2026-02",
+          "money_in_minor": 318009,
+          "money_out_minor": 247583
+        }
+      ]
+    },
+    {
+      "id": "hh-07",
+      "months": [
+        {
+          "period": "2025-01",
+          "money_in_minor": 269595,
+          "money_out_minor": 234145
+        },
+        {
+          "period": "2025-02",
+          "money_in_minor": 228663,
+          "money_out_minor": 267014
+        },
+        {
+          "period": "2025-03",
+          "money_in_minor": 226715,
+          "money_out_minor": 267449
+        },
+        {
+          "period": "2025-04",
+          "money_in_minor": 219491,
+          "money_out_minor": 240094
+        },
+        {
+          "period": "2025-05",
+          "money_in_minor": 241390,
+          "money_out_minor": 241834
+        },
+        {
+          "period": "2025-06",
+          "money_in_minor": 279901,
+          "money_out_minor": 235067
+        },
+        {
+          "period": "2025-07",
+          "money_in_minor": 23586,
+          "money_out_minor": 245946
+        },
+        {
+          "period": "2025-08",
+          "money_in_minor": 214477,
+          "money_out_minor": 207976
+        },
+        {
+          "period": "2025-09",
+          "money_in_minor": 270580,
+          "money_out_minor": 243194
+        },
+        {
+          "period": "2025-10",
+          "money_in_minor": 277719,
+          "money_out_minor": 263232
+        },
+        {
+          "period": "2025-11",
+          "money_in_minor": 276707,
+          "money_out_minor": 237201
+        },
+        {
+          "period": "2025-12",
+          "money_in_minor": 219757,
+          "money_out_minor": 222214
+        },
+        {
+          "period": "2026-01",
+          "money_in_minor": 203788,
+          "money_out_minor": 200179
+        },
+        {
+          "period": "2026-02",
+          "money_in_minor": 207970,
+          "money_out_minor": 206791
+        }
+      ]
+    },
+    {
+      "id": "hh-08",
+      "months": [
+        {
+          "period": "2025-01",
+          "money_in_minor": 363741,
+          "money_out_minor": 202416
+        },
+        {
+          "period": "2025-02",
+          "money_in_minor": 325881,
+          "money_out_minor": 238877
+        },
+        {
+          "period": "2025-03",
+          "money_in_minor": 375272,
+          "money_out_minor": 232393
+        },
+        {
+          "period": "2025-04",
+          "money_in_minor": 329208,
+          "money_out_minor": 241466
+        },
+        {
+          "period": "2025-05",
+          "money_in_minor": 337926,
+          "money_out_minor": 167174
+        },
+        {
+          "period": "2025-06",
+          "money_in_minor": 319031,
+          "money_out_minor": 223535
+        },
+        {
+          "period": "2025-07",
+          "money_in_minor": 342919,
+          "money_out_minor": 232062
+        },
+        {
+          "period": "2025-08",
+          "money_in_minor": 313805,
+          "money_out_minor": 185318
+        },
+        {
+          "period": "2025-09",
+          "money_in_minor": 379381,
+          "money_out_minor": 199525
+        },
+        {
+          "period": "2025-10",
+          "money_in_minor": 310683,
+          "money_out_minor": 187182
+        },
+        {
+          "period": "2025-11",
+          "money_in_minor": 335918,
+          "money_out_minor": 542280
+        },
+        {
+          "period": "2025-12",
+          "money_in_minor": 321927,
+          "money_out_minor": 189700
+        },
+        {
+          "period": "2026-01",
+          "money_in_minor": 332083,
+          "money_out_minor": 201852
+        },
+        {
+          "period": "2026-02",
+          "money_in_minor": 328251,
+          "money_out_minor": 174978
+        }
+      ]
+    },
+    {
+      "id": "hh-09",
+      "months": [
+        {
+          "period": "2025-01",
+          "money_in_minor": 264200,
+          "money_out_minor": 247987
+        },
+        {
+          "period": "2025-02",
+          "money_in_minor": 214768,
+          "money_out_minor": 263276
+        },
+        {
+          "period": "2025-03",
+          "money_in_minor": 231248,
+          "money_out_minor": 217045
+        },
+        {
+          "period": "2025-04",
+          "money_in_minor": 292871,
+          "money_out_minor": 271001
+        },
+        {
+          "period": "2025-05",
+          "money_in_minor": 246811,
+          "money_out_minor": 239435
+        },
+        {
+          "period": "2025-06",
+          "money_in_minor": 217168,
+          "money_out_minor": 203724
+        },
+        {
+          "period": "2025-07",
+          "money_in_minor": 220773,
+          "money_out_minor": 202799
+        },
+        {
+          "period": "2025-08",
+          "money_in_minor": 229487,
+          "money_out_minor": 269810
+        },
+        {
+          "period": "2025-09",
+          "money_in_minor": 317375,
+          "money_out_minor": 228244
+        },
+        {
+          "period": "2025-10",
+          "money_in_minor": 235294,
+          "money_out_minor": 209146
+        },
+        {
+          "period": "2025-11",
+          "money_in_minor": 257419,
+          "money_out_minor": 227545
+        },
+        {
+          "period": "2025-12",
+          "money_in_minor": 287945,
+          "money_out_minor": 206600
+        },
+        {
+          "period": "2026-01",
+          "money_in_minor": 221467,
+          "money_out_minor": 225122
+        },
+        {
+          "period": "2026-02",
+          "money_in_minor": 250407,
+          "money_out_minor": 198299
+        }
+      ]
+    },
+    {
+      "id": "hh-10",
+      "months": [
+        {
+          "period": "2025-01",
+          "money_in_minor": 309799,
+          "money_out_minor": 238408
+        },
+        {
+          "period": "2025-02",
+          "money_in_minor": 278404,
+          "money_out_minor": 219518
+        },
+        {
+          "period": "2025-03",
+          "money_in_minor": 308940,
+          "money_out_minor": 198400
+        },
+        {
+          "period": "2025-04",
+          "money_in_minor": 247606,
+          "money_out_minor": 59698
+        },
+        {
+          "period": "2025-05",
+          "money_in_minor": 249044,
+          "money_out_minor": 268595
+        },
+        {
+          "period": "2025-06",
+          "money_in_minor": 307348,
+          "money_out_minor": 248528
+        },
+        {
+          "period": "2025-07",
+          "money_in_minor": 314853,
+          "money_out_minor": 227420
+        },
+        {
+          "period": "2025-08",
+          "money_in_minor": 297700,
+          "money_out_minor": 209406
+        },
+        {
+          "period": "2025-09",
+          "money_in_minor": 284913,
+          "money_out_minor": 233734
+        },
+        {
+          "period": "2025-10",
+          "money_in_minor": 270068,
+          "money_out_minor": 265673
+        },
+        {
+          "period": "2025-11",
+          "money_in_minor": 300738,
+          "money_out_minor": 234844
+        },
+        {
+          "period": "2025-12",
+          "money_in_minor": 312771,
+          "money_out_minor": 255347
+        },
+        {
+          "period": "2026-01",
+          "money_in_minor": 293337,
+          "money_out_minor": 239240
+        },
+        {
+          "period": "2026-02",
+          "money_in_minor": 321782,
+          "money_out_minor": 264809
+        }
+      ]
+    },
+    {
+      "id": "hh-11",
+      "months": [
+        {
+          "period": "2025-01",
+          "money_in_minor": 360844,
+          "money_out_minor": 241015
+        },
+        {
+          "period": "2025-02",
+          "money_in_minor": 341282,
+          "money_out_minor": 242071
+        },
+        {
+          "period": "2025-03",
+          "money_in_minor": 362553,
+          "money_out_minor": 288696
+        },
+        {
+          "period": "2025-04",
+          "money_in_minor": 340797,
+          "money_out_minor": 285116
+        },
+        {
+          "period": "2025-05",
+          "money_in_minor": 275515,
+          "money_out_minor": 307681
+        },
+        {
+          "period": "2025-06",
+          "money_in_minor": 319403,
+          "money_out_minor": 283839
+        },
+        {
+          "period": "2025-07",
+          "money_in_minor": 442514,
+          "money_out_minor": 311313
+        },
+        {
+          "period": "2025-08",
+          "money_in_minor": 354875,
+          "money_out_minor": 296270
+        },
+        {
+          "period": "2025-09",
+          "money_in_minor": 325725,
+          "money_out_minor": 249119
+        },
+        {
+          "period": "2025-10",
+          "money_in_minor": 354436,
+          "money_out_minor": 246273
+        },
+        {
+          "period": "2025-11",
+          "money_in_minor": 355489,
+          "money_out_minor": 289423
+        },
+        {
+          "period": "2025-12",
+          "money_in_minor": 87483,
+          "money_out_minor": 279651
+        },
+        {
+          "period": "2026-01",
+          "money_in_minor": 346976,
+          "money_out_minor": 248292
+        },
+        {
+          "period": "2026-02",
+          "money_in_minor": 357457,
+          "money_out_minor": 281327
+        }
+      ]
+    },
+    {
+      "id": "hh-12",
+      "months": [
+        {
+          "period": "2025-01",
+          "money_in_minor": 267934,
+          "money_out_minor": 245522
+        },
+        {
+          "period": "2025-02",
+          "money_in_minor": 297231,
+          "money_out_minor": 275694
+        },
+        {
+          "period": "2025-03",
+          "money_in_minor": 330361,
+          "money_out_minor": 280011
+        },
+        {
+          "period": "2025-04",
+          "money_in_minor": 354512,
+          "money_out_minor": 262719
+        },
+        {
+          "period": "2025-05",
+          "money_in_minor": 317366,
+          "money_out_minor": 234780
+        },
+        {
+          "period": "2025-06",
+          "money_in_minor": 303124,
+          "money_out_minor": 1147840
+        },
+        {
+          "period": "2025-07",
+          "money_in_minor": 348014,
+          "money_out_minor": 245884
+        },
+        {
+          "period": "2025-08",
+          "money_in_minor": 294405,
+          "money_out_minor": 259399
+        },
+        {
+          "period": "2025-09",
+          "money_in_minor": 312895,
+          "money_out_minor": 228651
+        },
+        {
+          "period": "2025-10",
+          "money_in_minor": 305616,
+          "money_out_minor": 249643
+        },
+        {
+          "period": "2025-11",
+          "money_in_minor": 285125,
+          "money_out_minor": 251323
+        },
+        {
+          "period": "2025-12",
+          "money_in_minor": 308577,
+          "money_out_minor": 249619
+        },
+        {
+          "period": "2026-01",
+          "money_in_minor": 303006,
+          "money_out_minor": 272429
+        },
+        {
+          "period": "2026-02",
+          "money_in_minor": 354360,
+          "money_out_minor": 236613
+        }
+      ]
+    }
+  ],
+  "expected_flags": [
+    {
+      "household": "hh-01",
+      "period": "2025-10",
+      "metric": "money_out",
+      "direction": "high"
+    },
+    {
+      "household": "hh-02",
+      "period": "2025-06",
+      "metric": "money_in",
+      "direction": "low"
+    },
+    {
+      "household": "hh-02",
+      "period": "2025-09",
+      "metric": "money_out",
+      "direction": "high"
+    },
+    {
+      "household": "hh-03",
+      "period": "2025-12",
+      "metric": "money_out",
+      "direction": "high"
+    },
+    {
+      "household": "hh-04",
+      "period": "2025-08",
+      "metric": "money_in",
+      "direction": "high"
+    },
+    {
+      "household": "hh-05",
+      "period": "2025-05",
+      "metric": "money_out",
+      "direction": "low"
+    },
+    {
+      "household": "hh-05",
+      "period": "2025-10",
+      "metric": "money_in",
+      "direction": "low"
+    },
+    {
+      "household": "hh-06",
+      "period": "2026-01",
+      "metric": "money_out",
+      "direction": "high"
+    },
+    {
+      "household": "hh-07",
+      "period": "2025-07",
+      "metric": "money_in",
+      "direction": "low"
+    },
+    {
+      "household": "hh-08",
+      "period": "2025-05",
+      "metric": "money_out",
+      "direction": "low"
+    },
+    {
+      "household": "hh-08",
+      "period": "2025-11",
+      "metric": "money_out",
+      "direction": "high"
+    },
+    {
+      "household": "hh-09",
+      "period": "2025-09",
+      "metric": "money_in",
+      "direction": "high"
+    },
+    {
+      "household": "hh-10",
+      "period": "2025-04",
+      "metric": "money_out",
+      "direction": "low"
+    },
+    {
+      "household": "hh-11",
+      "period": "2025-07",
+      "metric": "money_in",
+      "direction": "high"
+    },
+    {
+      "household": "hh-11",
+      "period": "2025-12",
+      "metric": "money_in",
+      "direction": "low"
+    },
+    {
+      "household": "hh-12",
+      "period": "2025-06",
+      "metric": "money_out",
+      "direction": "high"
+    }
+  ]
+}
