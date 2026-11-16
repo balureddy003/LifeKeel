@@ -44,18 +44,27 @@ Docling runs as a **sidecar container in the API's Cloud Run service** — one
 deployable, two containers. It cannot share the Node process (Python vs
 TypeScript); the sidecar is the closest honest equivalent.
 
-- The API calls it at `http://localhost:<port>` — set
-  `DOCLING_SERVICE_URL=http://localhost:8080` in the service env. The flag
-  stays off until that var exists, so the sidecar can deploy dark.
+The full step-by-step (image push, YAML export, two-phase dark-then-live
+apply) is in `cloudrun-sidecar.yaml` at the top of this directory — follow
+that file, not memory. Summary:
+
+1. `gcloud builds submit infra/docling-service --tag <registry>/docling:TAG`
+   — CI builds but does not push this image.
+2. `gcloud run services describe <svc> --format=export > svc.yaml`, add the
+   docling container block from `cloudrun-sidecar.yaml`, keep the API
+   container first, `gcloud run services replace svc.yaml`. Deploy DARK:
+   no `DOCLING_SERVICE_URL` yet.
+3. Run the fixture accuracy eval (`fixtures/docling-statements/`).
+4. If it clears the bar, add `DOCLING_SERVICE_URL=http://localhost:8080` to
+   the API container env and apply again.
+
 - The sidecar needs its own CPU/memory allocation (Docling + torch wants
   ~2-4 GiB); size it in the container spec, not the API's.
 - Cloud Run routes ingress to the API container only; the sidecar port is
-  internal to the instance. Still deploy the service with authenticated
-  ingress off for the sidecar's port — it binds localhost inside the
-  instance regardless.
-- Apply via `gcloud run services replace` with a two-container spec (export
-  the current service YAML, add the docling container under `containers:`,
-  keep the API container first). Deploys remain human-gated as usual.
+  internal to the instance — the block declares no `ports`.
+- Deploys remain human-gated as usual.
 - Cost note: sidecar CPU is billed while the instance runs; with
   `min-instances=0` it only costs during requests/scale-down tail. Docling's
-  model load is lazy (`load_converter` thread) so idle instances stay cheap.
+  model load is lazy (`load_converter` thread at boot) so idle instances
+  stay cheap, and `/healthz` only returns 200 once the model is ready —
+  the spec's startupProbe tolerates the load window.
