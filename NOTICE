@@ -23,6 +23,12 @@ terms that need a note:
   jszip                  MIT OR GPL-3.0      Used under the MIT option.
   dompurify              MPL-2.0 OR Apache-2.0   Used under the Apache-2.0 option.
 
+Python services (infra/*-service) have their own dependency trees, pinned
+per service. Notable: docling-service pins docling (MIT); catboost-service
+pins catboost 1.2.10 (Apache-2.0 — a standard open licence, the owner
+chose it over TabICLv2 for intent 97 slice 8). catboost pulls numpy, pandas,
+scipy and graphviz — all permissive.
+
 To be confirmed: "buffers" and "khroma" report no licence field in their
 package metadata. Check their repositories before shipping a release.
 
