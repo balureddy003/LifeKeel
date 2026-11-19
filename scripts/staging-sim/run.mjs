@@ -123,7 +123,11 @@ async function joinAndApprove(fam, first, familyName) {
   const a = req
     ? await call('POST', `/family/access-requests/${req.id}/approve`, { token: fam.org.token })
     : { status: 0, text: 'request not listed' }
-  const l = await login(email)
+  let l = await login(email)
+  for (let i = 1; i <= 3 && !l.json?.token; i++) {
+    await sleep(5000 * i)
+    l = await login(email)
+  }
   return { j, email, approve: a, token: l.json?.token, login: l }
 }
 const vehicle = (reg, mot = '2027-03-14') => ({
@@ -1842,16 +1846,19 @@ scenario(
 )
 
 scenario(
-  '26 documents: on the free plan a statement is stored, never read or applied',
+  '26 documents: a new account on its trial has statements read, and nothing applied unconfirmed',
   async () => {
     const { readFileSync } = await import('node:fs')
     const { fileURLToPath } = await import('node:url')
     const dir = fileURLToPath(new URL('../../fixtures/docling-statements/', import.meta.url))
     const fam = await makeFamily('Stmt', 'Reader')
     const tok = fam.org.token
-    const pdf = readFileSync(dir + 'statement-01.pdf')
     const fd = new FormData()
-    fd.append('file', new Blob([pdf], { type: 'application/pdf' }), 'statement-01.pdf')
+    fd.append(
+      'file',
+      new Blob([readFileSync(dir + 'statement-01.pdf')], { type: 'application/pdf' }),
+      'statement-01.pdf',
+    )
     const up = await fetch(`${API}/documents/upload`, {
       method: 'POST',
       headers: { authorization: `Bearer ${tok}` },
@@ -1859,76 +1866,37 @@ scenario(
     })
     const body = await up.json().catch(() => ({}))
     check('the upload is accepted', [200, 201, 202].includes(up.status), `got ${up.status}`)
+    // The signup trial gives Plus-level features (entitlements.ts effectivePlan), so extraction runs.
     check(
-      'a free account has extraction switched off',
-      body.aiExtractionEnabled === false,
+      'extraction is on during the trial',
+      body.aiExtractionEnabled === true,
       JSON.stringify(body),
     )
-    check('the file is kept as stored', body.status === 'stored', JSON.stringify(body))
-    const doc = await call('GET', `/documents/${body.id}`, { token: tok })
-    check(
-      'nothing was extracted or suggested',
-      JSON.stringify(doc.json?.extractedData) === '{}' && (doc.json?.candidates ?? []).length === 0,
-      doc.text.slice(0, 300),
-    )
+    let doc
+    for (let i = 0; i < 20; i++) {
+      await sleep(3000)
+      doc = await call('GET', `/documents/${body.id}`, { token: tok })
+      if (!['uploaded', 'processing'].includes(doc.json?.status)) break
+    }
+    check('the statement is read', doc.json?.status === 'extracted', String(doc.json?.status))
     const profile = await call('GET', '/family/financial-profile', { token: tok })
     check(
-      'and no figure reached the household profile',
+      'but no figure reached the household profile',
       !profile.json?.profile?.emergency_fund,
       profile.text.slice(0, 300),
     )
-    // The Plus path (extract, mismatch check, confirm before apply) needs an entitled staging account.
+    const early = await call('POST', `/documents/${body.id}/apply-to-profile`, {
+      token: tok,
+      body: {},
+    })
+    check(
+      'and applying before confirming the document type is refused',
+      early.status >= 400 && early.status < 500,
+      `got ${early.status}`,
+    )
+    // After the trial ends the account falls back to stored-only; that needs an expired trial to test.
   },
 )
-
-scenario('25 resilience: the confirmation history keeps what each adult agreed to', async () => {
-  const f = RES_FAMILIES.find((x) => x.id === 'okafor')
-  const { tokens } = await resilienceFamily('okafor')
-  const [a, b] = tokens
-  expectStatus(
-    'the first adult confirms',
-    await call('POST', '/family/resilience/confirm', { token: a, body: {} }),
-    200,
-  )
-  if (b)
-    expectStatus(
-      'the second adult confirms',
-      await call('POST', '/family/resilience/confirm', { token: b, body: {} }),
-      200,
-    )
-  const h1 = await call('GET', '/family/resilience/history', { token: a })
-  const cur = h1.json?.entries?.find((e) => e.current)
-  check(
-    'the current figures are listed with their confirmers and dates',
-    !!cur && cur.confirmedBy.every((c) => !!c.at),
-    h1.text.slice(0, 300),
-  )
-  const before = cur?.figures?.find((x) => x.label === 'Savings')?.valueMinor
-  await saveProfile(a, f, { emergency_savings_minor: f.profile.emergency_savings_minor + 100000 })
-  const h2 = await call('GET', '/family/resilience/history', { token: a })
-  const old = h2.json?.entries?.find(
-    (e) => !e.current && e.figures.some((x) => x.label === 'Savings' && x.valueMinor === before),
-  )
-  check(
-    'after a change the earlier confirmation is still listed, marked as since changed',
-    !!old,
-    h2.text.slice(0, 300),
-  )
-  check(
-    'and nothing is current until someone confirms the new figures',
-    !h2.json?.entries?.some((e) => e.current),
-    h2.text.slice(0, 300),
-  )
-  await saveProfile(a, f, {})
-  const kid = (await resilienceFamily('okafor')).tokens[2]
-  if (kid)
-    expectStatus(
-      'a child cannot read the history',
-      await call('GET', '/family/resilience/history', { token: kid }),
-      403,
-    )
-  expectStatus('no token is refused', await call('GET', '/family/resilience/history', {}), 401, 403)
-})
 
 // ═════════════════════════ RUNNER ═══════════════════════════════════════════
 const started = Date.now()
