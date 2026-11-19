@@ -1651,6 +1651,46 @@ scenario('22 resilience: switched-off features stay off', async () => {
   )
 })
 
+scenario(
+  '26 documents: on the free plan a statement is stored, never read or applied',
+  async () => {
+    const { readFileSync } = await import('node:fs')
+    const { fileURLToPath } = await import('node:url')
+    const dir = fileURLToPath(new URL('../../fixtures/docling-statements/', import.meta.url))
+    const fam = await makeFamily('Stmt', 'Reader')
+    const tok = fam.org.token
+    const pdf = readFileSync(dir + 'statement-01.pdf')
+    const fd = new FormData()
+    fd.append('file', new Blob([pdf], { type: 'application/pdf' }), 'statement-01.pdf')
+    const up = await fetch(`${API}/documents/upload`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${tok}` },
+      body: fd,
+    })
+    const body = await up.json().catch(() => ({}))
+    check('the upload is accepted', [200, 201, 202].includes(up.status), `got ${up.status}`)
+    check(
+      'a free account has extraction switched off',
+      body.aiExtractionEnabled === false,
+      JSON.stringify(body),
+    )
+    check('the file is kept as stored', body.status === 'stored', JSON.stringify(body))
+    const doc = await call('GET', `/documents/${body.id}`, { token: tok })
+    check(
+      'nothing was extracted or suggested',
+      JSON.stringify(doc.json?.extractedData) === '{}' && (doc.json?.candidates ?? []).length === 0,
+      doc.text.slice(0, 300),
+    )
+    const profile = await call('GET', '/family/financial-profile', { token: tok })
+    check(
+      'and no figure reached the household profile',
+      !profile.json?.profile?.emergency_fund,
+      profile.text.slice(0, 300),
+    )
+    // The Plus path (extract, mismatch check, confirm before apply) needs an entitled staging account.
+  },
+)
+
 // ═════════════════════════ RUNNER ═══════════════════════════════════════════
 const started = Date.now()
 for (const s of scenarios) {
