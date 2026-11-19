@@ -12,7 +12,7 @@
 | Store | Built on the existing MongoDB: `engine_facts` (two dates, append-only), per-estimate versions (`resilience/dependencies.ts`), `business_graph`. Shock rates are a data file (`event-rates.ts`), not stored versions. |
 | Queue | Not used. The repo has a Redis queue (`apps/api/src/queue/QueueManager.ts`), but extraction and simulation run inside the request. |
 | Simulation | Built. Deterministic monthly cash-flow in `resilience/`. |
-| Tax and benefits (PolicyEngine) | Not built. AGPL, no signed licence, parked as B7. |
+| Tax and benefits (PolicyEngine) | Dropped by owner 2026-11-16. AGPL licence question never answered; no code written. |
 | Tabular helpers | Not built. |
 | Observability | Not built for the engine. OpenTelemetry exists in `packages/platform`. |
 
@@ -108,16 +108,8 @@ Per slice below. Overall: a household's statement is parsed locally, checked mec
 
 **Out of scope.** Fetching rates automatically, household-specific rates, any figure that cannot be verified from its source (the ledger marks those as gaps).
 
-## Slice 7. Tax and benefits through PolicyEngine UK (blocked)
-**Problem.** Estimates leave out tax and benefits, which matters for the runway after income stops.
-
-**Blocked on.** A signed licence. PolicyEngine UK is AGPL. Running it as a separate service called over HTTP is the proposed way to contain the licence, but containment is a legal question, not a technical one, and the owner parked it (B7).
-
-**When unblocked, done looks like.** A separate service, called over HTTP from the API, never linked into the API process. The estimate gains an optional "after tax and benefits" line with the household's own figures only, labelled an estimate, with what it assumes. The existing estimate is unchanged when the service is down. No benefit is named as something to claim, only what a rule would give for the entered figures, with the licensed-professional line.
-
-**Verifier.** Contract test against a recorded service response, a test that the API works with the service off, and an advice-rule scan on the new copy.
-
-**Owner action.** Licence decision from counsel.
+## Slice 7. Tax and benefits through PolicyEngine UK (dropped)
+**Decision.** Dropped by the owner on 2026-11-16 — "drop policy engine for now". No code was ever written for this slice. The AGPL/licence question stays parked (B7); if tax-and-benefits output is wanted later, it needs a fresh intent with a licence answer or a different rules source.
 
 ## Slice 8. Tabular anomaly helper: CatBoost (owner decision 2026-11-15)
 **Decision.** Use CatBoost (Apache-2.0, a standard open licence with no copyleft; the owner chose it over TabICLv2). Run it locally in a Python worker. TabICLv2 is dropped from this intent.
@@ -156,7 +148,7 @@ Aggregate the slice 1 events into the operator view the owner already has. No pe
 4. Slice 6 (rates version). Independent, small.
 5. Slice 5 (Zod). Independent, optional.
 6. Slice 4 (selective risk). Blocked on real history from slice 1.
-7. Slice 7 blocked on a licence decision. Slice 8 (CatBoost chosen) blocked on slice 3 and on fixtures to evaluate against.
+7. Slice 7 dropped by owner decision 2026-11-16. Slice 8 evaluated: CatBoost scaffold and fixture eval merged; ship/no-ship margin call remains the owner's.
 8. Slice 9. After 1 to 4.
 
 ## Decisions needed from the owner
@@ -164,7 +156,7 @@ Aggregate the slice 1 events into the operator view the owner already has. No pe
 - Where the Docling worker runs and its monthly cost ceiling (ties to B8).
 - The accuracy target on the synthetic statements (proposed 90 percent) before Docling becomes the default.
 - α, minimum sample and the first low-consequence classes for the selective-risk gate.
-- PolicyEngine licence position. (Tabular library decided: CatBoost, 2026-11-15. The baseline margin for it to ship is still the owner's to set.)
+- (Resolved 2026-11-16) PolicyEngine dropped — see slice 7. CatBoost margin for slice 8 still the owner's to set: measured recall 0.750 vs baseline 0.688 at lower false-flag rate, under the proposed 10-point bar.
 
 ## Not in this intent
 MCP, business graph and cross-tenant sharing are covered by intent 96 and built. Product-steering stays unbuilt (rule 2). The account split, lodger view and external link wait on a safeguarding review. The result cache stays unbuilt until the solver is measured slow.
