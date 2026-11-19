@@ -1658,6 +1658,34 @@ scenario('22 resilience: switched-off features stay off', async () => {
   )
 })
 
+scenario('23 briefs: the first is free, the second needs the household record', async () => {
+  const fam = await makeFamily('Gate', 'Tester')
+  const token = fam.org.token
+  const inputs = {
+    monthly_income_minor: 300000,
+    monthly_essentials_minor: 200000,
+    liquid_savings_minor: 600000,
+  }
+  const make = () =>
+    call('POST', '/family/briefs', { token, body: { problem_type: 'income_stops', inputs } })
+  const first = await make()
+  expectStatus('the first brief is free', first, 201)
+  const second = await make()
+  expectStatus('the second brief is refused on a free account', second, 402)
+  check('and says why', second.json?.error === 'brief_gate', second.text)
+  check(
+    'and names what unlocks it',
+    second.json?.required_entitlement === 'household_record',
+    second.text,
+  )
+  const list = await call('GET', '/family/briefs', { token })
+  check(
+    'the refused brief was not stored',
+    (list.json?.briefs ?? []).length === 1,
+    `got ${(list.json?.briefs ?? []).length}`,
+  )
+})
+
 scenario('24 resilience: nonsense figures are refused or asked for, never guessed', async () => {
   const f = RES_FAMILIES.find((x) => x.id === 'okafor')
   const fam = await makeFamily('Edge', 'Cases')
