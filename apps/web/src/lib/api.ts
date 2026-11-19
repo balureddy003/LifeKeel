@@ -2758,6 +2758,22 @@ export async function fetchFamilyResilience(): Promise<FamilyResilience | null> 
   return apiFetch<FamilyResilience | null>('/family/resilience', null)
 }
 
+export interface ConfirmationHistoryEntry {
+  scenario: 'income_stops' | 'earner_dies'
+  current: boolean
+  confirmedBy: { name: string; at: string }[]
+  figures: { label: string; valueMinor: number }[]
+}
+
+/** Every set of figures an adult confirmed, newest first. Null when refused or the call fails. */
+export async function fetchConfirmationHistory(): Promise<ConfirmationHistoryEntry[] | null> {
+  const r = await apiFetch<{ entries: ConfirmationHistoryEntry[] } | null>(
+    '/family/resilience/history',
+    null,
+  )
+  return r?.entries ?? null
+}
+
 /** An adult confirms the exact figures the estimate used. */
 export async function confirmResilienceFigures(): Promise<boolean> {
   const base = getApiBase()

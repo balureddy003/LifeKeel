@@ -338,3 +338,52 @@ describe('if the main earner dies', () => {
     expect(s.income_stops.youConfirmed).toBe(true)
   })
 })
+
+describe('GET /family/resilience/history (what each adult confirmed, and when)', () => {
+  const post = async (who: string) =>
+    (await appFor(who)).inject({ method: 'POST', url: '/family/resilience/confirm' })
+  const history = async (who: string) =>
+    (await appFor(who)).inject({ method: 'GET', url: '/family/resilience/history' })
+
+  it('is empty before anyone has confirmed', async () => {
+    const res = await history('u1')
+    expect(res.statusCode).toBe(200)
+    expect(res.json().entries).toEqual([])
+  })
+
+  it('lists who confirmed which figures and when, newest first, marking the current ones', async () => {
+    await post('u1')
+    await post('u2')
+    const { entries } = (await history('u1')).json()
+    expect(entries).toHaveLength(1)
+    const e = entries[0]
+    expect(e.scenario).toBe('income_stops')
+    expect(e.current).toBe(true)
+    expect(e.confirmedBy.map((c: { name: string }) => c.name).sort()).toEqual(['Alex', 'Sam'])
+    expect(typeof e.confirmedBy[0].at).toBe('string')
+    expect(e.figures).toContainEqual({ label: 'Savings', valueMinor: 900_000 })
+  })
+
+  it('keeps the old confirmation after a figure changes, no longer marked current', async () => {
+    await post('u1')
+    await post('u2')
+    ;(
+      profile as { emergency_fund: { emergency_savings_minor: number } }
+    ).emergency_fund.emergency_savings_minor = 950_000
+    await post('u1')
+    const { entries } = (await history('u1')).json()
+    expect(entries).toHaveLength(2)
+    expect(entries.map((e: { current: boolean }) => e.current)).toEqual([true, false])
+    expect(entries[1].figures).toContainEqual({ label: 'Savings', valueMinor: 900_000 })
+    expect(entries[0].confirmedBy.map((c: { name: string }) => c.name)).toEqual(['Alex'])
+  })
+
+  it('a child or outsider gets a 403 and no figures', async () => {
+    await post('u1')
+    for (const who of ['kid', 'stranger']) {
+      const res = await history(who)
+      expect(res.statusCode).toBe(403)
+      expect(res.body).not.toContain('900000')
+    }
+  })
+})
