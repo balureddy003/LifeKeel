@@ -31,12 +31,13 @@ describe('DeliveryRetryWorker', () => {
     await mongod.stop()
   })
 
-  function stubRouter(outcome: 'success' | 'failure' | 'throw' = 'success') {
+  function stubRouter(outcome: 'success' | 'failure' | 'gated' | 'throw' = 'success') {
     const calls: string[] = []
     const router = {
       deliver: async (insight: Record<string, unknown>) => {
         calls.push(insight['id'] as string)
         if (outcome === 'throw') throw new Error('provider down')
+        if (outcome === 'gated') return null // quiet hours / budget deny / no channel
         return {
           channel: 'email' as const,
           success: outcome === 'success',
@@ -64,7 +65,7 @@ describe('DeliveryRetryWorker', () => {
 
     const result = await new DeliveryRetryWorker(db, router).run(now)
 
-    expect(result).toEqual({ claimed: 1, delivered: 1, failed: 0 })
+    expect(result).toEqual({ claimed: 1, delivered: 1, failed: 0, gated: 0 })
     expect(calls).toEqual(['insight-1'])
     const doc = await db.collection('insights').findOne({ id: 'insight-1' })
     expect(doc?.['delivery_retry_count']).toBe(1)
@@ -117,10 +118,30 @@ describe('DeliveryRetryWorker', () => {
 
     const result = await new DeliveryRetryWorker(db, router).run(now)
 
-    expect(result).toEqual({ claimed: 1, delivered: 0, failed: 1 })
+    expect(result).toEqual({ claimed: 1, delivered: 0, failed: 1, gated: 0 })
     // The count was still consumed — bounded retries, not a stuck row.
     const doc = await db.collection('insights').findOne({ id: 'insight-1' })
     expect(doc?.['delivery_retry_count']).toBe(1)
+  })
+
+  it('counts a success:false result as failed — every channel tried and lost', async () => {
+    const now = new Date()
+    await seedInsight('insight-1', {}, now)
+    const { router } = stubRouter('failure')
+
+    const result = await new DeliveryRetryWorker(db, router).run(now)
+
+    expect(result).toEqual({ claimed: 1, delivered: 0, failed: 1, gated: 0 })
+  })
+
+  it('counts a null result as gated — the gate did its job, not a failure', async () => {
+    const now = new Date()
+    await seedInsight('insight-1', {}, now)
+    const { router } = stubRouter('gated')
+
+    const result = await new DeliveryRetryWorker(db, router).run(now)
+
+    expect(result).toEqual({ claimed: 1, delivered: 0, failed: 0, gated: 1 })
   })
 
   it('two concurrent runs on the same tick claim each insight exactly once', async () => {

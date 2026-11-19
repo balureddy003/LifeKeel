@@ -168,9 +168,10 @@ export async function startBackgroundWork(deps: BackgroundWorkDeps): Promise<Bac
     engine,
     async (insights, tenantId) => {
       if (!deliveryRouter) return
+      const router = deliveryRouter
       await Promise.allSettled(
         insights.map((insight) =>
-          deliveryRouter!.deliver(insight as unknown as Record<string, unknown>, tenantId),
+          router.deliver(insight as unknown as Record<string, unknown>, tenantId),
         ),
       )
     },

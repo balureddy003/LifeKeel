@@ -66,9 +66,9 @@ export function startWebhookWorker(
       if (result.insights.length === 0) return
 
       await persistAndDeliverInsights(db, result.insights, job.tenantId, deliveryRouter)
-      // 4 workers, at most 2 on one tenant's jobs — a connector burst from a
-      // single household defers rather than starving the rest.
     },
+    // 4 workers, at most 2 on one tenant's jobs — a connector burst from a
+    // single household defers rather than starving the rest.
     { concurrency: 4, tenantKey: (p) => (p as WebhookIngestJob).tenantId, perTenantConcurrency: 2 },
   )
 }

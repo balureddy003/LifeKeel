@@ -39,11 +39,13 @@ export class DeliveryRetryWorker {
   /** Claimable right now: unclaimed, or the last claim expired a cycle ago. */
   private claimableFilter(now: Date) {
     return {
-      $or: [
-        { delivery_retry_at: { $exists: false } },
-        { delivery_retry_at: { $lte: new Date(now.getTime() - RETRY_DELAY_MS) } },
-      ],
       $and: [
+        {
+          $or: [
+            { delivery_retry_at: { $exists: false } },
+            { delivery_retry_at: { $lte: new Date(now.getTime() - RETRY_DELAY_MS) } },
+          ],
+        },
         {
           $or: [
             { delivery_retry_count: { $exists: false } },
@@ -54,7 +56,12 @@ export class DeliveryRetryWorker {
     }
   }
 
-  async run(now = new Date()): Promise<{ claimed: number; delivered: number; failed: number }> {
+  async run(now = new Date()): Promise<{
+    claimed: number
+    delivered: number
+    failed: number
+    gated: number
+  }> {
     const insights = this.db.collection('insights')
     const claimable = this.claimableFilter(now)
     const candidates = await insights
@@ -73,6 +80,7 @@ export class DeliveryRetryWorker {
     let claimed = 0
     let delivered = 0
     let failed = 0
+    let gated = 0
     for (const insight of candidates) {
       const claim = await insights.findOneAndUpdate(
         { _id: insight['_id'], state: 'identified', ...claimable },
@@ -85,13 +93,19 @@ export class DeliveryRetryWorker {
           insight as Record<string, unknown>,
           insight['tenant_id'] as string,
         )
-        if (result?.success) delivered++
+        // deliver() returns null for every correctly-gated path (quiet
+        // hours → digest, urgency floor, budget deny) — not a failure.
+        // A DeliveryResult with success:false is every channel tried and
+        // failed: the case this worker exists for, so count it honestly.
+        if (result === null) gated++
+        else if (result.success) delivered++
+        else failed++
       } catch {
         // deliver() throwing leaves the retry count already incremented —
         // bounded retries, never a stuck row hammering a broken provider.
         failed++
       }
     }
-    return { claimed, delivered, failed }
+    return { claimed, delivered, failed, gated }
   }
 }
