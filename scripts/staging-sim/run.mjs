@@ -1694,6 +1694,118 @@ scenario('24 resilience: nonsense figures are refused or asked for, never guesse
   )
 })
 
+scenario(
+  '27 documents (Plus): a statement is read, checked and applied only after confirming',
+  async () => {
+    const email = process.env.STAGING_PLUS_EMAIL
+    if (!email) {
+      skip('set STAGING_PLUS_EMAIL to a staging account on the paid plan')
+      return
+    }
+    const { readFileSync } = await import('node:fs')
+    const { fileURLToPath } = await import('node:url')
+    const dir = fileURLToPath(new URL('../../fixtures/docling-statements/', import.meta.url))
+    const expected = JSON.parse(readFileSync(dir + 'expected.json', 'utf8'))[0]
+    const tok = (await login(email)).json?.token
+    check('the paid account signs in', !!tok)
+    if (!tok) return
+    const upload = async (path, name) => {
+      const fd = new FormData()
+      fd.append('file', new Blob([readFileSync(path)], { type: 'application/pdf' }), name)
+      const r = await fetch(`${API}/documents/upload`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${tok}` },
+        body: fd,
+      })
+      const j = await r.json().catch(() => ({}))
+      let doc
+      for (let i = 0; i < 20 && j.id; i++) {
+        await sleep(3000)
+        doc = await call('GET', `/documents/${j.id}`, { token: tok })
+        if (!['uploaded', 'processing'].includes(doc.json?.status)) break
+      }
+      return { id: j.id, up: r.status, enabled: j.aiExtractionEnabled, doc: doc?.json }
+    }
+    const minor = (v) => Math.round(Number(String(v).replace(/[£,]/g, '')) * 100)
+    const good = await upload(dir + expected.file, expected.file)
+    check('extraction is on for the paid account', good.enabled === true)
+    const f = good.doc?.extractedData ?? {}
+    const want = expected.expected
+    check(
+      'every figure matches the statement',
+      minor(f.statement_opening_balance) === minor(want.statement_opening_balance) &&
+        minor(f.statement_closing_balance) === minor(want.statement_closing_balance) &&
+        minor(f.statement_money_in) === minor(want.statement_money_in) &&
+        minor(f.statement_money_out) === minor(want.statement_money_out),
+      JSON.stringify(f),
+    )
+    check('the file scanned clean', good.doc?.scan === 'clean', String(good.doc?.scan))
+    const before = await call('GET', '/family/financial-profile', { token: tok })
+    const spendBefore = before.json?.profile?.emergency_fund?.monthly_expenses_minor
+    const sug = await call('GET', `/documents/${good.id}/profile-suggestions`, { token: tok })
+    const spend = sug.json?.suggestions?.find(
+      (s) => s.path === 'emergency_fund.monthly_expenses_minor',
+    )
+    check(
+      'a consistent statement offers monthly spend, equal to its money out',
+      spend?.valueMinor === minor(want.statement_money_out),
+      sug.text.slice(0, 300),
+    )
+    const early = await call('POST', `/documents/${good.id}/apply-to-profile`, {
+      token: tok,
+      body: {},
+    })
+    check(
+      'applying before confirming the document type is refused',
+      early.status >= 400 && early.status < 500,
+      `got ${early.status}`,
+    )
+    const mid = await call('GET', '/family/financial-profile', { token: tok })
+    check(
+      'and nothing reached the profile',
+      mid.json?.profile?.emergency_fund?.monthly_expenses_minor === spendBefore,
+      mid.text.slice(0, 200),
+    )
+    expectStatus(
+      'the person confirms the type',
+      await call('POST', `/documents/${good.id}/confirm-type`, {
+        token: tok,
+        body: { category: 'banking' },
+      }),
+      200,
+    )
+    const done = await call('POST', `/documents/${good.id}/apply-to-profile`, {
+      token: tok,
+      body: {},
+    })
+    expectStatus('after confirming, the figures can be applied', done, 200)
+    const after = await call('GET', '/family/financial-profile', { token: tok })
+    check(
+      'the applied spend equals the statement money out',
+      after.json?.profile?.emergency_fund?.monthly_expenses_minor ===
+        minor(want.statement_money_out),
+      after.text.slice(0, 200),
+    )
+    // A statement whose printed closing balance does not match its own arithmetic.
+    const bad = await upload(dir + 'negative/statement-mismatch.pdf', 'statement-mismatch.pdf')
+    const badSug = await call('GET', `/documents/${bad.id}/profile-suggestions`, { token: tok })
+    check(
+      'an inconsistent statement offers nothing to apply',
+      (badSug.json?.suggestions ?? []).length === 0,
+      badSug.text.slice(0, 300),
+    )
+    const badApply = await call('POST', `/documents/${bad.id}/apply-to-profile`, {
+      token: tok,
+      body: {},
+    })
+    check(
+      'and applying it is refused',
+      badApply.status >= 400 && badApply.status < 500,
+      `got ${badApply.status}`,
+    )
+  },
+)
+
 // ═════════════════════════ RUNNER ═══════════════════════════════════════════
 const started = Date.now()
 for (const s of scenarios) {
