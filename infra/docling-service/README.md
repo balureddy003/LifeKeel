@@ -68,3 +68,18 @@ that file, not memory. Summary:
   model load is lazy (`load_converter` thread at boot) so idle instances
   stay cheap, and `/healthz` only returns 200 once the model is ready —
   the spec's startupProbe tolerates the load window.
+
+## Sidecar auth
+
+When run as a Cloud Run sidecar the API reaches it at `http://localhost:8080`
+inside one instance, and it declares no `ports`, so it has no ingress and needs
+no auth. If it is ever split into its own service, deploy it with
+`--no-allow-unauthenticated` and give the API's service account the invoker role
+first. Never expose it publicly.
+
+## Models are baked in
+
+The image downloads its models at build time and sets `HF_HUB_OFFLINE=1`, so a
+running instance makes no outbound calls. Bumping docling or the layout model
+revision is a deliberate, reviewed change to the Dockerfile.
+
