@@ -2733,6 +2733,7 @@ export type FamilyResilience =
       text: string
       left_out: string[]
       next_checks: string[]
+      not_on_file?: string[]
       earner_dies?: {
         range: { lowMonths: number | null; highMonths: number | null }
         text: string
