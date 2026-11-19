@@ -43,6 +43,10 @@ export async function getDb(): Promise<Db> {
   const insights = db.collection('insights')
   await insights.createIndex({ tenant_id: 1, created_at: -1 }).catch(safeIndex)
   await insights.createIndex({ tenant_id: 1, state: 1 }).catch(safeIndex)
+  // Tenant-agnostic sweep: DeliveryRetryWorker scans {state, created_at}
+  // across all tenants every cron cycle — none of the tenant-first indexes
+  // above serve that shape.
+  await insights.createIndex({ state: 1, created_at: 1 }).catch(safeIndex)
   await insights.createIndex({ id: 1 }, { unique: true }).catch(safeIndex)
 
   // Indexes for billing/usage queries (M7 — composite DB indexes)

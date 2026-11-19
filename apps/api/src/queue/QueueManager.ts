@@ -431,28 +431,39 @@ export class QueueManager {
           }
         }
 
-        // Visibility lease: recovery leaves this entry alone while a live
-        // worker renews it. The key value is the expiry timestamp (a plain
-        // TTL would make "expired" and "finished cleanly" indistinguishable
-        // to the sweeper). XX on renewal so a deleted lease isn't resurrected.
-        const leaseKey = `lease:${queueName}:${job.id}`
-        await client
-          .set(leaseKey, String(Date.now() + LEASE_TTL_MS), 'PX', String(LEASE_TTL_MS * 10))
-          .catch(() => {})
-        const renew = setInterval(() => {
-          client
-            .set(leaseKey, String(Date.now() + LEASE_TTL_MS), 'XX', 'PX', String(LEASE_TTL_MS * 10))
-            .catch(() => {})
-        }, LEASE_RENEW_MS)
-        renew.unref()
-
+        // Claim the tenant slot now — synchronously, with no await between
+        // the cap check above and this increment, so racing workers can't
+        // both pass the check before either counts the job. The try/finally
+        // below always releases it.
         if (tenant !== undefined) {
           const counts = this.tenantInFlight.get(queueName) ?? new Map<string, number>()
           counts.set(tenant, (counts.get(tenant) ?? 0) + 1)
           this.tenantInFlight.set(queueName, counts)
         }
 
+        // Visibility lease: recovery leaves this entry alone while a live
+        // worker renews it. The key value is the expiry timestamp (a plain
+        // TTL would make "expired" and "finished cleanly" indistinguishable
+        // to the sweeper). XX on renewal so a deleted lease isn't resurrected.
+        const leaseKey = `lease:${queueName}:${job.id}`
+        let renew: ReturnType<typeof setInterval> | undefined
         try {
+          await client
+            .set(leaseKey, String(Date.now() + LEASE_TTL_MS), 'PX', String(LEASE_TTL_MS * 10))
+            .catch(() => {})
+          renew = setInterval(() => {
+            client
+              .set(
+                leaseKey,
+                String(Date.now() + LEASE_TTL_MS),
+                'XX',
+                'PX',
+                String(LEASE_TTL_MS * 10),
+              )
+              .catch(() => {})
+          }, LEASE_RENEW_MS)
+          renew.unref()
+
           await handler(job.payload)
           await client.lrem(processingKey, 1, raw)
         } catch (err) {
@@ -472,7 +483,7 @@ export class QueueManager {
             )
           }
         } finally {
-          clearInterval(renew)
+          if (renew) clearInterval(renew)
           if (tenant !== undefined) {
             const counts = this.tenantInFlight.get(queueName)
             if (counts) {

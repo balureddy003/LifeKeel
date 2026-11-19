@@ -437,6 +437,14 @@ export const migrations: Migration[] = [
       await db.collection('action_receipts').createIndex({ tenant_id: 1, executed_at: 1, id: 1 })
     },
   },
+  {
+    // DeliveryRetryWorker sweeps {state:'identified', created_at} across all
+    // tenants every cron cycle — the tenant-first indexes can't serve it.
+    id: '20261119000000-insights-retry-sweep-index',
+    up: async (db) => {
+      await db.collection('insights').createIndex({ state: 1, created_at: 1 })
+    },
+  },
 ]
 
 export interface MigrationResult {
