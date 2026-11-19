@@ -12,42 +12,31 @@ done
 
 if command -v podman >/dev/null; then
   if ! podman info >/dev/null 2>&1; then
-    podman machine start || fail 'Could not start Podman. See STARTER.md.'
+    if [[ $(uname -s) == Darwin ]]; then
+      podman machine start || fail 'Could not start Podman. Check podman machine list and STARTER.md.'
+    fi
+    podman info >/dev/null || fail 'Could not connect to Podman. See STARTER.md.'
   fi
+  podman compose version >/dev/null || fail 'Install a Podman Compose provider. See STARTER.md.'
   compose=(podman compose -f compose.local.yml)
 elif command -v docker >/dev/null; then
   docker info >/dev/null 2>&1 || fail 'Start Docker first.'
+  docker compose version >/dev/null || fail 'Install Docker Compose. See STARTER.md.'
   compose=(docker compose -f compose.local.yml)
 else
   fail 'Install Podman or Docker with Compose support first.'
 fi
 
-free_port() {
-  local port="$1" pid command_line attempt
-  local listeners
-  listeners=$(lsof -nP -t -iTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
-  for pid in $listeners; do
-    command_line=$(ps -p "$pid" -o comm= 2>/dev/null || true)
-    case "$command_line" in
-      *[Cc]hrome*|*[Cc]hromium*|*[Ff]irefox*|*[Bb]rave*|*[Ss]afari*|*[Ee]dge*)
-        fail "Port $port belongs to a browser; leaving it running. Free that port manually."
-        ;;
-    esac
-    printf 'Stopping PID %s on port %s\n' "$pid" "$port"
-    kill -TERM "$pid" 2>/dev/null || true
-    for attempt in {1..30}; do
-      kill -0 "$pid" 2>/dev/null || break
-      sleep 0.1
-    done
-    if kill -0 "$pid" 2>/dev/null; then
-      kill -KILL "$pid" 2>/dev/null || true
-    fi
-  done
-  [[ -z $(lsof -nP -t -iTCP:"$port" -sTCP:LISTEN 2>/dev/null || true) ]] || fail "Port $port is still occupied."
+check_port() {
+  local port="$1" listeners
+  if listeners=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null); then
+    printf '%s\n' "$listeners" >&2
+    fail "Port $port is already in use. Stop its listener before launching LifeKeel."
+  fi
 }
 
-free_port 3001
-free_port 3002
+check_port 3001
+check_port 3002
 
 # Compose manages infrastructure listeners; never kill Podman's shared port forwarder.
 "${compose[@]}" up -d

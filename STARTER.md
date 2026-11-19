@@ -1,10 +1,8 @@
 # LifeKeel implementation and onboarding guide
 
-Repository snapshot: `a4d9d03` on `main` (through PR #202), reviewed on 23 October 2026.
-This guide describes the checked-out implementation. It does not certify a live
-deployment. **Railway and AWS sections are proposed runbooks; their resources,
-workflows, and routing changes have not been provisioned by this document.**
-The existing local setup instructions and launcher guidance are retained below.
+Reviewed against `main` at `44db7d0b` (through PR #515) on 19 November 2026.
+The repository ships Cloud Run and Firebase release workflows. Railway and AWS
+are proposed deployment paths.
 
 ## Reading paths and contents
 
@@ -20,7 +18,7 @@ The existing local setup instructions and launcher guidance are retained below.
 2. [Product and capability map](#product-and-capability-map) — implemented scope and Free versus Plus.
 3. [HLD and repository map](#hld-and-repository-map) — system context, dependencies, deployment units.
 4. [LLD and data model](#lld-and-data-model) — API, UI, deterministic math, ER diagrams, consistency.
-5. [Numbered end-to-end flows](#numbered-end-to-end-flows) — F01–F18; every sequence numbers its messages.
+5. [Numbered end-to-end flows](#numbered-end-to-end-flows) — F01–F19.
 6. [LLM and model integration](#llm-and-model-integration) — task routing, models, controls, failure paths.
 7. [Configuration and background operation](#configuration-and-background-operation).
 8. [Railway deployment plan](#railway-deployment-plan).
@@ -37,8 +35,8 @@ use `file:line`; line numbers are navigation hints at this snapshot.
 ## Local setup
 
 The fastest path from a fresh clone to the app running at <http://localhost:3002>.
-MongoDB and Redis run in Podman; the API and web app run natively with pnpm so
-hot reload and debuggers work. For CI-mirror checks see
+MongoDB, Redis, Mailpit and ClamAV run in Podman. Run the API and web app
+natively with pnpm for hot reload and debugging. For CI-mirror checks see
 [docs/local-testing.md](docs/local-testing.md); for debugging and seeded data see
 [docs/local-debugging.md](docs/local-debugging.md).
 
@@ -48,39 +46,52 @@ hot reload and debuggers work. For CI-mirror checks see
 | API (Fastify) | http://localhost:3001 | pnpm |
 | MongoDB 7 | 127.0.0.1:27017 | Podman |
 | Redis 7 | 127.0.0.1:6379 | Podman |
-| Mailpit (email inbox) | http://localhost:8025 | Podman |
+| Mailpit (email inbox / SMTP) | http://localhost:8025 / 127.0.0.1:1025 | Podman |
+| ClamAV (document scanner) | 127.0.0.1:3310 | Podman |
 
 ### 1. Prerequisites
 
 - Node 22.12+ (`node -v`)
 - pnpm 8.15.5: `corepack enable && corepack prepare pnpm@8.15.5 --activate`
-- Podman 5+ with Compose support (`podman compose` uses `podman-compose` or
-  `docker-compose` under the hood):
+- Podman with a Compose provider. On macOS, install any missing prerequisites
+  with Homebrew and use the rootless Podman machine.
 
 ```bash
 brew install podman podman-compose
-podman machine init        # first time only
-podman machine start
+podman machine list
+podman machine init       # only if there is no machine
+podman machine start      # only if the machine is stopped
+podman info
+podman compose version
 ```
+
+On Linux, use the native rootless Podman engine and a Compose provider.
+Podman can use either `docker-compose` or `podman-compose` without a Docker
+daemon. To select an installed provider, set `PODMAN_COMPOSE_PROVIDER` to its
+executable path. [Podman Compose reference](https://docs.podman.io/en/stable/markdown/podman-compose.1.html)
 
 ### 2. Environment files
 
 Both are gitignored by the `.env*` rule in `.gitignore`. Never commit them.
 
 ```bash
-cp .env.example .env
-cp apps/web/.env.example apps/web/.env
+test -f .env || cp .env.example .env
+test -f apps/web/.env || cp apps/web/.env.example apps/web/.env
 ```
 
 Then edit the root `.env`:
 
 ```bash
-JWT_SECRET=<openssl rand -hex 32>               # required, 32+ chars
-SETTINGS_ENCRYPTION_KEY=<openssl rand -hex 32>  # 32-byte hex
+# Generate each secret separately with openssl rand -hex 32.
+JWT_SECRET=replace_with_generated_secret
+SETTINGS_ENCRYPTION_KEY=replace_with_generated_key
+PORT=3001
 MONGODB_URL=mongodb://127.0.0.1:27017
 MONGODB_DB=lifekeel
 REDIS_URL=redis://127.0.0.1:6379
 CORS_ORIGIN=http://localhost:3002
+SERVICE_ROLE=all
+DOCUMENTS_STORAGE=gridfs
 
 # Email to Mailpit (see "Testing email" below)
 MAILPIT_URL=http://localhost:8025
@@ -88,6 +99,11 @@ SENDGRID_API_KEY=SG.local-mailpit-placeholder
 SENDGRID_FROM_EMAIL=accounts@lifekeel.test
 EMAIL_VERIFICATION_ENABLED=true
 ```
+
+Set `NEXT_PUBLIC_API_URL=http://localhost:3001` in `apps/web/.env`. Keep both
+apps on `localhost` in the browser so the app origin matches the API's CORS
+configuration. For local scanner checks, wait for ClamAV to become healthy,
+then set `CLAMD_HOST=127.0.0.1` and `CLAMD_PORT=3310` in the root `.env`.
 
 Provider credentials (LLM, Google OAuth, Stripe test keys, VAPID) are optional
 for basic local record-keeping; dependent features can be unavailable or return
@@ -102,13 +118,11 @@ After creating both environment files, run from the repository root:
 ./start.sh
 ```
 
-The launcher starts Podman (or uses a running Docker daemon), starts MongoDB,
-Redis and Mailpit with Compose, builds the API workspace dependencies, and runs
-the API on port 3001 and web on port 3002. Existing listeners on those two app
-ports are stopped first. Firefox, Chrome and other browser processes are left
-running; the launcher refuses to stop a browser if it owns an app port.
-Infrastructure ports are managed through Compose, so an unrelated service on
-27017, 6379, 8025 or 1025 must be stopped separately.
+The launcher uses Podman when available and starts an existing stopped machine
+on macOS. It falls back to Docker Compose when Podman is absent. It starts the
+four backing services, builds the API workspace dependencies, and starts the
+API on 3001 and web on 3002. If either app port is occupied, it reports the
+listener and exits. Compose reports conflicts on the backing-service ports.
 
 It prints the temporary log directory and waits for both apps to respond.
 Ctrl+C stops the API and web started by the launcher and keeps the containers
@@ -118,19 +132,17 @@ and their data running. The manual steps below remain available.
 
 ```bash
 podman compose -f compose.local.yml up -d
-podman compose -f compose.local.yml ps      # mongodb, redis, mailpit "Up"
+podman compose -f compose.local.yml ps
 ```
 
-`compose.local.yml` uses fully qualified image names (`docker.io/library/...`)
-because Podman does not default to Docker Hub, and binds ports to 127.0.0.1
-only. It also works with `docker compose`.
+Compose binds published backing-service ports to `127.0.0.1`. MongoDB data
+and ClamAV signatures use named volumes. ClamAV can take several minutes to
+load signatures on first boot. Check it independently of API readiness.
 
 ### 4. Install, build, run
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm turbo run build --filter=@lifekeel/api...   # builds packages/* the API imports
-
 pnpm --filter @lifekeel/api dev:watch   # terminal 1, http://localhost:3001
 pnpm --filter @lifekeel/web dev         # terminal 2, http://localhost:3002
 ```
@@ -140,8 +152,11 @@ pnpm --filter @lifekeel/web dev         # terminal 2, http://localhost:3002
 ### 5. Check it works
 
 ```bash
-curl -s localhost:3001/health         # inspect detector and connector counts
-curl -s localhost:3001/health/ready   # mongodb + redis "connected"
+curl -fsS http://localhost:3001/health
+curl -fsS http://localhost:3001/health/ready
+curl -fsS -o /dev/null http://localhost:3002/
+curl -fsS http://localhost:8025/api/v1/messages
+podman compose -f compose.local.yml exec -T clamav clamdscan --ping 1
 ```
 
 Open <http://localhost:3002> and sign up with any address (use a `.test`
@@ -169,9 +184,10 @@ links.
 - Without Mailpit, unset `MAILPIT_URL`, `SENDGRID_API_KEY` and
   `EMAIL_VERIFICATION_ENABLED`: accounts are then auto-verified and email is
   skipped with a log warning.
-- To send real email instead of capturing it, set `RESEND_API_KEY` (Resend,
-  cheaper) or a real `SENDGRID_API_KEY` — `RESEND_API_KEY` wins if both are
-  set. The sender domain must be verified with the provider; set
+- Mailpit takes precedence over real providers when configured. For a real
+  email environment, unset `MAILPIT_URL` and configure `RESEND_API_KEY` or a
+  real `SENDGRID_API_KEY`. Resend wins if both keys are set. Verify the sender
+  domain with the provider and set
   `EMAIL_FROM` to an address on it. The API logs `Resend email transport
   enabled` at boot when Resend is active.
 
@@ -203,15 +219,23 @@ rendering an address does not establish marketing-law compliance.
 ### Stop and reset
 
 ```bash
-podman compose -f compose.local.yml down       # stop, keep data
-podman compose -f compose.local.yml down -v    # stop and wipe MongoDB data
-podman exec -it lifekeel-local-mongodb-1 mongosh lifekeel   # inspect data
+podman compose -f compose.local.yml exec mongodb mongosh lifekeel
+podman compose -f compose.local.yml down       # remove containers, retain named volumes
 ```
+
+For a deliberate reset, `podman compose -f compose.local.yml down --volumes`
+also deletes the local MongoDB data and ClamAV signature cache. Mailpit uses
+container storage, so removing its container clears the local inbox.
 
 ### Gotchas
 
-- **Port already in use.** Another project's Redis/Mongo/Mailpit on
-  6379/27017/8025/1025 will block startup. `lsof -nP -iTCP:6379 -sTCP:LISTEN` finds it.
+- **Port already in use.** Check the reported port with
+  `lsof -nP -iTCP:6379 -sTCP:LISTEN` (substitute the actual port). Compare
+  `podman ps` and the Compose project before stopping any container. On macOS
+  the listener for a published port can be Podman's shared VM forwarder.
+- **Podman connection or Compose error.** Check `podman machine list` on
+  macOS, then `podman info` and `podman compose version`. Fix the first
+  failing command before starting the app.
 - **Don't run `pnpm typecheck`/`pnpm build` while `next dev` is running.** It
   overwrites `apps/web/.next`; the page then renders unstyled. Stop the dev
   server, `rm -rf apps/web/.next`, restart.
@@ -235,11 +259,11 @@ documents, assets, legacy records, and derived views. “Keel HQ” describes th
 household orchestration experience; member “agents” assemble scoped views and
 nudges. These names do not imply an unrestricted autonomous agent fleet.
 
-A useful first journey is: sign up → create family → add members → enter
-finances → inspect readiness/insights → upload a policy → review extracted
-fields → apply confirmed facts → ask a question → rehearse an income change.
-Estate records, continuity contacts, and notification preferences deepen that
-foundation. A scenario is hypothetical; reporting a life event is a real record.
+Start with a family list entry in `/domains`, then try a household brief in
+`/briefs` or the first steps for a life event. Add synthetic income, spending
+and savings to see the assumptions and figures behind `/resilience`. For the
+document journey, upload a policy, review suggested fields, and apply the
+confirmed facts. Ask Keel is available from the signed-in shell when enabled.
 
 ### Pages, behavior, and implementation ownership
 
@@ -251,6 +275,10 @@ features. Route visibility in the browser is not the authorization boundary.
 | `/`, `/readiness`, `/guides`, `/blog`, `/trust`, `/ai-processing` | Learn the proposition, public readiness journey, read guidance and processing disclosures | `routes/leads.ts`, `blog.ts`, `trust.ts`, `ai-disclosure.ts`; public claims must match code and evidence |
 | `/signup`, `/login`, `/verify-email`, `/reset-password`, `/auth/callback` | Account registration, verification, recovery, social sign-in, MFA where enabled | `routes/auth-users.ts`, `auth-social.ts`, `auth/totp.ts`; provider credentials required for social login |
 | `/welcome`, `/family-setup`, `/family`, `/invite/[code]` | Create household, maintain roster, invite or request membership | `routes/family-group.ts`, `family-join.ts`; a roster member is not automatically a login |
+| `/domains`, `/cover` | Add and edit family-list records, review who is covered, confirm the list as an adult | `routes/family-domains.ts`; editor access is explicit and sentence capture presents a draft before saving |
+| `/briefs` | Preview dated money and handover questions, vary figures, save or share a brief | `routes/family-briefs.ts`; deterministic previews, single-adult saves and optional governed narration |
+| `/resilience`, `/resilience/businesses` | Estimate runway under income loss or an earner's death, confirm the figures used, and record how a business pays the household | `routes/family-resilience.ts`, `family-businesses.ts`; visibility is restricted to eligible household adults |
+| `/resilience/sharing` | Review the consent disclosure and manage participation | `routes/family-learning.ts`; release flag and privacy review required; all eligible adults must opt in |
 | `/financial-profile`, `/finances` | Enter household/member earnings, savings, pensions, education funds and policies | `routes/family-financial-profile.ts`; money in integer minor units; household edits require authorized editor |
 | `/health`, `/health/[domain]` | Read deterministic readiness and component explanations | `routes/family-readiness.ts`, `readiness/score.ts`; “health” here is readiness, not medical records |
 | `/member/[id]`, `/map` | Read member twins, attributed insights, nudges, family relationships | `routes/member-twin.ts`, `member-nudges.ts`; youth view is redacted and role-aware |
@@ -259,15 +287,27 @@ features. Route visibility in the browser is not the authorization boundary.
 | `/operator/mission` | Ranked operator decision queue, shadow-mode review | `routes/operator.ts`, `operator/mission-control.ts` |
 | `/upload`, `/documents`, `/documents/[id]` | Upload/capture documents, inspect processing, confirm/edit/reject extraction candidates, apply to profile | `routes/documents.ts`, `ocr/`, `extraction/`; Free storage differs from Plus extraction |
 | `/assistant` | Ask about household/member records and simulate changes | `routes/assistant.ts`, `assistant/verified-answer.ts`, `scenarios/`; deterministic answers precede generation |
+| Signed-in Ask Keel panel | Use guided setup, presets and conversation history; report a concern on an AI-generated reply | `keel-agent/routes.ts`; web panel defaults on in dev and requires `NEXT_PUBLIC_KEEL_PANEL=on` in production |
 | `/events`, `/events/[eventId]`, `/life-events`, `/life-events/[eventId]` | Work through event-related information, playbooks, checklists and reminders | `routes/life-events.ts`, `life-events/`, `playbooks/`; no autonomous legal/medical/insurance action |
 | `/cashflow` | Record recurring income/expenses and see monthly run-rate/runway | `routes/family-cashflow.ts`; one-off entries do not enter recurring burn |
 | `/assets`, `/asset/[id]` | Maintain declared assets and ownership/context links | `routes/family-assets.ts`; user-declared records are not verified legal title |
 | `/vault`, `/legacy` | Store protected estate files and map documents, contacts, roles and knowledge | `routes/vault.ts`, `family-legacy.ts`; vault adult-only; legacy visibility can narrow further |
 | `/connect`, `/connect/email`, `/connect/open-banking` | Connect mailboxes or account-information sources and inspect status | `routes/family-connectors.ts`, `email/`, `open-banking/`; production banking consent is partner-dependent |
 | `/settings`, `/settings/automation`, `/upgrade` | Preferences, continuity, AI/billing settings, bounded automation, Plus checkout/portal | `routes/family-continuity.ts`, `automation-settings.ts`, `billing.ts` |
-| `/receipts`, `/audit-log`, `/support`, `/account-deleted` | Inspect outcomes/history, request support, export/delete account | `routes/family-receipts.ts`, `audit-log.ts`, `support.ts`, `account.ts` |
+| `/receipts`, `/audit-log`, `/support`, `/account-deleted` | Inspect outcomes, household activity and permitted staff-access history, request support, export/delete account | `routes/family-receipts.ts`, `audit-log.ts`, `support.ts`, `account.ts`; staff-access entries disclose the action and time |
 | `/operator/*`, `/marketing` | Operate tenants/users, AI quality/cost, support, campaigns, social content, promotions, queues and configuration | `routes/operator.ts`, `operator/`, `marketing/`; separate platform roles, recent-auth and selected dual-control gates |
 | `/privacy`, `/terms`, `/security`, `/cookies`, `/legal/*` | Public policy and security information | Keep copy consistent with processing, retention, and deployed controls |
+
+### Engine additions and rollout gates
+
+| Area | Implementation and rollout state |
+| --- | --- |
+| Resilience | Monthly cash-flow calculations and combined shocks live in `apps/api/src/resilience/`. The household route exposes income-stop and, where figures permit, earner-death estimates. It cites the event-rate set, shows which figures were used and versions adult confirmations per estimate. The business screen models lost income when a recorded business stops. |
+| Statement ingestion | Bank statement fields pass mechanical checks and reconciliation before becoming suggestions. Zod schemas, content-free metrics and a selective-risk module exist. Review and apply remain the customer workflow. Operators can read aggregate extraction and confirmation metrics through `GET /operator/engine-metrics`. |
+| Docling | Optional PDF/DOCX extraction worker, enabled by `DOCLING_SERVICE_URL`, with fallback to the API parser. The Cloud Run sidecar specification calls for a dark deploy and fixture accuracy evaluation before routing API traffic. [Sidecar guide](infra/docling-service/README.md) |
+| Anomaly flags and tax | The deterministic median/MAD baseline is implemented. CatBoost has a synthetic fixture evaluation and no API call site. Its measured recall gain is below the proposed ten-point threshold. PolicyEngine was dropped from this scope. [Engine completion intent](docs/intents/97-engine-stack-completion.md) |
+| MCP and consent | Set `LIFEKEEL_MCP_ENABLED=true` to expose authenticated `POST /mcp` with one read-only resilience tool. It returns household figures to the connected client. Cross-tenant sharing defaults off and has a separate privacy-review and household consent gate. Withdrawal removes the household contribution. |
+| Assurance | Security audit rows are sealed into a daily hash chain. The integrated management system records policy, audit and certification-readiness work in [docs/ims](docs/ims/README.md). |
 
 ### Free versus Keel Plus: product promises and actual gates
 
@@ -379,7 +419,7 @@ flowchart LR
   ScanWorker --> Redis
   Reconciler["Stripe reconciler / drift check"] --> Stripe
   Jobs --> Mail["Mailbox providers / connector APIs"]
-  Jobs --> Delivery["SendGrid / Twilio / web push / FCM"]
+  Jobs --> Delivery["Resend / SendGrid / Twilio / web push / FCM"]
 ```
 
 The Cloudflare, Turnstile, email OTP and R2 pieces are flag-gated (see
@@ -389,13 +429,13 @@ behaves as before (GridFS storage, no Turnstile, no OTP). Cloudflare is a
 storage and edge-protection sub-processor only; no Cloudflare AI or content
 inspection feature is enabled on the buckets.
 
-API and jobs use the same image and shared modules. The scan worker is a third
-deployment of that image (`node dist/scan-worker.js`), not a `SERVICE_ROLE`.
-With the default
-`SERVICE_ROLE=all`, both run inside the API process. With `api`, background work
-is disabled. With `jobs`, background work runs **and HTTP routes still exist**;
-keep that service private. `SERVICE_ROLE` is not a complete HTTP access-control
-mechanism. See `apps/api/src/server.ts:298`.
+API and jobs use the same image and shared modules. The R2 scan worker runs
+through its own entry point (`node apps/api/dist/scan-worker.js`).
+`SERVICE_ROLE=all` runs HTTP, inline timers and queue consumers in one process.
+`SERVICE_ROLE=api` registers authenticated scheduler hooks and defaults to
+disabling inline timers and consumers. `SERVICE_ROLE=jobs` runs background work
+and still registers HTTP routes, so keep the service private. See
+`apps/api/src/server.ts:290`.
 
 ### Layers and dependency direction
 
@@ -788,7 +828,7 @@ An optional reference may be absent; do not treat diagrams as schema validators.
 
 ## Numbered end-to-end flows
 
-F01–F18 are stable flow identifiers. Sequence messages use Mermaid `autonumber`;
+F01–F19 are stable flow identifiers. Sequence messages use Mermaid `autonumber`;
 read each arrow in order. They show application-level calls and significant
 branches, not every helper invocation or a distributed transaction. Deployment
 promotion is separately numbered in the release section.
@@ -815,6 +855,7 @@ promotion is separately numbered in the release section.
 | F16 | Export/delete → erasure receipt → restore reconciliation | `apps/api/src/routes/account.ts:151`, `erasure.ts:213` |
 | F17 | Operator/campaign/social change → authorized effect | `apps/api/src/operator/operator-auth.ts:1`, `marketing/social-publisher.ts:1` |
 | F18 | Cashflow/asset record → computed view / estate references | `apps/api/src/routes/family-cashflow.ts:59`, `family-assets.ts:70` |
+| F19 | Household figures → resilience estimate → adult confirmation | `apps/api/src/routes/family-resilience.ts:242` |
 
 ### F01 — registration, login and session lifecycle
 
@@ -1009,7 +1050,8 @@ sequenceDiagram
   participant API as Documents route
   participant Scan as Upload scanner
   participant DB as Metadata and GridFS
-  participant Extract as OCR/extraction
+  participant Queue as Document extraction queue
+  participant Extract as Extraction worker
   participant Gateway as Governed model task
   Person->>Web: Select file or native camera capture
   opt Device screening available
@@ -1025,7 +1067,10 @@ sequenceDiagram
     API->>DB: Store blob and metadata with scan result
     API-->>Web: 201 with document ID and current status
     alt Effective plan allows extraction and scan permits parsing
-      API->>Extract: Start asynchronous processing
+      API->>DB: Record extraction job state
+      API->>Queue: Publish document ID and tenant ID
+      Queue->>Extract: Deliver job to consumer
+      Extract->>DB: Read tenant-scoped source and scan result
       Extract->>Gateway: Governed local decision or permitted vision extraction
       Gateway-->>Extract: Structured candidate output or policy/provider failure
       Extract->>DB: Save grounded candidates/provenance or honest failure status
@@ -1037,11 +1082,12 @@ sequenceDiagram
   end
 ```
 
-At this snapshot initial upload extraction is an in-process asynchronous task,
-not universally a durable queue job. A process termination can interrupt it;
-retry/reprocessing paths are separate. `MALWARE_SCAN_REQUIRED` defaults true in
-production. An absent/unavailable scanner must not be reported as clean or
-silently handed to a parser. A Plus plan alone cannot make extraction ready.
+The upload returns a document ID for polling. Publishing a job can fail while
+the upload succeeds. The reconciler republishes pending work and recovers
+stale jobs from MongoDB. The worker caps extraction attempts at three and
+stores a terminal failure state for the UI. `MALWARE_SCAN_REQUIRED` defaults
+true in production. Check the scan outcome, entitlement and consumer before
+diagnosing why extraction is unavailable.
 
 ### F05b — R2 upload, scan and promotion (flag-gated)
 
@@ -1079,7 +1125,7 @@ sequenceDiagram
   W->>C: PUT verified bytes
   W->>DB: Row clean, ocr_pending, commit quota
   W->>Q: Delete quarantine copy
-  Note over API,DB: A 1-minute cron then dispatches OCR for clean rows
+  Note over API,DB: A 1-minute cron queues eligible clean rows for extraction
   Web->>API: GET /documents/:id?mode=url
   API-->>Web: Presigned GET (60 seconds)
 ```
@@ -1636,6 +1682,39 @@ Asset records and estate references do not establish ownership, inheritance or
 legal validity. Changes here should not silently overwrite unrelated profile
 fields or simulate a bank synchronization that did not happen.
 
+### F19 — household resilience and figure confirmation
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor Adult
+  participant UI as Resilience page
+  participant API as Family resilience route
+  participant DB as MongoDB
+  participant Engine as Monthly cash-flow solver
+  Adult->>UI: Open resilience
+  UI->>API: GET /family/resilience
+  API->>DB: Read tenant household and financial profile
+  API->>API: Check adult membership
+  alt Required figures are available
+    API->>Engine: Compute estimate from recorded figures
+    Engine-->>API: Range, assumptions and rate-set version
+    API->>DB: Read prior confirmations by figures version
+    API-->>UI: Estimates, figures and confirmation state
+    Adult->>UI: Confirm the figures
+    UI->>API: POST /family/resilience/confirm
+    API->>DB: Reload figures and record versioned facts
+    API-->>UI: Confirmation accepted
+  else Required figures are missing
+    API-->>UI: Show which inputs are missing
+  end
+```
+
+An edit invalidates confirmation for the estimates that depend on the changed
+figure. Use `bash scripts/engine-verify.sh` after building the API workspace
+dependencies to run the resilience tests and detector, informational-action
+and advice-rule checks.
+
 ## LLM and model integration
 
 ### What needs a model, and what does not
@@ -1834,6 +1913,7 @@ reading or publishing an existing private `.env`.
 | `NODE_ENV`, `LIFEKEEL_DEPLOYMENT_MODE` | API/jobs | Production uses `NODE_ENV=production`, `LIFEKEEL_DEPLOYMENT_MODE=cloud` for both proposed clouds |
 | `PORT` | API/jobs | Server binds `0.0.0.0`; default 3001; health-check port must match |
 | `SERVICE_ROLE` | API/jobs | Explicitly set `api` or `jobs`; unset defaults to combined `all`; jobs service must remain private |
+| `CRON_TRIGGER_TOKEN`, `INLINE_CRONS`, `QUEUE_CONSUMERS` | API/jobs | Scheduler bearer token required outside dev. The API-only role can explicitly enable inline timers or queue consumers with `on` |
 | `MONGODB_URL`, `MONGODB_DB` | API/jobs | Real MongoDB with isolated environment database and backup plan; required production URL |
 | `REDIS_URL`, `QUEUE_MODE` | API/jobs | Durable Redis; explicitly `QUEUE_MODE=required` in cloud; use authenticated/TLS endpoint as provided |
 | `JWT_SECRET` | API/jobs | Required, at least 32 characters; generate strong independent environment secret |
@@ -1843,6 +1923,9 @@ reading or publishing an existing private `.env`.
 | `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_API_BASE_PATH`, `NEXT_PUBLIC_SAME_ORIGIN_API` | Web build | Compile correct public API or `/api` routing; same-origin flag requires a functioning proxy |
 | `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`, `EMAIL_VERIFICATION_ENABLED`, `EMAIL_POSTAL_ADDRESS` | API/jobs | Real verified email transport and desired verification posture; no Mailpit in production |
 | `MAILPIT_URL` | Local only | Local capture transport; refuses production use |
+| `DOCLING_SERVICE_URL` | Extraction consumer | Optional private PDF/DOCX parser address; falls back to local parsing |
+| `LIFEKEEL_MCP_ENABLED` | API | Defaults off; enables the authenticated read-only resilience tool |
+| `LIFEKEEL_CROSS_TENANT_LEARNING`, `LEARNING_PRIVACY_REVIEW_REF` | API | Defaults off; release requires a recorded privacy review and household participation still requires consent |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | API/jobs | Sign-in/Gmail OAuth; separate environment callback and grants |
 | `STRIPE_SECRET_KEY`, `LIFEKEEL_STRIPE_WEBHOOK_SECRET`, `BILLING_V2_ENABLED` | API/jobs | Separate test/live values, configured price table, signed webhook and ledger rollout |
 | `LIFEKEEL_LLM_PROVIDER`, provider-specific credentials | API/jobs | Explicit provider selection plus task/processor approval; optional features fail honestly when absent |
@@ -1899,10 +1982,11 @@ cloud required mode refuses durable publishes when unavailable unless a job is
 explicitly marked inline-safe. Multi-step Redis transitions can still have crash
 windows; persist authoritative business state and reconcile important outcomes.
 
-The jobs role owns consumers and cron timers. Mongo `cron_locks` prevent normal
-replica races for named cron runs; verify lock lifetime/renewal for long work.
-Do not run an extra external scheduler over the same job without designing the
-ownership and idempotency contract.
+The `jobs` and `all` roles run consumers and cron timers. The `api` role exposes
+`POST /internal/cron/:name` for Cloud Scheduler and defaults its inline timers
+and consumers off. A scheduler trigger runs a registered job, so configure a
+persistent consumer for queue-backed work. Mongo `cron_locks` coordinate named
+runs. Choose one timer owner for each job and verify long-running lock behavior.
 
 | Scheduled work | Current cadence / control | Why it exists |
 | --- | --- | --- |
@@ -2249,8 +2333,8 @@ notification channels and operational ownership before committing to capacity.
 
 ### Current delivery versus proposed delivery
 
-The current repository has manually dispatched Cloud Run API and Firebase web
-workflows, with exact-SHA CI checks. API deployment creates a canary revision,
+The current repository has manually dispatched Cloud Run API, Firebase web
+and isolated staging workflows. API deployment gates on exact-SHA CI and creates a canary revision,
 checks readiness/migrations, promotes traffic, and attempts rollback if post-
 promotion checks fail. This is workflow implementation evidence, not proof of
 current production health. See `.github/workflows/deploy-api.yml:228` and
@@ -2338,7 +2422,6 @@ Do not rotate encryption values by randomly replacing them in a deployment UI.
 9. Exercise vault/legacy permissions and continuity configuration. Confirm a
    child cannot read adult estate files and that no alert grants file access.
 10. Make a small scoped change, run appropriate checks and inspect the diff.
-    Follow the requested delivery scope; this documentation task creates no PR.
 
 ### Safe ways to extend the project
 
