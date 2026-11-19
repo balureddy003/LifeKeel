@@ -40,6 +40,10 @@ import { buildEstateSignal } from '../legacy/estate-signal.js'
 import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
 import { markBriefsStale } from '../briefs/briefs.js'
 
+/** Largest amount accepted in minor units (£1 billion): catches typos and absurd values before they reach an estimate. */
+export const MAX_MINOR = 100_000_000_000
+const money = () => z.number().int().nonnegative().max(MAX_MINOR)
+
 const FAMILY_DETECTOR_IDS = [
   'family_protection_gap',
   'family_emergency_fund_adequacy',
@@ -70,17 +74,17 @@ export const FinancialProfileSchema = z.object({
     // protect via this policy type (retired is covered by the retirement
     // detector instead).
     employment_status: z.enum(['employed', 'self_employed', 'unemployed', 'retired']),
-    monthly_salary_minor: z.number().int().nonnegative(),
-    annual_living_expenses_minor: z.number().int().nonnegative(),
-    mortgage_outstanding_minor: z.number().int().nonnegative().default(0),
-    life_cover_minor: z.number().int().nonnegative().default(0),
-    income_protection_monthly_minor: z.number().int().nonnegative().default(0),
+    monthly_salary_minor: money(),
+    annual_living_expenses_minor: money(),
+    mortgage_outstanding_minor: money().default(0),
+    life_cover_minor: money().default(0),
+    income_protection_monthly_minor: money().default(0),
     // Total monthly debt-service payments excluding the mortgage (cards,
     // loans, finance agreements) — feeds family_debt_health's DTI check.
     // Mortgage is deliberately separate (mortgage_outstanding_minor
     // already exists, and the 36% guideline conventionally measures
     // non-housing debt service).
-    monthly_debt_payments_minor: z.number().int().nonnegative().default(0),
+    monthly_debt_payments_minor: money().default(0),
     // Intent 26: free-text context for income the numeric fields can't
     // express — seasonal work, irregular contracts, benefits that vary.
     // Read by Ask Keel as grounding context; never parsed into figures
@@ -110,36 +114,36 @@ export const FinancialProfileSchema = z.object({
         z.object({
           member_id: z.string().min(1),
           employment_status: z.enum(['employed', 'self_employed', 'unemployed', 'retired']),
-          monthly_salary_minor: z.number().int().nonnegative(),
-          income_protection_monthly_minor: z.number().int().nonnegative().default(0),
-          pension_balance_minor: z.number().int().nonnegative().optional(),
-          monthly_pension_contribution_minor: z.number().int().nonnegative().optional(),
+          monthly_salary_minor: money(),
+          income_protection_monthly_minor: money().default(0),
+          pension_balance_minor: money().optional(),
+          monthly_pension_contribution_minor: money().optional(),
         }),
       )
       .default([]),
   }),
   emergency_fund: z.object({
-    emergency_savings_minor: z.number().int().nonnegative(),
-    monthly_expenses_minor: z.number().int().nonnegative(),
+    emergency_savings_minor: money(),
+    monthly_expenses_minor: money(),
     has_high_interest_debt: z.boolean().default(false),
-    high_interest_debt_balance_minor: z.number().int().nonnegative().default(0),
+    high_interest_debt_balance_minor: money().default(0),
   }),
   retirement: z.object({
     current_age: z.number().int().positive(),
     target_retirement_age: z.number().int().positive(),
-    pension_balance_minor: z.number().int().nonnegative(),
-    monthly_contribution_minor: z.number().int().nonnegative(),
-    target_retirement_income_minor: z.number().int().nonnegative(),
+    pension_balance_minor: money(),
+    monthly_contribution_minor: money(),
+    target_retirement_income_minor: money(),
     expected_annual_growth_pct: z.number().min(0).max(20).default(5),
   }),
   education_funds: z
     .array(
       z.object({
         child_name: z.string().min(1),
-        child_age: z.number().int().nonnegative(),
-        current_savings_minor: z.number().int().nonnegative(),
-        target_savings_minor: z.number().int().nonnegative(),
-        years_remaining: z.number().int().nonnegative(),
+        child_age: money(),
+        current_savings_minor: money(),
+        target_savings_minor: money(),
+        years_remaining: money(),
         // Optional link to a family_groups roster member (role 'child') —
         // mirrors policies[].member_id (PRD-110). Not validated against the
         // roster server-side (same posture as that field): a stale/removed
@@ -175,8 +179,8 @@ export const FinancialProfileSchema = z.object({
           'travel',
         ]),
         provider: z.string().min(1),
-        coverage_amount_minor: z.number().int().nonnegative().default(0),
-        monthly_premium_minor: z.number().int().nonnegative().default(0),
+        coverage_amount_minor: money().default(0),
+        monthly_premium_minor: money().default(0),
         // ISO date string (e.g. "2027-03-01"), optional — a policy with no
         // known renewal date simply never contributes to the renewal-window
         // rule, rather than being rejected.
@@ -233,7 +237,7 @@ export const FinancialProfileSchema = z.object({
         premium_history: z
           .array(
             z.object({
-              amount_minor: z.number().int().nonnegative(),
+              amount_minor: money(),
               effective_from: z.string(),
             }),
           )

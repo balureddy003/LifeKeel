@@ -94,11 +94,8 @@
   :is(.lk-vivid, .lk-public) .landing.landing .lk-nav {
     display: flex;
   }
-  :is(.lk-vivid, .lk-public) .landing.landing .lk-mobile-nav {
+  :is(.lk-vivid, .lk-public) .landing.landing .lk-menu-btn {
     display: none;
-  }
-  html body:has(:is(.lk-vivid, .lk-public)) {
-    padding-bottom: 0;
   }
 }
 :is(.lk-vivid .landing, .lk-public.landing, .lk-auth.landing).landing.landing
@@ -169,7 +166,7 @@ html:has(:is(.lk-vivid, .lk-public, .lk-auth)) {
   :is(
     .lk-nav a,
     .lk-signin,
-    .lk-menu a,
+    .lk-sheet-links a,
     .lk-btn,
     .lk-btn-sm,
     .lk-textlink,
