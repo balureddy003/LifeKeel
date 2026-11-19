@@ -26,14 +26,13 @@ import { useToast } from './Toast'
 import { AuthShell } from '@/components/landing/AuthShell'
 import { MarketingLanding } from './MarketingLanding'
 import { NavRail } from './NavRail'
-import { LiquidTabBar, MobileMenu } from './AppNav'
+import { LiquidTabBar } from './AppNav'
 import { isKeelPanelEnabled } from '@/lib/keel/client'
 import { PANEL_ID, useKeelPanel } from '@/lib/keel/store'
 import { haptic } from '@/lib/haptics'
 import { firstStepWaitMessage, isFirstStepPath } from '@/lib/signup-destination'
 import { track } from '@/lib/growth-track'
 import { isNativeShell, biometricLockEnabled, verifyBiometric } from '@/lib/native'
-import { isStandalone } from '@/lib/platform'
 import { bannerDismissed } from './verify-banner'
 
 // Signed-in extras load after the first paint, so the first-time visitor's landing
@@ -243,8 +242,6 @@ export function DigestClickTracker() {
 
 function PwaInit() {
   useEffect(() => {
-    // layout.tsx sets this before paint; the Capacitor bridge can arrive after that script.
-    if (isStandalone() || isNativeShell()) document.documentElement.dataset.app = '1'
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return
     navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {})
   }, [])
@@ -803,7 +800,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       ? ''
       : 'app-content mx-auto w-full'
   const railGutter = showNav ? 'desk:pl-[88px]' : ''
-  const showHero = !isMarketingPage && !isOperatorRoute && !ownsLayout && !signedOutFallback
+  // Signed in with a family, each page's own PageHeader is the top bar (title under the
+  // Dynamic Island), so the LifeKeel hero only frames the pre-family setup screens.
+  const showHero =
+    !showNav && !isMarketingPage && !isOperatorRoute && !ownsLayout && !signedOutFallback
 
   return (
     <div className={`min-h-screen text-ink-primary ${showNav ? 'app-shell-with-rail' : ''}`}>
@@ -825,18 +825,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <MaintenanceBanner />
       <ModeEffects />
       {showNav && <NavRail />}
+      {showNav && <div className="app-statusbar z-sticky" aria-hidden="true" />}
       <div
         className={[railGutter, 'min-h-screen'].filter(Boolean).join(' ')}
         style={{ paddingRight: 'var(--keel-panel-w, 0px)' }}
       >
         {/* in flow, inside the rail gutter, so it pushes the page down instead of covering its header */}
-        {showHero && (
-          <AppHeroHeader>
-            {showEmergency && <EmergencyButton />}
-            {showAskKeel && <AskKeelButton context={pathname} />}
-            {showNav && <MobileMenu />}
-          </AppHeroHeader>
-        )}
+        {showHero && <AppHeroHeader />}
         <VerifyEmailBanner />
         <div
           id="main-content"
@@ -855,8 +850,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
       {showNav && <LiquidTabBar />}
-      {/* The installed app drops the hero (globals.css), so SOS floats above
-          the tab bar there; Ask Keel already has a tab. */}
+      {/* No hero once signed in, so SOS floats above the tab bar on phones and
+          tablets; Ask Keel already has a tab. Desktop uses the cluster below. */}
       {showEmergency && (
         <div className="app-sos-fab fixed z-fab">
           <EmergencyButton />

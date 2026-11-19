@@ -1,29 +1,12 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
-import {
-  Home,
-  Users,
-  CalendarClock,
-  Settings,
-  Bot,
-  Inbox,
-  Wallet,
-  Menu,
-  X,
-  ChevronRight,
-} from 'lucide-react'
+import { motion } from 'framer-motion'
+import { Home, Users, CalendarClock, Settings, Bot } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { haptic } from '@/lib/haptics'
-
-// Primary navigation, rendered two ways by AppShell: a tab bar in the
-// installed app (html[data-app], see layout.tsx) and a slide-in menu in a
-// browser tab, where Safari's own toolbar already crowds the bottom edge.
-// globals.css decides which one shows; both stay mounted so the switch
-// needs no JS.
 
 // Intent 35: five items at 390px, not six — the multi-device review's own
 // list (Home, Events, Ask Keel, Family, Settings). Inbox and Finances drop
@@ -37,13 +20,6 @@ const NAV_ITEMS = [
   { href: '/assistant', label: 'Ask Keel', icon: Bot },
   { href: '/family', label: 'Family', icon: Users },
   { href: '/settings', label: 'Settings', icon: Settings },
-]
-
-// The menu has room the five-slot bar doesn't, so the two surfaces cut
-// from the bar come back here.
-const MENU_EXTRA_ITEMS = [
-  { href: '/inbox', label: 'Inbox', icon: Inbox },
-  { href: '/finances', label: 'Finances', icon: Wallet },
 ]
 
 // Routes that live under a tab but aren't nested under its path segment,
@@ -154,195 +130,5 @@ export function LiquidTabBar() {
         })}
       </div>
     </nav>
-  )
-}
-
-const MENU_ID = 'app-menu'
-
-export function MobileMenu() {
-  const pathname = usePathname()
-  const [open, setOpen] = useState(false)
-  const inboxUnreadCount = useAppStore((s) => s.inboxUnreadCount)
-  const reduceMotion = useReducedMotion()
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const closeRef = useRef<HTMLButtonElement>(null)
-  const panelRef = useRef<HTMLDivElement>(null)
-  const activeIndex = activeTabIndex(pathname)
-
-  useEffect(() => {
-    setOpen(false)
-  }, [pathname])
-
-  useEffect(() => {
-    if (!open) return
-    const trigger = triggerRef.current
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    closeRef.current?.focus()
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false)
-      if (e.key !== 'Tab' || !panelRef.current) return
-      const focusable = panelRef.current.querySelectorAll<HTMLElement>('a[href], button')
-      const first = focusable[0]
-      const last = focusable[focusable.length - 1]
-      if (!first || !last) return
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault()
-        last.focus()
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault()
-        first.focus()
-      }
-    }
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.body.style.overflow = prevOverflow
-      document.removeEventListener('keydown', onKey)
-      trigger?.focus()
-    }
-  }, [open])
-
-  const slide = reduceMotion
-    ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } }
-    : { initial: { x: '105%' }, animate: { x: 0 }, exit: { x: '105%' } }
-
-  const renderItem = (
-    item: (typeof NAV_ITEMS)[number],
-    i: number,
-    active: boolean,
-    badge: number,
-  ) => (
-    <motion.li
-      key={item.href}
-      initial={reduceMotion ? false : { opacity: 0, x: 24 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{
-        delay: reduceMotion ? 0 : 0.06 + i * 0.035,
-        type: 'spring',
-        stiffness: 380,
-        damping: 30,
-      }}
-    >
-      <Link
-        href={item.href}
-        aria-current={active ? 'page' : undefined}
-        onClick={() => {
-          haptic('light')
-          setOpen(false)
-        }}
-        className={`app-menu-item ${active ? 'is-active' : ''} flex items-center gap-3 rounded-2xl px-3 py-2.5`}
-      >
-        <span className="app-menu-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
-          <item.icon
-            size={19}
-            strokeWidth={active ? 2.4 : 2}
-            className={active ? 'text-family-accent' : 'text-ink-secondary'}
-          />
-        </span>
-        <span
-          className={`flex-1 text-base font-semibold ${active ? 'text-family-accent' : 'text-ink-primary'}`}
-        >
-          {item.label}
-        </span>
-        {badge > 0 && <UnreadBadge count={badge} className="" />}
-        <ChevronRight size={16} className="text-ink-tertiary" />
-      </Link>
-    </motion.li>
-  )
-
-  return (
-    <>
-      <motion.button
-        ref={triggerRef}
-        type="button"
-        whileTap={{ scale: 0.9 }}
-        onClick={() => {
-          haptic('light')
-          setOpen(true)
-        }}
-        aria-label="Open menu"
-        aria-expanded={open}
-        aria-controls={MENU_ID}
-        className="app-menu-btn relative h-11 w-11 items-center justify-center rounded-full no-min-h"
-      >
-        <Menu size={20} className="text-ink-primary" />
-        {inboxUnreadCount > 0 && (
-          <span className="absolute top-1.5 right-1.5 h-2.5 w-2.5 rounded-full bg-danger ring-2 ring-[rgb(var(--nav-bg))]" />
-        )}
-      </motion.button>
-      <AnimatePresence>
-        {open && (
-          <div className="fixed inset-0 z-modal" id={MENU_ID}>
-            <motion.div
-              className="absolute inset-0 bg-black/35 backdrop-blur-[3px]"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              onClick={() => setOpen(false)}
-              aria-hidden
-            />
-            <motion.div
-              ref={panelRef}
-              role="dialog"
-              aria-modal="true"
-              aria-label="Menu"
-              className="app-menu-panel absolute flex flex-col"
-              {...slide}
-              transition={{ type: 'spring', stiffness: 360, damping: 36 }}
-              drag={reduceMotion ? false : 'x'}
-              dragConstraints={{ left: 0, right: 0 }}
-              dragElastic={{ left: 0, right: 0.6 }}
-              onDragEnd={(_, info) => {
-                if (info.offset.x > 80 || info.velocity.x > 500) setOpen(false)
-              }}
-            >
-              <div className="flex items-center justify-between px-4 pt-4 pb-2">
-                <div className="flex items-center gap-2.5">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/icon.svg" alt="" width={28} height={28} className="rounded-lg" />
-                  <span className="text-lg font-semibold tracking-tight">LifeKeel</span>
-                </div>
-                <button
-                  ref={closeRef}
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  aria-label="Close menu"
-                  className="app-menu-icon flex h-10 w-10 items-center justify-center rounded-full no-min-h"
-                >
-                  <X size={18} className="text-ink-secondary" />
-                </button>
-              </div>
-              <nav aria-label="Primary" className="flex-1 overflow-y-auto px-3 pb-4">
-                <ul className="space-y-1">
-                  {NAV_ITEMS.map((item, i) =>
-                    renderItem(
-                      item,
-                      i,
-                      i === activeIndex &&
-                        !MENU_EXTRA_ITEMS.some((x) => pathname.startsWith(x.href)),
-                      0,
-                    ),
-                  )}
-                </ul>
-                <div className="px-3 pt-5 pb-1.5 text-xs font-semibold uppercase tracking-wide text-ink-tertiary">
-                  More
-                </div>
-                <ul className="space-y-1">
-                  {MENU_EXTRA_ITEMS.map((item, i) =>
-                    renderItem(
-                      item,
-                      NAV_ITEMS.length + i,
-                      pathname.startsWith(item.href),
-                      item.href === '/inbox' ? inboxUnreadCount : 0,
-                    ),
-                  )}
-                </ul>
-              </nav>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-    </>
   )
 }

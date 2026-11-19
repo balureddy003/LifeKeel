@@ -222,19 +222,15 @@
 .lk-signin:hover { text-decoration: underline; text-underline-offset: 3px; }
 .lk-btn-sm { min-height: 48px; padding: 8px 18px; font-size: 15px; white-space: nowrap; }
 .lk-menu-btn { display: none; min-width: 48px; min-height: 48px; border: 1px solid var(--field-line); border-radius: 12px; background: transparent; color: var(--ink); font-size: 18px; cursor: pointer; }
-.lk-menu { max-width: 1180px; margin: 0 auto; padding: 4px max(16px, env(safe-area-inset-right, 0px)) 14px max(16px, env(safe-area-inset-left, 0px)); display: grid; border-top: 1px solid var(--line); }
-.lk-menu a { color: var(--ink); text-decoration: none; padding: 12px 4px; min-height: 48px; display: flex; align-items: center; border-bottom: 1px solid var(--line); }
 @media (max-width: 860px) {
   .lk-nav, .lk-signin { display: none; }
   .lk-menu-btn { display: inline-flex; align-items: center; justify-content: center; }
   .lk-header-in { gap: 12px; }
   .lk-brand span { font-size: 24px; }
 }
-@media (min-width: 861px) { .lk-menu { display: none; } }
 
 .lk-news input::placeholder { color: var(--muted); opacity: 1; }
 @media (max-width: 860px) { html:has(.lk-sticky.on) { scroll-padding-bottom: 88px; } }
-.lk-menu[hidden] { display: none; }
 
 /* clarity and polish (UX review) */
 .lk-verdict { margin: 14px 0 0; font-weight: 600; }

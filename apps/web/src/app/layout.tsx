@@ -109,10 +109,7 @@ export const viewport: Viewport = {
 // the CSS tokens flip off [data-theme] on <html>, and SSR can't know the
 // localStorage preference, so the client has to set it in <head>. Keep the
 // storage key and resolution logic identical to lib/theme.ts.
-// data-app marks the installed app (home-screen PWA or native shell) so
-// globals.css can swap browser-tab chrome for app chrome without a flash;
-// keep it in step with lib/platform.ts isStandalone and lib/native.ts.
-const THEME_INIT = `(function(){try{var p=localStorage.getItem('lifekeel-theme');document.documentElement.dataset.theme=p==='light'?'light':p==='dark'?'dark':(window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark')}catch(e){document.documentElement.dataset.theme='dark'}try{if(localStorage.getItem('lifekeel_token')||localStorage.getItem('family-auth'))document.documentElement.dataset.session='1'}catch(e){}try{var C=window.Capacitor;if(window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true||(C&&C.isNativePlatform&&C.isNativePlatform()))document.documentElement.dataset.app='1'}catch(e){}})()`
+const THEME_INIT = `(function(){try{var p=localStorage.getItem('lifekeel-theme');document.documentElement.dataset.theme=p==='light'?'light':p==='dark'?'dark':(window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark')}catch(e){document.documentElement.dataset.theme='dark'}try{if(localStorage.getItem('lifekeel_token')||localStorage.getItem('family-auth'))document.documentElement.dataset.session='1'}catch(e){}})()`
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
