@@ -76,8 +76,8 @@ def _train():
             X.append([vals_out[i - 1], vals_out[i - 2], vals_out[i - 3], i % 12])
             yout.append(vals_out[i])
     _model = {
-        "in": CatBoostRegressor(iterations=100, depth=4, verbose=0, random_seed=97).fit(X, yin),
-        "out": CatBoostRegressor(iterations=100, depth=4, verbose=0, random_seed=97).fit(X, yout),
+        "in": CatBoostRegressor(iterations=100, depth=4, verbose=0, random_seed=97, allow_writing_files=False).fit(X, yin),
+        "out": CatBoostRegressor(iterations=100, depth=4, verbose=0, random_seed=97, allow_writing_files=False).fit(X, yout),
     }
 
 

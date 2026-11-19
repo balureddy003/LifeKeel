@@ -112,7 +112,7 @@ def main():
             others,
             exclude_cells={(h, p, m) for (h, p, m) in planted_cells if h != hh["id"]},
         )
-        model = CatBoostRegressor(iterations=100, depth=4, verbose=0, random_seed=97)
+        model = CatBoostRegressor(iterations=100, depth=4, verbose=0, random_seed=97, allow_writing_files=False)
         model.fit(X, y)
         preds = predict_household(model, hh)
         flagged |= flag_residuals(
