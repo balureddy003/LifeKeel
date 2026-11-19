@@ -383,7 +383,40 @@ html[data-session] .lk-landing-gate { visibility: hidden; }
 
 :root {
   --app-header-height: calc(80px + env(safe-area-inset-top, 0px));
-  --app-dock-space: calc(96px + env(safe-area-inset-bottom, 0px));
+  --app-tabbar-bottom: max(10px, calc(env(safe-area-inset-bottom, 0px) - 10px));
+  --app-dock-space: calc(var(--app-tabbar-bottom) + 74px);
+}
+/* Signed in (AppShell adds .app-shell-with-rail alongside the nav): no
+   LifeKeel hero. The content starts below the status bar / Dynamic Island,
+   a glass strip (.app-statusbar) covers that inset as the page scrolls, and
+   each page's PageHeader sticks just under it as the top bar. */
+.app-shell-with-rail { --app-header-height: env(safe-area-inset-top, 0px); }
+.app-shell-with-rail #main-content { padding-top: env(safe-area-inset-top, 0px); }
+.app-statusbar,
+.app-shell-with-rail .app-page-header {
+  background: linear-gradient(180deg, rgb(var(--nav-bg) / .9), rgb(var(--nav-bg) / .76));
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+}
+.app-statusbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top, 0px);
+}
+.app-shell-with-rail .app-page-header {
+  padding-top: 6px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgb(var(--tint) / .06);
+  box-shadow: 0 8px 24px -18px rgb(0 0 0 / .35);
+}
+.app-shell-with-rail .app-page-header h1 { padding-block: 0; font-size: 1.375rem; }
+.app-shell-with-rail .app-page-header p {
+  padding-bottom: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .app-content, .app-hero-inner { max-width: 1600px; min-width: 0; }
 .app-content { overflow-wrap: anywhere; }
@@ -407,16 +440,43 @@ html[data-session] .lk-landing-gate { visibility: hidden; }
   justify-content: space-between;
   gap: 12px;
 }
+/* Liquid-glass tab bar: translucent capsule, saturated blur, a specular
+   top edge (::before) and a glossy pill under the active tab. */
 .app-bottom-nav {
-  bottom: max(10px, env(safe-area-inset-bottom, 0px));
-  left: max(10px, env(safe-area-inset-left, 0px));
-  right: max(10px, env(safe-area-inset-right, 0px));
-  max-width: 600px;
+  bottom: var(--app-tabbar-bottom);
+  left: max(14px, env(safe-area-inset-left, 0px));
+  right: max(14px, env(safe-area-inset-right, 0px));
+  max-width: 440px;
   margin-inline: auto;
-  border: 1px solid rgb(var(--haze) / .65);
-  border-radius: 28px;
-  background: rgb(var(--nav-bg) / .92);
-  box-shadow: 0 6px 32px rgb(0 0 0 / .12), inset 0 1px 0 rgb(var(--tint) / .08);
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / .2);
+  background: linear-gradient(180deg, rgb(var(--nav-bg) / .6), rgb(var(--nav-bg) / .8));
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  box-shadow:
+    0 12px 32px -10px rgb(0 0 0 / .35),
+    0 2px 8px rgb(0 0 0 / .08),
+    inset 0 1px 0 rgb(255 255 255 / .35),
+    inset 0 -1px 0 rgb(255 255 255 / .06);
+}
+.app-bottom-nav::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgb(255 255 255 / .16) 0%, rgb(255 255 255 / 0) 48%);
+}
+.app-tab-pill {
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgb(var(--family-500) / .24), rgb(var(--family-500) / .12));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .32), inset 0 0 0 1px rgb(var(--family-500) / .2);
+}
+.app-sos-fab {
+  right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: calc(var(--app-dock-space) - 2px);
 }
 .app-nav-space { padding-bottom: var(--app-dock-space); }
 .app-chat { height: calc(100dvh - var(--app-header-height) - var(--app-dock-space) - 8px); min-height: 320px; }
@@ -431,9 +491,10 @@ html[data-session] .lk-landing-gate { visibility: hidden; }
 }
 @media (min-width: 1400px), (min-width: 1024px) and (hover: hover) and (pointer: fine) {
   :root { --app-dock-space: 0px; }
-  .app-bottom-nav { display: none; }
+  .app-bottom-nav, .app-sos-fab, .app-statusbar { display: none; }
   .app-content { max-width: 56rem; padding-inline: 0; }
   .app-shell-with-rail { --app-header-height: 0px; }
+  .app-shell-with-rail .app-page-header { padding-top: 8px; box-shadow: none; }
   .app-shell-with-rail .app-hero { display: none; }
   .app-nav-space { padding-bottom: 40px; }
   .app-hero-inner { padding-inline: 44px; }
