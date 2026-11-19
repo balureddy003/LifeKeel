@@ -158,6 +158,21 @@ export default function ResiliencePage() {
               </Link>
             </GlassCard>
           )}
+          {data.not_on_file && data.not_on_file.length > 0 && (
+            <GlassCard className="p-4 space-y-2">
+              <h2 className="text-sm font-semibold text-ink-tertiary uppercase tracking-wide">
+                Not on your list yet
+              </h2>
+              <ul className="space-y-2 text-sm text-ink-primary list-disc pl-5">
+                {data.not_on_file.map((n) => (
+                  <li key={n}>{n}</li>
+                ))}
+              </ul>
+              <Link href="/finances" className="text-sm text-accent underline">
+                Update your profile if either is wrong
+              </Link>
+            </GlassCard>
+          )}
           <GlassCard className="p-4 space-y-2">
             <h2 className="text-sm font-semibold text-ink-tertiary uppercase tracking-wide">
               What to check next

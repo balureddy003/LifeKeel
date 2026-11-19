@@ -1,0 +1,77 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 1089 >>
+stream
+BT
+/F1 10 Tf
+50 750 Td
+14 TL
+(KESTREL CURRENT ACCOUNT) Tj
+T*
+(Current Account KCA-101507 64285277) Tj
+T*
+(Account holder: N. Sorensen) Tj
+T*
+() Tj
+T*
+(Statement period: 01 Dec 2026 to 31 Dec 2026) Tj
+T*
+(Opening balance: \2432,469.36) Tj
+T*
+() Tj
+T*
+(Date        Description                Money in    Money out) Tj
+T*
+(03 Dec 26  Salary credit 1               \243312.02            ) Tj
+T*
+(07 Dec 26  Credit ref 1111               \243884.87            ) Tj
+T*
+(11 Dec 26  Credit ref 1112               \243993.01            ) Tj
+T*
+(15 Dec 26  Credit ref 1113               \243410.61            ) Tj
+T*
+(05 Dec 26  Direct debit 1                            \243333.31) Tj
+T*
+(09 Dec 26  Debit ref 2111                            \243409.87) Tj
+T*
+(13 Dec 26  Debit ref 2112                             \24386.42) Tj
+T*
+(17 Dec 26  Debit ref 2113                            \243180.94) Tj
+T*
+(21 Dec 26  Debit ref 2114                            \243368.53) Tj
+T*
+() Tj
+T*
+(Total money in:  \2432,600.51) Tj
+T*
+(Total money out: \2431,379.07) Tj
+T*
+(Closing balance: \2433,790.80) Tj
+ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000311 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1452
+%%EOF

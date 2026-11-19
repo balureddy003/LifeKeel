@@ -194,6 +194,29 @@ describe('/resilience', () => {
     await waitFor(() => expect(screen.getByText(/Share your range anonymously/)).toBeTruthy())
   })
 
+  it('lists what is not on file only when the server sends it', async () => {
+    const ready = {
+      status: 'ready',
+      scenario: 'income_stops',
+      range: { lowMonths: 3, highMonths: 3 },
+      text: 'Savings would cover about 3 months. This is an estimate.',
+      left_out: [],
+      next_checks: [],
+    }
+    fetchFamilyResilience.mockResolvedValueOnce(ready)
+    const { unmount } = render(<ResiliencePage />)
+    await waitFor(() => expect(screen.getByText(/about 3 months/)).toBeTruthy())
+    expect(screen.queryByText(/Not on your list yet/)).toBeNull()
+    unmount()
+    fetchFamilyResilience.mockResolvedValueOnce({
+      ...ready,
+      not_on_file: ['No income protection payout is recorded in your profile.'],
+    })
+    render(<ResiliencePage />)
+    await waitFor(() => expect(screen.getByText(/Not on your list yet/)).toBeTruthy())
+    expect(screen.getByText(/No income protection payout is recorded/)).toBeTruthy()
+  })
+
   it('shows who confirmed what and when, keeping earlier figures after a change', async () => {
     fetchFamilyResilience.mockResolvedValue({
       status: 'ready',

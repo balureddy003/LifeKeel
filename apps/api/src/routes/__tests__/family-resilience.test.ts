@@ -339,6 +339,25 @@ describe('if the main earner dies', () => {
   })
 })
 
+describe('what the profile does not hold', () => {
+  const view = async () =>
+    (await (await appFor('u1')).inject({ method: 'GET', url: '/family/resilience' })).json()
+
+  it('names income protection and life cover as not on file, as plain facts', async () => {
+    const body = await view()
+    expect(body.not_on_file).toEqual([
+      'No income protection payout is recorded in your profile.',
+      'No life cover amount is recorded in your profile, so there is no estimate for if the main earner dies.',
+    ])
+    expect(body.not_on_file.join(' ')).not.toMatch(/\b(buy|should|need to|get a|switch|best)\b/i)
+  })
+
+  it('lists nothing once both are on file', async () => {
+    profile = fullProfile({ income_protection_monthly_minor: 100_000, life_cover_minor: 5_000_000 })
+    expect((await view()).not_on_file).toEqual([])
+  })
+})
+
 describe('GET /family/resilience/history (what each adult confirmed, and when)', () => {
   const post = async (who: string) =>
     (await appFor(who)).inject({ method: 'POST', url: '/family/resilience/confirm' })

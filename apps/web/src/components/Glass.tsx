@@ -314,7 +314,7 @@ export function PageHeader({
   // Ask Keel is already one tap away in the shell (floating button and tab bar),
   // so the page header does not add a third way in.
   return (
-    <header className="sticky top-[var(--app-header-height,0px)] z-sticky safe-area-top bg-navbg/95 backdrop-blur-xl -mx-5 px-5 py-2">
+    <header className="app-page-header sticky top-[var(--app-header-height,0px)] z-sticky safe-area-top bg-navbg/95 backdrop-blur-xl -mx-5 px-5 py-2">
       {backHref && (
         <Link
           href={backHref}
