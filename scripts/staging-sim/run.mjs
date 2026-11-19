@@ -1881,6 +1881,55 @@ scenario(
   },
 )
 
+scenario('25 resilience: the confirmation history keeps what each adult agreed to', async () => {
+  const f = RES_FAMILIES.find((x) => x.id === 'okafor')
+  const { tokens } = await resilienceFamily('okafor')
+  const [a, b] = tokens
+  expectStatus(
+    'the first adult confirms',
+    await call('POST', '/family/resilience/confirm', { token: a, body: {} }),
+    200,
+  )
+  if (b)
+    expectStatus(
+      'the second adult confirms',
+      await call('POST', '/family/resilience/confirm', { token: b, body: {} }),
+      200,
+    )
+  const h1 = await call('GET', '/family/resilience/history', { token: a })
+  const cur = h1.json?.entries?.find((e) => e.current)
+  check(
+    'the current figures are listed with their confirmers and dates',
+    !!cur && cur.confirmedBy.every((c) => !!c.at),
+    h1.text.slice(0, 300),
+  )
+  const before = cur?.figures?.find((x) => x.label === 'Savings')?.valueMinor
+  await saveProfile(a, f, { emergency_savings_minor: f.profile.emergency_savings_minor + 100000 })
+  const h2 = await call('GET', '/family/resilience/history', { token: a })
+  const old = h2.json?.entries?.find(
+    (e) => !e.current && e.figures.some((x) => x.label === 'Savings' && x.valueMinor === before),
+  )
+  check(
+    'after a change the earlier confirmation is still listed, marked as since changed',
+    !!old,
+    h2.text.slice(0, 300),
+  )
+  check(
+    'and nothing is current until someone confirms the new figures',
+    !h2.json?.entries?.some((e) => e.current),
+    h2.text.slice(0, 300),
+  )
+  await saveProfile(a, f, {})
+  const kid = (await resilienceFamily('okafor')).tokens[2]
+  if (kid)
+    expectStatus(
+      'a child cannot read the history',
+      await call('GET', '/family/resilience/history', { token: kid }),
+      403,
+    )
+  expectStatus('no token is refused', await call('GET', '/family/resilience/history', {}), 401, 403)
+})
+
 // ═════════════════════════ RUNNER ═══════════════════════════════════════════
 const started = Date.now()
 for (const s of scenarios) {

@@ -17,6 +17,7 @@ import {
   confirmersOf,
   firstConfirmedAt,
   recordFact,
+  type EngineFactDoc,
   type FactKey,
 } from '../resilience/fact-store.js'
 import { confirmLatencyBucket, emitEngineMetric } from '../resilience/engine-metrics.js'
@@ -249,6 +250,79 @@ export async function resilienceForUser(
   }
 }
 
+const FACT_LABELS: Partial<Record<FactKey, string>> = {
+  savings_minor: 'Savings',
+  monthly_spend_minor: 'Monthly spend',
+  monthly_inflow_minor: 'Monthly income',
+  income_protection_monthly_minor: 'Income protection per month',
+  life_cover_lump_sum_minor: 'Life cover amount',
+}
+
+export interface ConfirmationHistoryEntry {
+  scenario: Scenario
+  current: boolean
+  confirmedBy: { name: string; at: string }[]
+  figures: { label: string; valueMinor: number }[]
+}
+
+/**
+ * Every set of figures an adult confirmed, newest first: who, when, and the exact figures. A set stays here
+ * after a figure changes (it is just no longer `current`), so the family can see what each adult agreed to
+ * and on what date. Null when the caller is not an adult in the family (fails closed).
+ */
+export async function confirmationHistory(
+  db: Db,
+  tenant_id: string,
+  user_id: string,
+): Promise<ConfirmationHistoryEntry[] | null> {
+  const family = (await db.collection('family_groups').findOne({ tenant_id })) as Family
+  const members = family?.members ?? []
+  if (!canSeeEngineOutput(members, user_id)) return null
+  const profile = (await db
+    .collection('family_financial_profile')
+    .findOne({ tenant_id })) as ProfileShape | null
+  const figures = figuresOf(profile)
+  const currentVersions = new Set(scenariosFor(figures).map((sc) => scenarioVersion(figures, sc)))
+  const rows = (await db
+    .collection<EngineFactDoc>('engine_facts')
+    .find({ tenant_id })
+    .toArray()) as EngineFactDoc[]
+  const byVersion = new Map<string, EngineFactDoc[]>()
+  for (const r of rows) {
+    if (!r.figures_version || !(r.confirmed_at instanceof Date)) continue
+    byVersion.set(r.figures_version, [...(byVersion.get(r.figures_version) ?? []), r])
+  }
+  const nameOf = (id: string) =>
+    members.find((m) => m.id === id || m.user_id === id)?.name ?? 'An adult'
+  const entries = [...byVersion.entries()].map(([version, facts]) => {
+    const latest = new Map<string, Date>()
+    for (const r of facts) {
+      const c = r.confirmed_at as Date
+      const prev = latest.get(r.entered_by)
+      if (!prev || c > prev) latest.set(r.entered_by, c)
+    }
+    const newest = Math.max(...[...latest.values()].map((d) => d.getTime()))
+    const entry: ConfirmationHistoryEntry = {
+      scenario: facts.some((r) => r.key === 'life_cover_lump_sum_minor')
+        ? 'earner_dies'
+        : 'income_stops',
+      current: currentVersions.has(version),
+      confirmedBy: [...latest.entries()]
+        .sort((a, b) => a[1].getTime() - b[1].getTime())
+        .map(([id, at]) => ({ name: nameOf(id), at: at.toISOString() })),
+      figures: (Object.keys(FACT_LABELS) as FactKey[])
+        .map((k) => facts.find((r) => r.key === k))
+        .filter((r): r is EngineFactDoc => r !== undefined)
+        .map((r) => ({ label: FACT_LABELS[r.key] ?? r.key, valueMinor: r.value_minor })),
+    }
+    return { entry, newest }
+  })
+  return entries
+    .sort((a, b) => b.newest - a.newest || Number(b.entry.current) - Number(a.entry.current))
+    .slice(0, 20)
+    .map((e) => e.entry)
+}
+
 export function registerFamilyResilienceRoutes(app: FastifyInstance, db: Db): void {
   // Confirmations are looked up by tenant and version on every read.
   db.collection('engine_facts')
@@ -267,6 +341,14 @@ export function registerFamilyResilienceRoutes(app: FastifyInstance, db: Db): vo
     const view = await resilienceForUser(db, tenant_id, user_id)
     if (!view) return reply.status(403).send({ error: 'Only adults in this family can see this' })
     return view
+  })
+
+  app.get('/family/resilience/history', async (req, reply) => {
+    const { tenant_id, user_id } = req.authContext
+    const entries = await confirmationHistory(db, tenant_id, user_id)
+    if (!entries)
+      return reply.status(403).send({ error: 'Only adults in this family can see this' })
+    return { entries }
   })
 
   // An adult confirms the exact figures the estimate used. Append-only facts; confirming twice writes nothing.

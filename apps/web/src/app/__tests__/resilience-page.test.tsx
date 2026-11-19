@@ -4,8 +4,10 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 const fetchFamilyResilience = vi.fn()
 const confirmResilienceFigures = vi.fn()
 const fetchFamilyLearning = vi.fn()
+const fetchConfirmationHistory = vi.fn()
 vi.mock('@/lib/api', () => ({
   fetchFamilyLearning: () => fetchFamilyLearning() ?? Promise.resolve(null),
+  fetchConfirmationHistory: () => fetchConfirmationHistory() ?? Promise.resolve(null),
   fetchFamilyResilience: () => fetchFamilyResilience(),
   confirmResilienceFigures: () => confirmResilienceFigures(),
 }))
@@ -17,6 +19,7 @@ afterEach(() => {
   fetchFamilyResilience.mockReset()
   confirmResilienceFigures.mockReset()
   fetchFamilyLearning.mockReset()
+  fetchConfirmationHistory.mockReset()
 })
 
 describe('/resilience', () => {
@@ -212,5 +215,55 @@ describe('/resilience', () => {
     render(<ResiliencePage />)
     await waitFor(() => expect(screen.getByText(/Not on your list yet/)).toBeTruthy())
     expect(screen.getByText(/No income protection payout is recorded/)).toBeTruthy()
+  })
+
+  it('shows who confirmed what and when, keeping earlier figures after a change', async () => {
+    fetchFamilyResilience.mockResolvedValue({
+      status: 'ready',
+      scenario: 'income_stops',
+      range: { lowMonths: 3, highMonths: 3 },
+      text: 'Savings would cover about 3 months. This is an estimate.',
+      left_out: [],
+      next_checks: [],
+    })
+    fetchConfirmationHistory.mockResolvedValue([
+      {
+        scenario: 'income_stops',
+        current: true,
+        confirmedBy: [{ name: 'Alex', at: '2026-11-19T10:00:00.000Z' }],
+        figures: [{ label: 'Savings', valueMinor: 950000 }],
+      },
+      {
+        scenario: 'income_stops',
+        current: false,
+        confirmedBy: [
+          { name: 'Alex', at: '2026-11-10T10:00:00.000Z' },
+          { name: 'Sam', at: '2026-11-11T09:00:00.000Z' },
+        ],
+        figures: [{ label: 'Savings', valueMinor: 900000 }],
+      },
+    ])
+    render(<ResiliencePage />)
+    await waitFor(() => expect(screen.getByTestId('confirmation-history')).toBeTruthy())
+    const box = screen.getByTestId('confirmation-history').textContent ?? ''
+    expect(box).toMatch(/Sam confirmed on 11 November 2026/)
+    expect(box).toMatch(/earlier figures, since changed/)
+    expect(box).toMatch(/Savings £9,000/)
+    expect(box).toMatch(/Savings £9,500/)
+  })
+
+  it('shows no history section when nobody has confirmed', async () => {
+    fetchFamilyResilience.mockResolvedValue({
+      status: 'ready',
+      scenario: 'income_stops',
+      range: { lowMonths: 3, highMonths: 3 },
+      text: 'Savings would cover about 3 months. This is an estimate.',
+      left_out: [],
+      next_checks: [],
+    })
+    fetchConfirmationHistory.mockResolvedValue([])
+    render(<ResiliencePage />)
+    await waitFor(() => expect(screen.getByText(/about 3 months/)).toBeTruthy())
+    expect(screen.queryByTestId('confirmation-history')).toBeNull()
   })
 })

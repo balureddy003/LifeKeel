@@ -12,8 +12,10 @@ import { Loader2 } from 'lucide-react'
 import { PageHeader, GlassCard } from '@/components/Glass'
 import {
   confirmResilienceFigures,
+  fetchConfirmationHistory,
   fetchFamilyLearning,
   fetchFamilyResilience,
+  type ConfirmationHistoryEntry,
   type FamilyResilience,
   type ResilienceConfirmation,
 } from '@/lib/api'
@@ -29,10 +31,14 @@ export default function ResiliencePage() {
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
 
-  const reload = () =>
-    fetchFamilyResilience()
+  const [history, setHistory] = useState<ConfirmationHistoryEntry[]>([])
+
+  const reload = () => {
+    void fetchConfirmationHistory().then((h) => setHistory(h ?? []))
+    return fetchFamilyResilience()
       .then(setData)
       .finally(() => setLoaded(true))
+  }
   useEffect(() => {
     void reload()
     void fetchFamilyLearning().then((l) => setSharingOn(l !== null))
@@ -139,6 +145,7 @@ export default function ResiliencePage() {
               )}
             </GlassCard>
           )}
+          {history.length > 0 && <ConfirmationHistory entries={history} />}
           <GlassCard className="p-4 text-sm">
             <Link href="/resilience/businesses" className="text-accent underline">
               Does a business pay part of your income? Add it
@@ -178,6 +185,44 @@ export default function ResiliencePage() {
           </GlassCard>
         </>
       )}
+    </div>
+  )
+}
+
+const day = (iso: string) =>
+  new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+
+/** What each adult confirmed and on what date. Earlier figures stay listed after a change. */
+function ConfirmationHistory({ entries }: { entries: ConfirmationHistoryEntry[] }) {
+  return (
+    <div data-testid="confirmation-history">
+      <GlassCard className="p-4 space-y-3">
+        <h2 className="text-sm font-semibold text-ink-tertiary uppercase tracking-wide">
+          What you have confirmed
+        </h2>
+        <ul className="space-y-4">
+          {entries.map((e, i) => (
+            <li key={i} className="space-y-1 text-sm">
+              <p className="font-medium text-ink-primary">
+                {e.scenario === 'earner_dies' ? 'If the main earner dies' : 'If your income stops'}
+                <span className="ml-2 text-xs font-normal text-ink-tertiary">
+                  {e.current ? 'figures as they are now' : 'earlier figures, since changed'}
+                </span>
+              </p>
+              <ul className="text-ink-secondary">
+                {e.confirmedBy.map((c) => (
+                  <li key={c.name}>
+                    {c.name} confirmed on {day(c.at)}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-ink-tertiary">
+                {e.figures.map((f) => `${f.label} ${gbp(f.valueMinor)}`).join(' · ')}
+              </p>
+            </li>
+          ))}
+        </ul>
+      </GlassCard>
     </div>
   )
 }
