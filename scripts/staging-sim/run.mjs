@@ -95,8 +95,8 @@ async function login(email, password = PW) {
   await pace('login', 9)
   return call('POST', '/auth/login', { body: { email, password } })
 }
-async function makeFamily(first, family) {
-  const o = await signup(first, family)
+async function makeFamily(first, family, extra = {}) {
+  const o = await signup(first, family, extra)
   if (!o.token) throw new Error(`signup failed: ${o.r.status} ${o.r.text.slice(0, 200)}`)
   const f = await call('POST', '/family', {
     token: o.token,
@@ -1205,13 +1205,19 @@ scenario('16 time: monthly digest, reminder cap and restart', async () => {
   check('May: the count and the list line remain', /1 record/.test(m3))
 
   const v = (await call('GET', '/family/domains/car', { token: o })).json?.result_version
-  await call('POST', '/family/domains/car/confirm', { token: o, body: { result_version: v } })
-  await call('POST', '/family/domains/car/confirm', { token: b.token, body: { result_version: v } })
+  const c1 = await call('POST', '/family/domains/car/confirm', {
+    token: o,
+    body: { result_version: v },
+  })
+  const c2 = await call('POST', '/family/domains/car/confirm', {
+    token: b.token,
+    body: { result_version: v },
+  })
   const st16 = (await call('GET', '/family/domains/car', { token: o })).json?.confirmation
   check(
     'June: before the digest, the list itself says every adult has seen it',
     st16?.both_confirmed === true,
-    JSON.stringify(st16),
+    `confirm statuses ${c1.status}/${c2.status} ${c2.text.slice(0, 200)} ${JSON.stringify(st16)}`,
   )
   const since3 = new Date().toISOString()
   await run('2027-06-01T08:00:00Z')
@@ -1406,7 +1412,8 @@ function resilienceFamily(id) {
       (async () => {
         const f = RES_FAMILIES.find((x) => x.id === id)
         const [first, ...rest] = f.adults[0].split(' ')
-        const fam = await makeFamily(first, rest.join(' '))
+        // A distinct workspace: scenario 01 already has an Okafor family in the same run.
+        const fam = await makeFamily(first, rest.join(' '), { workspace: `sim res ${id} ${RUN}` })
         const tokens = [fam.org.token]
         for (const name of f.adults.slice(1)) {
           const [a, ...b] = name.split(' ')
@@ -1650,6 +1657,161 @@ scenario('22 resilience: switched-off features stay off', async () => {
     `got ${put.status}`,
   )
 })
+
+scenario('24 resilience: nonsense figures are refused or asked for, never guessed', async () => {
+  const f = RES_FAMILIES.find((x) => x.id === 'okafor')
+  const fam = await makeFamily('Edge', 'Cases')
+  const tok = fam.org.token
+  const neg = await saveProfile(tok, f, { emergency_savings_minor: -500 })
+  check(
+    'negative savings are not saved',
+    neg.status >= 400 && neg.status < 500,
+    `got ${neg.status}`,
+  )
+  const huge = await saveProfile(tok, f, { emergency_savings_minor: 1e15 })
+  check(
+    'an absurdly large figure is not saved',
+    huge.status >= 400 && huge.status < 500,
+    `got ${huge.status}`,
+  )
+  const frac = await saveProfile(tok, f, { emergency_savings_minor: 100.5 })
+  check(
+    'a part-penny amount is not saved',
+    frac.status >= 400 && frac.status < 500,
+    `got ${frac.status}`,
+  )
+  const zero = await saveProfile(tok, f, { monthly_salary_minor: 0 })
+  check(
+    'zero income saves (it is a real situation)',
+    zero.status === 200 || zero.status === 201,
+    `got ${zero.status}`,
+  )
+  const view = await resilienceOf(tok)
+  check(
+    'with zero income the estimate asks for the figure instead of inventing a number',
+    view.json?.status === 'needs_figures' && view.json.missing?.includes('monthly income'),
+    view.text.slice(0, 200),
+  )
+  const empty = await makeFamily('Empty', 'House')
+  const none = await resilienceOf(empty.org.token)
+  check(
+    'a household with nothing entered is asked for every figure',
+    none.json?.status === 'needs_figures' && none.json.missing?.length === 3,
+    none.text.slice(0, 200),
+  )
+})
+
+scenario(
+  '27 documents (Plus): a statement is read, checked and applied only after confirming',
+  async () => {
+    const email = process.env.STAGING_PLUS_EMAIL
+    if (!email) {
+      skip('set STAGING_PLUS_EMAIL to a staging account on the paid plan')
+      return
+    }
+    const { readFileSync } = await import('node:fs')
+    const { fileURLToPath } = await import('node:url')
+    const dir = fileURLToPath(new URL('../../fixtures/docling-statements/', import.meta.url))
+    const expected = JSON.parse(readFileSync(dir + 'expected.json', 'utf8'))[0]
+    const tok = (await login(email)).json?.token
+    check('the paid account signs in', !!tok)
+    if (!tok) return
+    const upload = async (path, name) => {
+      const fd = new FormData()
+      fd.append('file', new Blob([readFileSync(path)], { type: 'application/pdf' }), name)
+      const r = await fetch(`${API}/documents/upload`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${tok}` },
+        body: fd,
+      })
+      const j = await r.json().catch(() => ({}))
+      let doc
+      for (let i = 0; i < 20 && j.id; i++) {
+        await sleep(3000)
+        doc = await call('GET', `/documents/${j.id}`, { token: tok })
+        if (!['uploaded', 'processing'].includes(doc.json?.status)) break
+      }
+      return { id: j.id, up: r.status, enabled: j.aiExtractionEnabled, doc: doc?.json }
+    }
+    const minor = (v) => Math.round(Number(String(v).replace(/[£,]/g, '')) * 100)
+    const good = await upload(dir + expected.file, expected.file)
+    check('extraction is on for the paid account', good.enabled === true)
+    const f = good.doc?.extractedData ?? {}
+    const want = expected.expected
+    check(
+      'every figure matches the statement',
+      minor(f.statement_opening_balance) === minor(want.statement_opening_balance) &&
+        minor(f.statement_closing_balance) === minor(want.statement_closing_balance) &&
+        minor(f.statement_money_in) === minor(want.statement_money_in) &&
+        minor(f.statement_money_out) === minor(want.statement_money_out),
+      JSON.stringify(f),
+    )
+    check('the file scanned clean', good.doc?.scan === 'clean', String(good.doc?.scan))
+    const before = await call('GET', '/family/financial-profile', { token: tok })
+    const spendBefore = before.json?.profile?.emergency_fund?.monthly_expenses_minor
+    const sug = await call('GET', `/documents/${good.id}/profile-suggestions`, { token: tok })
+    const spend = sug.json?.suggestions?.find(
+      (s) => s.path === 'emergency_fund.monthly_expenses_minor',
+    )
+    check(
+      'a consistent statement offers monthly spend, equal to its money out',
+      spend?.valueMinor === minor(want.statement_money_out),
+      sug.text.slice(0, 300),
+    )
+    const early = await call('POST', `/documents/${good.id}/apply-to-profile`, {
+      token: tok,
+      body: {},
+    })
+    check(
+      'applying before confirming the document type is refused',
+      early.status >= 400 && early.status < 500,
+      `got ${early.status}`,
+    )
+    const mid = await call('GET', '/family/financial-profile', { token: tok })
+    check(
+      'and nothing reached the profile',
+      mid.json?.profile?.emergency_fund?.monthly_expenses_minor === spendBefore,
+      mid.text.slice(0, 200),
+    )
+    expectStatus(
+      'the person confirms the type',
+      await call('POST', `/documents/${good.id}/confirm-type`, {
+        token: tok,
+        body: { category: 'banking' },
+      }),
+      200,
+    )
+    const done = await call('POST', `/documents/${good.id}/apply-to-profile`, {
+      token: tok,
+      body: {},
+    })
+    expectStatus('after confirming, the figures can be applied', done, 200)
+    const after = await call('GET', '/family/financial-profile', { token: tok })
+    check(
+      'the applied spend equals the statement money out',
+      after.json?.profile?.emergency_fund?.monthly_expenses_minor ===
+        minor(want.statement_money_out),
+      after.text.slice(0, 200),
+    )
+    // A statement whose printed closing balance does not match its own arithmetic.
+    const bad = await upload(dir + 'negative/statement-mismatch.pdf', 'statement-mismatch.pdf')
+    const badSug = await call('GET', `/documents/${bad.id}/profile-suggestions`, { token: tok })
+    check(
+      'an inconsistent statement offers nothing to apply',
+      (badSug.json?.suggestions ?? []).length === 0,
+      badSug.text.slice(0, 300),
+    )
+    const badApply = await call('POST', `/documents/${bad.id}/apply-to-profile`, {
+      token: tok,
+      body: {},
+    })
+    check(
+      'and applying it is refused',
+      badApply.status >= 400 && badApply.status < 500,
+      `got ${badApply.status}`,
+    )
+  },
+)
 
 scenario(
   '26 documents: on the free plan a statement is stored, never read or applied',

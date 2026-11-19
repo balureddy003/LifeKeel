@@ -189,6 +189,13 @@ def main():
             },
         })
     (HERE / "expected.json").write_text(json.dumps(fixtures, indent=2) + "\n")
+    # One deliberately inconsistent statement for the staging mismatch check: the printed
+    # closing balance is GBP 100 more than opening + money in - money out. It lives in negative/, not
+    # expected.json, so it never counts toward extraction accuracy.
+    (HERE / "negative").mkdir(exist_ok=True)
+    (HERE / "negative" / "statement-mismatch.pdf").write_bytes(make_pdf(statement_lines(
+        bank, holder, sort, account, ps, pe, opening, closing + 10_000,
+        money_in, money_out, credits, debits, "uk")))
     print(f"wrote {len(fixtures)} fixtures + expected.json")
 
 

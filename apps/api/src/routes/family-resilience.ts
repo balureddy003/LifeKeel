@@ -105,6 +105,8 @@ export type ResilienceView =
       text: string
       left_out: string[]
       next_checks: string[]
+      /** Things the profile does not hold, stated as facts about what is on file. Never a suggestion to buy. */
+      not_on_file?: string[]
       earner_dies?: {
         range: { lowMonths: number | null; highMonths: number | null }
         text: string
@@ -179,6 +181,14 @@ export function buildResilienceView(profile: ProfileShape | null): ResilienceVie
     rates_version: ratesVersion(),
     left_out: [...LEFT_OUT],
     next_checks: [...checks, CLOSING_ACTION],
+    not_on_file: [
+      ...(positive(protection) ? [] : ['No income protection payout is recorded in your profile.']),
+      ...(positive(cover)
+        ? []
+        : [
+            'No life cover amount is recorded in your profile, so there is no estimate for if the main earner dies.',
+          ]),
+    ],
     ...(dr
       ? {
           earner_dies: {

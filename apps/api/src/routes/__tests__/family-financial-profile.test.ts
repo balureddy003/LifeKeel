@@ -318,6 +318,28 @@ describe('PRD-102: policies[] and the new protection-domain rules', () => {
     expect(again.json().profile.insights_evaluated_at).toBeDefined()
   })
 
+  it('refuses an absurdly large amount (over £1 billion) instead of saving it', async () => {
+    const { app } = await buildApp(engine)
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        emergency_fund: { ...BASE_PROFILE.emergency_fund, emergency_savings_minor: 1e15 },
+      },
+    })
+    expect(res.statusCode).toBe(400)
+    const ok = await app.inject({
+      method: 'POST',
+      url: '/family/financial-profile',
+      payload: {
+        ...BASE_PROFILE,
+        emergency_fund: { ...BASE_PROFILE.emergency_fund, emergency_savings_minor: 5_000_000 },
+      },
+    })
+    expect(ok.statusCode).toBe(200)
+  })
+
   it('round-trips policies[] through POST then GET', async () => {
     const { app } = await buildApp(engine)
     const policies = [

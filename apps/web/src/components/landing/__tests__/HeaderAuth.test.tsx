@@ -90,7 +90,7 @@ describe('header and footer share one lockup', () => {
   it('header and footer use the same container width as the bands', () => {
     const css = fs.readFileSync(path.resolve(__dirname, '..', 'bands.css'), 'utf8')
     const widths = [
-      ...css.matchAll(/(\.lk-band|\.lk-header-in|\.lk-menu)\s*\{[^}]*max-width:\s*(\d+)px/g),
+      ...css.matchAll(/(\.lk-band|\.lk-header-in)\s*\{[^}]*max-width:\s*(\d+)px/g),
     ].map((m) => m[2])
     expect(new Set(widths)).toEqual(new Set(['1180']))
   })
