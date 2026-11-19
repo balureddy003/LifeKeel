@@ -1651,6 +1651,49 @@ scenario('22 resilience: switched-off features stay off', async () => {
   )
 })
 
+scenario('24 resilience: nonsense figures are refused or asked for, never guessed', async () => {
+  const f = RES_FAMILIES.find((x) => x.id === 'okafor')
+  const fam = await makeFamily('Edge', 'Cases')
+  const tok = fam.org.token
+  const neg = await saveProfile(tok, f, { emergency_savings_minor: -500 })
+  check(
+    'negative savings are not saved',
+    neg.status >= 400 && neg.status < 500,
+    `got ${neg.status}`,
+  )
+  const huge = await saveProfile(tok, f, { emergency_savings_minor: 1e15 })
+  check(
+    'an absurdly large figure is not saved',
+    huge.status >= 400 && huge.status < 500,
+    `got ${huge.status}`,
+  )
+  const frac = await saveProfile(tok, f, { emergency_savings_minor: 100.5 })
+  check(
+    'a part-penny amount is not saved',
+    frac.status >= 400 && frac.status < 500,
+    `got ${frac.status}`,
+  )
+  const zero = await saveProfile(tok, f, { monthly_salary_minor: 0 })
+  check(
+    'zero income saves (it is a real situation)',
+    zero.status === 200 || zero.status === 201,
+    `got ${zero.status}`,
+  )
+  const view = await resilienceOf(tok)
+  check(
+    'with zero income the estimate asks for the figure instead of inventing a number',
+    view.json?.status === 'needs_figures' && view.json.missing?.includes('monthly income'),
+    view.text.slice(0, 200),
+  )
+  const empty = await makeFamily('Empty', 'House')
+  const none = await resilienceOf(empty.org.token)
+  check(
+    'a household with nothing entered is asked for every figure',
+    none.json?.status === 'needs_figures' && none.json.missing?.length === 3,
+    none.text.slice(0, 200),
+  )
+})
+
 // ═════════════════════════ RUNNER ═══════════════════════════════════════════
 const started = Date.now()
 for (const s of scenarios) {
