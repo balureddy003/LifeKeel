@@ -21,7 +21,9 @@ export function AppHeroHeader({
           <img src="/icon.svg" alt="" width={36} height={36} className="rounded-xl shrink-0" />
           <div className="min-w-0">
             <div className="text-xl font-semibold tracking-tight">LifeKeel</div>
-            <p className="text-caption text-ink-tertiary">Your family, together</p>
+            <p className="text-caption text-ink-tertiary max-[419px]:hidden">
+              Your family, together
+            </p>
           </div>
         </Link>
         {children && <div className="flex items-center gap-2 shrink-0">{children}</div>}

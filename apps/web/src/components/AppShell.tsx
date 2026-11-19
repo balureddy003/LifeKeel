@@ -5,18 +5,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { motion, AnimatePresence } from 'framer-motion'
-import {
-  Home,
-  Users,
-  CalendarClock,
-  Settings,
-  WifiOff,
-  Siren,
-  Bot,
-  MailWarning,
-  X,
-  Fingerprint,
-} from 'lucide-react'
+import { Users, WifiOff, Siren, Bot, MailWarning, X, Fingerprint } from 'lucide-react'
 import { useNetworkStatus } from '@/lib/useNetworkStatus'
 import { useAuth } from '@/lib/auth-context'
 import { useMode } from '@/lib/mode-context'
@@ -37,12 +26,14 @@ import { useToast } from './Toast'
 import { AuthShell } from '@/components/landing/AuthShell'
 import { MarketingLanding } from './MarketingLanding'
 import { NavRail } from './NavRail'
+import { LiquidTabBar, MobileMenu } from './AppNav'
 import { isKeelPanelEnabled } from '@/lib/keel/client'
 import { PANEL_ID, useKeelPanel } from '@/lib/keel/store'
 import { haptic } from '@/lib/haptics'
 import { firstStepWaitMessage, isFirstStepPath } from '@/lib/signup-destination'
 import { track } from '@/lib/growth-track'
 import { isNativeShell, biometricLockEnabled, verifyBiometric } from '@/lib/native'
+import { isStandalone } from '@/lib/platform'
 import { bannerDismissed } from './verify-banner'
 
 // Signed-in extras load after the first paint, so the first-time visitor's landing
@@ -59,123 +50,6 @@ const InstallHint = dynamic(() => import('@/components/InstallHint').then((m) =>
 // The dock pulls in the whole panel tree incl. react-markdown; keep it out
 // of the landing's first-load JS (scripts/check-landing-size.mjs budget).
 const KeelDock = dynamic(() => import('./keel/KeelDock').then((m) => m.KeelDock), { ssr: false })
-
-// Intent 35: five items at 390px, not six — the multi-device review's own
-// list (Home, Events, Ask Keel, Family, Settings). Inbox and Finances drop
-// out of the bar: both are surfaced from Home (unread insights, the
-// finances sections), and their routes still highlight Home below. Ask
-// Keel earns a first-class slot — it was previously reachable only via
-// deep links, which the same review flagged.
-const NAV_ITEMS = [
-  { href: '/', label: 'Home', icon: Home },
-  { href: '/events', label: 'Events', icon: CalendarClock },
-  { href: '/assistant', label: 'Ask Keel', icon: Bot },
-  { href: '/family', label: 'Family', icon: Users },
-  { href: '/settings', label: 'Settings', icon: Settings },
-]
-
-// Routes that live under a tab but aren't nested under its path segment,
-// so the prefix match below can't find them on its own.
-const ROUTE_TAB_OVERRIDES: Record<string, string> = {
-  '/member': '/family',
-  '/asset': '/family',
-  // Inbox and the Finances subpages were dropped from the bar in the 5-item
-  // cut — Home is the surface that links to them, so it's the tab that
-  // stays lit while the user is there.
-  '/inbox': '/',
-  '/finances': '/',
-  '/financial-profile': '/',
-  '/vault': '/',
-  '/cashflow': '/',
-  '/resilience': '/',
-  '/resilience/businesses': '/',
-  '/resilience/sharing': '/',
-  '/briefs': '/',
-  '/assets': '/',
-  '/documents': '/',
-  '/upload': '/',
-  '/connect': '/',
-}
-
-function LiquidTabBar() {
-  const pathname = usePathname()
-  const [activeIndex, setActiveIndex] = useState(0)
-  const inboxUnreadCount = useAppStore((s) => s.inboxUnreadCount)
-
-  useEffect(() => {
-    const overrideEntry = Object.entries(ROUTE_TAB_OVERRIDES).find(([prefix]) =>
-      pathname.startsWith(prefix),
-    )
-    const effectivePath = overrideEntry ? overrideEntry[1] : pathname
-    const idx = NAV_ITEMS.findIndex((item) =>
-      item.href === '/' ? effectivePath === '/' : effectivePath.startsWith(item.href),
-    )
-    setActiveIndex(idx >= 0 ? idx : 0)
-  }, [pathname])
-
-  return (
-    <nav className="app-bottom-nav fixed z-nav glass-nav" aria-label="Primary">
-      <div className="mx-auto px-2 py-1 relative">
-        <div className="flex items-center justify-around h-16 relative">
-          {NAV_ITEMS.map((item, i) => {
-            const active = i === activeIndex
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-label={item.label}
-                aria-current={active ? 'page' : undefined}
-                onClick={() => haptic('light')}
-                className="flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 relative z-raised"
-              >
-                {active && (
-                  <motion.div
-                    layoutId="tab-pill"
-                    className="absolute inset-x-1 inset-y-0 rounded-2xl bg-family-500/15"
-                    transition={{ type: 'spring', stiffness: 400, damping: 32 }}
-                  />
-                )}
-                <motion.div
-                  animate={{ scale: active ? 1.05 : 1 }}
-                  transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-                  className="relative z-raised"
-                >
-                  {/* Token classes, not literals — the previous hardcoded
-                      hexes drifted out of sync with ink.tertiary's contrast
-                      fix once already. family.accent is deliberately lighter
-                      than family-500 for icon/text-on-dark contrast; see
-                      tailwind.config.js. */}
-                  <item.icon
-                    size={22}
-                    strokeWidth={active ? 2.5 : 2}
-                    className={active ? 'text-family-accent' : 'text-ink-tertiary'}
-                  />
-                  {/* The unread badge moved with Inbox to Home when the bar
-                      shrank to five items — Home is where inbox content is
-                      surfaced from now. */}
-                  {item.href === '/' && inboxUnreadCount > 0 && (
-                    <motion.span
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      className="absolute -top-1.5 -right-2.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-danger text-white text-[10px] font-bold px-1 leading-none"
-                    >
-                      {inboxUnreadCount > 9 ? '9+' : inboxUnreadCount}
-                    </motion.span>
-                  )}
-                </motion.div>
-                <motion.span
-                  className={`text-[12px] font-semibold relative z-raised ${active ? 'text-family-accent' : 'text-ink-tertiary'}`}
-                >
-                  {item.label}
-                </motion.span>
-              </Link>
-            )
-          })}
-        </div>
-      </div>
-    </nav>
-  )
-}
 
 function OfflineBanner() {
   const { connected } = useNetworkStatus()
@@ -369,6 +243,8 @@ export function DigestClickTracker() {
 
 function PwaInit() {
   useEffect(() => {
+    // layout.tsx sets this before paint; the Capacitor bridge can arrive after that script.
+    if (isStandalone() || isNativeShell()) document.documentElement.dataset.app = '1'
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return
     navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {})
   }, [])
@@ -958,6 +834,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <AppHeroHeader>
             {showEmergency && <EmergencyButton />}
             {showAskKeel && <AskKeelButton context={pathname} />}
+            {showNav && <MobileMenu />}
           </AppHeroHeader>
         )}
         <VerifyEmailBanner />
@@ -978,6 +855,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
       {showNav && <LiquidTabBar />}
+      {/* The installed app drops the hero (globals.css), so SOS floats above
+          the tab bar there; Ask Keel already has a tab. */}
+      {showEmergency && (
+        <div className="app-sos-fab fixed z-fab">
+          <EmergencyButton />
+        </div>
+      )}
       {(showEmergency || (showAskKeel && !keelOpen)) && (
         <div
           className="hidden desk:flex fixed bottom-8 z-fab flex-col items-end gap-4"

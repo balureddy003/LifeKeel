@@ -383,8 +383,18 @@ html[data-session] .lk-landing-gate { visibility: hidden; }
 
 :root {
   --app-header-height: calc(80px + env(safe-area-inset-top, 0px));
-  --app-dock-space: calc(96px + env(safe-area-inset-bottom, 0px));
+  /* Browser tab: navigation lives in the hero's menu, nothing docks at the bottom. */
+  --app-dock-space: calc(24px + env(safe-area-inset-bottom, 0px));
+  --app-tabbar-bottom: max(10px, calc(env(safe-area-inset-bottom, 0px) - 10px));
 }
+/* Installed app (html[data-app], set in layout.tsx): tab bar instead of the
+   hero + menu, and the status bar inset is PageHeader's job alone. */
+:root[data-app] {
+  --app-header-height: 0px;
+  --app-dock-space: calc(var(--app-tabbar-bottom) + 74px);
+}
+:root[data-app] .app-hero,
+:root[data-app] .app-menu-btn { display: none; }
 .app-content, .app-hero-inner { max-width: 1600px; min-width: 0; }
 .app-content { overflow-wrap: anywhere; }
 .app-hero {
@@ -407,17 +417,99 @@ html[data-session] .lk-landing-gate { visibility: hidden; }
   justify-content: space-between;
   gap: 12px;
 }
+/* Liquid-glass tab bar: translucent capsule, saturated blur, a specular
+   top edge (::before) and a glossy pill under the active tab. */
 .app-bottom-nav {
-  bottom: max(10px, env(safe-area-inset-bottom, 0px));
-  left: max(10px, env(safe-area-inset-left, 0px));
-  right: max(10px, env(safe-area-inset-right, 0px));
-  max-width: 600px;
+  display: none;
+  bottom: var(--app-tabbar-bottom);
+  left: max(14px, env(safe-area-inset-left, 0px));
+  right: max(14px, env(safe-area-inset-right, 0px));
+  max-width: 440px;
   margin-inline: auto;
-  border: 1px solid rgb(var(--haze) / .65);
-  border-radius: 28px;
-  background: rgb(var(--nav-bg) / .92);
-  box-shadow: 0 6px 32px rgb(0 0 0 / .12), inset 0 1px 0 rgb(var(--tint) / .08);
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / .2);
+  background: linear-gradient(180deg, rgb(var(--nav-bg) / .6), rgb(var(--nav-bg) / .8));
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  box-shadow:
+    0 12px 32px -10px rgb(0 0 0 / .35),
+    0 2px 8px rgb(0 0 0 / .08),
+    inset 0 1px 0 rgb(255 255 255 / .35),
+    inset 0 -1px 0 rgb(255 255 255 / .06);
 }
+:root[data-app] .app-bottom-nav { display: block; }
+.app-bottom-nav::before,
+.app-menu-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgb(255 255 255 / .16) 0%, rgb(255 255 255 / 0) 48%);
+}
+.app-tab-pill {
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgb(var(--family-500) / .24), rgb(var(--family-500) / .12));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .32), inset 0 0 0 1px rgb(var(--family-500) / .2);
+}
+.app-sos-fab {
+  display: none;
+  right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: calc(var(--app-dock-space) - 2px);
+}
+:root[data-app] .app-sos-fab { display: block; }
+
+/* Browser-tab menu: glossy trigger in the hero and a floating sheet that
+   slides in from the right (AppNav.tsx). */
+.app-menu-btn {
+  display: flex;
+  border: 1px solid rgb(var(--tint) / .12);
+  background: linear-gradient(180deg, rgb(var(--tint) / .1), rgb(var(--tint) / .03));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .25), 0 6px 14px -6px rgb(0 0 0 / .3);
+}
+.app-menu-panel {
+  top: max(10px, env(safe-area-inset-top, 0px));
+  bottom: max(10px, env(safe-area-inset-bottom, 0px));
+  right: max(10px, env(safe-area-inset-right, 0px));
+  width: min(84vw, 340px);
+  overflow: hidden;
+  border-radius: 28px;
+  border: 1px solid rgb(255 255 255 / .18);
+  background: linear-gradient(160deg, rgb(var(--nav-bg) / .8), rgb(var(--nav-bg) / .94));
+  backdrop-filter: blur(32px) saturate(180%);
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
+  box-shadow: -24px 0 60px -16px rgb(0 0 0 / .5), inset 0 1px 0 rgb(255 255 255 / .3);
+}
+/* One sheen sweep across the sheet as it lands. */
+.app-menu-panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / .14) 50%, transparent 65%);
+  transform: translateX(-100%);
+  animation: app-menu-sheen 1.1s .15s ease-out forwards;
+}
+@keyframes app-menu-sheen { to { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) { .app-menu-panel::after { animation: none; display: none; } }
+.app-menu-item { transition: background-color .15s ease; }
+.app-menu-item:hover, .app-menu-item:active { background: rgb(var(--tint) / .06); }
+.app-menu-item.is-active {
+  background: linear-gradient(180deg, rgb(var(--family-500) / .22), rgb(var(--family-500) / .1));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .25), inset 0 0 0 1px rgb(var(--family-500) / .2);
+}
+.app-menu-icon {
+  background: linear-gradient(180deg, rgb(var(--tint) / .1), rgb(var(--tint) / .03));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .2);
+}
+
+/* Installed app: page titles get the room the hero used to take. */
+:root[data-app] .app-page-header { padding-top: env(safe-area-inset-top, 0px); padding-bottom: 6px; }
+:root[data-app] .app-page-header h1 { padding-block: 0; }
+:root[data-app] .app-page-header p { padding-bottom: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .app-nav-space { padding-bottom: var(--app-dock-space); }
 .app-chat { height: calc(100dvh - var(--app-header-height) - var(--app-dock-space) - 8px); min-height: 320px; }
 .app-setup-chat { height: calc(100dvh - var(--app-header-height) - 8px); min-height: 400px; }
@@ -430,8 +522,8 @@ html[data-session] .lk-landing-gate { visibility: hidden; }
   .app-content .px-4 { padding-inline: 12px; }
 }
 @media (min-width: 1400px), (min-width: 1024px) and (hover: hover) and (pointer: fine) {
-  :root { --app-dock-space: 0px; }
-  .app-bottom-nav { display: none; }
+  :root, :root[data-app] { --app-dock-space: 0px; }
+  :root[data-app] .app-bottom-nav, .app-menu-btn, :root[data-app] .app-sos-fab { display: none; }
   .app-content { max-width: 56rem; padding-inline: 0; }
   .app-shell-with-rail { --app-header-height: 0px; }
   .app-shell-with-rail .app-hero { display: none; }
