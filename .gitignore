@@ -33,3 +33,6 @@ apps/mobile/www/
 
 # provision-infra.sh output — contains service-account keys, never commit
 deploy-out/
+
+# CatBoost training output (written next to the cwd unless disabled)
+catboost_info/
