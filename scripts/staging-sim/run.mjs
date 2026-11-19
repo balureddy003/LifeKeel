@@ -95,8 +95,8 @@ async function login(email, password = PW) {
   await pace('login', 9)
   return call('POST', '/auth/login', { body: { email, password } })
 }
-async function makeFamily(first, family) {
-  const o = await signup(first, family)
+async function makeFamily(first, family, extra = {}) {
+  const o = await signup(first, family, extra)
   if (!o.token) throw new Error(`signup failed: ${o.r.status} ${o.r.text.slice(0, 200)}`)
   const f = await call('POST', '/family', {
     token: o.token,
@@ -1205,13 +1205,19 @@ scenario('16 time: monthly digest, reminder cap and restart', async () => {
   check('May: the count and the list line remain', /1 record/.test(m3))
 
   const v = (await call('GET', '/family/domains/car', { token: o })).json?.result_version
-  await call('POST', '/family/domains/car/confirm', { token: o, body: { result_version: v } })
-  await call('POST', '/family/domains/car/confirm', { token: b.token, body: { result_version: v } })
+  const c1 = await call('POST', '/family/domains/car/confirm', {
+    token: o,
+    body: { result_version: v },
+  })
+  const c2 = await call('POST', '/family/domains/car/confirm', {
+    token: b.token,
+    body: { result_version: v },
+  })
   const st16 = (await call('GET', '/family/domains/car', { token: o })).json?.confirmation
   check(
     'June: before the digest, the list itself says every adult has seen it',
     st16?.both_confirmed === true,
-    JSON.stringify(st16),
+    `confirm statuses ${c1.status}/${c2.status} ${c2.text.slice(0, 200)} ${JSON.stringify(st16)}`,
   )
   const since3 = new Date().toISOString()
   await run('2027-06-01T08:00:00Z')
@@ -1406,7 +1412,8 @@ function resilienceFamily(id) {
       (async () => {
         const f = RES_FAMILIES.find((x) => x.id === id)
         const [first, ...rest] = f.adults[0].split(' ')
-        const fam = await makeFamily(first, rest.join(' '))
+        // A distinct workspace: scenario 01 already has an Okafor family in the same run.
+        const fam = await makeFamily(first, rest.join(' '), { workspace: `sim res ${id} ${RUN}` })
         const tokens = [fam.org.token]
         for (const name of f.adults.slice(1)) {
           const [a, ...b] = name.split(' ')
