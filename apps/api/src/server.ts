@@ -596,7 +596,7 @@ app.addHook('onResponse', async (request, reply) => {
   const startedAt = requestStartedAt.get(request) ?? performance.now()
   recordApiRequest(
     request.method,
-    request.routeOptions.url ?? request.url,
+    request.routeOptions.url,
     reply.statusCode,
     (performance.now() - startedAt) / 1000,
   )
