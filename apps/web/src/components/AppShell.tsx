@@ -26,6 +26,7 @@ import { useToast } from './Toast'
 import { AuthShell } from '@/components/landing/AuthShell'
 import { MarketingLanding } from './MarketingLanding'
 import { NavRail } from './NavRail'
+import { bottomPaddingClass } from '@/lib/shell-spacing'
 import { LiquidTabBar } from './AppNav'
 import { isKeelPanelEnabled } from '@/lib/keel/client'
 import { PANEL_ID, useKeelPanel } from '@/lib/keel/store'
@@ -765,7 +766,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Open or minimised: the panel (or its "Resume Keel" pill) is the control, so the floating button steps aside.
   const keelOpen = useKeelPanel((st) => st.open)
 
-  const bottomPadding = showNav ? 'app-nav-space' : ''
+  const bottomPadding = bottomPaddingClass({
+    showNav: Boolean(showNav),
+    showEmergency: Boolean(showEmergency),
+  })
 
   const isMarketingPage = !isAuthenticated && pathname === '/'
   // The sign-in screens (AuthShell) and the public pages (PublicShell) frame themselves on the

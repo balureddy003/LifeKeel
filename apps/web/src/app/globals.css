@@ -479,6 +479,8 @@ html[data-session] .lk-landing-gate { visibility: hidden; }
   bottom: calc(var(--app-dock-space) - 2px);
 }
 .app-nav-space { padding-bottom: var(--app-dock-space); }
+/* The SOS button is about 51px tall and floats above the tab bar: clear it so the last lines of a page are readable. */
+.app-nav-space.app-sos-space { padding-bottom: calc(var(--app-dock-space) + 64px); }
 .app-chat { height: calc(100dvh - var(--app-chat-top, var(--app-header-height)) - var(--app-dock-space) - 8px); min-height: 320px; }
 .app-setup-chat { height: calc(100dvh - var(--app-header-height) - 8px); min-height: 400px; }
 .app-chat > :not([role='log']), .app-setup-chat > :not([role='log']) { flex-shrink: 0; }
@@ -496,7 +498,7 @@ html[data-session] .lk-landing-gate { visibility: hidden; }
   .app-shell-with-rail { --app-header-height: 0px; }
   .app-shell-with-rail .app-page-header { padding-top: 8px; box-shadow: none; }
   .app-shell-with-rail .app-hero { display: none; }
-  .app-nav-space { padding-bottom: 40px; }
+  .app-nav-space, .app-nav-space.app-sos-space { padding-bottom: 40px; }
   .app-hero-inner { padding-inline: 44px; }
 }
 
