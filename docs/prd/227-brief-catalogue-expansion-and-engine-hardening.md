@@ -1,8 +1,8 @@
 # PRD-227: Brief catalogue expansion and engine hardening
 
-Status: **PROPOSED**. Part A (hardening) is a defect fix and should land first.
-Part B (new events, past dates, multi-step) is buildable but should be sized
-against Stage 1 completion data before more entries are added.
+Status: **SHIPPED** (PRs #309, #311). Part A (hardening) and Part B (new events,
+past dates, multi-step) both landed; size further catalogue entries against
+Stage 1 completion data before adding more.
 
 ## Problem
 

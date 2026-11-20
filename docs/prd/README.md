@@ -497,7 +497,7 @@ that keep marginal cost independent of stored PDF volume (from Intents 70–77):
 Follow-ups to the factual catalogue (Intent 78), from a review of what shipped:
 
 1. [227-brief-catalogue-expansion-and-engine-hardening.md](227-brief-catalogue-expansion-and-engine-hardening.md) —
-   **PROPOSED.** Part A (fix first): encrypt sensitive handover facts at rest,
+   **SHIPPED** (PRs #309, #311). Part A: encrypt sensitive handover facts at rest,
    keep them out of logs and telemetry, DPIA and retention, password-shaped input hint. Part B: add
    renting, windfall, planned spend, care fees, illness, bereavement and
    bill-in-one-name; allow past change dates; accept ordered multi-step briefs.
@@ -515,7 +515,7 @@ Follow-ups to the factual catalogue (Intent 78), from a review of what shipped:
 ## 230 — Friction budget (proposed 2026-10-30)
 
 1. [230-friction-budget-and-zero-connection-first-value.md](230-friction-budget-and-zero-connection-first-value.md) —
-   **PROPOSED, targets to be baselined.** Measure time, fields and connections on the
+   **SHIPPED** (PRs #319, #321, #336); targets still to be baselined. Measure time, fields and connections on the
    first-value path; first value never needs a connection; the brief link is the front
    door for households, advisers and employers; the second adult reads first and joins
    later. Tier 0.
@@ -523,7 +523,7 @@ Follow-ups to the factual catalogue (Intent 78), from a review of what shipped:
 ## 231 — Household single-point-of-failure map (proposed 2026-10-30)
 
 1. [231-household-single-point-of-failure-map.md](231-household-single-point-of-failure-map.md) —
-   **PROPOSED.** One row per recurring obligation: who is named, who pays, whose
+   **SHIPPED** (PRs #322, #331). One row per recurring obligation: who is named, who pays, whose
    phone gets the notices, the next due date — and a one-line summary of how much
    depends on one person. Household-entered, no connection. Tier 0.
 
@@ -531,20 +531,20 @@ Follow-ups to the factual catalogue (Intent 78), from a review of what shipped:
 ## 233 — Lapse and change detection (proposed 2026-10-30)
 
 1. [233-lapse-and-change-detection.md](233-lapse-and-change-detection.md) —
-   **PROPOSED.** When an expected premium or renewal has no record by its date,
+   **SHIPPED** (PRs #324, #328). When an expected premium or renewal has no record by its date,
    an in-app signal says "no payment on file since <date>; check with your
    provider that cover is in force" — never "lapsed". Extends the existing
    premium-increase rule. Tier 0.
 ## 235 — Claim packet (proposed 2026-10-30)
 
-1. [235-claim-packet.md](235-claim-packet.md) — **PROPOSED.** For one policy
+1. [235-claim-packet.md](235-claim-packet.md) — **SHIPPED** (PRs #326, #329). For one policy
    type first (life): assembles the insurer's claims contact as printed, the
    policy number, and a checklist of papers on file or not located, plus a
    fixed-template draft notification the household reviews and sends. Tier 1
    prepare-only — no ActionExecutor, nothing sent. Tier gate recorded.
 ## 234 — Beneficiary check (proposed 2026-10-30)
 
-1. [234-beneficiary-check.md](234-beneficiary-check.md) — **PROPOSED.**
+1. [234-beneficiary-check.md](234-beneficiary-check.md) — **SHIPPED** (PR #325).
    Flags factual differences between recorded pension/policy nominations and
    the current family (ex-partner, child added after the nomination date, no
    nomination on file). Advice-line pass recorded in the PRD; ex-partner flags
@@ -554,7 +554,7 @@ Follow-ups to the factual catalogue (Intent 78), from a review of what shipped:
 ## 232 — Employer cover blind spot (proposed 2026-10-30)
 
 1. [232-employer-cover-blind-spot.md](232-employer-cover-blind-spot.md) —
-   **PROPOSED.** Employer-provided cover recorded on file (type, name as printed,
+   **SHIPPED** (PR #323). Employer-provided cover recorded on file (type, name as printed,
    source, last seen) feeding the job-change brief's recorded-cover field;
    extraction stays `candidate_for_review`. Depth, never front door. Tier 0.
 

@@ -1,6 +1,6 @@
 # PRD-232: Employer cover the household does not know it has
 
-Status: **PROPOSED.** From Intent 84. Tier 0; depth, never front door.
+Status: **SHIPPED** (PR #323). From Intent 84. Tier 0; depth, never front door.
 
 ## Problem
 

@@ -1,6 +1,6 @@
 # PRD-230: A friction budget, and first value that needs no connection
 
-Status: **PROPOSED.** Targets below are starting points to baseline against real use
+Status: **SHIPPED** (PRs #319, #321, #336). Targets below are starting points to baseline against real use
 before they gate anything; they are the product owner's to set.
 
 ## Problem

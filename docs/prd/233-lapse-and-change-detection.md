@@ -1,6 +1,6 @@
 # PRD-233: A stopped payment, noticed — lapse and change detection
 
-Status: **PROPOSED.** From Intent 88. Tier 0; depth, never front door.
+Status: **SHIPPED** (PRs #324, #328). From Intent 88. Tier 0; depth, never front door.
 
 ## Problem
 
