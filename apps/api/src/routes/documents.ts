@@ -19,7 +19,7 @@
 import { getAuditLogger } from '../audit/audit-log.js'
 import { closeReceipt, openReceipt, publicReceipt, saveReceipt } from '../deletion/receipt.js'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import type { Db } from 'mongodb'
+import type { Db, UpdateResult } from 'mongodb'
 import { randomUUID } from 'node:crypto'
 import type { Engine, Insight } from '@lifekeel/engine'
 import { createLogger, getTenantCollection } from '@lifekeel/platform'
@@ -143,6 +143,34 @@ export const ESTATE_VAULT_CATEGORY = 'estate_vault'
 
 /** Statuses the general list and detail routes never show. */
 const HIDDEN_STATUSES = ['awaiting_upload', 'deleting']
+
+/**
+ * Write predicate for ordinary-document mutations (ISSUES H01): never a vault
+ * row (vault.ts owns those) and never a row already being deleted. Applied in
+ * the database filter, not only in a prior read, so a row that changes
+ * between read and write is not modified.
+ */
+const WRITABLE_DOCUMENT = {
+  category: { $ne: ESTATE_VAULT_CATEGORY },
+  status: { $ne: 'deleting' },
+} as const
+
+/**
+ * Household write policy for ordinary documents (ISSUES H01). Viewers can
+ * read shared records but not change or remove them; the same grant that
+ * gates applying a document to the profile (isHouseholdEditor) gates every
+ * document mutation.
+ */
+async function requireDocumentEditor(
+  db: Db,
+  req: FastifyRequest,
+  reply: FastifyReply,
+): Promise<boolean> {
+  const { tenant_id, user_id, roles } = req.authContext
+  if (await isHouseholdEditor(db, tenant_id, user_id, roles)) return true
+  await reply.status(403).send({ error: 'Only household editors can change shared records' })
+  return false
+}
 
 export function registerDocumentRoutes(
   fastify: FastifyInstance,
@@ -602,10 +630,13 @@ export function registerDocumentRoutes(
       if (renewal !== undefined && renewal !== null && !/^\d{4}-\d{2}-\d{2}$/.test(renewal)) {
         return reply.status(400).send({ error: 'renewal_date must be YYYY-MM-DD or null' })
       }
+      if (!(await requireDocumentEditor(db, req, reply))) return
       const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
-      const doc = await documents.findOne({ id: req.params.id })
-      if (!doc) return reply.status(404).send({ error: 'Document not found' })
-      await documents.updateOne({ id: req.params.id }, { $set: { renewal_date: renewal ?? null } })
+      const updated = (await documents.updateOne(
+        { id: req.params.id, ...WRITABLE_DOCUMENT },
+        { $set: { renewal_date: renewal ?? null } },
+      )) as UpdateResult
+      if (updated.matchedCount === 0) return reply.status(404).send({ error: 'Document not found' })
       return { id: req.params.id, renewalDate: renewal ?? null }
     },
   )
@@ -694,6 +725,7 @@ export function registerDocumentRoutes(
   // produced nothing (e.g. PDFs before they were read as text). Reads the
   // original bytes back from GridFS; nothing is re-uploaded.
   fastify.post<{ Params: { id: string } }>('/documents/:id/reprocess', async (req, reply) => {
+    if (!(await requireDocumentEditor(db, req, reply))) return
     const { tenant_id } = req.authContext
     const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
     const doc = await documents.findOne({ id: req.params.id })
@@ -744,13 +776,10 @@ export function registerDocumentRoutes(
       if (!category || !(CATEGORIES as readonly string[]).includes(category)) {
         return reply.status(400).send({ error: 'Choose one of the document types' })
       }
+      if (!(await requireDocumentEditor(db, req, reply))) return
       const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
-      const doc = await documents.findOne({ id: req.params.id })
-      if (!doc || doc['category'] === ESTATE_VAULT_CATEGORY) {
-        return reply.status(404).send({ error: 'Document not found' })
-      }
-      await documents.updateOne(
-        { id: req.params.id },
+      const updated = (await documents.updateOne(
+        { id: req.params.id, ...WRITABLE_DOCUMENT },
         {
           $set: {
             category,
@@ -760,7 +789,8 @@ export function registerDocumentRoutes(
             'classification.confirmed_at': new Date(),
           },
         },
-      )
+      )) as UpdateResult
+      if (updated.matchedCount === 0) return reply.status(404).send({ error: 'Document not found' })
       auditStep(tenant_id, user_id, 'document.reviewed', req.params.id, { step: 'type_confirmed' })
       return { id: req.params.id, category, confirmed: true }
     },
@@ -779,9 +809,10 @@ export function registerDocumentRoutes(
       if (!Array.isArray(decisions) || decisions.length === 0 || decisions.length > 50) {
         return reply.status(400).send({ error: 'Send between 1 and 50 decisions' })
       }
+      if (!(await requireDocumentEditor(db, req, reply))) return
       const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
-      const doc = await documents.findOne({ id: req.params.id })
-      if (!doc || doc['category'] === ESTATE_VAULT_CATEGORY) {
+      const doc = await documents.findOne({ id: req.params.id, ...WRITABLE_DOCUMENT })
+      if (!doc) {
         return reply.status(404).send({ error: 'Document not found' })
       }
       const candidates = await loadCandidates(db, tenant_id, req.params.id)
@@ -1112,6 +1143,7 @@ export function registerDocumentRoutes(
 
   // ── DELETE /documents/:id ───────────────────────────────────────────────
   fastify.delete<{ Params: { id: string } }>('/documents/:id', async (req, reply) => {
+    if (!(await requireDocumentEditor(db, req, reply))) return
     const { tenant_id } = req.authContext
     const documents = getTenantCollection<DocumentRecord>(db, 'documents', tenant_id)
     const doc = await documents.findOne({
