@@ -374,7 +374,7 @@ export function registerDocumentRoutes(
         // `documents` row exists to ever look it up by again). Best-effort:
         // if the cleanup delete itself fails, log and still surface the
         // original error rather than masking it.
-        if (!(await deleteGridfs(db, fileId)))
+        if (!(await deleteGridfs(db, fileId).catch(() => false)))
           log.error(
             { fileId, documentId },
             'Failed to clean up orphaned GridFS blob after metadata insert failure',

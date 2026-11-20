@@ -17,6 +17,7 @@
  * via registerScheduledJob; inline timers only start when enabled.
  */
 
+import { retryVaultPurges } from '../documents/vault-purge.js'
 import cron from 'node-cron'
 import type { Db } from 'mongodb'
 import { Engine, type Insight, ScoreCalibrator } from '@lifekeel/engine'
@@ -302,6 +303,24 @@ export async function startBackgroundWork(deps: BackgroundWorkDeps): Promise<Bac
     )
     log.info({}, 'Document OCR retry cron started')
   }
+
+  // Vault ciphertext deletes that failed at request time (ISSUES H02). The
+  // record holds the storage reference until the object is confirmed absent.
+  scheduleJob(
+    'vault-purge-retry',
+    '*/15 * * * *',
+    async () => {
+      try {
+        await withCronLock(workflowDb, 'vault-purge-retry', async () => {
+          const r = await retryVaultPurges(workflowDb)
+          if (r.pending > 0) log.warn(r, 'Vault purges still pending after retry')
+        })
+      } catch (err) {
+        log.error({ err }, 'Vault purge retry cron failed')
+      }
+    },
+    { noOverlap: true },
+  )
 
   // OCR hand-off for documents the scan worker promoted to 'clean'
   // (CLOUDFLARE_INTEGRATION.md §7.3), plus the reconciler that republishes

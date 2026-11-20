@@ -175,13 +175,19 @@ export async function writeGridfs(
   return id
 }
 
+/**
+ * true when this call removed the blob, false when it was already absent.
+ * Any other failure throws (ISSUES H02): a caller must never mistake an
+ * unreachable store for a completed deletion.
+ */
 export async function deleteGridfs(db: Db, fileId: unknown): Promise<boolean> {
   if (!fileId) return false
   try {
     await gridfs(db).delete(fileId as ObjectId)
     return true
-  } catch {
-    return false // already gone
+  } catch (err) {
+    if (await gridfsExists(db, fileId)) throw err
+    return false
   }
 }
 

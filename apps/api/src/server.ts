@@ -109,6 +109,7 @@ import { startBackgroundWork } from './boot/background-work.js'
 import { registerDocumentUploadRoutes } from './routes/documents-uploads.js'
 import { ensureQuotaIndexes } from './documents/quota.js'
 import { ensureDeletionIndexes } from './documents/deletion.js'
+import { ensureVaultPurgeIndexes } from './documents/vault-purge.js'
 import { assertDocumentsSchemaFloor } from './documents/storage.js'
 import { getScheduledJob, cronTriggerAuthorized } from './jobs/scheduled-crons.js'
 import { ensureSpendIndexes } from './spend-ledger.js'
@@ -316,6 +317,7 @@ try {
   await ensureOtpIndexes(workflowDb) // email OTP chains and send budgets
   await ensureQuotaIndexes(workflowDb) // shared upload reservations (§7.12)
   await ensureDeletionIndexes(workflowDb) // fenced-delete tombstones (§7.7)
+  await ensureVaultPurgeIndexes(workflowDb) // pending vault ciphertext deletes (H02)
   // Rollback floor (§7.9): refuse to serve a database holding documents this
   // build cannot read.
   try {
