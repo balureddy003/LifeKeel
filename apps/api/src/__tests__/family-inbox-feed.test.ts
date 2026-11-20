@@ -2,10 +2,14 @@ import { describe, expect, it, vi } from 'vitest'
 import Fastify from 'fastify'
 import { registerFamilyInboxRoutes } from '../routes/family-inbox.js'
 
+const limits: unknown[] = []
 const cursor = (rows: unknown[]) => {
   const c: Record<string, unknown> = {}
   c['sort'] = () => c
-  c['limit'] = () => c
+  c['limit'] = (n: unknown) => {
+    limits.push(n)
+    return c
+  }
   c['toArray'] = async () => rows
   return c
 }
@@ -202,5 +206,26 @@ describe('GET /inbox — Keel recommendations feed', () => {
     ]
     expect(filter).toMatchObject({ id: 'ins1', tenant_id: 't1' })
     expect(update.$set['state']).toBe('dismissed')
+  })
+})
+
+describe('GET /inbox page size (ISSUES M02)', () => {
+  it.each([
+    ['0', 1],
+    ['-3', 1],
+    ['abc', 50],
+    ['5000', 100],
+  ])('limit=%s reaches MongoDB as %s', async (raw, expected) => {
+    const { db } = makeDb({ insights: { rows: [] }, inbox_items: { rows: [] } })
+    const app = await build(db)
+    limits.length = 0
+    const res = await app.inject({ method: 'GET', url: `/inbox?limit=${raw}` })
+    expect(res.statusCode).toBe(200)
+    expect(limits.length).toBeGreaterThan(0)
+    for (const n of limits) {
+      expect(Number.isInteger(n)).toBe(true)
+      expect(n as number).toBeGreaterThanOrEqual(1)
+    }
+    expect(limits).toContain(expected)
   })
 })

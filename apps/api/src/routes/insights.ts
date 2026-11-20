@@ -61,6 +61,7 @@ function reportInsightRouteError(route: string, err: unknown, tenantId: string):
 }
 import { MongoMemoryRepository } from '@lifekeel/mongodb-adapter'
 import { createHash, randomUUID } from 'node:crypto'
+import { boundedQueryInt } from '../lib/query-int.js'
 
 /**
  * Fetch recent insights for an entity (last 7 days) — used by the
@@ -231,8 +232,8 @@ export async function registerInsightRoutes(
     if (query.exclude_detector_id)
       filter['detector_id'] = { $nin: query.exclude_detector_id.split(',') }
 
-    const limit = Math.min(parseInt(query.limit ?? '20', 10), 100)
-    const offset = parseInt(query.offset ?? '0', 10)
+    const limit = boundedQueryInt(query.limit, { fallback: 20, min: 1, max: 100 })
+    const offset = boundedQueryInt(query.offset, { fallback: 0, min: 0, max: 10_000 })
 
     try {
       const col = await getInsightsCollection()
@@ -296,8 +297,8 @@ export async function registerInsightRoutes(
       filter['$or'] = [{ goal_id: query.goal_id }, { 'feature_snapshot.goal_id': query.goal_id }]
     }
 
-    const limit = Math.min(parseInt(query.limit ?? '20', 10), 100)
-    const offset = parseInt(query.offset ?? '0', 10)
+    const limit = boundedQueryInt(query.limit, { fallback: 20, min: 1, max: 100 })
+    const offset = boundedQueryInt(query.offset, { fallback: 0, min: 0, max: 10_000 })
 
     try {
       const col = await getInsightsCollection()
@@ -373,7 +374,7 @@ export async function registerInsightRoutes(
     const filter: Record<string, unknown> = { tenant_id, entity_key: entityKey }
     if (query.state) filter['state'] = query.state
 
-    const limit = Math.min(parseInt(query.limit ?? '50', 10), 200)
+    const limit = boundedQueryInt(query.limit, { fallback: 50, min: 1, max: 200 })
 
     try {
       const col = await getInsightsCollection()
@@ -1544,7 +1545,7 @@ export async function registerInsightRoutes(
     const since = new Date(Date.now() - days * 864e5)
     filter['executed_at'] = { $gte: since }
 
-    const limit = Math.min(100, parseInt(query.limit ?? '50', 10) || 50)
+    const limit = boundedQueryInt(query.limit, { fallback: 50, min: 1, max: 100 })
 
     const receiptsCol = await getReceiptsCollection()
     const receipts = await receiptsCol.find(filter).sort({ executed_at: -1 }).limit(limit).toArray()

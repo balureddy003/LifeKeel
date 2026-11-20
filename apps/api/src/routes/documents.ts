@@ -79,6 +79,7 @@ import { effectivePlan, hasFeature } from '../entitlements.js'
 import { recordInsightAction } from '../insights/insight-attribution.js'
 import { buildDedupeKey, emitReadinessEvent } from '../feed/emit.js'
 import { isHouseholdEditor } from '../family/family-permissions.js'
+import { boundedQueryInt } from '../lib/query-int.js'
 
 // PRD-136: one feed event per document pipeline stage (uploaded /
 // extracted / applied), deduped per (document, stage) so a reprocess or
@@ -517,8 +518,7 @@ export function registerDocumentRoutes(
 
       // A finite integer in [1, 100] (R26): 0, negatives and NaN would
       // otherwise reach MongoDB, where limit(0) means "no limit".
-      const requested = Number.parseInt(String(req.query.limit ?? '50'), 10)
-      const limit = Number.isFinite(requested) ? Math.min(Math.max(requested, 1), 100) : 50
+      const limit = boundedQueryInt(req.query.limit, { fallback: 50, min: 1, max: 100 })
 
       const docs = await documents.find(filter).sort({ uploaded_at: -1 }).limit(limit).toArray()
 
