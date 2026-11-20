@@ -31,7 +31,7 @@ afterEach(() => vi.clearAllMocks())
 
 describe('InstallHint', () => {
   it('shows after the browser offers an install and sends only the platform', () => {
-    render(<InstallHint />)
+    render(<InstallHint delayMs={0} />)
     expect(screen.queryByRole('region')).toBeNull()
     act(() => {
       window.dispatchEvent(promptEvent())
@@ -41,7 +41,7 @@ describe('InstallHint', () => {
   })
 
   it('triggers the saved prompt on Install', async () => {
-    render(<InstallHint />)
+    render(<InstallHint delayMs={0} />)
     const e = promptEvent()
     act(() => {
       window.dispatchEvent(e)
@@ -54,7 +54,7 @@ describe('InstallHint', () => {
   })
 
   it('remembers a dismissal on this device', () => {
-    render(<InstallHint />)
+    render(<InstallHint delayMs={0} />)
     act(() => {
       window.dispatchEvent(promptEvent())
     })
@@ -65,10 +65,62 @@ describe('InstallHint', () => {
 
   it('stays hidden on the first visit and when signed out', () => {
     localStorage.clear()
-    render(<InstallHint />)
+    render(<InstallHint delayMs={0} />)
     act(() => {
       window.dispatchEvent(promptEvent())
     })
     expect(screen.queryByRole('region')).toBeNull()
+  })
+
+  describe('presentation', () => {
+    beforeEach(() => vi.useFakeTimers())
+    afterEach(() => vi.useRealTimers())
+
+    it('waits a few seconds so the screen loads clean, then shows', () => {
+      render(<InstallHint />)
+      act(() => {
+        window.dispatchEvent(promptEvent())
+      })
+      expect(screen.queryByRole('region')).toBeNull()
+      expect(track).not.toHaveBeenCalledWith('pwa_install_shown', expect.anything())
+      act(() => {
+        vi.advanceTimersByTime(6000)
+      })
+      expect(screen.getByRole('region')).toBeTruthy()
+      expect(track).toHaveBeenCalledWith('pwa_install_shown', { p: 'prompt' })
+    })
+
+    it('sits above the floating SOS button, never over it', () => {
+      render(<InstallHint delayMs={0} />)
+      act(() => {
+        window.dispatchEvent(promptEvent())
+      })
+      const region = screen.getByRole('region')
+      expect(region.className).toContain('bottom-[calc(var(--app-dock-space)+64px)]')
+      expect(region.className).toContain('glass')
+    })
+
+    it('is one compact row with a solid, readable Install button', () => {
+      render(<InstallHint delayMs={0} />)
+      act(() => {
+        window.dispatchEvent(promptEvent())
+      })
+      const install = screen.getByRole('button', { name: 'Install' })
+      // Dark-on-light text colour tokens were unreadable on the pale card.
+      expect(install.className).toContain('bg-family-500')
+      expect(install.className).toContain('--on-cta')
+      expect(install.className).not.toContain('text-family-300')
+      expect(screen.getByRole('region').textContent).not.toMatch(/no browser bar/)
+    })
+
+    it('has a 48 point Not now target', () => {
+      render(<InstallHint delayMs={0} />)
+      act(() => {
+        window.dispatchEvent(promptEvent())
+      })
+      const close = screen.getByRole('button', { name: 'Not now' })
+      expect(close.className).toMatch(/min-h-\[48px\]/)
+      expect(close.className).toMatch(/min-w-\[48px\]/)
+    })
   })
 })
