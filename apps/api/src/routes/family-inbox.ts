@@ -25,6 +25,7 @@ import { listInsightAttributions, recordInsightAction } from '../insights/insigh
 import type { PolicyType } from '../ocr/profile-mapping.js'
 import { confirmedFields, loadCandidates } from '../extraction/pipeline.js'
 import { isHouseholdEditor } from '../family/family-permissions.js'
+import { boundedQueryInt } from '../lib/query-int.js'
 
 const log = createLogger({ service: 'family-inbox', version: '0.0.0' })
 
@@ -281,7 +282,7 @@ export function registerFamilyInboxRoutes(
   // ── GET /inbox ──────────────────────────────────────────────────────────
   fastify.get<{ Querystring: { limit?: string; unread_only?: string } }>('/inbox', async (req) => {
     const { tenant_id } = req.authContext
-    const limit = Math.min(parseInt(req.query.limit ?? '50', 10), 100)
+    const limit = boundedQueryInt(req.query.limit, { fallback: 50, min: 1, max: 100 })
     const unreadOnly = req.query.unread_only === 'true'
 
     // Only emails that carried policy details are recommendations —
