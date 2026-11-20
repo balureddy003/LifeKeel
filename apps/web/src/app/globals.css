@@ -479,7 +479,7 @@ html[data-session] .lk-landing-gate { visibility: hidden; }
   bottom: calc(var(--app-dock-space) - 2px);
 }
 .app-nav-space { padding-bottom: var(--app-dock-space); }
-.app-chat { height: calc(100dvh - var(--app-header-height) - var(--app-dock-space) - 8px); min-height: 320px; }
+.app-chat { height: calc(100dvh - var(--app-chat-top, var(--app-header-height)) - var(--app-dock-space) - 8px); min-height: 320px; }
 .app-setup-chat { height: calc(100dvh - var(--app-header-height) - 8px); min-height: 400px; }
 .app-chat > :not([role='log']), .app-setup-chat > :not([role='log']) { flex-shrink: 0; }
 .app-chat input, .app-setup-chat input { min-width: 0; }

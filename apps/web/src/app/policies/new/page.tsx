@@ -173,6 +173,10 @@ export default function NewPolicyPage() {
             ))}
           </select>,
         )}
+        <p className="-mt-2 text-sm text-ink-secondary">
+          Pick a person and the policy shows under their name on the family list. Left blank, it
+          shows as not yet matched.
+        </p>
         {field(
           'pol-cover',
           'Cover amount in £ (optional)',
