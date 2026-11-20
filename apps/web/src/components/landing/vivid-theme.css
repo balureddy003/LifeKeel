@@ -17,6 +17,10 @@
   --vv-cyan-bg: #ecfeff;
   --vv-cyan-a: #0891b2;
   --vv-cyan-b: #2563eb;
+  /* Text on the matching -bg: -a tones are for fills and fall under 4.5:1 as small text. */
+  --vv-cyan-text: #0e7490;
+  --vv-violet-text: #6d28d9;
+  --vv-amber-text: #b45309;
   --vv-blue-bg: #eff6ff;
   --vv-blue-a: #2563eb;
   --vv-blue-b: #4f46e5;
