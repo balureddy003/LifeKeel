@@ -314,6 +314,7 @@ describe('DELETE /documents/:id', () => {
       ;(req as unknown as { authContext: unknown }).authContext = {
         tenant_id: tenant,
         user_id: 'me',
+        roles: ['owner'],
       }
     })
     registerDocumentRoutes(app, db)
