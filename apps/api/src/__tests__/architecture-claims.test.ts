@@ -128,6 +128,9 @@ const EXEMPT_COLLECTIONS = new Set([
   // global aggregate — not per-tenant deletable; warm-start gated by
   // allowFederatedWarmStart (intent 06) until governance exists
   'federated_global_models',
+  // the same artifact after the rule-3 quarantine migration: global, read by
+  // nothing, every document expires 90 days after it was quarantined
+  'quarantine_federated_global_models',
   // GridFS buckets — emptied via bucket.delete() in the deletion path
   'documents.files',
   'documents.chunks',
@@ -275,6 +278,30 @@ describe('architecture claims: no ungoverned cross-tenant model influence', () =
     // A pooled find ({ detector_id, state } with no tenant filter) is the
     // original cross-tenant shape — it must not come back.
     expect(src).not.toMatch(/\.find\(\s*\{\s*detector_id[^}]*\}\s*\)/)
+  })
+
+  const allSources = () => [
+    ...sourceFiles(resolve(REPO_ROOT, 'apps')),
+    ...sourceFiles(resolve(REPO_ROOT, 'packages')),
+  ]
+
+  it('no source constructs FederatedLearningService (no federated round is wired)', () => {
+    const offenders = allSources()
+      .filter((f) => readFileSync(f, 'utf8').includes('new FederatedLearningService('))
+      .map((f) => f.slice(REPO_ROOT.length + 1))
+    expect(offenders, 'a federated round needs rule-3 governance before it is wired').toEqual([])
+  })
+
+  it('only the quarantine migration touches the quarantined federated artifact', () => {
+    const offenders = allSources()
+      .filter((f) => !f.endsWith(join('apps', 'api', 'src', 'migrate.ts')))
+      .filter((f) =>
+        /quarantine_federated_global_models|FEDERATED_QUARANTINE_COLLECTION/.test(
+          readFileSync(f, 'utf8'),
+        ),
+      )
+      .map((f) => f.slice(REPO_ROOT.length + 1))
+    expect(offenders, 'the quarantined artifact must not be read').toEqual([])
   })
 })
 

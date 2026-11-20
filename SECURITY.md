@@ -52,9 +52,11 @@ No service currently writes a new shared model, but two dormant/evaluation paths
 still need governance before stronger wording is used:
 
 - `FeatureHashScorer` and `TenantLevelScorer` can warm-start from
-  `federated_global_models.latest` if such an artifact exists. Stale artifacts
-  should be deleted/quarantined or the read gated before claiming no
-  cross-tenant model influence.
+  `federated_global_models.latest` only when `allowFederatedWarmStart` is set
+  (no production path sets it). The stale artifact is renamed to
+  `quarantine_federated_global_models` by migration
+  `20261120000000-quarantine-federated-global-models` and expires after 90 days;
+  nothing reads it.
 - The weekly `feature_hash_eval` job loads approved/dismissed insights across
   tenants and trains a temporary in-memory detector-level scorer to calculate
   aggregate quality metrics. It does not persist or deploy that scorer, but it

@@ -12,6 +12,9 @@ export interface Migration {
   up(db: Db): Promise<void>
 }
 
+export const FEDERATED_QUARANTINE_COLLECTION = 'quarantine_federated_global_models'
+export const FEDERATED_QUARANTINE_TTL_SECONDS = 90 * 24 * 60 * 60
+
 interface CategoryTableEntry {
   rule_id_pattern: string
   category: string
@@ -443,6 +446,29 @@ export const migrations: Migration[] = [
     id: '20261119000000-insights-retry-sweep-index',
     up: async (db) => {
       await db.collection('insights').createIndex({ state: 1, created_at: 1 })
+    },
+  },
+  {
+    // CLAUDE.md rule 3 / IMS G-AI-05: the stale cross-tenant scorer artifact
+    // was built without consent. Nothing may read it; it is renamed out of the
+    // warm-start path and expires after FEDERATED_QUARANTINE_TTL_SECONDS. A
+    // pre-existing quarantine collection makes the rename throw, which fails
+    // the migration and blocks boot rather than merging two artifacts.
+    id: '20261120000000-quarantine-federated-global-models',
+    up: async (db) => {
+      const source = 'federated_global_models'
+      if (await db.listCollections({ name: source }).hasNext()) {
+        await db.collection(source).rename(FEDERATED_QUARANTINE_COLLECTION, { dropTarget: false })
+        await db
+          .collection(FEDERATED_QUARANTINE_COLLECTION)
+          .updateMany({}, { $set: { quarantined_at: new Date() } })
+      }
+      await db
+        .collection(FEDERATED_QUARANTINE_COLLECTION)
+        .createIndex(
+          { quarantined_at: 1 },
+          { expireAfterSeconds: FEDERATED_QUARANTINE_TTL_SECONDS },
+        )
     },
   },
 ]

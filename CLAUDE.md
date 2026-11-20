@@ -83,9 +83,11 @@ keys, provider-side memory/file/vector stores, or unapproved batch/fine-tuning
 APIs. Local and on-device paths are preferred for high-sensitivity tasks. Any
 future cross-tenant learning (including the dormant federated-learning code)
 requires explicit opt-in, privacy review, minimum-cohort/privacy-accounting
-controls, deletion/retraining evidence, and user-facing disclosure. Any stale
-`federated_global_models` artifact must be deleted/quarantined or gated before
-scorer warm-start can use it.
+controls, deletion/retraining evidence, and user-facing disclosure. The stale
+`federated_global_models` artifact is quarantined by migration (renamed to
+`quarantine_federated_global_models`, 90-day TTL, read by nothing) and scorer
+warm-start stays gated behind `allowFederatedWarmStart`; do not read the
+quarantine or wire `FederatedLearningService` (`architecture-claims.test.ts`).
 
 ## How the rules are enforced (not just stated)
 
