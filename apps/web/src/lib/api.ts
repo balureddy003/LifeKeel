@@ -2859,6 +2859,93 @@ export async function saveFamilyBusinesses(
   return res.ok
 }
 
+export type PolicyCheck =
+  | { status: 'not_enough' }
+  | { status: 'match' }
+  | {
+      status: 'mismatch'
+      yearlyFromMonthlyMinor: number
+      differenceMinor: number
+      text: string
+    }
+
+export interface NewPolicyInput {
+  type: 'life' | 'income_protection' | 'critical_illness'
+  provider: string
+  covers_member_id?: string
+  member_id?: string
+  coverage_amount_minor?: number
+  monthly_premium_minor?: number
+  annual_premium_minor?: number
+  contact_phone?: string
+  contact_email?: string
+  policy_number?: string
+  renewal_date?: string
+}
+
+export interface SavedPolicy {
+  id: string
+  type: string
+  provider: string
+  coverage_amount_minor: number
+  monthly_premium_minor: number
+  annual_premium_minor?: number
+  contact_phone?: string
+  contact_email?: string
+  beneficiary_member_id?: string
+}
+
+async function policyRequest<T>(
+  path: string,
+  body: object,
+): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
+  const base = getApiBase()
+  const token = getAuthToken()
+  try {
+    const res = await credFetch(`${base}${path}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok)
+      return {
+        ok: false,
+        error: String((data as { error?: string }).error ?? 'Could not save that'),
+      }
+    return { ok: true, data: data as T }
+  } catch {
+    return { ok: false, error: 'Could not reach the server. Try again in a moment.' }
+  }
+}
+
+/** Dry run: the same monthly-versus-yearly check the save uses. Null when it could not be asked. */
+export async function checkPolicyPremium(
+  monthly?: number,
+  annual?: number,
+): Promise<PolicyCheck | null> {
+  const r = await policyRequest<{ check: PolicyCheck }>('/family/policies/check', {
+    ...(monthly ? { monthly_premium_minor: monthly } : {}),
+    ...(annual ? { annual_premium_minor: annual } : {}),
+  })
+  return r.ok ? r.data.check : null
+}
+
+export async function addFamilyPolicy(
+  input: NewPolicyInput,
+): Promise<{ ok: true; policy: SavedPolicy; check: PolicyCheck } | { ok: false; error: string }> {
+  const r = await policyRequest<{ policy: SavedPolicy; check: PolicyCheck }>(
+    '/family/policies',
+    input,
+  )
+  if (!r.ok) return r
+  notifyKeelDataChanged('family')
+  return { ok: true, policy: r.data.policy, check: r.data.check }
+}
+
 export async function addCashflowEntry(input: {
   kind: 'income' | 'expense'
   label: string

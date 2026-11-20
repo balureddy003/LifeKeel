@@ -79,6 +79,10 @@ function webCopyFiles(): string[] {
     'apps/web/src/app/packet/page.tsx',
     // Intent 94: the income-stops estimate states a range and what it leaves out, and names no product.
     'apps/web/src/app/resilience/page.tsx',
+    // Quick policy add: the premium check states arithmetic and points at the policy document.
+    'apps/web/src/app/policies/new/page.tsx',
+    'apps/api/src/resilience/premium-check.ts',
+    'apps/api/src/routes/family-policies.ts',
     // PRD-231: the obligations map states who is named and what is due.
     'apps/web/src/app/map/page.tsx',
     // PRD-232: cover facts state what is on file and when it may end.

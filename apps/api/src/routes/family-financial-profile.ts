@@ -181,6 +181,9 @@ export const FinancialProfileSchema = z.object({
         provider: z.string().min(1),
         coverage_amount_minor: money().default(0),
         monthly_premium_minor: money().default(0),
+        // What the household typed as the yearly premium. Stored as entered, never overwritten with twelve months;
+        // detectors still read the monthly figure.
+        annual_premium_minor: money().optional(),
         // ISO date string (e.g. "2027-03-01"), optional — a policy with no
         // known renewal date simply never contributes to the renewal-window
         // rule, rather than being rejected.
