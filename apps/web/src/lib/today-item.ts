@@ -7,13 +7,16 @@ import { countdownText, daysUntil } from '@/app/briefs/what-if'
  *   1. something with a date inside 14 days (soonest first), then
  *   2. a payment that stopped or a nomination that does not match the family
  *      (newest first), then
- *   3. the missing fact that sharpens the biggest number.
+ *   3. the missing fact that sharpens the biggest number, then
+ *   4. for a household with nothing on file and no one else on it, adding the other adult, because
+ *      what is recorded is shared with them and both confirm it.
  * A prioritisation of what is already on file. It recommends nothing.
  */
 export type TodayItem =
   | { tier: 'date'; title: string; why: string; href: string; cta: string }
   | { tier: 'check'; title: string; why: string; href: string; cta: string; detail: string }
   | { tier: 'missing'; title: string; why: string; href: string; cta: string }
+  | { tier: 'start'; title: string; why: string; href: string; cta: string }
   | { tier: 'none'; title: string }
 
 export const DATE_WINDOW_DAYS = 14
@@ -31,8 +34,10 @@ export function pickTodayItem(input: {
   insights: FamilyInsight[]
   profileCompleteness: number
   today: string
+  /** True for a household with nothing on file and no one else on it. Off by default. */
+  startWithOtherAdult?: boolean
 }): TodayItem {
-  const { obligations, insights, profileCompleteness, today } = input
+  const { obligations, insights, profileCompleteness, today, startWithOtherAdult } = input
 
   const dated = obligations
     .map((o) => ({ o, days: daysUntil(o.next_due_date, today) }))
@@ -74,6 +79,16 @@ export function pickTodayItem(input: {
       why: `Why this one: your profile is ${profileCompleteness}% complete, and the rest changes the answers above.`,
       href: '/financial-profile',
       cta: 'Add it',
+    }
+  }
+
+  if (startWithOtherAdult) {
+    return {
+      tier: 'start',
+      title: 'Add the other adult',
+      why: 'Why this one: what you record is shared with them, and you both confirm it.',
+      href: '/settings?add=1',
+      cta: 'Add them',
     }
   }
 

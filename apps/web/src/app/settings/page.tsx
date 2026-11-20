@@ -7,7 +7,7 @@ import { APPROVAL_NOTE, approvalConfirm } from './join-request-copy'
 import { PushToggle } from '@/components/PushToggle'
 import { TextButton } from '@/components/TextButton'
 import { ACCOUNT_DELETE_WARNING } from '@/lib/deletion-receipt-copy'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { PageHeader, ListSection, ListRow, GlassCard, PageTransition } from '@/components/Glass'
@@ -105,6 +105,7 @@ import {
   detectOnDeviceProvider,
 } from '@/lib/onDeviceLlm'
 import type { LucideIcon } from 'lucide-react'
+import { useScrollIntoViewWhen } from '@/lib/useScrollIntoViewWhen'
 
 const MODE_ICONS: Record<string, LucideIcon> = {
   organizer: Crown,
@@ -152,6 +153,8 @@ export default function SettingsPage() {
   const profileCompleteness = useAppStore((s) => s.profileCompleteness)
 
   const [showAddMember, setShowAddMember] = useState(false)
+  const addMemberRef = useRef<HTMLDivElement>(null)
+  useScrollIntoViewWhen(addMemberRef, showAddMember)
   const [memberName, setMemberName] = useState('')
   const [memberEmail, setMemberEmail] = useState('')
   const [memberRole, setMemberRole] = useState<FamilyRole>('adult')
@@ -873,111 +876,113 @@ export default function SettingsPage() {
           though the underlying state had already reset correctly. Reliability
           here matters more than a fade transition. */}
         {showAddMember && (
-          <GlassCard className="p-4 space-y-3">
-            <input
-              type="text"
-              aria-label="Member name"
-              placeholder="Name"
-              value={memberName}
-              onChange={(e) => setMemberName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAddMember()}
-              className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
-            />
-            <input
-              type="email"
-              aria-label="Member email (optional)"
-              placeholder="Email (optional)"
-              value={memberEmail}
-              onChange={(e) => setMemberEmail(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAddMember()}
-              className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
-            />
-
-            <label className="block">
-              <div className="text-xs text-ink-tertiary mb-1.5">Date of birth (optional)</div>
+          <div ref={addMemberRef}>
+            <GlassCard className="p-4 space-y-3">
               <input
-                type="date"
-                value={memberDob}
-                max={new Date().toISOString().slice(0, 10)}
-                onChange={(e) => setMemberDob(e.target.value)}
-                className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+                type="text"
+                aria-label="Member name"
+                placeholder="Name"
+                value={memberName}
+                onChange={(e) => setMemberName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddMember()}
+                className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
               />
-            </label>
+              <input
+                type="email"
+                aria-label="Member email (optional)"
+                placeholder="Email (optional)"
+                value={memberEmail}
+                onChange={(e) => setMemberEmail(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddMember()}
+                className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary placeholder:text-ink-tertiary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+              />
 
-            <div className="flex gap-2">
-              {INVITABLE_ROLES.map((role) => {
-                const RoleIcon = ROLE_ICONS[role] ?? User
-                const active = memberRole === role
-                return (
-                  <button
-                    key={role}
-                    onClick={() => {
-                      haptic('light')
-                      setMemberRole(role)
-                    }}
-                    className={`flex-1 rounded-xl py-2.5 flex flex-col items-center gap-1 border transition-colors ${
-                      active
-                        ? 'bg-family-500/15 border-family-500/40 text-family-400'
-                        : 'bg-tint/[0.03] border-tint/[0.06] text-ink-secondary'
-                    }`}
-                  >
-                    <RoleIcon size={16} />
-                    <span className="text-xs font-medium">{ROLE_LABELS[role]}</span>
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* Intent 25: blended families need to say whose child this is —
-                a display-only label, not a role or an access change. */}
-            {memberRole === 'child' && (
               <label className="block">
-                <div className="text-xs text-ink-tertiary mb-1.5">Relationship (optional)</div>
-                <select
-                  value={memberRelLabel}
-                  onChange={(e) => setMemberRelLabel(e.target.value as RelationshipLabel | '')}
-                  className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 transition-all bg-surface"
-                >
-                  <option value="">Not specified</option>
-                  {(Object.keys(RELATIONSHIP_LABELS) as RelationshipLabel[]).map((k) => (
-                    <option key={k} value={k}>
-                      {RELATIONSHIP_LABELS[k]}
-                    </option>
-                  ))}
-                </select>
+                <div className="text-xs text-ink-tertiary mb-1.5">Date of birth (optional)</div>
+                <input
+                  type="date"
+                  value={memberDob}
+                  max={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) => setMemberDob(e.target.value)}
+                  className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 focus:border-family-500/30 transition-all"
+                />
               </label>
-            )}
 
-            {addMemberError && (
-              <div
-                role="status"
-                aria-live="polite"
-                className="flex items-start gap-2 text-xs text-danger"
-              >
-                <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
-                <span>{addMemberError}</span>
+              <div className="flex gap-2">
+                {INVITABLE_ROLES.map((role) => {
+                  const RoleIcon = ROLE_ICONS[role] ?? User
+                  const active = memberRole === role
+                  return (
+                    <button
+                      key={role}
+                      onClick={() => {
+                        haptic('light')
+                        setMemberRole(role)
+                      }}
+                      className={`flex-1 rounded-xl py-2.5 flex flex-col items-center gap-1 border transition-colors ${
+                        active
+                          ? 'bg-family-500/15 border-family-500/40 text-family-400'
+                          : 'bg-tint/[0.03] border-tint/[0.06] text-ink-secondary'
+                      }`}
+                    >
+                      <RoleIcon size={16} />
+                      <span className="text-xs font-medium">{ROLE_LABELS[role]}</span>
+                    </button>
+                  )
+                })}
               </div>
-            )}
 
-            <div className="flex gap-2">
-              <motion.button
-                whileTap={{ scale: 0.96 }}
-                onClick={resetAddMemberForm}
-                disabled={addingMember}
-                className="flex-1 glass text-ink-primary font-semibold rounded-xl py-3 text-sm disabled:opacity-40"
-              >
-                Cancel
-              </motion.button>
-              <motion.button
-                whileTap={{ scale: 0.96 }}
-                onClick={handleAddMember}
-                disabled={!memberName.trim() || addingMember}
-                className="flex-1 bg-family-500 text-white font-semibold rounded-xl py-3 text-sm disabled:opacity-40 flex items-center justify-center gap-1.5"
-              >
-                {addingMember ? <Loader2 size={14} className="animate-spin" /> : 'Add'}
-              </motion.button>
-            </div>
-          </GlassCard>
+              {/* Intent 25: blended families need to say whose child this is —
+                a display-only label, not a role or an access change. */}
+              {memberRole === 'child' && (
+                <label className="block">
+                  <div className="text-xs text-ink-tertiary mb-1.5">Relationship (optional)</div>
+                  <select
+                    value={memberRelLabel}
+                    onChange={(e) => setMemberRelLabel(e.target.value as RelationshipLabel | '')}
+                    className="glass-input w-full rounded-xl px-4 py-3 text-base text-ink-primary outline-none focus:ring-2 focus:ring-family-500/40 transition-all bg-surface"
+                  >
+                    <option value="">Not specified</option>
+                    {(Object.keys(RELATIONSHIP_LABELS) as RelationshipLabel[]).map((k) => (
+                      <option key={k} value={k}>
+                        {RELATIONSHIP_LABELS[k]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              {addMemberError && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="flex items-start gap-2 text-xs text-danger"
+                >
+                  <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
+                  <span>{addMemberError}</span>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <motion.button
+                  whileTap={{ scale: 0.96 }}
+                  onClick={resetAddMemberForm}
+                  disabled={addingMember}
+                  className="flex-1 glass text-ink-primary font-semibold rounded-xl py-3 text-sm disabled:opacity-40"
+                >
+                  Cancel
+                </motion.button>
+                <motion.button
+                  whileTap={{ scale: 0.96 }}
+                  onClick={handleAddMember}
+                  disabled={!memberName.trim() || addingMember}
+                  className="flex-1 bg-family-500 text-white font-semibold rounded-xl py-3 text-sm disabled:opacity-40 flex items-center justify-center gap-1.5"
+                >
+                  {addingMember ? <Loader2 size={14} className="animate-spin" /> : 'Add'}
+                </motion.button>
+              </div>
+            </GlassCard>
+          </div>
         )}
 
         {/* Access requests (PRD-110) — organizer-only. A pending request never
