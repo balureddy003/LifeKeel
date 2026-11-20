@@ -11,6 +11,7 @@ benchmarks.
 | Documents (files, what was read from them, their text) | the family deletes it, or deletes the account | `DELETE /documents/:id` returns a receipt. **Never swept by age.** |
 | Mailbox connection and what was read from it (inbox summaries, saved attachments, sync state, scan failure log) | the family disconnects with "delete what was read", or deletes the account | `POST /connectors/:id/disconnect` with `delete_data: true` returns a receipt. A plain disconnect revokes access only and keeps the rest, and says so. |
 | Financial profile, family roster, vault | the family changes or removes them, or deletes the account | account deletion |
+| Vault files | the family deletes it, or deletes the account | `DELETE /vault/documents/:id` removes the record at once. If the encrypted file cannot be deleted, the response says `purge: pending` and its storage reference stays in `vault_purges` until the `vault-purge-retry` job (every 15 minutes) confirms the file is gone. |
 | Keel concern reports (`keel_concerns`: category, answer route, encrypted note) | 365 days (TTL), or the account is deleted | TTL index; account deletion |
 | Everything above and every other tenant-scoped collection | the family deletes the account | `POST /account/delete` (see below) |
 
