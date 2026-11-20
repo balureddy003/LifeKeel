@@ -53,6 +53,7 @@ import { decryptEnveloped } from '../crypto/envelope.js'
 import { briefsFor, withoutHandoverFacts, type HouseholdBriefDoc } from '../briefs/briefs.js'
 import { legacyDocumentVisible, type LegacyDocumentDoc } from './family-legacy.js'
 import type { FamilyGroupDoc } from './family-group.js'
+import { ESTATE_VAULT_CATEGORY, HIDDEN_STATUSES } from './documents.js'
 import {
   cancelSubscriptionForDeletedTenant,
   markCancellationPending,
@@ -259,7 +260,13 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db): void {
 
       // File bytes stay out of the JSON bundle — the documents' own download
       // endpoint serves originals until the account is deleted.
-      const documents = await read('documents')
+      // Same visibility as the document routes (ISSUES M01): no incomplete or
+      // deleting uploads, and vault metadata only for an adult on the roster.
+      const documents = await read('documents', {
+        tenant_id,
+        status: { $nin: HIDDEN_STATUSES },
+        ...(adult ? {} : { category: { $ne: ESTATE_VAULT_CATEGORY } }),
+      })
       yield field(
         'documents',
         capped('documents', documents).map((d) => {
@@ -332,6 +339,7 @@ export function registerAccountRoutes(app: FastifyInstance, db: Db): void {
 
     return reply
       .type('application/json; charset=utf-8')
+      .header('Cache-Control', 'private, no-store')
       .header('Content-Disposition', `attachment; filename="lifekeel-export-${tenant_id}.json"`)
       .send(Readable.from(bundle()))
   })

@@ -18,6 +18,7 @@ import { z } from 'zod'
 import { getAuditLogger } from '../audit/audit-log.js'
 import { isFamilyAdult, isHouseholdEditor, isMinorMember } from '../family/family-permissions.js'
 import type { FamilyGroupDoc } from './family-group.js'
+import { ESTATE_VAULT_CATEGORY, NOT_PRINTABLE_STATUSES } from './documents.js'
 
 /** Asset kinds that are accounts with a balance; property and valuables are not. */
 const ACCOUNT_KINDS = ['savings_account', 'investment']
@@ -90,9 +91,15 @@ export async function registerEmergencySheetRoutes(app: FastifyInstance, db: Db)
     }
 
     if (want.has('key_papers')) {
+      // Ordinary, completed documents only (ISSUES M01): a printed sheet
+      // travels, so vault files and pending or deleting uploads stay off it.
       const docs = await db
         .collection('documents')
-        .find({ tenant_id })
+        .find({
+          tenant_id,
+          category: { $ne: ESTATE_VAULT_CATEGORY },
+          status: { $nin: NOT_PRINTABLE_STATUSES },
+        })
         .project({ title: 1, filename: 1, name: 1 })
         .limit(50)
         .toArray()

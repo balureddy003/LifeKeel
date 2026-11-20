@@ -24,7 +24,15 @@ function makeDb() {
       },
       { tenant_id: 'other', name: 'NOT-MINE', phone: '9' },
     ],
-    documents: [{ tenant_id: TENANT, title: 'Will' }],
+    documents: [
+      { tenant_id: TENANT, title: 'Home insurance' },
+      { tenant_id: TENANT, filename: 'mortgage.pdf', status: 'stored' },
+      { tenant_id: TENANT, filename: 'will-vault.pdf', category: 'estate_vault' },
+      { tenant_id: TENANT, filename: 'deleting.pdf', status: 'deleting' },
+      { tenant_id: TENANT, filename: 'half-uploaded.pdf', status: 'awaiting_upload' },
+      { tenant_id: TENANT, filename: 'infected.pdf', status: 'infected' },
+      { tenant_id: 'other', filename: 'other-tenant.pdf' },
+    ],
     // Real asset shape (family-assets.ts): value_minor, kind from ASSET_KINDS.
     family_assets: [
       { tenant_id: TENANT, name: 'Barclays saver', kind: 'savings_account', value_minor: 1_234_56 },
@@ -55,11 +63,13 @@ function makeDb() {
     ],
   }
   const matches = (d: Record<string, unknown>, f: Record<string, unknown>) =>
-    Object.entries(f).every(([k, v]) =>
-      v && typeof v === 'object' && '$in' in v
-        ? (v as { $in: unknown[] }).$in.includes(d[k])
-        : d[k] === v,
-    )
+    Object.entries(f).every(([k, v]) => {
+      if (!v || typeof v !== 'object') return d[k] === v
+      if ('$in' in v) return (v as { $in: unknown[] }).$in.includes(d[k])
+      if ('$nin' in v) return !(v as { $nin: unknown[] }).$nin.includes(d[k])
+      if ('$ne' in v) return d[k] !== (v as { $ne: unknown }).$ne
+      return false
+    })
   const col = (name: string) => ({
     find: (f: Record<string, unknown>) => {
       const rows = (cols[name] ?? []).filter((d) => matches(d, f))
@@ -122,6 +132,20 @@ describe('POST /family/emergency-sheet/preview', () => {
       .items.map((i: { label: string }) => i.label)
     expect(names).toEqual(['Sam'])
     expect(JSON.stringify(body)).not.toContain('NOT-MINE')
+  })
+
+  it('key papers name only ordinary, completed documents (ISSUES M01)', async () => {
+    const app = await buildApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/emergency-sheet/preview',
+      payload: { sections: ['key_papers'] },
+    })
+    const labels = res
+      .json()
+      .sections[0].items.map((i: { label: string }) => i.label)
+      .sort()
+    expect(labels).toEqual(['Home insurance', 'mortgage.pdf'])
   })
 
   it('balances only appear when explicitly enabled, from value_minor, for accounts only', async () => {
