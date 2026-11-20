@@ -150,10 +150,16 @@ gaps:
     # architecture-claims.test.ts ("no ungoverned cross-tenant model
     # influence") fails CI if the guard moves after the read. The remaining
     # exit item is deleting/quarantining the stored artifact itself.
-    status: in_progress
-    note: Closing in the principal developer's Phase 2 PR.
+    # 2026-11-20: migration 20261120000000-quarantine-federated-global-models
+    # renames the artifact to quarantine_federated_global_models (read by
+    # nothing, 90-day TTL); architecture-claims.test.ts fails CI if anything
+    # but the migration references it or constructs FederatedLearningService.
+    status: verify
+    note: Takes effect on the next production deploy; verify the collection is absent there.
     evidence:
       - apps/api/src/__tests__/architecture-claims.test.ts
+      - apps/api/src/__tests__/federated-quarantine-migration.test.ts
+      - apps/api/src/migrate.ts
       - packages/engine/src/scoring/feature-hash-scorer.ts
       - packages/engine/src/scoring/tenant-level-scorer.ts
     exit_criterion: Artifact deleted/quarantined; test asserts absence or gate
