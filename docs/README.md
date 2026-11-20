@@ -7,6 +7,7 @@ Start with the row that matches what you are doing.
 | Doc | Read it when |
 |---|---|
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | You are making your first change. One page, the whole loop. |
+| [Implementation and onboarding guide](../STARTER.md) | You need the full picture: local setup, HLD/LLD, numbered flows, configuration, deployment runbooks. |
 | [CLAUDE.md](../CLAUDE.md) | You work with Claude Code or any AI agent here. The two rules, conventions, gotchas. |
 | [AI-native SDLC playbook](ai-native-sdlc-playbook.md) | You want the why, every check, the cost levers, and the known gaps. The reference. |
 | [Extending the SDLC](sdlc/extending.md) | You want to add a tripwire test, hook, skill, eval, workflow, or gate. Recipes with templates. |
