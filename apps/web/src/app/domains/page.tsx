@@ -281,6 +281,19 @@ export default function DomainsPage() {
             </p>
           )}
 
+          {view.can_edit && view.pack.id === 'life_protection' && (
+            <Link href="/policies/new" className="mt-4 block" data-testid="add-policy-link">
+              <GlassCard className="p-4" interactive>
+                <span className="inline-flex min-h-[48px] items-center text-base font-medium text-ink-primary">
+                  Add a policy
+                </span>
+                <p className="text-sm text-ink-secondary">
+                  One short form: the premiums are checked against each other as you type.
+                </p>
+              </GlassCard>
+            </Link>
+          )}
+
           <SentenceCapture view={view} busy={busy} onAdd={add} />
           <AddRecordForm view={view} busy={busy} onAdd={add} />
 

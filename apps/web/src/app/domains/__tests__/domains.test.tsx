@@ -511,6 +511,18 @@ describe('hardening (critic pass 2)', () => {
     expect(screen.queryByText(/cannot add or remove/)).toBeNull()
   })
 
+  it('links an editor on the life protection page to the one-form policy add, and no one else', async () => {
+    getDomainView.mockResolvedValue(view())
+    render(<DomainsPage />)
+    const link = await screen.findByTestId('add-policy-link')
+    expect(link.getAttribute('href')).toBe('/policies/new')
+    cleanup()
+    getDomainView.mockResolvedValue({ ...view(), can_edit: false })
+    render(<DomainsPage />)
+    await screen.findByText(/This account cannot add or remove/)
+    expect(screen.queryByTestId('add-policy-link')).toBeNull()
+  })
+
   it('offers Try again when the page cannot load, and loads on the second try', async () => {
     getDomainView.mockResolvedValueOnce(null).mockResolvedValueOnce(view())
     render(<DomainsPage />)
