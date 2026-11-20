@@ -19,6 +19,7 @@ import { reportError } from './observability'
 import { detectEmergency, EMERGENCY_REPLY } from './emergency-detection'
 import { getSessionToken } from '@/lib/session-token'
 import { notifyKeelDataChanged } from './keel/client'
+import { withProfileDefaults } from './profile-defaults'
 
 export interface FamilyInsight {
   id: string
@@ -3513,7 +3514,10 @@ async function fetchFinancialProfileRaw(): Promise<{
   return apiFetch<{ profile: FinancialProfile | null; version?: number }>(
     '/family/financial-profile',
     { profile: null },
-  ).then((r) => ({ profile: r.profile ?? null, version: r.version ?? 0 }))
+  ).then((r) => ({
+    profile: r.profile ? withProfileDefaults(r.profile) : null,
+    version: r.version ?? 0,
+  }))
 }
 
 /** Annual review state — due when it's been >365 days since the family
