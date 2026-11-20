@@ -1,6 +1,6 @@
 # PRD-234: Nominations that no longer match the family — the beneficiary check
 
-Status: **PROPOSED.** From Intent 87. Tier 0; depth, never front door.
+Status: **SHIPPED** (PR #325). From Intent 87. Tier 0; depth, never front door.
 
 ## Problem
 

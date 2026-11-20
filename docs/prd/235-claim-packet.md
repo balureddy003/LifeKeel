@@ -1,6 +1,6 @@
 # PRD-235: A claim packet ready on a bad day
 
-Status: **PROPOSED.** From Intent 86. **Tier 1, prepare-only** — the household
+Status: **SHIPPED** (PRs #326, #329). From Intent 86. **Tier 1, prepare-only** — the household
 sends; `ActionExecutor` is not used and `trust-tier-gate.test.ts` is not
 widened. Gated on PRD-232 and PRD-233 landing (A–D per the work order).
 

@@ -143,8 +143,9 @@ record a recurring reason to be reopened.
 
 | File | Concern | Becomes PRD | Status |
 |---|---|---|---|
-| `79-sensitive-brief-facts-hardening.md` | Encrypt sensitive handover facts at rest, keep them out of logs and telemetry, reject password-shaped input | PRD-227 (Part A) | **PROPOSED** — fix first |
-| `80-brief-catalogue-expansion-and-multi-step.md` | Renting, windfall, planned spend, care fees, illness, bereavement, bill in one name; past change dates; ordered multi-step briefs | PRD-227 (Part B) | **PROPOSED** — size against Stage 1 completion data |
+| `78-factual-brief-catalogue.md` | Factual brief catalogue on the Stage 1 engine | — | **Shipped** — PR #308 |
+| `79-sensitive-brief-facts-hardening.md` | Encrypt sensitive handover facts at rest, keep them out of logs and telemetry, reject password-shaped input | PRD-227 (Part A) | **Shipped** — PRs #309, #311 |
+| `80-brief-catalogue-expansion-and-multi-step.md` | Renting, windfall, planned spend, care fees, illness, bereavement, bill in one name; past change dates; ordered multi-step briefs | PRD-227 (Part B) | **Shipped** — PRs #309, #311 |
 | `81-annual-household-refresh.md` | Refresh a confirmed brief from last time's figures, household-entered review date, in-app prompt, no outbound messages | PRD-228 | **PROPOSED** — gated on Stage 1 return and gate metrics |
 | `82-trusted-person-and-months-only-share.md` | "Just me" path, trusted person confirms by one-time link, months-only share, recipient controls with no creator notification | PRD-229 | **PROPOSED** — **BLOCKED** on a recorded safeguarding review |
 
@@ -152,20 +153,26 @@ record a recurring reason to be reopened.
 
 | File | Concern | Becomes PRD | Status |
 |---|---|---|---|
-| `83-friction-budget-and-zero-connection-first-value.md` | Measure friction on the first-value path, keep first value connection-free, brief link as front door for every channel, second adult reads first and joins later | PRD-230 | **PROPOSED** — baseline the targets before enforcing. Ranked use cases and channels: [review](../reviews/channels-and-use-cases-frictionless-2026-10.md) |
-| `84-employer-cover-blind-spot.md` | Find employer-provided cover on file; warn that it may end with the job; feeds the job-change brief | — | **PROPOSED** — depth, not front door |
-| `85-household-single-point-of-failure-map.md` | Who is named, who pays, whose phone gets notices; what stops, as dates, if one adult is out | — | **PROPOSED** |
-| `86-claim-packet.md` | Prepare-only claim checklist and draft to the existing provider, one policy type first | — | **PROPOSED** — Tier 1 prepare-only |
-| `87-beneficiary-check.md` | Flag nominations that differ from the current family, link to the provider's form | — | **PROPOSED** — advice-line pass needed |
-| `88-lapse-and-change-detection.md` | "No payment on file" and price-creep signals from policy history | — | **PROPOSED** |
+| `83-friction-budget-and-zero-connection-first-value.md` | Measure friction on the first-value path, keep first value connection-free, brief link as front door for every channel, second adult reads first and joins later | PRD-230 | **Shipped** — PRs #319, #321, #336 (targets still to be baselined on real use) |
+| `84-employer-cover-blind-spot.md` | Find employer-provided cover on file; warn that it may end with the job; feeds the job-change brief | PRD-232 | **Shipped** — PR #323 |
+| `85-household-single-point-of-failure-map.md` | Who is named, who pays, whose phone gets notices; what stops, as dates, if one adult is out | PRD-231 | **Shipped** — PRs #322, #331 |
+| `86-claim-packet.md` | Prepare-only claim checklist and draft to the existing provider, one policy type first | PRD-235 | **Shipped** — PRs #326, #329 (Tier 1 prepare-only) |
+| `87-beneficiary-check.md` | Flag nominations that differ from the current family, link to the provider's form | PRD-234 | **Shipped** — PR #325 |
+| `88-lapse-and-change-detection.md` | "No payment on file" and price-creep signals from policy history | PRD-233 | **Shipped** — PRs #324, #328 |
 | `89-parent-mode.md` | Hold a parent's file with the parent's consent | — | **BLOCKED** on the PRD-229 safeguarding review |
 | `90-staged-emergency-access.md` | Timed release of papers to named adults | — | **PARKED** — irreversible action, legal review |
 | `91-adviser-and-employer-brief-link-pilot.md` | Advisers and employers send a brief link; measured on time to first number | PRD-207 | **GATED** on regulatory advice |
-| `92-serverless-background-work.md` | Move ~30 cron timers to Cloud Scheduler + authenticated API endpoints; revisit always-on jobs services (~$130/mo) | — | **PROPOSED** — infra-cost reduction, no behaviour change |
-
-Note: `78-factual-brief-catalogue.md` is shipped (PRs #308) but is not yet listed in
-the table above; add its row when this index is next reconciled.
+| `92-serverless-background-work.md` | Move ~30 cron timers to Cloud Scheduler + authenticated API endpoints; revisit always-on jobs services (~$130/mo) | — | **Shipped** — PRs #427, #431 |
 
 ## 93: Resilience Engine blueprint gaps
 
 [93-resilience-engine-gaps.md](93-resilience-engine-gaps.md): 17 gap-closing intents from the 2026-11-14 blueprint review, grouped into owner decisions (A) and design intents (B). No engine code until A1 to A4 are decided.
+
+A1 to A4 were decided on 2026-11-14 and the engine was built from them. Status by file:
+
+| File | Concern | Status |
+|---|---|---|
+| `94-engine-loop-ledger.md` | Verifier-first loop ledger for the engine (rows R1–R11, B/A decisions) | R1–R11 **done**; B7 parked; B8, A7, A8 **blocked** on owner/attorney — the ledger is the source of truth |
+| `95-account-split-spec.md` | Splitting a household's figures between adults | **Design for the safeguarding review** — no code |
+| `96-owner-lifts-scope-limits.md` | Read-only MCP, business graph, datastore port, gated cross-tenant band counts | **Shipped**; cross-tenant learning built **off by default** behind a privacy-review reference |
+| `97-engine-stack-completion.md` | Engine metrics, extraction as a queue job, selective-risk gate, docling sidecar, CatBoost anomaly helper | Slices **shipped** except slice 7 (PolicyEngine), dropped by the owner; the CatBoost helper stays a scaffold until it beats the deterministic baseline |

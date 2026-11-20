@@ -1,6 +1,6 @@
 # PRD-231: What stops if one adult is out — the household single-point-of-failure map
 
-Status: **PROPOSED.** From Intent 85. Tier 0, user-entered first; no connection,
+Status: **SHIPPED** (PRs #322, #331). From Intent 85. Tier 0, user-entered first; no connection,
 feed or model call required for any of it.
 
 ## Problem

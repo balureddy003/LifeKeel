@@ -1,7 +1,9 @@
 # LifeKeel Architecture
 
 > **Document status:** implementation-aligned architecture snapshot, reviewed
-> against the repository on 17 October 2026.
+> against the repository on 17 October 2026. The gap register (§16) was
+> reconciled on 2 November 2026; the resilience engine (§7), MCP status (§8.9)
+> and capability inventory (§18) were reconciled on 20 November 2026.
 >
 > **Status legend:** **Implemented** means an exercised code path exists in this
 > repository. **Bounded** means the capability exists with an intentional scope
@@ -612,6 +614,35 @@ fund-depletion month. The LLM may narrate computed results but never calculates
 them. Saved scenarios recompute against current profile inputs and can emit feed
 changes through the watchlist job.
 
+### Resilience engine (intents 93–97, built 2026-11-14 to 11-19)
+
+`apps/api/src/resilience/` is the household shock model behind
+`/family/resilience`. Every module is pure and deterministic, makes no model
+call and names no product; the verifier ledger
+[`docs/intents/94-engine-loop-ledger.md`](docs/intents/94-engine-loop-ledger.md)
+is the machine-checked status of each row.
+
+| Concern | Module | Notes |
+|---|---|---|
+| Monthly cash-flow and runway | `cashflow.ts` | Whole minor units; runway in whole months or "no end" inside the horizon |
+| Events | `events.ts`, `combine.ts` | Income stops, mortgage fix ends, death of an earner (payout as a 1–2 month range); combined effects are summed, never double-counted |
+| Range, not a point | `range.ts` | Unconfirmed figures are intervals; the model runs at both corners |
+| What narrows the estimate | `rank.ts` | Ranks informational actions only (check, confirm, find a figure) |
+| Confirmation | `dependencies.ts` | Adults confirm the exact figures used; a changed figure unconfirms only the estimates that read it |
+| Facts | `fact-store.ts` | Append-only, two dates (`valid_from`, `recorded_at`), allow-listed money figures, tenant-keyed and in the erasure wipe |
+| Population rates | `event-rates.ts` | ONS/DWP rows with source and date; a figure without a source is absent, listed in `RATE_GAPS` |
+| Who sees it | `visibility.ts` | Active non-minor organizer/parent/adult only; fails closed |
+| Businesses | `business-graph.ts` | A household business stopping is an ordinary `income_stops` event |
+| Extraction checks | `extraction-checks.ts`, `selective-risk.ts` | Mechanical checks before a person confirms; a field class auto-accepts only when the upper confidence bound on its correction rate is under alpha |
+| Metrics | `engine-metrics.ts`, `/operator/engine-metrics` | Content-free by construction (closed enums plus tenant key) |
+| Anomaly baseline | `anomaly-flag.ts` | MAD-based deterministic floor a learned CatBoost helper must beat before it is used |
+
+Document extraction runs as a queue job (payload `{documentId, tenantId}`). The
+Docling parser is a flag-off client (`DOCLING_SERVICE_URL`) with a Cloud Run
+sidecar deploy spec. The benefits estimate (PolicyEngine, B7) is parked. The
+per-household cost ceiling (B8), activation path (A8) and patent secrecy rule
+(A7) are blocked on the owner or counsel.
+
 ---
 
 ## 8. Decide and communicate: modern AI architecture
@@ -1189,7 +1220,7 @@ safer than an agent loop that lets a model choose permissions or tools.
 | Human interrupt/checkpoint | Exact preview, approval, rejection, resume, receipt | Use now; add durable checkpointing only when waits/recovery outgrow queues |
 | Dynamic agent loop | Model chooses next tool and controls its own process | Do not use for family external effects |
 | Durable agent/workflow | Multi-day approvals, retries, timers, resumable extraction pipelines | Evaluate when Redis/cron cannot express the lifecycle |
-| MCP | Standardized read-only tools for internal operator/eval use, then possibly external read APIs | Defer; requires dedicated security review |
+| MCP | Standardized read-only tools for internal operator/eval use, then possibly external read APIs | **Bounded:** one read-only tool (`POST /mcp`, the household resilience estimate) for the signed-in adult's own client, off unless `LIFEKEEL_MCP_ENABLED=true`. See the conformance note below |
 | A2A | Communication between independently operated agent services | Defer until a real cross-service/cross-vendor ecosystem exists |
 
 This is deliberately the same distinction as modern agent guidance: workflows
@@ -1211,7 +1242,7 @@ receipts) and adopt mature tools only at the layer where they remove real work:
 | OpenAI Agents SDK | Reference-quality tool approvals, guardrails, tracing, handoffs | Do not standardize on a provider-specific runtime; reuse its approval/tracing patterns in LifeKeel contracts |
 | LangChain agents, CrewAI, AutoGen, generic multi-agent frameworks | Open-ended planning/tool selection | Avoid; they hide prompts/tool behavior and add autonomy LifeKeel does not need |
 | Inngest / Trigger.dev | Managed TypeScript background workflows and retries | Defer; useful if durable workflow need is proven and a managed sensitive-data processor is acceptable |
-| MCP servers/clients | Interoperable read-only tools/resources | Defer; use only for internal operator/eval tooling or a future external read API |
+| MCP servers/clients | Interoperable read-only tools/resources | One flag-off read-only server shipped (intent 96); no MCP client, no write tools |
 | A2A / Google ADK | Independent agent-service interoperability | Defer; LifeKeel has one bounded orchestration domain, not a multi-vendor agent ecosystem |
 
 If MCP is ever introduced, require OAuth 2.1, audience-bound tokens, no token
@@ -1220,6 +1251,12 @@ short-lived credentials, server allow-list, signed tool manifests, schema-bound
 arguments/results, rate/cost limits, sandboxing, and full audit. Tool metadata and
 results are untrusted supply-chain input. No MCP tool can bypass LifeKeel's
 normal resource authorization or action approval.
+
+**Conformance note (2026-11-20):** the shipped endpoint reuses normal session
+authentication and the web route's visibility rule. It does not yet implement
+OAuth 2.1 audience-bound tokens, per-client consent or signed manifests listed
+above. Keep `LIFEKEEL_MCP_ENABLED` off in production until those controls exist
+or a recorded decision narrows them.
 
 ### 8.10 Evaluation and MLOps lifecycle
 
@@ -3467,6 +3504,15 @@ This target is informed by, but does not blindly copy:
   social draft/schedule/publish, provider engagement, and growth attribution.
 - Stripe billing, credit ledger, promotions, lifecycle recovery, metrics, audit,
   and human-gated deployment surfaces.
+- Household brief platform Stage 1 (PRD-222) with the factual catalogue,
+  hardening and multi-step briefs (PRD-227), friction budget (PRD-230),
+  single-point-of-failure map (PRD-231), employer cover (PRD-232), lapse
+  detection (PRD-233), beneficiary check (PRD-234) and prepare-only claim packet
+  (PRD-235).
+- Resilience engine (§7): runway ranges, event shocks, confirmation of exact
+  figures, two-date fact store, business graph, content-free engine metrics.
+- Scheduled work triggered by Cloud Scheduler through authenticated API
+  endpoints (intent 92).
 
 ### Bounded or partner-dependent
 
@@ -3477,6 +3523,12 @@ This target is informed by, but does not blindly copy:
   documented policy conflict that must not expand until resolved.
 - Native mobile distribution: shell exists; generated platform projects and
   store release processes are external build concerns.
+- Read-only MCP endpoint (`LIFEKEEL_MCP_ENABLED`, default off) — see §8.9.
+- Cross-tenant runway-band counts (`apps/api/src/learning/`): off unless
+  `LIFEKEEL_CROSS_TENANT_LEARNING=true` and `LEARNING_PRIVACY_REVIEW_REF` is set;
+  all adults opt in, withdrawal deletes. Counts of bands, not a model.
+- Docling parsing sidecar (`DOCLING_SERVICE_URL`) and CatBoost anomaly helper:
+  scaffolds, off until hosting and cost are decided.
 
 ### Not implemented by design
 
