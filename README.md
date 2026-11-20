@@ -25,7 +25,8 @@ apps/mobile   Capacitor native shell — @lifekeel/mobile (not built by root scr
 packages/*    Shared libraries (engine, platform, connector pipeline, ...)
 ```
 
-New here? Start with [CONTRIBUTING.md](CONTRIBUTING.md) (the whole loop on one page) and the
+New here? Start with [CONTRIBUTING.md](CONTRIBUTING.md) (the whole loop on one page), the
+[implementation and onboarding guide](STARTER.md) (setup, architecture, flows, deployment) and the
 [docs index](docs/README.md). AI agent mechanics, verification commands, and gotchas: `.devin/AGENTS.md`.
 
 ## Quick start

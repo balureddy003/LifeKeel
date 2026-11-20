@@ -1,7 +1,7 @@
 # PRDs
 
 Requirement briefs for LifeKeel, following the PRD→production process in
-[CLAUDE.md](../../CLAUDE.md#prd--production-using-claude-code): problem,
+[CLAUDE.md](../../CLAUDE.md#prd--production-full-detail-the-playbook-above): problem,
 who it's for, what "done" looks like, and the trust tier it touches.
 Grounded in [000](000-market-landscape-and-positioning.md)'s market
 research and in hands-on verification of the current codebase — every
