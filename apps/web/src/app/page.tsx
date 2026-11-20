@@ -1162,7 +1162,10 @@ export default function HomePage() {
         </motion.div>
       )}
 
-      <MoreOnHome fold={hasLiveData}>
+      <MoreOnHome
+        fold
+        {...(hasLiveData ? {} : { hint: 'Family, health and timeline fill in as you add details' })}
+      >
         <IfAdvanced>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
