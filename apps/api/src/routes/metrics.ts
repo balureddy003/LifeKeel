@@ -384,14 +384,23 @@ export function recordInsightRouteError(route: string): void {
   insightRouteErrors!.inc({ route })
 }
 
+/** Label for requests no route matched (404s, probes, scanners). */
+export const UNMATCHED_ROUTE_LABEL = 'unmatched'
+
+/**
+ * `route` must be the registered route template (`request.routeOptions.url`),
+ * never the raw request URL: raw URLs carry query data into telemetry and let
+ * any client mint new label series. Unmatched requests share one label.
+ */
 export function recordApiRequest(
   method: string,
-  route: string,
+  route: string | undefined,
   statusCode: number,
   durationSeconds: number,
 ): void {
   const registry = getRegistry()
   initMetrics(registry)
+  route = route || UNMATCHED_ROUTE_LABEL
   const labels = { method, route, status_class: `${Math.floor(statusCode / 100)}xx` }
   apiRequests!.inc(labels)
   apiLatency!.observe({ method, route }, durationSeconds)
