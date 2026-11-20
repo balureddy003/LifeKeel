@@ -51,6 +51,7 @@ import {
   sanitizeFilename,
 } from '../documents/formats.js'
 import { deleteVaultObject, readDocumentBytes, writeVaultCiphertext } from '../documents/storage.js'
+import { attemptVaultPurge, recordVaultPurge } from '../documents/vault-purge.js'
 import { commitReservation, releaseReservation, reserveUpload } from '../documents/quota.js'
 import { signatureMatchesMime } from '../extraction/file-signature.js'
 import { evaluateEstate } from '../legacy/evaluate-estate.js'
@@ -293,10 +294,17 @@ export function registerVaultRoutes(
     const doc = await documents.findOne({ id: req.params.id, category: ESTATE_VAULT_CATEGORY })
     if (!doc) return reply.status(404).send({ error: 'Document not found' })
 
-    await deleteVaultObject(db, doc).catch(() => false) // may already be gone
+    // The storage reference is recorded before the row goes, so a failed
+    // ciphertext delete is retried rather than lost (ISSUES H02).
+    await recordVaultPurge(db, tenant_id, req.params.id, doc)
     await releaseReservation(db, tenant_id, req.params.id)
-    await documents.deleteOne({ id: req.params.id })
+    await documents.deleteOne({ id: req.params.id, category: ESTATE_VAULT_CATEGORY })
     await reevaluateEstate(tenant_id)
-    return { ok: true }
+    const purge = await attemptVaultPurge(db, tenant_id, req.params.id)
+    if (purge === 'pending') {
+      log.warn({ documentId: req.params.id }, 'Vault object delete failed; queued for retry')
+      return reply.status(202).send({ ok: true, purge })
+    }
+    return { ok: true, purge }
   })
 }

@@ -62,6 +62,7 @@ export const DELETABLE_COLLECTIONS = [
   'oauth_pending_grants', // R37 parked connector grants (encrypted, 10-minute TTL)
   'otp_chains', // email OTP challenges (CLOUDFLARE_INTEGRATION.md §6.2.1)
   'document_tombstones', // fenced-delete markers (§7.7); the objects are purged below
+  'vault_purges', // pending vault ciphertext deletes (ISSUES H02); objects purged below
   'tenant_quota', // storage reservations (§7.12)
   'family_life_change_nudge_state',
   'feed_mutes',

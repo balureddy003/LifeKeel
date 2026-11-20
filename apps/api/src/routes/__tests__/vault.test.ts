@@ -130,8 +130,28 @@ function makeDb() {
     aggregate: () => ({ toArray: async () => [] }),
     countDocuments: async () => 0,
   }
+  // Pending vault ciphertext deletes (ISSUES H02).
+  const purges: Record<string, unknown>[] = []
+  const matches = (d: Record<string, unknown>, f: Record<string, unknown>) =>
+    Object.entries(f).every(([k, v]) => d[k] === v)
+  const purgesCol = {
+    findOne: async (f: Record<string, unknown>) => purges.find((d) => matches(d, f)) ?? null,
+    updateOne: async (
+      f: Record<string, unknown>,
+      u: { $setOnInsert?: Record<string, unknown> },
+    ) => {
+      if (!purges.some((d) => matches(d, f)) && u.$setOnInsert) purges.push({ ...u.$setOnInsert })
+      return { modifiedCount: 1 }
+    },
+    deleteOne: async (f: Record<string, unknown>) => {
+      const i = purges.findIndex((d) => matches(d, f))
+      if (i >= 0) purges.splice(i, 1)
+      return { deletedCount: i >= 0 ? 1 : 0 }
+    },
+  }
   return {
     collection: (name: string) => {
+      if (name === 'vault_purges') return purgesCol
       if (name === 'documents.files') return filesCol
       if (name === 'tenant_quota' || name === 'tenant_quota_days') return quotaCol
       if (name === 'documents') return documentsCol
