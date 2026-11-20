@@ -3433,6 +3433,8 @@ export interface FinancialProfilePolicy {
   provider: string
   coverage_amount_minor: number
   monthly_premium_minor: number
+  /** As entered; never derived from the monthly figure. */
+  annual_premium_minor?: number
   renewal_date?: string
   last_payment_date?: string
   policy_number?: string

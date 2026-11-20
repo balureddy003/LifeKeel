@@ -15,6 +15,7 @@ import { useMode } from '@/lib/mode-context'
 import { haptic } from '@/lib/haptics'
 import { fetchAIResponse, type AssistantAnswerStatus } from '@/lib/api'
 import { KeelFullPage } from '@/components/keel/KeelFullPage'
+import { useChatTop } from '@/lib/useChatTop'
 import { isKeelPanelEnabled } from '@/lib/keel/client'
 
 // Keel's live answers were rendering as a single whitespace-pre-wrap plain
@@ -134,6 +135,8 @@ export default function AssistantPage() {
 
 function LegacyAssistantPage() {
   const { config } = useMode()
+  const chatRef = useRef<HTMLDivElement>(null)
+  useChatTop(chatRef)
   // Read on mount via an effect, not a useState/useRef initializer — a
   // client-side <Link> navigation here (e.g. from EventDetailClient's
   // "Ask AI About This") runs this component's first render before
@@ -247,7 +250,7 @@ function LegacyAssistantPage() {
   }, [])
 
   return (
-    <div className="app-chat flex flex-col overflow-x-hidden">
+    <div ref={chatRef} className="app-chat flex flex-col overflow-x-hidden">
       <div className="px-5">
         <PageHeader title="Keel" subtitle="Ask me anything about your family" />
       </div>

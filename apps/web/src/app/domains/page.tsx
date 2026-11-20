@@ -21,6 +21,7 @@ import { useToast } from '@/components/Toast'
 import { AddRecordForm } from './AddRecordForm'
 import { SentenceCapture } from './SentenceCapture'
 import { RecordList } from './RecordList'
+import { PolicyDetails } from './PolicyDetails'
 import {
   adapterSources,
   cellText,
@@ -264,6 +265,16 @@ export default function DomainsPage() {
             </GlassCard>
           ) : (
             <RecordList view={view} busy={busy} onRemove={remove} onEdit={edit} />
+          )}
+
+          {view.pack.id === 'life_protection' && (
+            <PolicyDetails
+              types={
+                view.pack.records
+                  .find((r) => r.key === 'policy')
+                  ?.fields.find((f) => f.key === 'type')?.choices ?? []
+              }
+            />
           )}
 
           {view.rows.length > 0 && adapterSources(view.pack).length > 0 && (

@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { PageHeader } from '@/components/Glass'
 import { useKeelPanel } from '@/lib/keel/store'
+import { useChatTop } from '@/lib/useChatTop'
 import { KeelPanelBody } from './KeelDock'
 
 const CONTEXT_RE = /^\/[a-z0-9\-/]{0,98}$/
@@ -14,6 +15,8 @@ const CONTEXT_RE = /^\/[a-z0-9\-/]{0,98}$/
  * composer. It is never sent until the person presses send.
  */
 export function KeelFullPage() {
+  const ref = useRef<HTMLDivElement>(null)
+  useChatTop(ref)
   useEffect(() => {
     const store = useKeelPanel.getState()
     const params = new URLSearchParams(window.location.search)
@@ -25,7 +28,7 @@ export function KeelFullPage() {
   }, [])
 
   return (
-    <div className="app-chat flex flex-col overflow-x-hidden">
+    <div ref={ref} className="app-chat flex flex-col overflow-x-hidden">
       <div className="px-5">
         <PageHeader title="Keel" subtitle="Ask me anything about your family" />
       </div>
