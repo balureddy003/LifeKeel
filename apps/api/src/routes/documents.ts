@@ -142,7 +142,13 @@ export const ESTATE_VAULT_CATEGORY = 'estate_vault'
 // per-instance Map and the GridFS-only usage sum.
 
 /** Statuses the general list and detail routes never show. */
-const HIDDEN_STATUSES = ['awaiting_upload', 'deleting']
+export const HIDDEN_STATUSES = ['awaiting_upload', 'deleting']
+
+/**
+ * Statuses a printable surface (the emergency sheet) may name: never an
+ * incomplete, refused or deleting upload (ISSUES M01).
+ */
+export const NOT_PRINTABLE_STATUSES = [...HIDDEN_STATUSES, 'failed', 'rejected', 'infected']
 
 export function registerDocumentRoutes(
   fastify: FastifyInstance,

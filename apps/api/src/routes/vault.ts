@@ -160,7 +160,7 @@ export function registerVaultRoutes(
       const encrypted = await encryptBufferForTenant(db, tenant_id, fileBuffer)
 
       log.info(
-        { documentId, filename, mimeType, size: fileBuffer.length, tenant_id, sealed },
+        { documentId, mimeType, size: fileBuffer.length, tenant_id, sealed },
         'Uploading estate vault document',
       )
 
@@ -237,7 +237,7 @@ export function registerVaultRoutes(
           ...(docType ? { docType } : {}),
         })
       } catch (err) {
-        log.error({ err, documentId, filename }, 'Failed to store estate vault document')
+        log.error({ err, documentId }, 'Failed to store estate vault document')
         return reply.status(500).send({ error: 'Failed to store document' })
       }
     },
@@ -275,6 +275,8 @@ export function registerVaultRoutes(
     const ciphertext = await readDocumentBytes(db, doc)
     if (!ciphertext) return reply.status(404).send({ error: 'Document not found' })
     const plaintext = await decryptBufferEnveloped(db, ciphertext)
+    reply.header('Cache-Control', 'private, no-store')
+    reply.header('X-Content-Type-Options', 'nosniff')
     reply.header('Content-Type', String(doc['mime_type'] ?? 'application/octet-stream'))
     reply.header(
       'Content-Disposition',

@@ -29,6 +29,14 @@ interface FakeCollection {
   updateOne: ReturnType<typeof vi.fn>
 }
 
+const fieldMatches = (value: unknown, cond: unknown): boolean => {
+  if (cond && typeof cond === 'object' && '$nin' in cond)
+    return !(cond as { $nin: unknown[] }).$nin.includes(value)
+  if (cond && typeof cond === 'object' && '$ne' in cond)
+    return value !== (cond as { $ne: unknown }).$ne
+  return value === cond
+}
+
 function makeCol(docs: Record<string, unknown>[]): FakeCollection {
   return {
     docs,
@@ -53,7 +61,8 @@ function makeCol(docs: Record<string, unknown>[]): FakeCollection {
               return out
             }),
       }),
-      toArray: async () => docs.filter((d) => Object.entries(filter).every(([k, v]) => d[k] === v)),
+      toArray: async () =>
+        docs.filter((d) => Object.entries(filter).every(([k, v]) => fieldMatches(d[k], v))),
     })),
     // The post-deletion check (PRD-146) counts what is left, GridFS rows by metadata.tenant_id.
     countDocuments: vi.fn(
@@ -86,7 +95,12 @@ function makeDb() {
     users: makeCol([USER, { id: 'u2', tenant_id: 'other', email: 'x@y.z' }]),
     family_groups: makeCol([{ tenant_id: TENANT, name: 'Fam', members: [] }]),
     family_financial_profile: makeCol([{ tenant_id: TENANT, employment: {} }]),
-    documents: makeCol([{ tenant_id: TENANT, id: 'doc1', file_id: 'f1' }]),
+    documents: makeCol([
+      { tenant_id: TENANT, id: 'doc1', file_id: 'f1' },
+      { tenant_id: TENANT, id: 'vault1', category: 'estate_vault', filename: 'will.pdf' },
+      { tenant_id: TENANT, id: 'gone1', status: 'deleting', filename: 'old.pdf' },
+      { tenant_id: TENANT, id: 'half1', status: 'awaiting_upload', filename: 'half.pdf' },
+    ]),
     'documents.files': makeCol([
       { _id: 'f1', metadata: { tenant_id: TENANT, document_id: 'doc1' } },
     ]),
@@ -166,7 +180,10 @@ describe('GET /account/export', () => {
     expect(body.user.password_hash).toBeUndefined()
     expect(body.user.salt).toBeUndefined()
     expect(body.family_group.name).toBe('Fam')
-    expect(body.documents[0].id).toBe('doc1')
+    expect(res.headers['cache-control']).toBe('private, no-store')
+    // ISSUES M01: no deleting or incomplete uploads; vault metadata only for
+    // an adult on the roster (this admin is not on it).
+    expect(body.documents.map((d: { id: string }) => d.id)).toEqual(['doc1'])
     expect(body.documents[0].file_id).toBeUndefined() // blob pointer stays out of the bundle
     expect(body.insights).toHaveLength(1)
     expect(body.audit_log).toHaveLength(1)

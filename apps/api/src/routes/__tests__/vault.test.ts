@@ -227,6 +227,7 @@ describe('Digital Estate Vault', () => {
     const fileRes = await app.inject({ method: 'GET', url: `/vault/documents/${id}/file` })
     expect(fileRes.statusCode).toBe(200)
     expect(Buffer.compare(fileRes.rawPayload, plaintext)).toBe(0)
+    expect(fileRes.headers['cache-control']).toBe('private, no-store')
   })
 
   it('a child cannot download a vault file', async () => {
