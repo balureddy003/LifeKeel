@@ -22,14 +22,8 @@ import { AddRecordForm } from './AddRecordForm'
 import { SentenceCapture } from './SentenceCapture'
 import { RecordList } from './RecordList'
 import { PolicyDetails } from './PolicyDetails'
-import {
-  adapterSources,
-  cellText,
-  noPolicyText,
-  confirmSummary,
-  daysText,
-  rowLabel,
-} from './domain-copy'
+import { CoverageList } from './CoverageList'
+import { adapterSources, confirmSummary, daysText, rowLabel } from './domain-copy'
 
 const primaryBtn =
   'inline-flex min-h-[48px] items-center justify-center rounded-full bg-family-500 px-5 text-base font-semibold text-white disabled:opacity-50'
@@ -205,57 +199,7 @@ export default function DomainsPage() {
             </ul>
           )}
           {view.matrix && view.matrix.rows.length > 0 ? (
-            <GlassCard className="mt-6 p-0">
-              <div
-                role="region"
-                aria-label={view.matrix.label}
-                tabIndex={0}
-                className="overflow-x-auto rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-family-500"
-              >
-                <table className="w-full min-w-[520px] text-left text-sm">
-                  <caption className="sr-only">{view.matrix.label}</caption>
-                  <thead>
-                    <tr className="border-b border-haze text-ink-tertiary">
-                      <th scope="col" className="min-w-[10rem] break-normal p-3 font-medium">
-                        Policy
-                      </th>
-                      {view.matrix.columns.map((c) => (
-                        <th key={c.id} scope="col" className="p-3 font-medium">
-                          {c.name}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {view.matrix.rows.map((r) => (
-                      <tr key={r.id} className="border-b border-haze last:border-0">
-                        <th
-                          scope="row"
-                          className="sticky left-0 min-w-[10rem] break-normal bg-surface-1 p-3 font-medium text-ink-primary"
-                        >
-                          {r.label}
-                        </th>
-                        {view.matrix!.columns.map((c) => (
-                          <td
-                            key={c.id}
-                            className="whitespace-nowrap break-normal p-3 text-ink-secondary"
-                          >
-                            {cellText(r.cells[c.id] ?? null)}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {(view.matrix.no_policy_on_file ?? []).length > 0 && (
-                <ul className="border-t border-haze p-3 text-sm text-ink-secondary">
-                  {view.matrix.no_policy_on_file!.map((m) => (
-                    <li key={m.id}>{noPolicyText(m.name)}</li>
-                  ))}
-                </ul>
-              )}
-            </GlassCard>
+            <CoverageList matrix={view.matrix} />
           ) : view.rows.length === 0 ? (
             <GlassCard className="mt-6 p-5">
               <p className="text-ink-secondary">

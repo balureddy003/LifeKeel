@@ -450,20 +450,17 @@ describe('a second domain drawn by the same page', () => {
 })
 
 describe('keyboard and touch access', () => {
-  it('makes the matrix a labelled, focusable scroll region', async () => {
+  it('labels the coverage list as a region, with no table to scroll sideways', async () => {
     getDomainView.mockResolvedValue(view())
-    render(<DomainsPage />)
-    const region = await screen.findByRole('region', { name: 'Who is covered by what' })
-    expect(region.getAttribute('tabindex')).toBe('0')
+    const { container } = render(<DomainsPage />)
+    await screen.findByRole('region', { name: 'Who is covered by what' })
+    expect(container.querySelector('table')).toBeNull()
   })
 
-  it('keeps the policy name visible while the matrix scrolls sideways, and controls at 16px', async () => {
+  it('keeps the person chips at 16px text', async () => {
     getDomainView.mockResolvedValue(view())
     render(<DomainsPage />)
-    const rowHeader = await screen.findByRole('rowheader', { name: 'Policy · Provider A' })
-    expect(rowHeader.className).toContain('sticky')
-    expect(rowHeader.className).toContain('left-0')
-    expect(screen.getByRole('button', { name: 'Sam' }).className).toContain('text-base')
+    expect((await screen.findByRole('button', { name: 'Sam' })).className).toContain('text-base')
   })
 
   it('gives the person chips and the confirm button a 48px touch target', async () => {
