@@ -26,6 +26,7 @@ import { useToast } from './Toast'
 import { AuthShell } from '@/components/landing/AuthShell'
 import { MarketingLanding } from './MarketingLanding'
 import { NavRail } from './NavRail'
+import { shouldShowBrandHeader } from '@/lib/shell-chrome'
 import { LiquidTabBar } from './AppNav'
 import { isKeelPanelEnabled } from '@/lib/keel/client'
 import { PANEL_ID, useKeelPanel } from '@/lib/keel/store'
@@ -643,7 +644,7 @@ function BiometricGate({ children }: { children: React.ReactNode }) {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const { isAuthenticated, user, family } = useAuth()
+  const { isAuthenticated, isLoading, user, family } = useAuth()
   const { config, emergencyActive, activateEmergency, deactivateEmergency, setMode } = useMode()
   const router = useRouter()
   const setInboxUnreadCount = useAppStore((s) => s.setInboxUnreadCount)
@@ -802,8 +803,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const railGutter = showNav ? 'desk:pl-[88px]' : ''
   // Signed in with a family, each page's own PageHeader is the top bar (title under the
   // Dynamic Island), so the LifeKeel hero only frames the pre-family setup screens.
-  const showHero =
-    !showNav && !isMarketingPage && !isOperatorRoute && !ownsLayout && !signedOutFallback
+  const showHero = shouldShowBrandHeader({
+    showNav: Boolean(showNav),
+    isMarketingPage,
+    isOperatorRoute,
+    ownsLayout,
+    signedOutFallback,
+    isLoading,
+  })
 
   return (
     <div className={`min-h-screen text-ink-primary ${showNav ? 'app-shell-with-rail' : ''}`}>
