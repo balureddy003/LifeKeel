@@ -7,8 +7,9 @@ import { countdownText, daysUntil } from '@/app/briefs/what-if'
  *   1. something with a date inside 14 days (soonest first), then
  *   2. a payment that stopped or a nomination that does not match the family
  *      (newest first), then
- *   3. the missing fact that sharpens the biggest number, then
- *   4. for a household with nothing on file, one policy (a result in a minute); once something is
+ *   3. a shared list the viewer has not yet confirmed (one tap, and the other adult sees it), then
+ *   4. the missing fact that sharpens the biggest number, then
+ *   5. for a household with nothing on file, one policy (a result in a minute); once something is
  *      on file and no one else is on it, adding the other adult, because
  *      what is recorded is shared with them and both confirm it.
  * A prioritisation of what is already on file. It recommends nothing.
@@ -16,6 +17,7 @@ import { countdownText, daysUntil } from '@/app/briefs/what-if'
 export type TodayItem =
   | { tier: 'date'; title: string; why: string; href: string; cta: string }
   | { tier: 'check'; title: string; why: string; href: string; cta: string; detail: string }
+  | { tier: 'confirm'; title: string; why: string; href: string; cta: string }
   | { tier: 'missing'; title: string; why: string; href: string; cta: string }
   | { tier: 'start'; title: string; why: string; href: string; cta: string }
   | { tier: 'none'; title: string }
@@ -39,6 +41,8 @@ export function pickTodayItem(input: {
   startWithOtherAdult?: boolean
   /** True for a household with nothing on file. Asks for one policy first: a result in a minute. Off by default. */
   startWithPolicy?: boolean
+  /** A shared list with something on file that the viewer has not confirmed yet. */
+  awaitingYou?: { title: string; href: string } | null
 }): TodayItem {
   const {
     obligations,
@@ -47,6 +51,7 @@ export function pickTodayItem(input: {
     today,
     startWithOtherAdult,
     startWithPolicy,
+    awaitingYou,
   } = input
 
   const dated = obligations
@@ -79,6 +84,16 @@ export function pickTodayItem(input: {
       why: 'Why this one: it is quick to check and matters if it is wrong.',
       href: '/inbox',
       cta: 'Open it',
+    }
+  }
+
+  if (awaitingYou) {
+    return {
+      tier: 'confirm',
+      title: `Look at ${awaitingYou.title} and confirm`,
+      why: 'Why this one: it is on the family list and you have not confirmed it yet. One tap, and the other adult sees it.',
+      href: awaitingYou.href,
+      cta: 'Look and confirm',
     }
   }
 

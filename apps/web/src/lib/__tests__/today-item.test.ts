@@ -99,4 +99,26 @@ describe('pickTodayItem', () => {
       expect(pickTodayItem({ ...base, profileCompleteness: 0 }).tier).toBe('none')
     })
   })
+
+  it('a list waiting on you comes after dates and checks, before a missing detail', () => {
+    const awaitingYou = { title: 'Life and income protection', href: '/domains?d=life_protection' }
+    const r = pickTodayItem({ ...base, profileCompleteness: 60, awaitingYou })
+    expect(r.tier).toBe('confirm')
+    expect(r.tier === 'confirm' && r.title).toBe('Look at Life and income protection and confirm')
+    expect(r.tier === 'confirm' && r.href).toBe('/domains?d=life_protection')
+    expect(
+      pickTodayItem({ ...base, awaitingYou, obligations: [ob('Mortgage', '2026-11-03')] }).tier,
+    ).toBe('date')
+    expect(
+      pickTodayItem({
+        ...base,
+        awaitingYou,
+        insights: [ins('premium_possibly_stopped', '2026-10-01')],
+      }).tier,
+    ).toBe('check')
+  })
+
+  it('nothing awaiting you changes nothing', () => {
+    expect(pickTodayItem({ ...base, awaitingYou: null }).tier).toBe('none')
+  })
 })

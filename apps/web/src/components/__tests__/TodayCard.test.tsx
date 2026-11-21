@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import { TodayCard } from '../TodayCard'
 
@@ -8,11 +8,20 @@ const auth = vi.hoisted(() => ({
 vi.mock('@/lib/auth-context', () => ({ useAuth: () => auth }))
 
 const getObligationsMap = vi.fn()
+const getDomains = vi.fn()
+const getDomainView = vi.fn()
 vi.mock('@/lib/api', async (orig) => ({
   ...(await orig<typeof import('@/lib/api')>()),
   getObligationsMap: () => getObligationsMap(),
+  getDomains: () => getDomains(),
+  getDomainView: (id: string) => getDomainView(id),
 }))
 vi.mock('@/lib/haptics', () => ({ haptic: vi.fn() }))
+
+beforeEach(() => {
+  getDomains.mockResolvedValue({ domains: [] })
+  getDomainView.mockResolvedValue(null)
+})
 
 afterEach(() => {
   cleanup()
@@ -67,5 +76,31 @@ describe('TodayCard', () => {
     expect(screen.getByRole('link', { name: /Add them/ }).getAttribute('href')).toBe(
       '/settings?add=1',
     )
+  })
+
+  it('points at a list the viewer has not confirmed, so the partner is not told nothing needs checking', async () => {
+    getObligationsMap.mockResolvedValue({ obligations: [] })
+    getDomains.mockResolvedValue({
+      domains: [{ id: 'life_protection', title: 'Life and income protection' }],
+    })
+    getDomainView.mockResolvedValue({
+      rows: [{}],
+      result_version: 'v1',
+      confirmation: {
+        required: [
+          { id: 'a', name: 'Priya' },
+          { id: 'b', name: 'Tom' },
+        ],
+        confirmed: [{ id: 'a', name: 'Priya', confirmed_at: '2026-11-20T10:00:00Z' }],
+        both_confirmed: false,
+        viewer_confirmed: false,
+      },
+    })
+    render(<TodayCard insights={[]} profileCompleteness={100} hasLiveData />)
+    expect(await screen.findByText('Look at Life and income protection and confirm')).toBeTruthy()
+    expect(screen.getByRole('link', { name: /Look and confirm/ }).getAttribute('href')).toBe(
+      '/domains?d=life_protection',
+    )
+    expect(screen.queryByText('Nothing needs checking today.')).toBeNull()
   })
 })

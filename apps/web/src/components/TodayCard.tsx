@@ -5,7 +5,14 @@ import Link from 'next/link'
 import { CalendarCheck, ChevronRight } from 'lucide-react'
 import { GlassCard } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
-import { getObligationsMap, type FamilyInsight, type Obligation } from '@/lib/api'
+import {
+  getDomains,
+  getDomainView,
+  getObligationsMap,
+  type FamilyInsight,
+  type Obligation,
+} from '@/lib/api'
+import { seenStatus, type SeenInput } from '@/lib/seen-status'
 import { useAuth } from '@/lib/auth-context'
 import { pickTodayItem } from '@/lib/today-item'
 
@@ -36,12 +43,48 @@ export function TodayCard({
     }
   }, [])
 
+  const [awaitingYou, setAwaitingYou] = useState<{ title: string; href: string } | null>(null)
+
+  // A list the viewer has not confirmed: the same reading Home's "Who has looked" card uses.
+  useEffect(() => {
+    let live = true
+    ;(async () => {
+      try {
+        const { domains } = await getDomains()
+        const views = await Promise.all(
+          domains.map(async (d) => {
+            const v = await getDomainView(d.id)
+            return v
+              ? ({
+                  id: d.id,
+                  title: d.title,
+                  records: v.rows.length,
+                  result_version: v.result_version,
+                  confirmation: v.confirmation,
+                } satisfies SeenInput)
+              : null
+          }),
+        )
+        const mine = seenStatus(views.filter((v): v is SeenInput => v !== null)).find(
+          (r) => r.canConfirm,
+        )
+        if (live && mine) setAwaitingYou({ title: mine.title, href: mine.href })
+      } catch {
+        /* the card simply falls back to its other choices */
+      }
+    })()
+    return () => {
+      live = false
+    }
+  }, [])
+
   if (obligations === null) return null
   const item = pickTodayItem({
     obligations,
     insights,
     profileCompleteness,
     today: new Date().toISOString().slice(0, 10),
+    awaitingYou,
     // Nothing on file: start with one policy. Something on file and no one else on it: the other adult.
     startWithPolicy: !hasLiveData,
     startWithOtherAdult: hasLiveData && !!family && family.members.length <= 1,
