@@ -42,6 +42,22 @@ Still open: Emergency mode lists scenarios, not the family's own policy and cont
 lead with "your policy, who to call" from the list (the narrative asks for the relevant policy and contact in
 two taps); that is the next change here and needs the policy list on that page checked first.
 
+## Iteration 8: landing and first value (narrative 1)
+Walked at 375px: landing, signup, the road to the first number.
+- Landing: headline "Know where to look.", one primary button "Start your family's list", free-to-start line, three
+  promises. Works. The sub-headline is a five-line paragraph; it carries deliberate "estimate from the figures you
+  enter" wording, so it was NOT rewritten here (marketing copy and claims are the owner's).
+- Signup: name, email, password, or Google. Three fields. Lands straight on Home. Works.
+- Home to first number: "Answer a money question" opens Household briefs. Finding: for a first-time solo parent the
+  page opened with two notes ("This one is just for you", with a Go to Family button, then "Your first brief is
+  free") above the choice, so the first thing was text to read and a button that pulls away from the first result.
+
+Changed: the choice ("What is changing?") now comes first; the two notes sit under it. While a form or result is
+showing they keep their old place. Test fails on the old order and passes on the new.
+
+Open: the landing sub-headline length (owner decision on copy); a live look at the briefs page against the real API;
+timing the whole path on a real phone.
+
 ## Iteration 7: zero profile through the score and detectors (narrative 6, continued)
 Method: ran the readiness score on four zero-shaped profiles and read the detector conditions against zeros.
 

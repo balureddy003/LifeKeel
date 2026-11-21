@@ -45,6 +45,7 @@ import { useFamilyReadinessScore, useFamilyTimeline, useFamilyInsights } from '@
 import { useAppStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
+import { PinnedTiles } from '@/components/PinnedTiles'
 import { EmergencyRow } from '@/components/EmergencyRow'
 import { SETUP_STEPS } from '@/lib/setup-steps'
 import {
@@ -892,6 +893,7 @@ export default function HomePage() {
         profileCompleteness={profileCompleteness}
         hasLiveData={hasLiveData}
       />
+      <PinnedTiles />
       <SinceLastVisit
         score={readinessScore}
         hasLiveData={hasLiveData}
