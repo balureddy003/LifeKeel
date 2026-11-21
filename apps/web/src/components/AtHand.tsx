@@ -4,7 +4,13 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Phone, Mail } from 'lucide-react'
 import { GlassCard } from '@/components/Glass'
-import { fetchFinancialProfile, type FinancialProfile, type LifeEventType } from '@/lib/api'
+import {
+  fetchFinancialProfile,
+  getDomainView,
+  type DomainView,
+  type FinancialProfile,
+  type LifeEventType,
+} from '@/lib/api'
 import { SERVICES, atHandFor } from '@/lib/services'
 
 /**
@@ -25,8 +31,24 @@ export function AtHand({ eventType }: { eventType: LifeEventType }) {
     }
   }, [])
 
+  // Load only the family-list packs the services say this event reads.
+  const [domains, setDomains] = useState<Record<string, DomainView | null>>({})
+  useEffect(() => {
+    let cancelled = false
+    for (const s of SERVICES) {
+      const d = s.emergencyDomain
+      if (!d || d.eventType !== eventType) continue
+      getDomainView(d.domainId)
+        .then((v) => !cancelled && setDomains((m) => ({ ...m, [d.domainId]: v })))
+        .catch(() => undefined)
+    }
+    return () => {
+      cancelled = true
+    }
+  }, [eventType])
+
   if (profile === undefined) return null
-  const sections = atHandFor(SERVICES, eventType, { profile, documentCount: 0 })
+  const sections = atHandFor(SERVICES, eventType, { profile, documentCount: 0, domains })
   if (sections.length === 0) return null
 
   return (

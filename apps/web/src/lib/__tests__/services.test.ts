@@ -67,3 +67,57 @@ describe('services registry', () => {
     expect(new Set(ids).size).toBe(ids.length)
   })
 })
+
+describe('car and travel at hand', () => {
+  const view = (domain: string, rows: Array<Record<string, string>>) =>
+    ({
+      domain_id: domain,
+      rows: rows.map((values, i) => ({
+        id: `r${i}`,
+        record: values.record ?? 'policy',
+        holder_member_id: null,
+        covers_member_id: null,
+        values,
+      })),
+    }) as never
+  const ctx = (domain: string, rows: Array<Record<string, string>>): ServiceCtx => ({
+    ...empty,
+    domains: { [domain]: view(domain, rows) },
+  })
+
+  it('a car event leads with the car policy and its claims number', () => {
+    const [s] = atHandFor(
+      SERVICES,
+      'car',
+      ctx('car', [{ provider: 'Example Motor', claims_contact: '0800 111 2222' }]),
+    )
+    expect(s?.heading).toBe('Your car cover on file')
+    expect(s?.items[0]).toMatchObject({ title: 'Example Motor', phone: '0800 111 2222' })
+  })
+
+  it('a claims contact that is not a number is shown as a fact, not a dead call button', () => {
+    const [s] = atHandFor(
+      SERVICES,
+      'car',
+      ctx('car', [{ provider: 'X', claims_contact: 'via the app' }]),
+    )
+    expect(s?.items[0]?.phone).toBeUndefined()
+    expect(s?.items[0]?.facts).toContain('Claims contact: via the app')
+  })
+
+  it('travel events read the travel list, and other events do not show it', () => {
+    const c = ctx('travel', [{ provider: 'Example Travel', claims_contact: '0300 000 0000' }])
+    expect(atHandFor(SERVICES, 'travel', c)[0]?.items[0]?.title).toBe('Example Travel')
+    expect(atHandFor(SERVICES, 'medical', c).some((x) => x.heading.includes('travel'))).toBe(false)
+  })
+
+  it('nothing on file guides to add one, never an empty or NaN section', () => {
+    const [s] = atHandFor(SERVICES, 'car', ctx('car', []))
+    expect(s?.items).toEqual([])
+    expect(s?.empty.href).toBe('/domains?d=car')
+  })
+
+  it('stays out of the way while the list has not loaded', () => {
+    expect(atHandFor(SERVICES, 'car', empty)).toEqual([])
+  })
+})

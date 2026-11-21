@@ -7,13 +7,15 @@
  * Everything states what is on file or that nothing is; nothing estimates,
  * and nothing says whether it is enough. The advice-rule scan covers this file.
  */
-import type { FinancialProfile, LifeEventType } from './api'
+import type { DomainView, FinancialProfile, LifeEventType } from './api'
 import type { PinnedTile } from './pinned-tiles'
 import { emergencyPolicies, POLICY_TYPE_LABEL } from './emergency-policies'
 
 export interface ServiceCtx {
   profile: FinancialProfile | null
   documentCount: number
+  /** Family-list views by pack id, once loaded. A pack missing here has not loaded, so it shows nothing. */
+  domains?: Record<string, DomainView | null | undefined>
 }
 
 export type SetupIcon = 'shield' | 'upload'
@@ -47,6 +49,8 @@ export interface ServiceDef {
   setup?: SetupCardDef
   tile?: (ctx: ServiceCtx) => PinnedTile
   emergency?: (eventType: LifeEventType, ctx: ServiceCtx) => AtHandSection | null
+  /** Which family-list pack the emergency section reads, and for which event, so the page loads it. */
+  emergencyDomain?: { domainId: string; eventType: LifeEventType }
 }
 
 const gbp = (minor: number) => `£${Math.round(minor / 100).toLocaleString('en-GB')}`
@@ -59,6 +63,48 @@ export function runwayMonths(savingsMinor: number, monthlyCostsMinor: number): n
 function monthsLabel(m: number): string {
   const rounded = m < 10 ? Math.round(m * 10) / 10 : Math.round(m)
   return `${rounded} ${rounded === 1 ? 'month' : 'months'}`
+}
+
+const looksLikeNumber = (s: string) => (s.match(/\d/g)?.length ?? 0) >= 6
+
+/**
+ * A service whose emergency section is the policy rows of one family-list pack: the provider, and the
+ * claims contact as a call button when it is a number, else as a fact. States what is on file only.
+ */
+function packCover(
+  id: string,
+  domainId: string,
+  eventType: LifeEventType,
+  heading: string,
+  emptyText: string,
+): ServiceDef {
+  return {
+    id,
+    emergencyDomain: { domainId, eventType },
+    emergency: (event, { domains }) => {
+      const view = domains?.[domainId]
+      if (event !== eventType || !view) return null
+      const rows = view.rows.filter((r) => r.record === 'policy')
+      return {
+        heading,
+        items: rows.map((r) => {
+          const contact = (r.values['claims_contact'] ?? '').trim()
+          const isNumber = looksLikeNumber(contact)
+          return {
+            key: r.id,
+            kicker: view.pack?.records.find((x) => x.key === 'policy')?.label ?? 'Policy',
+            title: r.values['provider']?.trim() || 'Policy on file',
+            facts: [
+              ...(contact && !isNumber ? [`Claims contact: ${contact}`] : []),
+              ...(r.values['renewal_date'] ? [`Renews: ${r.values['renewal_date']}`] : []),
+            ],
+            phone: isNumber ? contact : undefined,
+          }
+        }),
+        empty: { text: emptyText, href: `/domains?d=${domainId}`, label: 'Add a policy' },
+      }
+    },
+  }
 }
 
 export const SERVICES: ServiceDef[] = [
@@ -109,6 +155,20 @@ export const SERVICES: ServiceDef[] = [
       }
     },
   },
+  packCover(
+    'car',
+    'car',
+    'car',
+    'Your car cover on file',
+    'No car policy is on your list yet. If you have one to hand, you can add it now.',
+  ),
+  packCover(
+    'travel',
+    'travel',
+    'travel',
+    'Your travel cover on file',
+    'No travel policy is on your list yet. If you have one to hand, you can add it now.',
+  ),
   {
     id: 'documents',
     setup: {
