@@ -12,7 +12,7 @@ import {
   type FamilyInsight,
   type Obligation,
 } from '@/lib/api'
-import { seenStatus, type SeenInput } from '@/lib/seen-status'
+import { SEEN_CONFIRMED_EVENT, seenStatus, type SeenInput } from '@/lib/seen-status'
 import { useAuth } from '@/lib/auth-context'
 import { pickTodayItem } from '@/lib/today-item'
 
@@ -46,9 +46,10 @@ export function TodayCard({
   const [awaitingYou, setAwaitingYou] = useState<{ title: string; href: string } | null>(null)
 
   // A list the viewer has not confirmed: the same reading Home's "Who has looked" card uses.
+  // It reads again when the viewer confirms one, so the ask goes away without a reload.
   useEffect(() => {
     let live = true
-    ;(async () => {
+    const load = async () => {
       try {
         const { domains } = await getDomains()
         const views = await Promise.all(
@@ -68,13 +69,17 @@ export function TodayCard({
         const mine = seenStatus(views.filter((v): v is SeenInput => v !== null)).find(
           (r) => r.canConfirm,
         )
-        if (live && mine) setAwaitingYou({ title: mine.title, href: mine.href })
+        if (live) setAwaitingYou(mine ? { title: mine.title, href: `#seen-${mine.id}` } : null)
       } catch {
         /* the card simply falls back to its other choices */
       }
-    })()
+    }
+    void load()
+    const again = () => void load()
+    window.addEventListener(SEEN_CONFIRMED_EVENT, again)
     return () => {
       live = false
+      window.removeEventListener(SEEN_CONFIRMED_EVENT, again)
     }
   }, [])
 
