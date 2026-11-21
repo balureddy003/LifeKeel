@@ -3,9 +3,9 @@ import { render, screen, waitFor } from '@testing-library/react'
 
 vi.mock('@/lib/api', () => ({ fetchFinancialProfile: vi.fn() }))
 import { fetchFinancialProfile } from '@/lib/api'
-import { PolicyAtHand } from '../PolicyAtHand'
+import { AtHand } from '../AtHand'
 
-describe('PolicyAtHand', () => {
+describe('AtHand', () => {
   it('leads with the matching policy and a call button', async () => {
     vi.mocked(fetchFinancialProfile).mockResolvedValue({
       policies: [
@@ -17,7 +17,7 @@ describe('PolicyAtHand', () => {
         },
       ],
     } as never)
-    render(<PolicyAtHand eventType="medical" />)
+    render(<AtHand eventType="medical" />)
     await waitFor(() => expect(screen.getByText('Acme')).toBeTruthy())
     const call = screen.getByRole('link', { name: /Call 0800 000 0000/ })
     expect(call.getAttribute('href')).toBe('tel:08000000000')
@@ -27,14 +27,12 @@ describe('PolicyAtHand', () => {
     vi.mocked(fetchFinancialProfile).mockResolvedValue({
       policies: [{ type: 'life', provider: 'Acme', coverage_amount_minor: 0 }],
     } as never)
-    render(<PolicyAtHand eventType="bereavement" />)
-    await waitFor(() =>
-      expect(screen.getByText('No phone number on file for this policy.')).toBeTruthy(),
-    )
+    render(<AtHand eventType="bereavement" />)
+    await waitFor(() => expect(screen.getByText('No phone number on file.')).toBeTruthy())
   })
   it('guides to add one when nothing matches', async () => {
     vi.mocked(fetchFinancialProfile).mockResolvedValue({ policies: [] } as never)
-    render(<PolicyAtHand eventType="medical" />)
+    render(<AtHand eventType="medical" />)
     await waitFor(() =>
       expect(screen.getByRole('link', { name: 'Add a policy' }).getAttribute('href')).toBe(
         '/policies/new',
@@ -43,7 +41,7 @@ describe('PolicyAtHand', () => {
   })
   it('renders nothing for an event these policies do not bear on', async () => {
     vi.mocked(fetchFinancialProfile).mockResolvedValue({ policies: [] } as never)
-    const { container } = render(<PolicyAtHand eventType="car" />)
+    const { container } = render(<AtHand eventType="car" />)
     await new Promise((r) => setTimeout(r, 30))
     expect(container.firstChild).toBeNull()
   })
