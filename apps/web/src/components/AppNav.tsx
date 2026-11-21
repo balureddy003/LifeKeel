@@ -9,14 +9,14 @@ import { useAppStore } from '@/lib/store'
 import { haptic } from '@/lib/haptics'
 
 // Intent 35: five items at 390px, not six — the multi-device review's own
-// list (Home, Events, Ask Keel, Family, Settings). Inbox and Finances drop
+// list (Home, What If, Ask Keel, Family, Settings). Inbox and Finances drop
 // out of the bar: both are surfaced from Home (unread insights, the
 // finances sections), and their routes still highlight Home below. Ask
 // Keel earns a first-class slot — it was previously reachable only via
 // deep links, which the same review flagged.
 const NAV_ITEMS = [
   { href: '/', label: 'Home', icon: Home },
-  { href: '/events', label: 'Events', icon: CalendarClock },
+  { href: '/events', label: 'What If', icon: CalendarClock },
   { href: '/assistant', label: 'Ask Keel', icon: Bot },
   { href: '/family', label: 'Family', icon: Users },
   { href: '/settings', label: 'Settings', icon: Settings },

@@ -339,7 +339,8 @@ export default function LifeEventsPage() {
       <div className="glass rounded-2xl p-4">
         <p className="text-xs text-ink-tertiary leading-relaxed">
           This is for something that has actually happened, personalized against your family's real
-          data. Just exploring a hypothetical? Try &quot;What If?&quot; from the Events tab instead.
+          data. Just exploring a hypothetical? Try &quot;What If?&quot; from the What If tab
+          instead.
         </p>
       </div>
     </div>

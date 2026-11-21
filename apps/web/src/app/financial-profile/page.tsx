@@ -1209,7 +1209,7 @@ export default function FinancialProfilePage() {
             <div className="text-sm text-ink-secondary">
               Saved.{' '}
               {result > 0
-                ? `${result} personalized insight${result === 1 ? '' : 's'} generated — check Home and your Events.`
+                ? `${result} personalized insight${result === 1 ? '' : 's'} generated — check Home and What If.`
                 : 'No gaps found in what you entered — nice work.'}
               {fromOnboarding && (
                 <Link href="/" className="block mt-2 font-semibold text-family-400">
