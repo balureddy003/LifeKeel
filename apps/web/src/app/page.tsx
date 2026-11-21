@@ -45,6 +45,7 @@ import { useFamilyReadinessScore, useFamilyTimeline, useFamilyInsights } from '@
 import { useAppStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
+import { EmergencyRow } from '@/components/EmergencyRow'
 import { SETUP_STEPS } from '@/lib/setup-steps'
 import {
   visibleSetupSteps,
@@ -881,6 +882,8 @@ export default function HomePage() {
           </button>
         }
       />
+
+      <EmergencyRow />
 
       {/* After the first result, not before: before it, the Start here card above is the one ask, and a second would compete with it. */}
       {hasLiveData && <InviteFamilyBanner />}
