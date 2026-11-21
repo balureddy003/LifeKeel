@@ -24,13 +24,17 @@ export function PinnedTiles() {
 
   if (profile === undefined) return null // no flash of empty tiles while loading
 
+  const tiles = pinnedTiles(profile)
+  // A household with nothing on file sees the one setup card, not a wall of "No data yet".
+  if (tiles.every((t) => t.value === null)) return null
+
   return (
     <section aria-labelledby="pinned-heading" className="space-y-2">
       <h2 id="pinned-heading" className="px-1 text-lg font-semibold text-ink-primary">
         Pinned
       </h2>
       <div className="space-y-2" data-testid="pinned-tiles">
-        {pinnedTiles(profile).map((t) => (
+        {tiles.map((t) => (
           <Link key={t.id} href={t.href} onClick={() => haptic('light')} className="block">
             <GlassCard className="p-4" interactive>
               <div className="flex items-center justify-between gap-3">
