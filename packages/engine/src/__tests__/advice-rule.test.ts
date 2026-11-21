@@ -66,6 +66,8 @@ function webCopyFiles(): string[] {
     'apps/web/src/components/PerceivedProtectionCard.tsx',
     'apps/web/src/components/TodayCard.tsx',
     'apps/web/src/lib/today-item.ts',
+    'apps/web/src/components/SendLinkCard.tsx',
+    'apps/web/src/lib/share-invite.ts',
     'apps/web/src/components/FreshnessCard.tsx',
     'apps/web/src/lib/extraction-review-copy.ts',
     'apps/web/src/lib/trust-copy.ts',
