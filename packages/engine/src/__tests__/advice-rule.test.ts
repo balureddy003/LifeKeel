@@ -66,6 +66,9 @@ function webCopyFiles(): string[] {
     'apps/web/src/components/PerceivedProtectionCard.tsx',
     'apps/web/src/components/TodayCard.tsx',
     'apps/web/src/lib/today-item.ts',
+    // Emergency steps page leads with the policies on file and a call link.
+    'apps/web/src/components/PolicyAtHand.tsx',
+    'apps/web/src/lib/emergency-policies.ts',
     'apps/web/src/lib/setup-steps.ts',
     'apps/web/src/components/FreshnessCard.tsx',
     'apps/web/src/lib/extraction-review-copy.ts',

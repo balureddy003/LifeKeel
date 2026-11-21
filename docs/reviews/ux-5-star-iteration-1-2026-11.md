@@ -29,3 +29,18 @@ iOS Simulator: its empty Summary shows "No Data", one-action setup cards, and in
 3. "Change one thing and see the impact": no before/after line on edit.
 4. Pinned tiles (#552) and the one-action Start here card need to merge to judge the whole first screen.
 5. Empty single-parent household (no income, no policies): confirm no nonsense number.
+
+## Iteration 4: the steps page leads with the policy and who to call (narrative 5)
+Finding: the scenario steps page started with a generic intro; the family's own policy and phone number only
+appeared inside individual steps further down.
+
+Changed: "Your cover on file" is now the first block under the safety notice. It lists the policies that bear on
+what happened (bereavement: life cover; medical and disability: critical illness and income protection; job
+loss: income protection) with provider, cover on file, policy number if given, and a full-width Call button
+(tel: link, one tap by the person; nothing dials itself). A policy with no phone says so instead of showing a
+dead button. If none is on file: a plain line and "Add a policy". Not shown for car, property or travel events,
+which these policy types do not cover. Viewed at phone width with both states.
+
+Still open: car, home and travel events have no policy source yet (the list holds life-type policies only), so
+those pages still lead with the generic intro; a "who is named" line and the partner confirmation state on
+this page are not added.
