@@ -6,6 +6,9 @@
  * A new service that reports the same confirmation shape shows up on Home with
  * no edit here. States, not judgements: it never says the cover is enough.
  */
+/** Fired on window after the viewer confirms a list, so other cards on Home re-read. */
+export const SEEN_CONFIRMED_EVENT = 'lifekeel:list-confirmed'
+
 export interface SeenInput {
   id: string
   title: string

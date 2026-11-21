@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act } from '@testing-library/react'
+import { SEEN_CONFIRMED_EVENT } from '@/lib/seen-status'
 import { TodayCard } from '../TodayCard'
 
 const auth = vi.hoisted(() => ({
@@ -99,8 +101,54 @@ describe('TodayCard', () => {
     render(<TodayCard insights={[]} profileCompleteness={100} hasLiveData />)
     expect(await screen.findByText('Look at Life and income protection and confirm')).toBeTruthy()
     expect(screen.getByRole('link', { name: /Look and confirm/ }).getAttribute('href')).toBe(
-      '/domains?d=life_protection',
+      '#seen-life_protection',
     )
     expect(screen.queryByText('Nothing needs checking today.')).toBeNull()
+  })
+
+  it('jumps to the row on Home, and drops the ask once that list is confirmed', async () => {
+    getObligationsMap.mockResolvedValue({ obligations: [] })
+    getDomains.mockResolvedValue({
+      domains: [{ id: 'life_protection', title: 'Life and income protection' }],
+    })
+    const view = (viewer: boolean) => ({
+      rows: [{}],
+      result_version: 'v1',
+      confirmation: {
+        required: [{ id: 'a', name: 'Priya' }],
+        confirmed: viewer ? [{ id: 'a', name: 'Priya', confirmed_at: '2026-11-20T10:00:00Z' }] : [],
+        both_confirmed: viewer,
+        viewer_confirmed: viewer,
+      },
+    })
+    getDomainView.mockResolvedValue(view(false))
+    render(<TodayCard insights={[]} profileCompleteness={100} hasLiveData />)
+    const link = await screen.findByRole('link', { name: /Look and confirm/ })
+    expect(link.getAttribute('href')).toBe('#seen-life_protection')
+    getDomainView.mockResolvedValue(view(true))
+    await act(async () => {
+      window.dispatchEvent(new Event(SEEN_CONFIRMED_EVENT))
+    })
+    await waitFor(() => expect(screen.queryByText(/and confirm$/)).toBeNull())
+  })
+
+  it('does not say "Check one policy" when a policy is already on the list', async () => {
+    getObligationsMap.mockResolvedValue({ obligations: [] })
+    getDomains.mockResolvedValue({
+      domains: [{ id: 'life_protection', title: 'Life and income protection' }],
+    })
+    getDomainView.mockResolvedValue({
+      rows: [{}],
+      result_version: 'v1',
+      confirmation: {
+        required: [{ id: 'a', name: 'Priya' }],
+        confirmed: [{ id: 'a', name: 'Priya', confirmed_at: '2026-11-20T10:00:00Z' }],
+        both_confirmed: true,
+        viewer_confirmed: true,
+      },
+    })
+    render(<TodayCard insights={[]} profileCompleteness={0} hasLiveData={false} />)
+    expect(await screen.findByText('Add the other adult')).toBeTruthy()
+    expect(screen.queryByText('Check one policy')).toBeNull()
   })
 })

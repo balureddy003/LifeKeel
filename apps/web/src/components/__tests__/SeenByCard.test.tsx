@@ -20,6 +20,7 @@ vi.mock('@/lib/api', () => api)
 vi.mock('@/lib/haptics', () => ({ haptic: () => {} }))
 
 import { SeenByCard } from '../SeenByCard'
+import { SEEN_CONFIRMED_EVENT } from '@/lib/seen-status'
 
 describe('SeenByCard', () => {
   beforeEach(() => {
@@ -55,6 +56,22 @@ describe('SeenByCard', () => {
     )
     expect(api.confirmDomain).toHaveBeenCalledWith('life_protection', 'v1')
     expect(screen.queryByRole('button', { name: "I've seen this" })).toBeNull()
+  })
+
+  it('gives each row an anchor and tells the rest of Home when a confirm lands', async () => {
+    api.confirmDomain.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { result_version: 'v1', confirmation: confirmation(true) },
+    })
+    const heard = vi.fn()
+    window.addEventListener(SEEN_CONFIRMED_EVENT, heard)
+    const { container } = render(<SeenByCard />)
+    expect(container.querySelector('#seen-life_protection')).toBeNull()
+    fireEvent.click(await screen.findByRole('button', { name: "I've seen this" }))
+    await waitFor(() => expect(heard).toHaveBeenCalledTimes(1))
+    expect(container.querySelector('#seen-life_protection')).not.toBeNull()
+    window.removeEventListener(SEEN_CONFIRMED_EVENT, heard)
   })
 
   it('says so when saving fails, and keeps the button', async () => {

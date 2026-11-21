@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import { CheckCircle2, Clock, ChevronRight } from 'lucide-react'
 import { GlassCard } from '@/components/Glass'
 import { confirmDomain, getDomains, getDomainView } from '@/lib/api'
-import { seenStatus, type SeenInput, type SeenRow } from '@/lib/seen-status'
+import { SEEN_CONFIRMED_EVENT, seenStatus, type SeenInput, type SeenRow } from '@/lib/seen-status'
 import { haptic } from '@/lib/haptics'
 
 /**
@@ -69,6 +69,7 @@ export function SeenByCard() {
             : l,
         ),
       )
+      window.dispatchEvent(new Event(SEEN_CONFIRMED_EVENT))
     } catch {
       setFailed(row.id)
     } finally {
@@ -83,7 +84,7 @@ export function SeenByCard() {
       </h2>
       <GlassCard className="p-0 divide-y divide-white/10">
         {rows.map((row) => (
-          <div key={row.id} data-testid={`seen-${row.id}`}>
+          <div key={row.id} id={`seen-${row.id}`} data-testid={`seen-${row.id}`}>
             <Link href={row.href} className="flex min-h-[48px] items-center gap-3 px-4 py-3">
               {row.state === 'all' ? (
                 <CheckCircle2 size={20} className="flex-shrink-0 text-success" aria-hidden="true" />

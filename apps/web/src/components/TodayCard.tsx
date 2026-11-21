@@ -12,7 +12,7 @@ import {
   type FamilyInsight,
   type Obligation,
 } from '@/lib/api'
-import { seenStatus, type SeenInput } from '@/lib/seen-status'
+import { SEEN_CONFIRMED_EVENT, seenStatus, type SeenInput } from '@/lib/seen-status'
 import { useAuth } from '@/lib/auth-context'
 import { pickTodayItem } from '@/lib/today-item'
 
@@ -43,12 +43,16 @@ export function TodayCard({
     }
   }, [])
 
+  // True when any shared list has something on file, even if the readiness score has no data yet.
+  const [onFile, setOnFile] = useState(false)
+  const [listsRead, setListsRead] = useState(false)
   const [awaitingYou, setAwaitingYou] = useState<{ title: string; href: string } | null>(null)
 
   // A list the viewer has not confirmed: the same reading Home's "Who has looked" card uses.
+  // It reads again when the viewer confirms one, so the ask goes away without a reload.
   useEffect(() => {
     let live = true
-    ;(async () => {
+    const load = async () => {
       try {
         const { domains } = await getDomains()
         const views = await Promise.all(
@@ -65,20 +69,26 @@ export function TodayCard({
               : null
           }),
         )
-        const mine = seenStatus(views.filter((v): v is SeenInput => v !== null)).find(
-          (r) => r.canConfirm,
-        )
-        if (live && mine) setAwaitingYou({ title: mine.title, href: mine.href })
+        const lists = views.filter((v): v is SeenInput => v !== null)
+        if (live) setOnFile(lists.some((l) => l.records > 0))
+        const mine = seenStatus(lists).find((r) => r.canConfirm)
+        if (live) setAwaitingYou(mine ? { title: mine.title, href: `#seen-${mine.id}` } : null)
       } catch {
         /* the card simply falls back to its other choices */
       }
-    })()
+      // Wait for this read, so a household with a policy never flashes "Check one policy".
+      if (live) setListsRead(true)
+    }
+    void load()
+    const again = () => void load()
+    window.addEventListener(SEEN_CONFIRMED_EVENT, again)
     return () => {
       live = false
+      window.removeEventListener(SEEN_CONFIRMED_EVENT, again)
     }
   }, [])
 
-  if (obligations === null) return null
+  if (obligations === null || !listsRead) return null
   const item = pickTodayItem({
     obligations,
     insights,
@@ -86,11 +96,11 @@ export function TodayCard({
     today: new Date().toISOString().slice(0, 10),
     awaitingYou,
     // Nothing on file: start with one policy. Something on file and no one else on it: the other adult.
-    startWithPolicy: !hasLiveData,
-    startWithOtherAdult: hasLiveData && !!family && family.members.length <= 1,
+    startWithPolicy: !hasLiveData && !onFile,
+    startWithOtherAdult: (hasLiveData || onFile) && !!family && family.members.length <= 1,
   })
   // A brand-new account has nothing to check yet; saying so would be noise.
-  if (item.tier === 'none' && !hasLiveData) return null
+  if (item.tier === 'none' && !hasLiveData && !onFile) return null
 
   return (
     <GlassCard className="p-5 border-family-500/20" data-testid="today-card">
