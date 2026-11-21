@@ -69,6 +69,8 @@ function webCopyFiles(): string[] {
     'apps/web/src/lib/pinned-tiles.ts',
     'apps/web/src/components/PinnedTiles.tsx',
     'apps/web/src/lib/today-item.ts',
+    'apps/web/src/components/SendLinkCard.tsx',
+    'apps/web/src/lib/share-invite.ts',
     'apps/web/src/components/EmergencyRow.tsx',
     'apps/web/src/lib/setup-steps.ts',
     'apps/web/src/components/FreshnessCard.tsx',
