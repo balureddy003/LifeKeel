@@ -68,6 +68,8 @@ function webCopyFiles(): string[] {
     'apps/web/src/lib/today-item.ts',
     'apps/web/src/components/SendLinkCard.tsx',
     'apps/web/src/lib/share-invite.ts',
+    'apps/web/src/components/EmergencyRow.tsx',
+    'apps/web/src/lib/setup-steps.ts',
     'apps/web/src/components/FreshnessCard.tsx',
     'apps/web/src/lib/extraction-review-copy.ts',
     'apps/web/src/lib/trust-copy.ts',
@@ -84,6 +86,7 @@ function webCopyFiles(): string[] {
     // Quick policy add: the premium check states arithmetic and points at the policy document.
     'apps/web/src/app/policies/new/page.tsx',
     'apps/web/src/app/domains/PolicyDetails.tsx',
+    'apps/web/src/app/domains/CoverageList.tsx',
     'apps/api/src/resilience/premium-check.ts',
     'apps/api/src/routes/family-policies.ts',
     // PRD-231: the obligations map states who is named and what is due.
