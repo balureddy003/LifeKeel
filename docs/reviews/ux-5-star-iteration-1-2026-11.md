@@ -29,3 +29,15 @@ iOS Simulator: its empty Summary shows "No Data", one-action setup cards, and in
 3. "Change one thing and see the impact": no before/after line on edit.
 4. Pinned tiles (#552) and the one-action Start here card need to merge to judge the whole first screen.
 5. Empty single-parent household (no income, no policies): confirm no nonsense number.
+
+## Iteration 3: emergency in one tap (narrative 5)
+Finding: with SOS no longer floating, Emergency mode was Home, Family, Emergency row: two taps before the
+first choice, and not where a panicking person looks.
+
+Changed: a "Something has happened" row, first thing under the header on Home. One tap opens "What
+happened?" (five plain tiles plus the 999 notice); one more tap on the tile reaches that scenario's steps.
+Home to steps in two taps. Viewed at phone width. Hidden only where a mode hides emergency entry.
+
+Still open: Emergency mode lists scenarios, not the family's own policy and contact. The scenario page should
+lead with "your policy, who to call" from the list (the narrative asks for the relevant policy and contact in
+two taps); that is the next change here and needs the policy list on that page checked first.
