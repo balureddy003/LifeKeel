@@ -244,7 +244,7 @@ export async function resilienceForUser(
     scenarios[sc] = await confirmationFor(scenarioVersion(figures, sc))
   return {
     ...view,
-    figures: figures.map(({ label, valueMinor }) => ({ label, valueMinor })),
+    figures: figures.map(({ label, valueMinor, key }) => ({ label, valueMinor, key })),
     confirmation: await confirmationFor(figuresVersion(figures)),
     scenarios,
   }

@@ -169,10 +169,14 @@ describe('confirming the figures (both adults)', () => {
   it('lists the figures used and starts with nobody confirmed', async () => {
     const body = await get('u1')
     expect(body.figures).toEqual([
-      { label: 'Savings', valueMinor: 900_000 },
-      { label: 'Monthly spend', valueMinor: 300_000 },
-      { label: 'Monthly income', valueMinor: 300_000 },
-      { label: 'Income protection per month', valueMinor: 0 },
+      { label: 'Savings', valueMinor: 900_000, key: 'savings_minor' },
+      { label: 'Monthly spend', valueMinor: 300_000, key: 'monthly_spend_minor' },
+      { label: 'Monthly income', valueMinor: 300_000, key: 'monthly_inflow_minor' },
+      {
+        label: 'Income protection per month',
+        valueMinor: 0,
+        key: 'income_protection_monthly_minor',
+      },
     ])
     expect(body.confirmation).toMatchObject({
       confirmedBy: [],

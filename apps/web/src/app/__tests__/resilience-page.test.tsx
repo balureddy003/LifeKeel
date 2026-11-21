@@ -10,6 +10,15 @@ vi.mock('@/lib/api', () => ({
   fetchConfirmationHistory: () => fetchConfirmationHistory() ?? Promise.resolve(null),
   fetchFamilyResilience: () => fetchFamilyResilience(),
   confirmResilienceFigures: () => confirmResilienceFigures(),
+  fetchFinancialProfileWithVersion: () =>
+    Promise.resolve({
+      profile: {
+        household: { monthly_salary_minor: 300000 },
+        emergency_fund: { emergency_savings_minor: 800000, monthly_expenses_minor: 200000 },
+      },
+      version: 3,
+    }),
+  submitFinancialProfile: () => Promise.resolve({ insightsGenerated: 0, version: 4 }),
 }))
 
 import ResiliencePage from '../resilience/page'
@@ -265,5 +274,26 @@ describe('/resilience', () => {
     render(<ResiliencePage />)
     await waitFor(() => expect(screen.getByText(/about 3 months/)).toBeTruthy())
     expect(screen.queryByTestId('confirmation-history')).toBeNull()
+  })
+
+  it('changing a figure says what changed and re-reads the estimate', async () => {
+    fetchFamilyResilience.mockResolvedValue({
+      status: 'ready',
+      scenario: 'income_stops',
+      range: { lowMonths: 3, highMonths: 6 },
+      text: 'Savings would cover 3 to 6 months. This is an estimate.',
+      left_out: [],
+      next_checks: [],
+      figures: [{ label: 'Savings', valueMinor: 800000, key: 'savings_minor' }],
+      confirmation: { confirmedBy: [], allAdultsConfirmed: false, youConfirmed: false },
+    })
+    render(<ResiliencePage />)
+    fireEvent.click(await screen.findByRole('button', { name: /Change Savings/ }))
+    fireEvent.change(screen.getByLabelText('Savings in £'), { target: { value: '6000' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect((await screen.findByTestId('figure-changed')).textContent).toContain(
+      'Savings changed from £8,000 to £6,000.',
+    )
+    expect(fetchFamilyResilience).toHaveBeenCalledTimes(2)
   })
 })

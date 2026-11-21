@@ -10,6 +10,7 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { PageHeader, GlassCard } from '@/components/Glass'
+import { FigureRow } from '@/components/FigureRow'
 import {
   confirmResilienceFigures,
   fetchConfirmationHistory,
@@ -43,6 +44,13 @@ export default function ResiliencePage() {
     void reload()
     void fetchFamilyLearning().then((l) => setSharingOn(l !== null))
   }, [])
+
+  // After a figure changes: say what changed, then show the estimate worked out from the new figure.
+  const [changed, setChanged] = useState<string | null>(null)
+  const afterEdit = (summary: string) => {
+    setChanged(summary)
+    void reload()
+  }
 
   const confirm = async () => {
     setBusy(true)
@@ -111,12 +119,14 @@ export default function ResiliencePage() {
               <h2 className="text-sm font-semibold text-ink-tertiary uppercase tracking-wide">
                 Figures used
               </h2>
+              {changed && (
+                <p role="status" data-testid="figure-changed" className="text-sm text-ink-primary">
+                  {changed} The estimate above uses it now. Confirm the figures again below.
+                </p>
+              )}
               <dl className="space-y-1 text-sm">
                 {data.figures.map((f) => (
-                  <div key={f.label} className="flex justify-between">
-                    <dt className="text-ink-secondary">{f.label}</dt>
-                    <dd className="text-ink-primary">{gbp(f.valueMinor)}</dd>
-                  </div>
+                  <FigureRow key={f.label} figure={f} onSaved={afterEdit} />
                 ))}
               </dl>
               {data.confirmation.confirmedBy.length > 0 && (
