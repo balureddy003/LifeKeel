@@ -66,6 +66,7 @@ import { elderlyHomeCopy } from '@/lib/elderlyHomeCopy'
 import { childHomeCopy } from '@/lib/childHomeCopy'
 import { simpleHomeCopy } from '@/lib/simpleHomeCopy'
 import { firstVisitSubline } from '@/lib/firstVisitCopy'
+import { sinceLastVisitView, type VisitSnapshot } from '@/lib/since-last-visit'
 import { formatRelativeDate } from '@/lib/format'
 
 function ChildHome() {
@@ -340,11 +341,6 @@ function lastVisitStorageKey(): string {
   return `lifekeel:last-visit-snapshot:${tenant}`
 }
 
-interface VisitSnapshot {
-  score: number
-  openInsightCount: number
-}
-
 function loadLastVisitSnapshot(): VisitSnapshot | null {
   if (typeof window === 'undefined') return null
   try {
@@ -378,11 +374,13 @@ function timeOfDayGreeting(name: string): string {
 function SinceLastVisit({
   score,
   hasLiveData,
+  hasProfileData,
   openInsightCount,
   loading,
 }: {
   score: number | null
   hasLiveData: boolean
+  hasProfileData: boolean
   openInsightCount: number
   loading: boolean
 }) {
@@ -406,13 +404,21 @@ function SinceLastVisit({
   if (!ready || score === null) return null
 
   const firstName = user?.name?.split(' ')[0] ?? 'there'
+  const view = sinceLastVisitView({
+    previous,
+    score,
+    openInsightCount,
+    hasLiveData,
+    hasProfileData,
+  })
+  if (view.kind === 'none') return null
 
   // No previous visit or no delta — show a calm time-of-day greeting
   // instead of silence.  Apple-style: acknowledge the human, don't
   // manufacture urgency.  The "stable" claim itself is gated on real
   // signals in firstVisitCopy — a first visit at readiness 0 (profile
   // evaluated, everything a gap) used to claim stability anyway (UAT P8).
-  if (!previous) {
+  if (view.kind === 'first' || view.kind === 'no_change') {
     return (
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
         <GlassCard className="p-3.5 border-family-500/20 flex items-center gap-3">
@@ -424,45 +430,13 @@ function SinceLastVisit({
               {timeOfDayGreeting(firstName)}
             </div>
             <div className="text-xs text-ink-tertiary">
-              {firstVisitSubline({ score, openInsightCount })}
+              {view.kind === 'first'
+                ? firstVisitSubline({ score, openInsightCount })
+                : 'No changes since your last visit.'}
             </div>
           </div>
         </GlassCard>
       </motion.div>
-    )
-  }
-
-  const scoreDelta = score - previous.score
-  const insightDelta = openInsightCount - previous.openInsightCount
-  if (scoreDelta === 0 && insightDelta === 0) {
-    return (
-      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
-        <GlassCard className="p-3.5 border-family-500/20 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-family-500/10 border border-family-500/20 flex items-center justify-center flex-shrink-0">
-            <Sparkles size={16} className="text-family-400" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold text-ink-primary">
-              {timeOfDayGreeting(firstName)}
-            </div>
-            <div className="text-xs text-ink-tertiary">No changes since your last visit.</div>
-          </div>
-        </GlassCard>
-      </motion.div>
-    )
-  }
-
-  const parts: string[] = []
-  if (scoreDelta !== 0) {
-    parts.push(
-      `Readiness score ${scoreDelta > 0 ? 'up' : 'down'} ${Math.abs(scoreDelta)} point${Math.abs(scoreDelta) === 1 ? '' : 's'}`,
-    )
-  }
-  if (insightDelta > 0) {
-    parts.push(`${insightDelta} new insight${insightDelta === 1 ? '' : 's'} to review`)
-  } else if (insightDelta < 0) {
-    parts.push(
-      `${Math.abs(insightDelta)} insight${Math.abs(insightDelta) === 1 ? '' : 's'} resolved`,
     )
   }
 
@@ -476,7 +450,7 @@ function SinceLastVisit({
           <div className="text-xs font-semibold text-ink-tertiary mb-0.5">
             Since your last visit
           </div>
-          <div className="text-sm font-semibold text-ink-primary">{parts.join(' · ')}</div>
+          <div className="text-sm font-semibold text-ink-primary">{view.text}</div>
         </div>
       </GlassCard>
     </motion.div>
@@ -959,6 +933,7 @@ export default function HomePage() {
       <SinceLastVisit
         score={readinessScore}
         hasLiveData={hasLiveData}
+        hasProfileData={profileCompleteness > 0}
         openInsightCount={openInsightCount}
         loading={scoreLoading || insightsLoading}
       />
