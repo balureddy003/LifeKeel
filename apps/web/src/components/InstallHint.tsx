@@ -15,7 +15,6 @@ import { isNativeShell } from '@/lib/native'
 import { track } from '@/lib/growth-track'
 import { DISMISS_KEY, VISITS_KEY, chooseHint, type InstallPlatform } from '@/lib/install-hint'
 import {
-  INSTALL_BODY,
   INSTALL_BUTTON,
   INSTALL_DISMISS,
   INSTALL_IOS_IN_APP,
@@ -49,12 +48,22 @@ function countVisit(): number {
   }
 }
 
-export function InstallHint() {
+/** Long enough for the screen to load clean and be read before anything is offered. */
+const SHOW_DELAY_MS = 6000
+
+export function InstallHint({ delayMs = SHOW_DELAY_MS }: { delayMs?: number } = {}) {
   const { isAuthenticated } = useAuth()
+  const [ready, setReady] = useState(delayMs === 0)
   const [prompt, setPrompt] = useState<InstallPromptEvent | null>(null)
   const [visits, setVisits] = useState(0)
   const [dismissedAt, setDismissedAt] = useState<string | null>(null)
   const [installed, setInstalled] = useState(false)
+
+  useEffect(() => {
+    if (delayMs === 0) return
+    const t = setTimeout(() => setReady(true), delayMs)
+    return () => clearTimeout(t)
+  }, [delayMs])
 
   useEffect(() => {
     setVisits(countVisit())
@@ -77,7 +86,7 @@ export function InstallHint() {
   }, [])
 
   const platform: InstallPlatform | null =
-    installed || typeof window === 'undefined'
+    installed || !ready || typeof window === 'undefined'
       ? null
       : chooseHint({
           authenticated: isAuthenticated,
@@ -119,34 +128,32 @@ export function InstallHint() {
     <div
       role="region"
       aria-label={INSTALL_TITLE}
-      className="fixed inset-x-4 bottom-24 z-40 mx-auto max-w-md rounded-2xl border border-tint/[0.1] bg-surface-1 p-4 shadow-lg"
+      className="glass fixed inset-x-3 bottom-[calc(var(--app-dock-space)+64px)] z-40 mx-auto max-w-md animate-fade-in rounded-3xl py-3 pl-4 pr-1 shadow-lg desk:bottom-6"
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-center gap-2">
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold text-ink-primary">{INSTALL_TITLE}</div>
-          {platform === 'prompt' ? (
-            <p className="mt-1 text-xs text-ink-secondary">{INSTALL_BODY}</p>
-          ) : (
-            <p className="mt-1 flex items-start gap-1.5 text-xs text-ink-secondary">
+          {platform !== 'prompt' && (
+            <p className="mt-0.5 flex items-start gap-1.5 text-sm text-ink-secondary">
               <Share size={14} className="mt-0.5 flex-shrink-0" aria-hidden />
               {platform === 'ios' ? INSTALL_IOS_STEPS : INSTALL_IOS_IN_APP}
             </p>
           )}
-          {platform === 'prompt' && (
-            <button
-              type="button"
-              onClick={install}
-              className="mt-3 flex items-center gap-1.5 rounded-lg bg-family-500/20 border border-family-500/30 px-3 py-1.5 text-xs font-semibold text-family-300"
-            >
-              <Download size={12} aria-hidden /> {INSTALL_BUTTON}
-            </button>
-          )}
         </div>
+        {platform === 'prompt' && (
+          <button
+            type="button"
+            onClick={install}
+            className="flex flex-shrink-0 items-center gap-1.5 rounded-full bg-family-500 px-4 text-sm font-semibold text-[rgb(var(--on-cta))]"
+          >
+            <Download size={14} aria-hidden /> {INSTALL_BUTTON}
+          </button>
+        )}
         <button
           type="button"
           onClick={dismiss}
           aria-label={INSTALL_DISMISS}
-          className="flex-shrink-0 rounded-lg p-1 text-ink-tertiary"
+          className="flex min-h-[48px] min-w-[48px] flex-shrink-0 items-center justify-center text-ink-tertiary"
         >
           <X size={16} />
         </button>
