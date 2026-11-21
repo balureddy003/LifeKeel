@@ -14,6 +14,7 @@ import {
   fetchReferralSummary,
   uploadDocument,
   fetchFinancialProfileWithVersion,
+  submitFinancialProfile,
   RESOLVED_INSIGHT_STATES,
 } from '../api'
 import { clearAllCaches } from '../fetch-cache'
@@ -661,5 +662,42 @@ describe('resolveOAuthReturnParams', () => {
     const q = await resolveOAuthReturnParams()
     expect(q.get('connected')).toBe('twitter_x')
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('a saved profile change reaches Home', () => {
+  const insight = (id: string) => ({
+    insights: [
+      {
+        id,
+        detector_id: 'family_protection_gap',
+        rule_id: 'r',
+        hypothesis: 'h',
+        reasoning: 'x',
+        actions: [],
+        confidence: 1,
+        urgency: 'low',
+        category: 'c',
+        state: 'new',
+        created_at: '2026-11-01T00:00:00Z',
+      },
+    ],
+  })
+
+  it('drops the cached insights so the next read is fresh', async () => {
+    const fn = mockFetchSequence(
+      { body: insight('before') },
+      { body: { version: 2, insights_generated: 1 } },
+      { body: insight('after') },
+    )
+    const first = await fetchFamilyInsights()
+    expect(first.map((i) => i.id)).toEqual(['before'])
+    // Still inside the 30 second cache: no new request.
+    expect(await fetchFamilyInsights()).toEqual(first)
+    expect(fn).toHaveBeenCalledTimes(1)
+
+    await submitFinancialProfile({} as never, true, 1)
+    const second = await fetchFamilyInsights()
+    expect(second.map((i) => i.id)).toEqual(['after'])
   })
 })
