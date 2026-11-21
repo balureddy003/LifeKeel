@@ -16,7 +16,7 @@ import {
   Printer,
 } from 'lucide-react'
 import { GlassCard, GlassButton, PageHeader, PageTransition } from '@/components/Glass'
-import { PolicyAtHand } from '@/components/PolicyAtHand'
+import { AtHand } from '@/components/AtHand'
 import { LifeSafetyNotice } from '@/components/LifeSafetyNotice'
 import { DraftProvenanceNote } from '@/components/DraftProvenance'
 import { haptic } from '@/lib/haptics'
@@ -461,7 +461,7 @@ export default function LifeEventPlaybookClient() {
 
         {URGENT_TYPES.has(event.event_type) && <LifeSafetyNotice compact />}
 
-        <PolicyAtHand eventType={event.event_type} />
+        <AtHand eventType={event.event_type} />
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <GlassCard className="p-5 border-family-500/20">

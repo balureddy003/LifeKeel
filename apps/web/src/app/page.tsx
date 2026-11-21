@@ -48,7 +48,7 @@ import { haptic } from '@/lib/haptics'
 import { PinnedTiles } from '@/components/PinnedTiles'
 import { EmergencyRow } from '@/components/EmergencyRow'
 import { SeenByCard } from '@/components/SeenByCard'
-import { SETUP_STEPS } from '@/lib/setup-steps'
+import { SERVICES, setupStepsFor } from '@/lib/services'
 import {
   visibleSetupSteps,
   readDismissed,
@@ -682,7 +682,7 @@ function GettingStarted() {
   // source of truth (same approach as TrustLadder), so a reload doesn't
   // reset finished steps to "not done".
   const [serverDocs, setServerDocs] = useState(0)
-  const [policyCount, setPolicyCount] = useState(0)
+  const [profile, setProfile] = useState<FinancialProfile | null>(null)
   useEffect(() => {
     let cancelled = false
     fetchDocuments().then((d) => {
@@ -690,7 +690,7 @@ function GettingStarted() {
     })
     fetchFinancialProfile()
       .then((p) => {
-        if (!cancelled) setPolicyCount(p?.policies?.length ?? 0)
+        if (!cancelled) setProfile(p ?? null)
       })
       .catch(() => {})
     return () => {
@@ -698,9 +698,10 @@ function GettingStarted() {
     }
   }, [])
   const docCount = Math.max(docCountLocal, serverDocs)
-  const icons = { policy: ShieldCheck, upload: Upload } as const
-  const done = { policy: policyCount > 0, upload: docCount > 0 } as const
-  const steps = SETUP_STEPS.map((d) => ({ ...d, icon: icons[d.id], done: done[d.id] }))
+  const icons = { shield: ShieldCheck, upload: Upload } as const
+  const steps = setupStepsFor(SERVICES, { profile: profile ?? null, documentCount: docCount }).map(
+    (d) => ({ ...d, icon: icons[d.icon] }),
+  )
 
   const [dismissed, setDismissed] = useState<string[]>([])
   useEffect(() => {
