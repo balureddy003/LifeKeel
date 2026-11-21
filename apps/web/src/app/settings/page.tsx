@@ -87,8 +87,11 @@ import {
   type FamilyContinuity,
   type NotificationPrefsResponse,
   type NotificationPrefsPatch,
+  inviteFamilyMember,
 } from '@/lib/api'
 import { useThemePreference, type ThemePreference } from '@/lib/theme'
+import { SendLinkCard } from '@/components/SendLinkCard'
+import { shareInviteLink } from '@/lib/share-invite'
 import { isIOS, isStandalone } from '@/lib/platform'
 import {
   isPushSupported,
@@ -165,6 +168,9 @@ export default function SettingsPage() {
   const [memberDob, setMemberDob] = useState('')
   const [addingMember, setAddingMember] = useState(false)
   const [addMemberError, setAddMemberError] = useState<string | null>(null)
+  // The adult just added: offer the link right here instead of a toast pointing elsewhere.
+  const [justAddedName, setJustAddedName] = useState<string | null>(null)
+  const [sharingInvite, setSharingInvite] = useState(false)
 
   // Family sharing (PRD-110) — only the organizer can see or act on these;
   // the same check the backend enforces (a roster entry whose id matches
@@ -610,12 +616,11 @@ export default function SettingsPage() {
       // Adding an adult only creates the pending roster entry — no invite
       // goes out by itself. Point at the Invite action right away instead
       // of letting "Not joined yet" read as a stuck invitation.
-      toast({
-        message:
-          memberRole === 'child'
-            ? `${memberName.trim()} added to family`
-            : `${memberName.trim()} added — tap Invite next to their name to send their invite`,
-      })
+      if (memberRole === 'child') {
+        toast({ message: `${memberName.trim()} added to family` })
+      } else {
+        setJustAddedName(memberName.trim())
+      }
       resetAddMemberForm()
     } catch (err) {
       haptic('warning')
@@ -866,6 +871,49 @@ export default function SettingsPage() {
               signOut()
               router.push('/login')
             }}
+          />
+        )}
+
+        {justAddedName && (
+          <SendLinkCard
+            name={justAddedName}
+            member={family?.members.find(
+              (m) =>
+                m.status === 'pending' && m.name === justAddedName && !m.id.startsWith('pending-'),
+            )}
+            busy={sharingInvite}
+            onShare={async (memberId) => {
+              haptic('light')
+              setSharingInvite(true)
+              try {
+                const res = await inviteFamilyMember(memberId)
+                const outcome = await shareInviteLink(
+                  res.inviteUrl,
+                  (justAddedName ?? '').split(' ')[0] || 'Hi',
+                  {
+                    share:
+                      typeof navigator.share === 'function'
+                        ? navigator.share.bind(navigator)
+                        : undefined,
+                    clipboard: navigator.clipboard,
+                  },
+                )
+                if (outcome === 'copied') toast({ message: 'Link copied. Send it to them.' })
+                if (outcome !== 'cancelled') setJustAddedName(null)
+              } catch (err) {
+                haptic('warning')
+                toast({
+                  message:
+                    err instanceof Error
+                      ? err.message
+                      : "Couldn't make the link. Try again in a moment.",
+                  variant: 'error',
+                })
+              } finally {
+                setSharingInvite(false)
+              }
+            }}
+            onClose={() => setJustAddedName(null)}
           />
         )}
 

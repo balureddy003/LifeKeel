@@ -72,6 +72,8 @@ function webCopyFiles(): string[] {
     // Emergency steps page leads with the policies on file and a call link.
     'apps/web/src/components/PolicyAtHand.tsx',
     'apps/web/src/lib/emergency-policies.ts',
+    'apps/web/src/components/SendLinkCard.tsx',
+    'apps/web/src/lib/share-invite.ts',
     'apps/web/src/components/EmergencyRow.tsx',
     'apps/web/src/lib/setup-steps.ts',
     'apps/web/src/components/FreshnessCard.tsx',
@@ -93,6 +95,8 @@ function webCopyFiles(): string[] {
     'apps/web/src/app/domains/CoverageList.tsx',
     'apps/api/src/resilience/premium-check.ts',
     'apps/api/src/routes/family-policies.ts',
+    'apps/api/src/resilience/policy-changes.ts',
+    'apps/web/src/lib/policy-change-summary.ts',
     // PRD-231: the obligations map states who is named and what is due.
     'apps/web/src/app/map/page.tsx',
     // PRD-232: cover facts state what is on file and when it may end.
