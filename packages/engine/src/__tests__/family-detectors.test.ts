@@ -138,6 +138,7 @@ describe('Family & Household detectors', () => {
           income_protection_monthly_minor: 0,
           employed: 1,
           years_to_retirement: 20,
+          monthly_salary_minor: 400_000,
         },
       })
       expect(fired).toBe(true)
@@ -164,9 +165,24 @@ describe('Family & Household detectors', () => {
           income_protection_monthly_minor: 0,
           employed: 1, // set by the route for both 'employed' and 'self_employed' status
           years_to_retirement: 20,
+          monthly_salary_minor: 400_000,
         },
       })
       expect(fired).toBe(true)
+    })
+
+    it('does not fire no_income_protection when no income is entered (the text would quote 0 to 0)', async () => {
+      const detector = await loadDetector('family_protection_gap')
+      const rule = ruleById(detector, 'no_income_protection')
+      const fired = evaluate(rule.condition, {
+        data: {
+          income_protection_monthly_minor: 0,
+          employed: 1,
+          years_to_retirement: 20,
+          monthly_salary_minor: 0,
+        },
+      })
+      expect(fired).toBe(false)
     })
 
     it('does not fire no_income_protection when within a year of target retirement age', async () => {

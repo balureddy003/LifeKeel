@@ -65,7 +65,11 @@ function webCopyFiles(): string[] {
     // PRD-141/145/203: new user-facing copy outside the landing page.
     'apps/web/src/components/PerceivedProtectionCard.tsx',
     'apps/web/src/components/TodayCard.tsx',
+    // Pinned tiles state figures on file, or that there is none.
+    'apps/web/src/lib/pinned-tiles.ts',
+    'apps/web/src/components/PinnedTiles.tsx',
     'apps/web/src/lib/today-item.ts',
+    'apps/web/src/components/EmergencyRow.tsx',
     'apps/web/src/lib/setup-steps.ts',
     'apps/web/src/components/FreshnessCard.tsx',
     'apps/web/src/lib/extraction-review-copy.ts',

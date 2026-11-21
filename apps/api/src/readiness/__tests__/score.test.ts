@@ -485,3 +485,81 @@ describe('computeMemberReadiness (PRD-118)', () => {
     expect(retirement.detail).toContain('No pension figures')
   })
 })
+
+describe('a household with a child but no figures to measure against (single parent, nothing entered)', () => {
+  const noFigures: FinancialProfile = {
+    ...base,
+    household: { ...base.household, monthly_salary_minor: 0, annual_living_expenses_minor: 0 },
+    emergency_fund: {
+      ...base.emergency_fund,
+      emergency_savings_minor: 0,
+      monthly_expenses_minor: 0,
+    },
+    retirement: {
+      ...base.retirement,
+      pension_balance_minor: 0,
+      monthly_contribution_minor: 0,
+      target_retirement_income_minor: 0,
+    },
+    education_funds: [
+      {
+        child_name: 'Kit',
+        child_age: 8,
+        current_savings_minor: 0,
+        target_savings_minor: 0,
+        years_remaining: 10,
+      },
+    ],
+  }
+
+  it('never produces NaN or a non-finite number anywhere in the result', () => {
+    const r = computeReadiness(noFigures, [])
+    const bad = JSON.stringify(r, (_k, v) =>
+      typeof v === 'number' && !Number.isFinite(v) ? 'BAD' : v,
+    )
+    expect(bad).not.toContain('BAD')
+    expect(r.score === null || Number.isFinite(r.score)).toBe(true)
+  })
+
+  it('does not score life cover against a need of zero: no figure to measure, so that check does not apply', () => {
+    const protection = computeReadiness(noFigures, []).components.find(
+      (c) => c.key === 'protection',
+    )!
+    expect(protection.score === null || Number.isFinite(protection.score)).toBe(true)
+    expect(protection.drivers?.some((d) => d.label === 'Estimated household need')).not.toBe(true)
+  })
+
+  it('a non-finite component never drags the composite: it counts as no data', () => {
+    // Defensive: whatever produced it, the composite ignores it rather than showing NaN.
+    const r = computeReadiness(
+      {
+        ...noFigures,
+        household: { ...noFigures.household, mortgage_outstanding_minor: Number.NaN },
+      },
+      [],
+    )
+    expect(r.score === null || Number.isFinite(r.score)).toBe(true)
+  })
+
+  it('a household that does have a need still gets the life cover check', () => {
+    const withNeed = {
+      ...noFigures,
+      household: { ...noFigures.household, annual_living_expenses_minor: 3_000_000 },
+    } as FinancialProfile
+    const protection = computeReadiness(withNeed, []).components.find(
+      (c) => c.key === 'protection',
+    )!
+    expect(protection.drivers?.some((d) => d.label === 'Estimated household need')).toBe(true)
+  })
+})
+
+describe('protection and the no-income household', () => {
+  it('an earner with no income entered has nothing to protect yet, matching the detector', () => {
+    const p = {
+      ...base,
+      household: { ...base.household, monthly_salary_minor: 0 },
+    } as FinancialProfile
+    const protection = computeReadiness(p, []).components.find((c) => c.key === 'protection')!
+    expect(protection.score).toBeNull()
+  })
+})
