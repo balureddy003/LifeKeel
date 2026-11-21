@@ -26,6 +26,13 @@ describe('chooseHint', () => {
     expect(chooseHint({ ...base, nativeShell: true })).toBeNull()
     expect(chooseHint({ ...base, hasPrompt: false })).toBeNull()
   })
+  it('stays off pages where someone is typing, so it never covers a field', () => {
+    for (const pathname of ['/policies/new', '/policies/new/', '/financial-profile/']) {
+      expect(chooseHint({ ...base, pathname })).toBeNull()
+    }
+    expect(chooseHint({ ...base, pathname: '/' })).toBe('prompt')
+    expect(chooseHint({ ...base, pathname: '/family/' })).toBe('prompt')
+  })
   it('gives iOS steps, and an open-in-Safari note inside in-app browsers', () => {
     expect(chooseHint({ ...base, ios: true, hasPrompt: false })).toBe('ios')
     expect(
