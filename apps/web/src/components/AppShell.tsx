@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Users, WifiOff, Siren, Bot, MailWarning, X, Fingerprint } from 'lucide-react'
+import { Users, WifiOff, Siren, Bot, Fingerprint } from 'lucide-react'
 import { useNetworkStatus } from '@/lib/useNetworkStatus'
 import { useAuth } from '@/lib/auth-context'
 import { useMode } from '@/lib/mode-context'
@@ -17,7 +17,6 @@ import {
   fetchInboxItems,
   fetchFamilyInsights,
   fetchPublicStatus,
-  resendVerificationEmail,
   type PublicStatus,
 } from '@/lib/api'
 import { flushMutationQueue } from '@/lib/offline-queue'
@@ -34,7 +33,7 @@ import { haptic } from '@/lib/haptics'
 import { firstStepWaitMessage, isFirstStepPath } from '@/lib/signup-destination'
 import { track } from '@/lib/growth-track'
 import { isNativeShell, biometricLockEnabled, verifyBiometric } from '@/lib/native'
-import { bannerDismissed } from './verify-banner'
+import { VerifyEmailBanner } from './VerifyEmailBanner'
 
 // Signed-in extras load after the first paint, so the first-time visitor's landing
 // download stays inside its budget (PRD-209). None render on the signed-out landing.
@@ -128,84 +127,6 @@ function MaintenanceBanner() {
         >
           <Siren size={16} className="text-family-400 flex-shrink-0" />
           <span className="text-sm text-ink-secondary font-medium">{windowText}</span>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  )
-}
-
-// Signed-in but unverified email — the other side of /verify-email.
-// Without this the verification email is a dead end: nothing in the app
-// ever told the user it existed or offered a resend. A dismissal holds for
-// three days (not permanently — it's a trust property, not a promo; see
-// verify-banner.ts) and the banner clears itself once the account flips to verified.
-const VERIFY_BANNER_DISMISSED = 'keel:verify-banner-dismissed'
-
-function VerifyEmailBanner() {
-  const { isAuthenticated, user } = useAuth()
-  const [dismissed, setDismissed] = useState(true)
-  const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
-
-  useEffect(() => {
-    try {
-      setDismissed(bannerDismissed(localStorage.getItem(VERIFY_BANNER_DISMISSED), Date.now()))
-    } catch {
-      /* private mode */
-    }
-  }, [])
-
-  const resend = async () => {
-    setState('sending')
-    try {
-      await resendVerificationEmail()
-      setState('sent')
-    } catch {
-      setState('error')
-    }
-  }
-
-  const dismiss = () => {
-    setDismissed(true)
-    try {
-      localStorage.setItem(VERIFY_BANNER_DISMISSED, String(Date.now()))
-    } catch {
-      /* private mode */
-    }
-  }
-
-  const show = isAuthenticated && user?.emailVerified === false && !dismissed
-
-  return (
-    <AnimatePresence>
-      {show && (
-        <motion.div
-          initial={{ y: -60, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: -60, opacity: 0 }}
-          role="status"
-          aria-live="polite"
-          className="relative z-banner glass safe-area-top px-4 py-2 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center"
-        >
-          <MailWarning size={16} className="text-warning flex-shrink-0" />
-          <span className="text-sm text-ink-secondary font-medium">
-            {state === 'sent'
-              ? 'Verification link sent — check your inbox'
-              : state === 'error'
-                ? "Couldn't send the link — try again in a moment"
-                : 'Verify your email so invites and recovery reach you'}
-          </span>
-          {state !== 'sent' && (
-            <button
-              onClick={resend}
-              disabled={state === 'sending'}
-              className="text-sm text-family-400 font-semibold disabled:opacity-50"
-            >
-              {state === 'sending' ? 'Sending…' : 'Resend link'}
-            </button>
-          )}
-          <button onClick={dismiss} aria-label="Dismiss" className="text-ink-tertiary">
-            <X size={14} />
-          </button>
         </motion.div>
       )}
     </AnimatePresence>
