@@ -51,4 +51,31 @@ describe('pickTodayItem', () => {
     expect(pickTodayItem({ ...base, profileCompleteness: 60 }).tier).toBe('missing')
     expect(pickTodayItem(base).tier).toBe('none')
   })
+
+  describe('start tier (a household with nothing on file and no one else on it)', () => {
+    const fresh = { ...base, profileCompleteness: 0, startWithOtherAdult: true }
+
+    it('asks for the other adult, links to Add Member, and says why', () => {
+      const r = pickTodayItem(fresh)
+      expect(r.tier).toBe('start')
+      if (r.tier !== 'start') return
+      expect(r.title).toMatch(/other adult/i)
+      expect(r.href).toBe('/settings?add=1')
+      expect(r.why).toMatch(/^Why this one/)
+    })
+
+    it('never outranks something real: a date, a check, or a missing fact', () => {
+      expect(pickTodayItem({ ...fresh, obligations: [ob('Mortgage', '2026-11-03')] }).tier).toBe(
+        'date',
+      )
+      expect(
+        pickTodayItem({ ...fresh, insights: [ins('premium_possibly_stopped', '2026-10-01')] }).tier,
+      ).toBe('check')
+      expect(pickTodayItem({ ...fresh, profileCompleteness: 40 }).tier).toBe('missing')
+    })
+
+    it('is off unless asked for, so an account with data or a partner is untouched', () => {
+      expect(pickTodayItem({ ...base, profileCompleteness: 0 }).tier).toBe('none')
+    })
+  })
 })
