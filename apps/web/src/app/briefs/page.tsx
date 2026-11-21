@@ -890,6 +890,39 @@ function Glance({
   )
 }
 
+function SoloNote({ waitingAdult }: { waitingAdult: boolean }) {
+  return (
+    <GlassCard className="mt-6 p-5">
+      <p className="font-medium text-ink-primary">This one is just for you</p>
+      <p className="mt-1 text-sm text-ink-secondary">
+        {waitingAdult
+          ? 'The other adult has not joined yet, so your brief is saved for you. It can be shared and confirmed together once they have.'
+          : 'You are the only adult here, so your brief is saved for you. Add another adult in Family when you want to share it and confirm it together.'}
+      </p>
+      <Link href="/family" className={`${ghostBtn} mt-4`}>
+        Go to Family <ChevronRight size={16} aria-hidden="true" />
+      </Link>
+    </GlassCard>
+  )
+}
+
+function FirstBriefNote() {
+  return (
+    <GlassCard className="mt-6 flex items-start gap-3 p-5">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-family-500/10 text-family-400">
+        <Sparkles size={20} aria-hidden="true" />
+      </span>
+      <div>
+        <p className="font-medium text-ink-primary">Your first brief is free</p>
+        <p className="mt-1 text-sm text-ink-secondary">
+          It takes about 2 minutes. You will see your answer as you go, and nothing is shared until
+          you send the link.
+        </p>
+      </div>
+    </GlassCard>
+  )
+}
+
 export default function BriefsPage() {
   const [loaded, setLoaded] = useState(false)
   const [canCreate, setCanCreate] = useState(true)
@@ -1240,18 +1273,9 @@ export default function BriefsPage() {
         </GlassCard>
       )}
 
-      {loaded && canCreate && recipients.length === 0 && (
-        <GlassCard className="mt-6 p-5">
-          <p className="font-medium text-ink-primary">This one is just for you</p>
-          <p className="mt-1 text-sm text-ink-secondary">
-            {waitingAdult
-              ? 'The other adult has not joined yet, so your brief is saved for you. It can be shared and confirmed together once they have.'
-              : 'You are the only adult here, so your brief is saved for you. Add another adult in Family when you want to share it and confirm it together.'}
-          </p>
-          <Link href="/family" className={`${ghostBtn} mt-4`}>
-            Go to Family <ChevronRight size={16} aria-hidden="true" />
-          </Link>
-        </GlassCard>
+      {/* While choosing, these notes sit under the choices so the choice is the first thing on the page. */}
+      {loaded && canCreate && recipients.length === 0 && (entry || created) && (
+        <SoloNote waitingAdult={waitingAdult} />
       )}
 
       {created && (
@@ -1261,21 +1285,6 @@ export default function BriefsPage() {
             Start another
           </button>
         </div>
-      )}
-
-      {loaded && canCreate && !entry && !created && briefs.length === 0 && (
-        <GlassCard className="mt-6 flex items-start gap-3 p-5">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-family-500/10 text-family-400">
-            <Sparkles size={20} aria-hidden="true" />
-          </span>
-          <div>
-            <p className="font-medium text-ink-primary">Your first brief is free</p>
-            <p className="mt-1 text-sm text-ink-secondary">
-              It takes about 2 minutes. You will see your answer as you go, and nothing is shared
-              until you send the link.
-            </p>
-          </div>
-        </GlassCard>
       )}
 
       {loaded && canCreate && !entry && !created && briefs[0] && (
@@ -1434,6 +1443,11 @@ export default function BriefsPage() {
             </div>
           )}
         </section>
+      )}
+
+      {loaded && canCreate && !entry && !created && briefs.length === 0 && <FirstBriefNote />}
+      {loaded && canCreate && !entry && !created && recipients.length === 0 && (
+        <SoloNote waitingAdult={waitingAdult} />
       )}
 
       {entry && canCreate && (
