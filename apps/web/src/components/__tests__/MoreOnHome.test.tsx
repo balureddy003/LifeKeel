@@ -1,4 +1,4 @@
-/** The secondary home sections fold once the account has data, and remember being opened. */
+/** The secondary home sections fold away (new accounts included) and remember being opened. */
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render, screen, fireEvent } from '@testing-library/react'
 import { MoreOnHome } from '../MoreOnHome'
@@ -38,5 +38,23 @@ describe('MoreOnHome', () => {
     )
     expect(container.querySelector('details')?.open).toBe(true)
     fireEvent.click(screen.getByText('More about your family'))
+  })
+
+  it('says what is inside when given a hint, so a closed fold is not a mystery', () => {
+    render(
+      <MoreOnHome fold hint="Family, health and timeline fill in as you add details">
+        <p>Family</p>
+      </MoreOnHome>,
+    )
+    expect(screen.getByText(/fill in as you add details/)).toBeTruthy()
+  })
+
+  it('shows no hint line when none is given', () => {
+    const { container } = render(
+      <MoreOnHome fold>
+        <p>Family</p>
+      </MoreOnHome>,
+    )
+    expect(container.querySelector('summary')?.textContent).toBe('More about your family')
   })
 })
