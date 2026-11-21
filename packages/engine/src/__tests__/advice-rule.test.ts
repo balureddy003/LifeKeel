@@ -83,6 +83,7 @@ function webCopyFiles(): string[] {
     // Quick policy add: the premium check states arithmetic and points at the policy document.
     'apps/web/src/app/policies/new/page.tsx',
     'apps/web/src/app/domains/PolicyDetails.tsx',
+    'apps/web/src/app/domains/CoverageList.tsx',
     'apps/api/src/resilience/premium-check.ts',
     'apps/api/src/routes/family-policies.ts',
     // PRD-231: the obligations map states who is named and what is due.
