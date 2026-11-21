@@ -15,6 +15,8 @@ import {
   uploadDocument,
   fetchFinancialProfileWithVersion,
   submitFinancialProfile,
+  addFamilyPolicy,
+  editFamilyPolicy,
   RESOLVED_INSIGHT_STATES,
 } from '../api'
 import { clearAllCaches } from '../fetch-cache'
@@ -699,5 +701,41 @@ describe('a saved profile change reaches Home', () => {
     await submitFinancialProfile({} as never, true, 1)
     const second = await fetchFamilyInsights()
     expect(second.map((i) => i.id)).toEqual(['after'])
+  })
+})
+
+describe('a policy saved on the quick form reaches Home', () => {
+  const insightBody = (id: string) => ({
+    insights: [
+      {
+        id,
+        detector_id: 'family_protection_gap',
+        rule_id: 'r',
+        hypothesis: 'h',
+        reasoning: 'x',
+        actions: [],
+        confidence: 1,
+        urgency: 'low',
+        category: 'c',
+        state: 'new',
+        created_at: '2026-11-01T00:00:00Z',
+      },
+    ],
+  })
+  const saved = { policy: { id: 'pol_1' }, check: { status: 'match' } }
+
+  it.each([
+    ['added', () => addFamilyPolicy({ type: 'life', provider: 'P' })],
+    ['edited', () => editFamilyPolicy('pol_1', { monthly_premium_minor: 4200 })],
+  ])('a policy %s drops the cached insights so Home reads fresh', async (_n, save) => {
+    const fn = mockFetchSequence(
+      { body: insightBody('before') },
+      { body: saved },
+      { body: insightBody('after') },
+    )
+    await fetchFamilyInsights()
+    expect(await save()).toMatchObject({ ok: true })
+    expect((await fetchFamilyInsights()).map((i) => i.id)).toEqual(['after'])
+    expect(fn).toHaveBeenCalledTimes(3)
   })
 })
