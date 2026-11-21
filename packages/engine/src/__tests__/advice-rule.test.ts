@@ -92,6 +92,8 @@ function webCopyFiles(): string[] {
     'apps/web/src/app/packet/page.tsx',
     // Intent 94: the income-stops estimate states a range and what it leaves out, and names no product.
     'apps/web/src/app/resilience/page.tsx',
+    'apps/web/src/components/FigureRow.tsx',
+    'apps/web/src/lib/figure-edit.ts',
     // Quick policy add: the premium check states arithmetic and points at the policy document.
     'apps/web/src/app/policies/new/page.tsx',
     'apps/web/src/app/domains/PolicyDetails.tsx',

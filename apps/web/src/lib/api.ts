@@ -2740,7 +2740,7 @@ export type FamilyResilience =
         text: string
         assumptions: string[]
       }
-      figures?: { label: string; valueMinor: number }[]
+      figures?: { label: string; valueMinor: number; key?: string }[]
       confirmation?: ResilienceConfirmation
       /** Per estimate, so a changed figure only unconfirms the estimates that read it. */
       scenarios?: { income_stops?: ResilienceConfirmation; earner_dies?: ResilienceConfirmation }
