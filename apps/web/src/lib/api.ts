@@ -2944,6 +2944,9 @@ export async function addFamilyPolicy(
     input,
   )
   if (!r.ok) return r
+  invalidateCache('financial-profile')
+  invalidateCache('family-insights')
+  invalidateCache('inbox-items')
   notifyKeelDataChanged('family')
   return { ok: true, policy: r.data.policy, check: r.data.check }
 }
@@ -2973,6 +2976,8 @@ export async function editFamilyPolicy(
   )
   if (!r.ok) return r
   invalidateCache('financial-profile')
+  invalidateCache('family-insights')
+  invalidateCache('inbox-items')
   notifyKeelDataChanged('family')
   return { ok: true, result: r.data }
 }
