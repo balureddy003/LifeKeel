@@ -23,8 +23,7 @@ import {
   UserPlus,
   Sparkles,
   Upload,
-  Plug,
-  Calculator,
+  ShieldCheck,
   Zap,
 } from 'lucide-react'
 import { FamilyRoster } from '@/components/FamilyRoster'
@@ -46,6 +45,7 @@ import { useFamilyReadinessScore, useFamilyTimeline, useFamilyInsights } from '@
 import { useAppStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
+import { SETUP_STEPS } from '@/lib/setup-steps'
 import {
   visibleSetupSteps,
   readDismissed,
@@ -54,8 +54,6 @@ import {
 } from '@/lib/setup-cards'
 import {
   fetchDocuments,
-  listBriefs,
-  fetchConnectorStatuses,
   fetchFinancialProfile,
   fetchLifeChangeNudge,
   dismissLifeChangeNudge,
@@ -677,68 +675,29 @@ function FeatureTip() {
 // store signal so progress is honest, not decorative.
 function GettingStarted() {
   const docCountLocal = useAppStore((s) => s.uploadedDocumentCount)
-  const connectorsLocal = useAppStore((s) => s.connectedConnectors)
   // Local flags only reflect actions taken in this tab; the server is the
   // source of truth (same approach as TrustLadder), so a reload doesn't
   // reset finished steps to "not done".
   const [serverDocs, setServerDocs] = useState(0)
-  const [serverConnectors, setServerConnectors] = useState(0)
-  const [briefCount, setBriefCount] = useState(0)
+  const [policyCount, setPolicyCount] = useState(0)
   useEffect(() => {
     let cancelled = false
-    listBriefs().then((b) => {
-      if (!cancelled) setBriefCount(b.length)
-    })
     fetchDocuments().then((d) => {
       if (!cancelled) setServerDocs(d.documents.length)
     })
-    fetchConnectorStatuses().then((cs) => {
-      if (!cancelled) setServerConnectors(cs.filter((c) => c.connected).length)
-    })
+    fetchFinancialProfile()
+      .then((p) => {
+        if (!cancelled) setPolicyCount(p?.policies?.length ?? 0)
+      })
+      .catch(() => {})
     return () => {
       cancelled = true
     }
   }, [])
   const docCount = Math.max(docCountLocal, serverDocs)
-  const connectorCount = Math.max(connectorsLocal.length, serverConnectors)
-
-  const steps = [
-    {
-      id: 'brief',
-      label: 'Get your first answer',
-      description: 'A few figures, about two minutes. No upload or account to connect',
-      href: '/briefs',
-      icon: Sparkles,
-      done: briefCount > 0,
-    },
-    {
-      id: 'upload',
-      label: 'Upload a document',
-      description: 'Insurance policy, will, or bank statement',
-      href: '/upload',
-      icon: Upload,
-      done: docCount > 0,
-    },
-    {
-      id: 'profile',
-      label: 'Fill in your financial profile',
-      description: 'Income, protection, savings — finish it to generate your score',
-      href: '/financial-profile',
-      icon: Calculator,
-      // Only rendered while there is no score, i.e. detectors haven't run
-      // on the profile yet — so this step is by definition not done, even
-      // if a half-saved profile exists.
-      done: false,
-    },
-    {
-      id: 'connect',
-      label: 'Connect a service',
-      description: 'Email, bank, or insurance provider',
-      href: '/connect',
-      icon: Plug,
-      done: connectorCount > 0,
-    },
-  ]
+  const icons = { policy: ShieldCheck, upload: Upload } as const
+  const done = { policy: policyCount > 0, upload: docCount > 0 } as const
+  const steps = SETUP_STEPS.map((d) => ({ ...d, icon: icons[d.id], done: done[d.id] }))
 
   const [dismissed, setDismissed] = useState<string[]>([])
   useEffect(() => {

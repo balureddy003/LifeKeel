@@ -191,7 +191,7 @@ export default function NewPolicyPage() {
         <div className="grid grid-cols-2 gap-3">
           {field(
             'pol-monthly',
-            'Monthly premium in £',
+            'Monthly premium (£)',
             <input
               id="pol-monthly"
               className={inputCls}
@@ -202,7 +202,7 @@ export default function NewPolicyPage() {
           )}
           {field(
             'pol-annual',
-            'Yearly premium in £',
+            'Yearly premium (£)',
             <input
               id="pol-annual"
               className={inputCls}
