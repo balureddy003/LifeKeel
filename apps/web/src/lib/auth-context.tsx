@@ -527,6 +527,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // app_host carries this app's host through the signed OAuth state so .si
   // users land back on app.lifekeel.si — sessions are per-TLD, so bouncing
   // a .si user to .co.uk would drop them logged-out.
+  // Full-page redirect: callers must not navigate after this, or a client-side
+  // push races the browser leaving and lands signed-out on an authed route.
   const signInWithProvider = async (provider: 'google') => {
     const host = encodeURIComponent(window.location.host)
     window.location.href = `${getApiBase()}/auth/${provider}/login?app=family&app_host=${host}`
