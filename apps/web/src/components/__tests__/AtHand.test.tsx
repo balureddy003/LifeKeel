@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 
-vi.mock('@/lib/api', () => ({ fetchFinancialProfile: vi.fn() }))
-import { fetchFinancialProfile } from '@/lib/api'
+vi.mock('@/lib/api', () => ({ fetchFinancialProfile: vi.fn(), getDomainView: vi.fn() }))
+import { fetchFinancialProfile, getDomainView } from '@/lib/api'
 import { AtHand } from '../AtHand'
 
 describe('AtHand', () => {
@@ -39,10 +39,46 @@ describe('AtHand', () => {
       ),
     )
   })
-  it('renders nothing for an event these policies do not bear on', async () => {
+  it('renders nothing for an event no service covers', async () => {
     vi.mocked(fetchFinancialProfile).mockResolvedValue({ policies: [] } as never)
-    const { container } = render(<AtHand eventType="car" />)
+    const { container } = render(<AtHand eventType="property" />)
     await new Promise((r) => setTimeout(r, 30))
     expect(container.firstChild).toBeNull()
+  })
+  it('a car event leads with the car policy from the family list and a call button', async () => {
+    vi.mocked(fetchFinancialProfile).mockResolvedValue({ policies: [] } as never)
+    vi.mocked(getDomainView).mockResolvedValue({
+      domain_id: 'car',
+      rows: [
+        {
+          id: 'r1',
+          record: 'policy',
+          holder_member_id: null,
+          covers_member_id: null,
+          values: { provider: 'Example Motor', claims_contact: '0800 111 2222' },
+        },
+      ],
+      pack: { records: [{ key: 'policy', label: 'Car policy' }] },
+    } as never)
+    render(<AtHand eventType="car" />)
+    await waitFor(() => expect(screen.getByText('Example Motor')).toBeTruthy())
+    expect(getDomainView).toHaveBeenCalledWith('car')
+    expect(screen.getByRole('link', { name: /Call 0800 111 2222/ }).getAttribute('href')).toBe(
+      'tel:08001112222',
+    )
+  })
+  it('a car event with nothing on file guides to add one', async () => {
+    vi.mocked(fetchFinancialProfile).mockResolvedValue({ policies: [] } as never)
+    vi.mocked(getDomainView).mockResolvedValue({
+      domain_id: 'car',
+      rows: [],
+      pack: { records: [] },
+    } as never)
+    render(<AtHand eventType="car" />)
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: 'Add a policy' }).getAttribute('href')).toBe(
+        '/domains?d=car',
+      ),
+    )
   })
 })
