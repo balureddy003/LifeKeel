@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { Calculator, Landmark, Wallet, Vault, FileText, Plug, ShieldCheck } from 'lucide-react'
 import { PageHeader, ListSection, ListRow, PageTransition } from '@/components/Glass'
+import { EmergencyRow } from '@/components/EmergencyRow'
 import { useAppStore } from '@/lib/store'
 import { haptic } from '@/lib/haptics'
 
@@ -21,6 +22,8 @@ export default function FinancesPage() {
     <PageTransition>
       <div className="px-5 pt-2 space-y-6">
         <PageHeader title="Finances" subtitle="Your family's money, documents, and connections" />
+
+        <EmergencyRow />
 
         <ListSection title="Money">
           <Link href="/financial-profile" onClick={() => haptic('light')}>

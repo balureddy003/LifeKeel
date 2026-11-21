@@ -13,6 +13,9 @@ const SCREENS = [
   'app/events/page.tsx',
   'app/domains/page.tsx',
   'app/family/page.tsx',
+  'app/inbox/page.tsx',
+  'app/finances/page.tsx',
+  'app/briefs/page.tsx',
 ]
 
 describe('emergency entry on the primary screens', () => {

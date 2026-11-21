@@ -13,6 +13,7 @@ vi.mock('next/link', () => ({
 vi.mock('@/lib/auth-context', () => ({
   useAuth: () => ({ family: { members: [{ id: 'm1', role: 'organizer', status: 'active' }] } }),
 }))
+vi.mock('@/components/EmergencyRow', () => ({ EmergencyRow: () => null }))
 vi.mock('@/lib/growth-track', () => ({ track: vi.fn() }))
 vi.mock('@/components/Toast', () => ({ useToast: () => vi.fn() }))
 vi.mock('@/components/ConfirmSheetProvider', () => ({ useConfirm: () => vi.fn() }))
