@@ -35,3 +35,8 @@ updates:
     schedule:
       interval: 'weekly'
     open-pull-requests-limit: 1
+    # Node 25+ no longer ships corepack, which this image uses to install pnpm, and CI tests on Node 22.
+    # A Node major bump is a deliberate change, not an automatic one.
+    ignore:
+      - dependency-name: 'node'
+        update-types: ['version-update:semver-major']
