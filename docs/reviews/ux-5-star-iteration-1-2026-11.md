@@ -30,6 +30,58 @@ iOS Simulator: its empty Summary shows "No Data", one-action setup cards, and in
 4. Pinned tiles (#552) and the one-action Start here card need to merge to judge the whole first screen.
 5. Empty single-parent household (no income, no policies): confirm no nonsense number.
 
+## Iteration 3: emergency in one tap (narrative 5)
+Finding: with SOS no longer floating, Emergency mode was Home, Family, Emergency row: two taps before the
+first choice, and not where a panicking person looks.
+
+Changed: a "Something has happened" row, first thing under the header on Home. One tap opens "What
+happened?" (five plain tiles plus the 999 notice); one more tap on the tile reaches that scenario's steps.
+Home to steps in two taps. Viewed at phone width. Hidden only where a mode hides emergency entry.
+
+Still open: Emergency mode lists scenarios, not the family's own policy and contact. The scenario page should
+lead with "your policy, who to call" from the list (the narrative asks for the relevant policy and contact in
+two taps); that is the next change here and needs the policy list on that page checked first.
+
+## Iteration 8: landing and first value (narrative 1)
+Walked at 375px: landing, signup, the road to the first number.
+- Landing: headline "Know where to look.", one primary button "Start your family's list", free-to-start line, three
+  promises. Works. The sub-headline is a five-line paragraph; it carries deliberate "estimate from the figures you
+  enter" wording, so it was NOT rewritten here (marketing copy and claims are the owner's).
+- Signup: name, email, password, or Google. Three fields. Lands straight on Home. Works.
+- Home to first number: "Answer a money question" opens Household briefs. Finding: for a first-time solo parent the
+  page opened with two notes ("This one is just for you", with a Go to Family button, then "Your first brief is
+  free") above the choice, so the first thing was text to read and a button that pulls away from the first result.
+
+Changed: the choice ("What is changing?") now comes first; the two notes sit under it. While a form or result is
+showing they keep their old place. Test fails on the old order and passes on the new.
+
+Open: the landing sub-headline length (owner decision on copy); a live look at the briefs page against the real API;
+timing the whole path on a real phone.
+
+## Iteration 7: zero profile through the score and detectors (narrative 6, continued)
+Method: ran the readiness score on four zero-shaped profiles and read the detector conditions against zeros.
+
+Findings
+1. A single parent who had only added a child (no mortgage, no living expenses, no education target) produced a
+   NaN protection score and a NaN composite: the life-cover check divided by a household need of zero. The
+   member-level score already guarded this (`need > 0`); the household one did not.
+2. The no_income_protection insight fired for an employed household with no salary entered, and its text read "the
+   estimated impact ... could be 0 to 0 of lost income".
+3. The protection component and that insight are meant to agree (the code says so), so the subscore needed the same
+   no-salary gate or the two would contradict each other.
+
+Changed
+- score.ts: the household life-cover check applies only when a need figure exists; the composite ignores any
+  non-finite component (counts as no data); an earner with no salary entered is not "protectable" yet.
+- protection-gap.yaml: no_income_protection also requires monthly_salary_minor > 0. Golden case added
+  (employed-but-no-income-entered, expected silent); red first, green after.
+- Tests updated on purpose: two engine detector tests (their fixtures had no salary, which now rightly means silent;
+  a new test pins that) and one Ask Keel verified-answer test whose premise was the NaN composite itself (it now expects
+  the score shown from the sections that can be scored, and "not scored yet" for the rest).
+
+Left alone, noted: the all-zero profile still scores protection as null and estate as 0 (an empty vault is a real gap);
+the savings tile on home shows "No data yet" for a deliberate zero; no screen-level view of the zero profile on staging.
+
 ## Iteration 4: the steps page leads with the policy and who to call (narrative 5)
 Finding: the scenario steps page started with a generic intro; the family's own policy and phone number only
 appeared inside individual steps further down.
