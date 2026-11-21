@@ -19,7 +19,7 @@ const NAV_ITEMS = [
   { href: '/family', label: 'Family', icon: Users },
   { href: '/finances', label: 'Finances', icon: Wallet },
   { href: '/briefs', label: 'Briefs', icon: FileText },
-  { href: '/events', label: 'Events', icon: CalendarClock },
+  { href: '/events', label: 'What If', icon: CalendarClock },
   { href: '/settings', label: 'Settings', icon: Settings },
 ]
 
