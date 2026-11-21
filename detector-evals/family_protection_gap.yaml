@@ -111,3 +111,20 @@ cases:
       soonest_renewal_days: 9999
       has_health_or_ci_cover: 1
     expected_silent: true
+
+  - id: employed-but-no-income-entered
+    description: Employed on file but no salary entered (single parent, almost nothing on file) - the rule would quote 0 to 0 of lost income, so it stays silent
+    event_type: family.household
+    data:
+      has_dependents: 0
+      mortgage_outstanding_minor: 0
+      education_funding_gap_minor: 0
+      annual_living_expenses_minor: 0
+      life_cover_minor: 0
+      income_protection_monthly_minor: 0
+      employed: 1
+      years_to_retirement: 25
+      monthly_salary_minor: 0
+      soonest_renewal_days: 9999
+      has_health_or_ci_cover: 1
+    expected_silent: true

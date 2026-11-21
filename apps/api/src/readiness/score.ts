@@ -119,6 +119,7 @@ function emergencyFundComponent(profile: FinancialProfile): ReadinessComponent {
 
 type Earner = {
   employment_status: string
+  monthly_salary_minor: number
   income_protection_monthly_minor: number
   member_id?: string
 }
@@ -141,7 +142,11 @@ function protectionComponent(profile: FinancialProfile): ReadinessComponent {
 
   const checks: Array<{ weight: number; earned: number; label: string; met: boolean }> = []
 
-  if (hasDependents || profile.household.mortgage_outstanding_minor > 0) {
+  // A need of zero or less means no figure was entered to measure cover against (no mortgage, no education
+  // target, no living expenses). Dividing by it gave NaN for a single parent who had only added a child, so
+  // that check simply does not apply until a figure exists.
+  const hasNeedFigure = Number.isFinite(need) && need > 0
+  if ((hasDependents || profile.household.mortgage_outstanding_minor > 0) && hasNeedFigure) {
     checks.push({
       weight: 40,
       earned: Math.min(40, (profile.household.life_cover_minor / need) * 40),
@@ -154,6 +159,8 @@ function protectionComponent(profile: FinancialProfile): ReadinessComponent {
   const protectable = earners.filter(
     (e) =>
       (e.employment_status === 'employed' || e.employment_status === 'self_employed') &&
+      // Same gate as no_income_protection: no income entered means nothing to protect yet.
+      e.monthly_salary_minor > 0 &&
       yearsToRetirement > 1,
   )
   if (protectable.length > 0) {
@@ -210,7 +217,7 @@ function protectionComponent(profile: FinancialProfile): ReadinessComponent {
     weight: READINESS_WEIGHTS.protection,
     detail: gaps.length === 0 ? 'All applicable cover is in place.' : `Gaps: ${gaps.join(', ')}.`,
     drivers: [
-      ...(hasDependents || profile.household.mortgage_outstanding_minor > 0
+      ...((hasDependents || profile.household.mortgage_outstanding_minor > 0) && hasNeedFigure
         ? [
             { label: 'Life cover on file', value_minor: profile.household.life_cover_minor },
             { label: 'Estimated household need', value_minor: need },
@@ -467,7 +474,8 @@ export function computeReadiness(
 }
 
 function combineComponents(components: ReadinessComponent[]): ReadinessResult {
-  const scored = components.filter((c) => c.score !== null)
+  // A score that is not a finite number is no data, never a number to show or to average.
+  const scored = components.filter((c) => c.score !== null && Number.isFinite(c.score))
   const totalWeight = scored.reduce((s, c) => s + c.weight, 0)
   const score =
     totalWeight === 0
