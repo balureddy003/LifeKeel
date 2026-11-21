@@ -28,7 +28,7 @@
     "@opentelemetry/api": "^1.10.0",
     "jose": "^5.9.0",
     "lru-cache": "^11.5.3",
-    "mongodb": "^7.8.0",
+    "mongodb": "^7.9.0",
     "openai": "^6.41.0",
     "zod": "^4.6.6"
   },
