@@ -30,48 +30,42 @@ describe('TodayCard', () => {
     )
   })
 
-  it('says nothing needs checking once the account has data, and hides for a new account', async () => {
-    getObligationsMap.mockResolvedValue({ obligations: [] })
-    const { unmount } = render(<TodayCard insights={[]} profileCompleteness={100} hasLiveData />)
-    expect(await screen.findByText('Nothing needs checking today.')).toBeTruthy()
-    unmount()
-    // Hidden for a new account that already has someone else on it; a lone one is asked to add them.
+  it('says nothing needs checking once the account has data and someone else is on it', async () => {
     auth.family = { members: [{ id: 'me' }, { id: 'tom' }] }
-    const { container } = render(
-      <TodayCard insights={[]} profileCompleteness={0} hasLiveData={false} />,
-    )
-    await new Promise((r) => setTimeout(r, 20))
-    expect(container.textContent).toBe('')
-    auth.family = { members: [{ id: 'me' }] }
-  })
-
-  it('starts a brand-new household with the other adult, labelled Start here', async () => {
-    auth.family = { members: [{ id: 'me' }] }
-    getObligationsMap.mockResolvedValue({ obligations: [] })
-    render(<TodayCard insights={[]} profileCompleteness={0} hasLiveData={false} />)
-    expect(await screen.findByText('Start here')).toBeTruthy()
-    expect(screen.getByRole('link', { name: /Add them/ }).getAttribute('href')).toBe(
-      '/settings?add=1',
-    )
-    expect(screen.queryByText('One thing worth checking today')).toBeNull()
-  })
-
-  it('stays hidden for a new account that already has someone else on it', async () => {
-    auth.family = { members: [{ id: 'me' }, { id: 'tom' }] }
-    getObligationsMap.mockResolvedValue({ obligations: [] })
-    const { container } = render(
-      <TodayCard insights={[]} profileCompleteness={0} hasLiveData={false} />,
-    )
-    await new Promise((r) => setTimeout(r, 20))
-    expect(container.textContent).toBe('')
-    auth.family = { members: [{ id: 'me' }] }
-  })
-
-  it('does not start with the other adult once the account has data', async () => {
-    auth.family = { members: [{ id: 'me' }] }
     getObligationsMap.mockResolvedValue({ obligations: [] })
     render(<TodayCard insights={[]} profileCompleteness={100} hasLiveData />)
     expect(await screen.findByText('Nothing needs checking today.')).toBeTruthy()
     expect(screen.queryByText('Start here')).toBeNull()
+    auth.family = { members: [{ id: 'me' }] }
+  })
+
+  it('starts a brand-new household with one policy, labelled Start here', async () => {
+    auth.family = { members: [{ id: 'me' }] }
+    getObligationsMap.mockResolvedValue({ obligations: [] })
+    render(<TodayCard insights={[]} profileCompleteness={0} hasLiveData={false} />)
+    expect(await screen.findByText('Start here')).toBeTruthy()
+    expect(screen.getByText('Check one policy')).toBeTruthy()
+    expect(screen.getByRole('link', { name: /Add a policy/ }).getAttribute('href')).toBe(
+      '/policies/new',
+    )
+    expect(screen.queryByText('One thing worth checking today')).toBeNull()
+  })
+
+  it('asks a new household with a partner for one policy too', async () => {
+    auth.family = { members: [{ id: 'me' }, { id: 'tom' }] }
+    getObligationsMap.mockResolvedValue({ obligations: [] })
+    render(<TodayCard insights={[]} profileCompleteness={0} hasLiveData={false} />)
+    expect(await screen.findByText('Check one policy')).toBeTruthy()
+    auth.family = { members: [{ id: 'me' }] }
+  })
+
+  it('once something is on file and no one else is on the list, asks for the other adult', async () => {
+    auth.family = { members: [{ id: 'me' }] }
+    getObligationsMap.mockResolvedValue({ obligations: [] })
+    render(<TodayCard insights={[]} profileCompleteness={100} hasLiveData />)
+    expect(await screen.findByText('Add the other adult')).toBeTruthy()
+    expect(screen.getByRole('link', { name: /Add them/ }).getAttribute('href')).toBe(
+      '/settings?add=1',
+    )
   })
 })
