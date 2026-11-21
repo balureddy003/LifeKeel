@@ -22,7 +22,6 @@ import {
   X,
   UserPlus,
   Sparkles,
-  Check,
   Upload,
   Plug,
   Calculator,
@@ -47,6 +46,12 @@ import { useFamilyReadinessScore, useFamilyTimeline, useFamilyInsights } from '@
 import { useAppStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
+import {
+  visibleSetupSteps,
+  readDismissed,
+  withDismissed,
+  SETUP_DISMISSED_KEY,
+} from '@/lib/setup-cards'
 import {
   fetchDocuments,
   listBriefs,
@@ -763,6 +768,7 @@ function GettingStarted() {
 
   const steps = [
     {
+      id: 'brief',
       label: 'Get your first answer',
       description: 'A few figures, about two minutes. No upload or account to connect',
       href: '/briefs',
@@ -770,6 +776,7 @@ function GettingStarted() {
       done: briefCount > 0,
     },
     {
+      id: 'upload',
       label: 'Upload a document',
       description: 'Insurance policy, will, or bank statement',
       href: '/upload',
@@ -777,6 +784,7 @@ function GettingStarted() {
       done: docCount > 0,
     },
     {
+      id: 'profile',
       label: 'Fill in your financial profile',
       description: 'Income, protection, savings — finish it to generate your score',
       href: '/financial-profile',
@@ -787,6 +795,7 @@ function GettingStarted() {
       done: false,
     },
     {
+      id: 'connect',
       label: 'Connect a service',
       description: 'Email, bank, or insurance provider',
       href: '/connect',
@@ -795,76 +804,61 @@ function GettingStarted() {
     },
   ]
 
-  const doneCount = steps.filter((s) => s.done).length
-  if (doneCount === steps.length) return null // all done — live score card takes over
+  const [dismissed, setDismissed] = useState<string[]>([])
+  useEffect(() => {
+    try {
+      setDismissed(readDismissed(window.localStorage))
+    } catch {
+      /* private mode: show every card */
+    }
+  }, [])
+  const dismiss = (id: string) => {
+    haptic('light')
+    const next = withDismissed(dismissed, id)
+    setDismissed(next)
+    try {
+      window.localStorage.setItem(SETUP_DISMISSED_KEY, JSON.stringify(next))
+    } catch {
+      /* not remembered, still hidden for this visit */
+    }
+  }
+  const visible = visibleSetupSteps(steps, dismissed)
+  if (visible.length === 0) return null // all done or dismissed
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.05 }}
-    >
-      <GlassCard className="p-5">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <div className="text-sm font-semibold text-ink-primary">Add what you have on file</div>
-            <div className="text-xs text-ink-tertiary mt-0.5">
-              {doneCount} of {steps.length} done
+    <section aria-labelledby="setup-heading" className="space-y-2">
+      <h2 id="setup-heading" className="px-1 text-lg font-semibold text-ink-primary">
+        Add what you have on file
+      </h2>
+      {visible.map((step) => (
+        <GlassCard key={step.id} className="p-4">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-family-500/10 border border-family-500/20">
+              <step.icon size={18} className="text-family-400" aria-hidden="true" />
             </div>
-          </div>
-          <div className="flex items-center gap-1.5">
-            {steps.map((s, i) => (
-              <motion.div
-                key={i}
-                className={`w-2.5 h-2.5 rounded-full ${s.done ? 'bg-success' : 'bg-tint/10'}`}
-                initial={false}
-                animate={s.done ? { scale: [1, 1.3, 1] } : {}}
-                transition={{ duration: 0.3 }}
-              />
-            ))}
-          </div>
-        </div>
-
-        <div className="h-1.5 rounded-full bg-tint/5 overflow-hidden mb-4">
-          <motion.div
-            className="h-full rounded-full bg-gradient-to-r from-family-400 to-success"
-            initial={{ width: 0 }}
-            animate={{ width: `${(doneCount / steps.length) * 100}%` }}
-            transition={{ duration: 0.6, ease: 'easeOut' }}
-          />
-        </div>
-
-        <div className="space-y-2">
-          {steps.map((step, i) => (
-            <Link
-              key={i}
-              href={step.href}
-              onClick={() => haptic('light')}
-              className={`flex items-center gap-3 rounded-xl p-3 transition-colors ${step.done ? 'opacity-60' : 'bg-tint/[0.03] active:bg-tint/[0.06]'}`}
-            >
-              <div
-                className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${step.done ? 'bg-success/15' : 'bg-family-500/10 border border-family-500/20'}`}
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold text-ink-primary">{step.label}</div>
+              <div className="mt-0.5 text-xs text-ink-tertiary">{step.description}</div>
+              <Link
+                href={step.href}
+                onClick={() => haptic('light')}
+                className="mt-3 inline-flex min-h-[48px] items-center rounded-full bg-family-500 px-5 text-sm font-semibold text-[rgb(var(--on-cta))] active:opacity-80"
               >
-                {step.done ? (
-                  <Check size={16} className="text-success" />
-                ) : (
-                  <step.icon size={16} className="text-family-400" />
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div
-                  className={`text-sm font-semibold ${step.done ? 'line-through text-ink-tertiary' : 'text-ink-primary'}`}
-                >
-                  {step.label}
-                </div>
-                <div className="text-xs text-ink-tertiary truncate">{step.description}</div>
-              </div>
-              {!step.done && <ChevronRight size={14} className="text-ink-tertiary flex-shrink-0" />}
-            </Link>
-          ))}
-        </div>
-      </GlassCard>
-    </motion.div>
+                Get started
+              </Link>
+            </div>
+            <button
+              type="button"
+              onClick={() => dismiss(step.id)}
+              aria-label={`Dismiss: ${step.label}`}
+              className="-mr-2 -mt-2 flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full text-ink-tertiary active:bg-tint/10"
+            >
+              <X size={16} aria-hidden="true" />
+            </button>
+          </div>
+        </GlassCard>
+      ))}
+    </section>
   )
 }
 
