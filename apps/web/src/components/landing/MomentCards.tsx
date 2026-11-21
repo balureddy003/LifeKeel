@@ -47,9 +47,6 @@ export function MomentCards() {
       <header className="vv-head">
         <p className="vv-eyebrow">Three ordinary moments</p>
         <h2 id="mm-h">Things that usually live in one head.</h2>
-        <p className="vv-intro">
-          Nothing dramatic. Each one is just easier when both adults are looking at the same list.
-        </p>
       </header>
       <ul className="mm-grid">
         {MOMENTS.map(({ claim, icon: Icon, title, story, limit }) => (

@@ -12,28 +12,20 @@ import './landing.css'
 import './hero.css'
 import './bands.css'
 
-const LINKS: { href: string; label: string; page?: boolean }[] = [
-  { href: '#how-it-works', label: 'How it works' },
-  { href: '#features', label: 'Features' },
-  { href: '#pricing', label: 'Pricing' },
-  { href: '#security', label: 'Security' },
-  { href: '/guides', label: 'Guides', page: true },
-  { href: '/legal', label: 'Legal', page: true },
+const LINKS: { href: string; label: string }[] = [
+  { href: '/how-it-works', label: 'How it works' },
+  { href: '/features', label: 'Features' },
+  { href: '/pricing', label: 'Pricing' },
+  { href: '/about', label: 'About' },
+  { href: '/faq', label: 'FAQ' },
+  { href: '/guides', label: 'Guides' },
 ]
 
 /**
  * The public header. Its inner box is the same width and side padding as every band
  * below it, so the logo and the page content share one left edge.
  */
-/** `home` is false off the landing page, so the section links go to / first. */
-export function SiteHeader({
-  home = true,
-  signedIn = false,
-}: {
-  home?: boolean
-  signedIn?: boolean
-}) {
-  const href = (h: string) => (home || !h.startsWith('#') ? h : `/${h}`)
+export function SiteHeader({ signedIn = false }: { signedIn?: boolean }) {
   const [open, setOpen] = useState(false)
   const menuBtn = useRef<HTMLButtonElement>(null)
   const sheet = useRef<HTMLElement>(null)
@@ -92,17 +84,11 @@ export function SiteHeader({
         <div className="lk-header-in">
           <Brand />
           <nav className="lk-nav" aria-label="Main">
-            {LINKS.map((l) =>
-              l.page ? (
-                <Link key={l.href} href={l.href}>
-                  {l.label}
-                </Link>
-              ) : (
-                <a key={l.href} href={href(l.href)}>
-                  {l.label}
-                </a>
-              ),
-            )}
+            {LINKS.map((l) => (
+              <Link key={l.href} href={l.href}>
+                {l.label}
+              </Link>
+            ))}
           </nav>
           <div className="lk-header-actions">
             <button
@@ -176,17 +162,10 @@ export function SiteHeader({
           <ul className="lk-sheet-links">
             {LINKS.map((l, i) => (
               <li key={l.href} style={{ '--i': i } as CSSProperties}>
-                {l.page ? (
-                  <Link href={l.href} onClick={close}>
-                    {l.label}
-                    <ChevronRight size={16} aria-hidden="true" />
-                  </Link>
-                ) : (
-                  <a href={href(l.href)} onClick={close}>
-                    {l.label}
-                    <ChevronRight size={16} aria-hidden="true" />
-                  </a>
-                )}
+                <Link href={l.href} onClick={close}>
+                  {l.label}
+                  <ChevronRight size={16} aria-hidden="true" />
+                </Link>
               </li>
             ))}
           </ul>

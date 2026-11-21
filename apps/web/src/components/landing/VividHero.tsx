@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   UsersRound,
 } from 'lucide-react'
+import Link from 'next/link'
 import { appUrl } from '@/lib/region'
 import { track } from '@/lib/growth-track'
 import { haptic } from '@/lib/haptics'
@@ -49,11 +50,6 @@ export function VividHero() {
         <h1 id="vv-hero-h">
           Know where <span className="vv-grad">to look.</span>
         </h1>
-        <p className="vv-lede">
-          One shared map of what your family would look for: policies, cars, school dates and who to
-          call. It shows what is on file, what is coming next, and where it looks light, as an
-          estimate from the figures you enter. Every adult is asked to confirm they have seen it.
-        </p>
         <div className="vv-hero-cta" id="signup">
           <a
             className="vv-btn"
@@ -66,9 +62,9 @@ export function VividHero() {
             Start your family’s list
             <ArrowRight size={18} aria-hidden="true" />
           </a>
-          <a className="vv-btn vv-btn-ghost" href="#features">
+          <Link className="vv-btn vv-btn-ghost" href="/how-it-works">
             See how it works
-          </a>
+          </Link>
         </div>
         <p className="vv-fine">Free to start. No card needed.</p>
         <ul className="vv-hero-trust">

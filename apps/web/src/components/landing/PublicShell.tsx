@@ -26,7 +26,7 @@ export function PublicShell({
   const { isAuthenticated } = useAuth()
   return (
     <div className="landing lk-public">
-      <SiteHeader home={false} signedIn={isAuthenticated} />
+      <SiteHeader signedIn={isAuthenticated} />
       <div className="lk-public-body">{children}</div>
       <SiteFooter home={false} newsletter={newsletter} />
     </div>
