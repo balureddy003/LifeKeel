@@ -98,7 +98,6 @@ export default function SignUpPage() {
       haptic('medium')
       track('signup_completed', { method: 'google' })
       trackConversion('signup')
-      router.push(after)
     } catch (err) {
       haptic('warning')
       setError(err instanceof Error ? err.message : 'Google sign-in failed.')

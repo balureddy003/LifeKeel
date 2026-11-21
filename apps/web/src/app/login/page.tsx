@@ -118,7 +118,6 @@ export default function LoginPage() {
     try {
       await signInWithProvider('google')
       haptic('medium')
-      router.push(next ?? '/')
     } catch (err) {
       haptic('warning')
       setError(err instanceof Error ? err.message : 'Google sign-in failed.')
