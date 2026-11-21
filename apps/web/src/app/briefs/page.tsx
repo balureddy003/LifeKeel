@@ -23,6 +23,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { GlassCard, PageHeader, Skeleton } from '@/components/Glass'
+import { EmergencyRow } from '@/components/EmergencyRow'
 import {
   confirmBrief,
   createBrief,
@@ -1254,6 +1255,9 @@ export default function BriefsPage() {
         title="Household briefs"
         subtitle="One question, a few facts, one answer you both confirm you have seen."
       />
+      <div className="mt-4">
+        <EmergencyRow />
+      </div>
 
       {!loaded && (
         <div className="mt-6 space-y-3" role="status" aria-label="Loading">

@@ -27,6 +27,7 @@ import {
   Skeleton,
   PageTransition,
 } from '@/components/Glass'
+import { EmergencyRow } from '@/components/EmergencyRow'
 import { PullToRefresh } from '@/components/PullToRefresh'
 import { SwipeableRow } from '@/components/SwipeableRow'
 import { haptic } from '@/lib/haptics'
@@ -387,6 +388,8 @@ export default function InboxPage() {
               )
             }
           />
+
+          <EmergencyRow />
 
           {/* AI Summary banner */}
           {items.length > 0 && (
