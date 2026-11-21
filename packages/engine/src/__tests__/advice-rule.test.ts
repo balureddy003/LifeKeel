@@ -86,6 +86,8 @@ function webCopyFiles(): string[] {
     'apps/web/src/app/domains/CoverageList.tsx',
     'apps/api/src/resilience/premium-check.ts',
     'apps/api/src/routes/family-policies.ts',
+    'apps/api/src/resilience/policy-changes.ts',
+    'apps/web/src/lib/policy-change-summary.ts',
     // PRD-231: the obligations map states who is named and what is due.
     'apps/web/src/app/map/page.tsx',
     // PRD-232: cover facts state what is on file and when it may end.

@@ -29,3 +29,22 @@ iOS Simulator: its empty Summary shows "No Data", one-action setup cards, and in
 3. "Change one thing and see the impact": no before/after line on edit.
 4. Pinned tiles (#552) and the one-action Start here card need to merge to judge the whole first screen.
 5. Empty single-parent household (no income, no policies): confirm no nonsense number.
+
+## Iteration 5: change one thing and see the impact (narrative 4)
+Finding: a premium could be added in one short form but not edited. The only way to change one was the long
+financial-profile wizard ("Some of this comes from your financial profile. Change it there."), and nothing said what
+had changed or what had not.
+
+Changed:
+- API: `PATCH /family/policies/:id` changes cover, monthly premium or yearly premium on a policy on the list (household
+  editors only, strict body, nothing else editable) and answers with the saved policy, the monthly-versus-yearly check
+  re-run on the new figures, and `changes`: what changed (before, after) and what stayed the same. An edit that changes
+  nothing writes nothing and does not stale the briefs. Version bumps once per real change.
+- Web: "Update figures" on each policy row opens an inline form pre-filled with today's figures; the mismatch check
+  re-runs as you type; on save the row updates at once and says "Updated. Monthly premium was £42, now £45. Cover and
+  yearly premium stay the same." On failure the form stays open with the reason.
+Checked: red-then-green mutation on the change comparison (5 tests failed with it flipped); live at phone width against
+the stand-in API.
+
+Still open: income edits (still the long wizard); the line "Change it there" on the domain page still points at the
+wizard for non-policy fields; the home score does not yet show a before/after when a figure moves.

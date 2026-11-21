@@ -2899,12 +2899,13 @@ export interface SavedPolicy {
 async function policyRequest<T>(
   path: string,
   body: object,
+  method: 'POST' | 'PATCH' = 'POST',
 ): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
   const base = getApiBase()
   const token = getAuthToken()
   try {
     const res = await credFetch(`${base}${path}`, {
-      method: 'POST',
+      method,
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -2945,6 +2946,35 @@ export async function addFamilyPolicy(
   if (!r.ok) return r
   notifyKeelDataChanged('family')
   return { ok: true, policy: r.data.policy, check: r.data.check }
+}
+
+export interface PolicyEditResult {
+  policy: SavedPolicy
+  changes: {
+    changed: Array<{ field: string; label: string; before: number; after: number }>
+    unchanged: Array<{ field: string; label: string; value: number }>
+  }
+  check: PolicyCheck
+}
+
+/** Change cover or a premium on a policy already on the list; the answer says what changed and what did not. */
+export async function editFamilyPolicy(
+  id: string,
+  patch: {
+    coverage_amount_minor?: number
+    monthly_premium_minor?: number
+    annual_premium_minor?: number
+  },
+): Promise<{ ok: true; result: PolicyEditResult } | { ok: false; error: string }> {
+  const r = await policyRequest<PolicyEditResult>(
+    `/family/policies/${encodeURIComponent(id)}`,
+    patch,
+    'PATCH',
+  )
+  if (!r.ok) return r
+  invalidateCache('financial-profile')
+  notifyKeelDataChanged('family')
+  return { ok: true, result: r.data }
 }
 
 export async function addCashflowEntry(input: {

@@ -23,9 +23,21 @@ const col = (name: string) => ({
       $set?: Record<string, unknown>
       $inc?: Record<string, number>
     },
-    o?: { upsert?: boolean },
+    o?: { upsert?: boolean; arrayFilters?: Record<string, string>[] },
   ) => {
     if (name !== 'family_financial_profile') return {}
+    const idFilter = o?.arrayFilters?.[0]?.['p.id']
+    if (idFilter && profile) {
+      const arr = (profile['policies'] as Record<string, unknown>[]) ?? []
+      const target = arr.find((x) => x['id'] === idFilter)
+      if (!target) return { matchedCount: 0 }
+      for (const [k, v] of Object.entries(u.$set ?? {}))
+        if (k.startsWith('policies.$[p].')) target[k.slice('policies.$[p].'.length)] = v
+        else profile[k] = v
+      for (const [k, v] of Object.entries(u.$inc ?? {}))
+        profile[k] = ((profile[k] as number) ?? 0) + v
+      return { matchedCount: 1 }
+    }
     if (!profile) {
       if (!o?.upsert) return {}
       profile = { tenant_id: TENANT }
@@ -154,5 +166,70 @@ describe('POST /family/policies', () => {
       payload: { monthly_premium_minor: 1, annual_premium_minor: 1 },
     })
     expect(denied.statusCode).toBe(403)
+  })
+})
+
+describe('PATCH /family/policies/:id', () => {
+  const edit = (who: string, id: string, payload: object, roles?: string[]) =>
+    appFor(who, roles).inject({ method: 'PATCH', url: `/family/policies/${id}`, payload })
+  const seed = () => {
+    profile = {
+      tenant_id: TENANT,
+      version: 2,
+      policies: [
+        {
+          id: 'pol_a',
+          type: 'life',
+          provider: 'Example Life',
+          coverage_amount_minor: 25_000_000,
+          monthly_premium_minor: 4200,
+          annual_premium_minor: 50_400,
+        },
+      ],
+    }
+  }
+
+  it('changes one premium in place, and answers with what changed and what stayed the same', async () => {
+    seed()
+    const res = await edit('u1', 'pol_a', { monthly_premium_minor: 4500 })
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.changes.changed).toEqual([
+      { field: 'monthly_premium_minor', label: 'Monthly premium', before: 4200, after: 4500 },
+    ])
+    expect(body.changes.unchanged.map((u: { field: string }) => u.field)).toEqual([
+      'coverage_amount_minor',
+      'annual_premium_minor',
+    ])
+    // 45 x 12 = 540 against the 504 on file: the check reruns on the new figures.
+    expect(body.check.status).toBe('mismatch')
+    const stored = (profile?.['policies'] as Record<string, unknown>[])[0]!
+    expect(stored['monthly_premium_minor']).toBe(4500)
+    expect(stored['annual_premium_minor']).toBe(50_400) // untouched
+    expect(profile?.['version']).toBe(3)
+    expect(markBriefsStale).toHaveBeenCalledOnce()
+  })
+
+  it('an edit that changes nothing writes nothing', async () => {
+    seed()
+    const res = await edit('u1', 'pol_a', { monthly_premium_minor: 4200 })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().changes.changed).toEqual([])
+    expect(profile?.['version']).toBe(2)
+    expect(markBriefsStale).not.toHaveBeenCalled()
+  })
+
+  it('refuses a child, an unknown policy, an empty edit and anything off the three figures', async () => {
+    seed()
+    expect((await edit('kid', 'pol_a', { monthly_premium_minor: 1 }, ['viewer'])).statusCode).toBe(
+      403,
+    )
+    expect((await edit('u1', 'pol_zzz', { monthly_premium_minor: 1 })).statusCode).toBe(404)
+    expect((await edit('u1', 'pol_a', {})).statusCode).toBe(400)
+    expect((await edit('u1', 'pol_a', { provider: 'Other' })).statusCode).toBe(400)
+    expect((await edit('u1', 'pol_a', { monthly_premium_minor: -1 })).statusCode).toBe(400)
+    expect((profile?.['policies'] as Record<string, unknown>[])[0]!['monthly_premium_minor']).toBe(
+      4200,
+    )
   })
 })
