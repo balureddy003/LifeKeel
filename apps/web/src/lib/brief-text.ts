@@ -27,6 +27,8 @@ export function briefHeadline(main: string): string {
   if (runsOut) return `Your savings would last until about ${runsOut[1]}.`
   if (/savings last more than 50 years/.test(main)) return 'Savings would last more than 50 years.'
   if (/there are no savings to draw on/.test(main)) return 'There are no savings to draw on.'
+  if (/^No savings are entered, so there is nothing to draw on/.test(main))
+    return 'No savings are entered, so there is nothing to draw on.'
   const clauses = main.split('. ').map((c) => c.replace(/\.$/, ''))
   const covered = clauses.filter((c) => /income covers the entered spending$/.test(c))
   if (covered.length >= 3) return 'Income covers the entered spending.'

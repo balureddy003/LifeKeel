@@ -223,7 +223,15 @@ export function solveCatalogueBrief(problem: string, raw: unknown, asOf: string)
   )
   const first = result.timeline![0]!
   const final = result.timeline![result.timeline!.length - 1]!
-  const description = `Before the change, ${months(result.currentRunwayMonths)}. At the first change, ${months(first.runwayMonths)}. After the last entered change, ${months(final.runwayMonths)}.`
+  // With no savings at any stage, three identical "no savings" sentences and a run-out date at month 0.0 say
+  // nothing. Say it once and give the two figures the household entered.
+  const nothingToDraw = [result.currentRunwayMonths, first.runwayMonths, final.runwayMonths].every(
+    (r) => r !== null && r < 0.05,
+  )
+  const noSavingsSentence = `No savings are entered, so there is nothing to draw on, before or after the change. Income entered is ${gbp(i.monthly_income_minor)} a month against ${gbp(i.monthly_essentials_minor)} of spending.`
+  const description = nothingToDraw
+    ? noSavingsSentence
+    : `Before the change, ${months(result.currentRunwayMonths)}. At the first change, ${months(first.runwayMonths)}. After the last entered change, ${months(final.runwayMonths)}.`
   // The solver records depletion only between steps. After the last step the
   // final regime runs on indefinitely, so a fund that is still draining there
   // would otherwise never be reported.
@@ -232,7 +240,7 @@ export function solveCatalogueBrief(problem: string, raw: unknown, asOf: string)
     result.fundDepletedAtMonth ??
     (finalBurn < 0 ? final.atMonth + final.savingsMinor / -finalBurn : null)
   const gap =
-    depletedAt === null || depletedAt >= MAX_MONTHS
+    depletedAt === null || depletedAt >= MAX_MONTHS || nothingToDraw
       ? ''
       : ` On these figures savings would run out around ${monthLabel(asOf, depletedAt)} (about month ${depletedAt.toFixed(1)} from the calculation date).`
   const coverNote = i.cover_may_end_with_employment

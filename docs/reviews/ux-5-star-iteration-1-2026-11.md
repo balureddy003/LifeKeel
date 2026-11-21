@@ -82,19 +82,23 @@ Changed
 Left alone, noted: the all-zero profile still scores protection as null and estate as 0 (an empty vault is a real gap);
 the savings tile on home shows "No data yet" for a deliberate zero; no screen-level view of the zero profile on staging.
 
-## Iteration 2: partner join (narrative 3)
-Walked from code: Add the other adult (Settings) -> invite link -> partner opens /invite/<token> -> sets a
-password and is signed in -> roster entry active.
+## Iteration 6: single parent, almost no savings, low or no income (narrative 6)
+Method: ran the runway brief on four household shapes (no savings with no income, no savings with low income,
+a little savings with low income, income above spending with no savings).
 
-Finding: after adding an adult the only guidance was a toast ("tap Invite next to their name"). The link
-itself lived on the member profile page (Family -> person -> Send invite / Share link). Three places to
-hunt in the moment that matters.
+Finding: the brief handled zero cleanly in the numbers but read as nonsense in words when savings were zero from
+the start. It said "there are no savings to draw on" three times (before, at the change, after the change) and then
+"savings would run out around October 2026 (about month 0.0 from the calculation date)", a run-out date for money
+that was never there.
 
-Changed: right after adding an adult, a card "Sam is on the list" with one button, "Send Sam the link". It
-makes the link and opens the phone's share sheet (copy if there is none). Cancelling the sheet changes nothing.
-No email address is required and no email-verify step is in the path.
+Changed: when there are no savings at any stage, the brief says it once, with the two figures the household entered:
+"No savings are entered, so there is nothing to draw on, before or after the change. Income entered is £1,200.00 a
+month against £1,500.00 of spending." No run-out date in that case. A household that has savings keeps the
+three-stage wording. The web headline mirrors the plain sentence. One existing test's wording was updated on purpose
+(it pinned the old repeated phrase); four new tests cover the four shapes.
 
-Not yet walked / still open: the partner's side on a real phone (needs a deployed email-free link), the
-organizer seeing "Sam has looked" after the partner confirms (the confirmation state exists; its visibility
-on home is not yet reviewed), and the join-code request path (name, email, password, captcha, then waiting for
-approval) which is heavier than the emailed-link path and is the one to simplify next.
+Not changed, still to check: how the home score and detectors read an all-zero saved profile; the pinned tile for
+savings shows "No data yet" for a deliberate zero (reads slightly wrong for a household that entered 0); the
+emergency-fund detector at zero monthly spending was not exercised.
+
+Local note: one API test fails only without a real MongoDB (users-email-index integration), as CLAUDE.md says.
