@@ -9,6 +9,7 @@
  */
 import { useEffect, useState } from 'react'
 import { Download, Share, X } from 'lucide-react'
+import { usePathname } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { isIOS, isStandalone } from '@/lib/platform'
 import { isNativeShell } from '@/lib/native'
@@ -53,6 +54,7 @@ const SHOW_DELAY_MS = 6000
 
 export function InstallHint({ delayMs = SHOW_DELAY_MS }: { delayMs?: number } = {}) {
   const { isAuthenticated } = useAuth()
+  const pathname = usePathname()
   const [ready, setReady] = useState(delayMs === 0)
   const [prompt, setPrompt] = useState<InstallPromptEvent | null>(null)
   const [visits, setVisits] = useState(0)
@@ -98,6 +100,7 @@ export function InstallHint({ delayMs = SHOW_DELAY_MS }: { delayMs?: number } = 
           dismissedAt,
           now: Date.now(),
           hasPrompt: prompt !== null,
+          pathname,
         })
 
   useEffect(() => {

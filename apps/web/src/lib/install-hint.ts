@@ -23,6 +23,15 @@ export function isIOSInAppBrowser(ua: string): boolean {
   return /(FBAN|FBAV|Instagram|Line\/|GSA\/|LinkedInApp|Twitter|MicroMessenger)/i.test(ua)
 }
 
+/** Pages where a person is typing; a floating hint would cover the field they are on. */
+const FORM_ROUTES = ['/policies/new', '/financial-profile']
+
+export function onFormRoute(pathname: string | null | undefined): boolean {
+  if (!pathname) return false
+  const p = pathname.replace(/\/+$/, '')
+  return FORM_ROUTES.includes(p)
+}
+
 export function chooseHint(input: {
   authenticated: boolean
   standalone: boolean
@@ -33,8 +42,11 @@ export function chooseHint(input: {
   dismissedAt: string | null
   now: number
   hasPrompt: boolean
+  /** The current page path; the hint stays off form pages. */
+  pathname?: string | null
 }): InstallPlatform | null {
   if (!input.authenticated || input.standalone || input.nativeShell) return null
+  if (onFormRoute(input.pathname)) return null
   if (input.visits < MIN_VISITS) return null
   if (dismissalActive(input.dismissedAt, input.now)) return null
   if (input.ios) return isIOSInAppBrowser(input.ua) ? 'ios_in_app' : 'ios'
