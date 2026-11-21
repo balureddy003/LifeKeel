@@ -181,50 +181,6 @@ function ModeEffects() {
   return null
 }
 
-// Deliberately a wider labeled pill, not a same-size/same-shape circle
-// like AskKeelButton below — the two floating buttons used to differ only
-// by color (purple vs red), which fails colorblind users and is exactly
-// the wrong differentiator under crisis stress, when a mis-tap matters
-// most. Shape + a text label make this unmistakable at a glance.
-//
-function EmergencyButton() {
-  const { config, activateEmergency } = useMode()
-  if (!config.showEmergencyButton) return null
-
-  return (
-    <motion.button
-      onClick={() => {
-        haptic('heavy')
-        activateEmergency()
-      }}
-      whileTap={{ scale: 0.95 }}
-      className="relative h-12 pl-3 pr-3 rounded-full flex items-center gap-1.5"
-      style={{
-        background: 'linear-gradient(135deg, #ffafa3, #ffafa3)',
-        border: '1px solid rgba(211,184,245,0.5)',
-        // Dark elevation shadow (not just the red glow) so this reads as a
-        // layer floating above the page, not as part of whatever row it
-        // happens to be scrolled over.
-        boxShadow: '0 12px 24px -6px rgba(48,36,64,0.4), 0 8px 20px rgba(255,175,163,0.3)',
-      }}
-      aria-label="Emergency"
-    >
-      <motion.div animate={{ scale: [1, 1.1, 1] }} transition={{ duration: 2, repeat: Infinity }}>
-        <Siren size={18} color="#302440" />
-      </motion.div>
-      <span className="text-xs font-bold tracking-wide" style={{ color: '#302440' }}>
-        SOS
-      </span>
-      <motion.div
-        className="absolute inset-0 rounded-full"
-        style={{ border: '2px solid rgba(255,175,163,0.4)' }}
-        animate={{ scale: [1, 1.25], opacity: [0.6, 0] }}
-        transition={{ duration: 2, repeat: Infinity }}
-      />
-    </motion.button>
-  )
-}
-
 // The AI assistant — one of the product's two named differentiators — had
 // no persistent entry point anywhere in the app. The only way in was the
 // header search icon opening a Cmd+K-style command palette that displays
@@ -679,7 +635,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isOperatorRoute = pathname.startsWith('/operator')
 
   const showNav = isAuthenticated && family && !isAuthRoute && !isOperatorRoute
-  const showEmergency = showNav && pathname !== '/assistant' && config.showEmergencyButton
   const showAskKeel = showNav && pathname !== '/assistant'
   // The panel works before a family exists (bootstrap) and on /family-setup, so it has its own rule.
   const keelEligible =
@@ -778,20 +733,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
       {showNav && <LiquidTabBar />}
-      {/* No hero once signed in, so SOS floats above the tab bar on phones and
-          tablets; Ask Keel already has a tab. Desktop uses the cluster below. */}
-      {showEmergency && (
-        <div className="app-sos-fab fixed z-fab">
-          <EmergencyButton />
-        </div>
-      )}
-      {(showEmergency || (showAskKeel && !keelOpen)) && (
+      {showAskKeel && !keelOpen && (
         <div
           className="hidden desk:flex fixed bottom-8 z-fab flex-col items-end gap-4"
           // Sits beside a docked Keel panel instead of on top of it.
           style={{ right: 'calc(1rem + var(--keel-panel-w, 0px))' }}
         >
-          {showEmergency && <EmergencyButton />}
           {showAskKeel && !keelOpen && <AskKeelButton context={pathname} />}
         </div>
       )}

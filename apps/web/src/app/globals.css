@@ -474,10 +474,6 @@ html[data-session] .lk-landing-gate { visibility: hidden; }
   background: linear-gradient(180deg, rgb(var(--family-500) / .24), rgb(var(--family-500) / .12));
   box-shadow: inset 0 1px 0 rgb(255 255 255 / .32), inset 0 0 0 1px rgb(var(--family-500) / .2);
 }
-.app-sos-fab {
-  right: max(16px, env(safe-area-inset-right, 0px));
-  bottom: calc(var(--app-dock-space) - 2px);
-}
 .app-nav-space { padding-bottom: var(--app-dock-space); }
 .app-chat { height: calc(100dvh - var(--app-chat-top, var(--app-header-height)) - var(--app-dock-space) - 8px); min-height: 320px; }
 .app-setup-chat { height: calc(100dvh - var(--app-header-height) - 8px); min-height: 400px; }
@@ -491,7 +487,7 @@ html[data-session] .lk-landing-gate { visibility: hidden; }
 }
 @media (min-width: 1400px), (min-width: 1024px) and (hover: hover) and (pointer: fine) {
   :root { --app-dock-space: 0px; }
-  .app-bottom-nav, .app-sos-fab, .app-statusbar { display: none; }
+  .app-bottom-nav, .app-statusbar { display: none; }
   .app-content { max-width: 56rem; padding-inline: 0; }
   .app-shell-with-rail { --app-header-height: 0px; }
   .app-shell-with-rail .app-page-header { padding-top: 8px; box-shadow: none; }

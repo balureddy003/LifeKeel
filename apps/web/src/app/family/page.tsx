@@ -3,18 +3,20 @@
 import { useCallback, useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
-import { BarChart3, Settings, AlertTriangle, User } from 'lucide-react'
+import { BarChart3, Settings, AlertTriangle, Siren, User } from 'lucide-react'
 import { GlassCard, PageHeader, ListSection, ListRow, PageTransition } from '@/components/Glass'
 import { FamilyRoster } from '@/components/FamilyRoster'
 import { PullToRefresh } from '@/components/PullToRefresh'
 import { ROLE_LABELS, RELATIONSHIP_LABELS } from '@/lib/auth-types'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
+import { useMode } from '@/lib/mode-context'
 import { fetchFinancialProfile, type FinancialProfile } from '@/lib/api'
 import { chipsFor } from '@/lib/memberChips'
 
 export default function FamilyPage() {
   const { family } = useAuth()
+  const { config, activateEmergency } = useMode()
   const [profile, setProfile] = useState<FinancialProfile | null>(null)
   const loadProfile = useCallback(async () => {
     const p = await fetchFinancialProfile()
@@ -108,6 +110,18 @@ export default function FamilyPage() {
 
           {/* Quick links */}
           <ListSection>
+            {config.showEmergencyButton && (
+              <button
+                type="button"
+                className="block w-full text-left"
+                onClick={() => {
+                  haptic('heavy')
+                  activateEmergency()
+                }}
+              >
+                <ListRow icon={Siren} label="Emergency mode" chevron />
+              </button>
+            )}
             <Link href="/settings" onClick={() => haptic('light')}>
               <ListRow icon={Settings} label="Family Settings" chevron />
             </Link>
