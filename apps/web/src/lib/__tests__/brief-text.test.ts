@@ -61,3 +61,13 @@ describe('plainDates', () => {
     expect(plainDates('2027-13-45')).toBe('2027-13-45')
   })
 })
+
+describe('briefHeadline with no savings entered', () => {
+  it('leads with the plain sentence, not the figures after it', () => {
+    expect(
+      briefHeadline(
+        'No savings are entered, so there is nothing to draw on, before or after the change. Income entered is £1,200.00 a month against £1,500.00 of spending.',
+      ),
+    ).toBe('No savings are entered, so there is nothing to draw on.')
+  })
+})
