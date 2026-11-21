@@ -74,6 +74,27 @@ describe('pickTodayItem', () => {
       expect(pickTodayItem({ ...fresh, profileCompleteness: 40 }).tier).toBe('missing')
     })
 
+    it('a household with nothing on file is first asked for one policy, which gives a result in a minute', () => {
+      const r = pickTodayItem({
+        ...base,
+        profileCompleteness: 0,
+        startWithPolicy: true,
+        startWithOtherAdult: true,
+      })
+      expect(r.tier).toBe('start')
+      if (r.tier !== 'start') return
+      expect(r.title).toMatch(/one policy/i)
+      expect(r.href).toBe('/policies/new')
+      expect(r.why).toMatch(/^Why this one/)
+      expect(r.why).toMatch(/monthly and yearly/i)
+    })
+
+    it('the policy ask never outranks something real', () => {
+      expect(pickTodayItem({ ...base, startWithPolicy: true, profileCompleteness: 40 }).tier).toBe(
+        'missing',
+      )
+    })
+
     it('is off unless asked for, so an account with data or a partner is untouched', () => {
       expect(pickTodayItem({ ...base, profileCompleteness: 0 }).tier).toBe('none')
     })

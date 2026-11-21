@@ -42,8 +42,9 @@ export function TodayCard({
     insights,
     profileCompleteness,
     today: new Date().toISOString().slice(0, 10),
-    // A household with nothing on file and no one else on it starts with the other adult.
-    startWithOtherAdult: !hasLiveData && !!family && family.members.length <= 1,
+    // Nothing on file: start with one policy. Something on file and no one else on it: the other adult.
+    startWithPolicy: !hasLiveData,
+    startWithOtherAdult: hasLiveData && !!family && family.members.length <= 1,
   })
   // A brand-new account has nothing to check yet; saying so would be noise.
   if (item.tier === 'none' && !hasLiveData) return null

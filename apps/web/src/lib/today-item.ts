@@ -8,7 +8,8 @@ import { countdownText, daysUntil } from '@/app/briefs/what-if'
  *   2. a payment that stopped or a nomination that does not match the family
  *      (newest first), then
  *   3. the missing fact that sharpens the biggest number, then
- *   4. for a household with nothing on file and no one else on it, adding the other adult, because
+ *   4. for a household with nothing on file, one policy (a result in a minute); once something is
+ *      on file and no one else is on it, adding the other adult, because
  *      what is recorded is shared with them and both confirm it.
  * A prioritisation of what is already on file. It recommends nothing.
  */
@@ -36,8 +37,17 @@ export function pickTodayItem(input: {
   today: string
   /** True for a household with nothing on file and no one else on it. Off by default. */
   startWithOtherAdult?: boolean
+  /** True for a household with nothing on file. Asks for one policy first: a result in a minute. Off by default. */
+  startWithPolicy?: boolean
 }): TodayItem {
-  const { obligations, insights, profileCompleteness, today, startWithOtherAdult } = input
+  const {
+    obligations,
+    insights,
+    profileCompleteness,
+    today,
+    startWithOtherAdult,
+    startWithPolicy,
+  } = input
 
   const dated = obligations
     .map((o) => ({ o, days: daysUntil(o.next_due_date, today) }))
@@ -79,6 +89,16 @@ export function pickTodayItem(input: {
       why: `Why this one: your profile is ${profileCompleteness}% complete, and the rest changes the answers above.`,
       href: '/financial-profile',
       cta: 'Add it',
+    }
+  }
+
+  if (startWithPolicy) {
+    return {
+      tier: 'start',
+      title: 'Check one policy',
+      why: 'Why this one: type the monthly and yearly price and it tells you at once if they match.',
+      href: '/policies/new',
+      cta: 'Add a policy',
     }
   }
 
