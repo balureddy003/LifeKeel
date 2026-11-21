@@ -21,6 +21,7 @@ import type { LucideIcon } from 'lucide-react'
 import { LIFE_EVENTS } from '@/lib/life-data'
 import { GlassCard, PageHeader, PageTransition } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
+import { EmergencyRow } from '@/components/EmergencyRow'
 
 const categoryColors: Record<string, string> = {
   protection: '#ffafa3',
@@ -50,6 +51,8 @@ export default function EventsPage() {
           title="What If?"
           subtitle="Pick a situation to see your family's response plan"
         />
+
+        <EmergencyRow />
 
         <div className="space-y-3">
           {LIFE_EVENTS.map((event, i) => (
