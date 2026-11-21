@@ -16,6 +16,7 @@ import { getTenantCollection } from '@lifekeel/platform'
 import { markBriefsStale } from '../briefs/briefs.js'
 import { isHouseholdEditor } from '../family/family-permissions.js'
 import { premiumCheck } from '../resilience/premium-check.js'
+import { policyChanges, type PolicyFigure } from '../resilience/policy-changes.js'
 import { MAX_MINOR } from './family-financial-profile.js'
 
 const money = z.number().int().nonnegative().max(MAX_MINOR)
@@ -39,6 +40,16 @@ const PolicyBody = z
       .optional(),
   })
   .strict()
+
+// Edit: only the three figures a household changes; a different provider or type is a new policy.
+const EditBody = z
+  .object({
+    coverage_amount_minor: money.optional(),
+    monthly_premium_minor: money.optional(),
+    annual_premium_minor: money.optional(),
+  })
+  .strict()
+  .refine((b) => Object.values(b).some((v) => v !== undefined), 'nothing to change')
 
 const CheckBody = z
   .object({ monthly_premium_minor: money.optional(), annual_premium_minor: money.optional() })
@@ -108,5 +119,54 @@ export function registerFamilyPoliciesRoutes(app: FastifyInstance, db: Db): void
       policy,
       check: premiumCheck(b.monthly_premium_minor, b.annual_premium_minor),
     })
+  })
+
+  // Change a premium or cover on a policy already on the list, and say what changed and what did not.
+  app.patch('/family/policies/:id', async (req, reply) => {
+    if (!(await editor(req)))
+      return reply.status(403).send({ error: 'Only household editors can change policies' })
+    const parsed = EditBody.safeParse(req.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid change' })
+    const { id } = req.params as { id: string }
+    const { tenant_id } = req.authContext
+    const col = getTenantCollection<Record<string, unknown>>(
+      db,
+      'family_financial_profile',
+      tenant_id,
+    )
+    const profile = (await col.findOne({})) as { policies?: Record<string, unknown>[] } | null
+    const before = (profile?.policies ?? []).find((p) => p['id'] === id)
+    if (!before) return reply.status(404).send({ error: 'That policy is not on the list' })
+
+    const patch = parsed.data as Partial<Record<PolicyFigure, number>>
+    const changes = policyChanges(before as Partial<Record<PolicyFigure, number>>, patch)
+    const after = {
+      ...before,
+      ...Object.fromEntries(changes.changed.map((c) => [c.field, c.after])),
+    }
+    if (changes.changed.length > 0) {
+      await col.updateOne(
+        {},
+        {
+          $set: {
+            ...Object.fromEntries(
+              changes.changed.map((c) => [`policies.$[p].${c.field}`, c.after]),
+            ),
+            updated_at: new Date(),
+          },
+          $inc: { version: 1 },
+        },
+        { arrayFilters: [{ 'p.id': id }] },
+      )
+      await markBriefsStale(db, tenant_id).catch(() => {})
+    }
+    return {
+      policy: after,
+      changes,
+      check: premiumCheck(
+        after['monthly_premium_minor'] as number | undefined,
+        after['annual_premium_minor'] as number | undefined,
+      ),
+    }
   })
 }
