@@ -2,7 +2,6 @@
 
 Status: proposal, 2026-11-21. Scope: `apps/web` public pages (desktop and
 mobile browser), the signed-in app, and the installed PWA / Capacitor shell.
-Companion: [MOBILE_APP_PLAN.md](MOBILE_APP_PLAN.md).
 
 Reference: the structure and pacing of consumer finance sites such as
 emma-app.com — one message per section, short home page, a page per feature,
@@ -179,7 +178,7 @@ Rules for every public page:
   extend that test to cover `apps/web/src/components/landing/*` and
   `site-copy.ts` (recommended: one small PR).
 - "Start free" is the primary CTA. "Download the app" appears only after the
-  store listings are live (MOBILE_APP_PLAN.md phase 6); until then `/app`
+  store listings are live; until then `/app`
   offers PWA install.
 
 ### Feature page template
@@ -351,7 +350,7 @@ More on mobile until usage data says otherwise. Inbox shows a badge on More.
 - Install: `/app` page plus the existing contextual `InstallHint`; iOS gets
   the Share → Add to Home Screen steps with a short looping video.
 - Native shell: bottom sheets, haptics on confirm, native scanner entry on
-  the Papers tab (MOBILE_APP_PLAN.md N6).
+  the Papers tab.
 
 ---
 
