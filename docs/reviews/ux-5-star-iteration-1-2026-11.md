@@ -102,3 +102,43 @@ savings shows "No data yet" for a deliberate zero (reads slightly wrong for a ho
 emergency-fund detector at zero monthly spending was not exercised.
 
 Local note: one API test fails only without a real MongoDB (users-email-index integration), as CLAUDE.md says.
+
+## Iteration 2: partner join (narrative 3)
+Walked from code: Add the other adult (Settings), then an invite link, then the partner opens /invite/<token>, sets a
+password and is signed in, and the roster entry goes active.
+
+Finding: after adding an adult the only guidance was a toast ("tap Invite next to their name"). The link itself lived on
+the member profile page (Family, then the person, then Share link): three places to hunt in the moment that matters.
+
+Changed (#554): right after adding an adult, a card "Sam is on the list" with one button, "Send Sam the link". It makes
+the link and opens the phone's share sheet (copy if there is none). Cancelling the sheet changes nothing. No email
+address is required and no email-verify step is in the path.
+
+Not yet walked: the partner's side on a real phone, the organizer seeing "Sam has looked" on Home, and the join-code
+request path (name, email, password, captcha, then waiting for approval), which is heavier than the emailed link.
+
+## Iteration 4: the steps page leads with the policy and who to call (narrative 5)
+Finding: the scenario steps page started with a generic intro; the family's own policy and phone number only appeared
+inside individual steps further down.
+
+Changed (#556): "Your cover on file" is the first block under the safety notice. It lists the policies that bear on what
+happened (bereavement: life cover; medical and disability: critical illness and income protection; job loss: income
+protection) with provider, cover on file, policy number if given, and a full-width Call button (a tel: link the person
+taps; nothing dials itself). A policy with no phone says so. If none is on file: a plain line and "Add a policy". Not shown
+for car, property or travel events.
+
+Still open: car, home and travel events have no policy source yet; "who is named" and the partner confirmation state are
+not on this page.
+
+## Iteration 5: change one thing and see the impact (narrative 4)
+Finding: a premium could be added in one short form but not edited. The only way to change one was the long
+financial-profile wizard, and nothing said what had changed or what had not.
+
+Changed (#557): `PATCH /family/policies/:id` changes cover, monthly premium or yearly premium (household editors only,
+strict body) and answers with the saved policy, the premium check re-run, and what changed (before, after) versus what
+stayed the same. A no-op edit writes nothing. On the web, "Update figures" on each policy row opens an inline pre-filled
+form with a live mismatch check; on save the row updates at once: "Updated. Monthly premium was £42, now £45. Cover and
+yearly premium stay the same."
+
+Still open: income edits (still the long wizard); the domain page line "Change it there"; a before/after on the home
+score when a figure moves; no staging-sim scenario for the edit yet.
