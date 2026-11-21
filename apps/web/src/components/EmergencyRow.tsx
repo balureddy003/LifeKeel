@@ -21,7 +21,7 @@ export function EmergencyRow() {
         haptic('heavy')
         activateEmergency()
       }}
-      className="block w-full text-left"
+      className="block min-h-[48px] w-full text-left"
     >
       <GlassCard className="p-0" interactive>
         <div className="flex min-h-[56px] items-center gap-3 px-4 py-3">

@@ -179,6 +179,9 @@ vi.mock('@/lib/ad-track', () => ({ trackConversion: vi.fn() }))
 vi.mock('@/lib/haptics', () => ({ haptic: vi.fn() }))
 vi.mock('@/components/RegionSwitch', () => ({ RegionSwitch: () => null }))
 vi.mock('@/components/Toast', () => ({ useToast: () => vi.fn() }))
+vi.mock('@/lib/mode-context', () => ({
+  useMode: () => ({ config: { showEmergencyButton: true }, activateEmergency: vi.fn() }),
+}))
 
 afterEach(cleanup)
 
