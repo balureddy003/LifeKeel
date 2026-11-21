@@ -171,9 +171,12 @@ describe('renderVerifiedAnswer', () => {
     const a = renderVerifiedAnswer('readiness', data())!
     // The fixture's protection/retirement sections are partial, so those
     // components can't be scored — the answer must say so, not print "NaN".
+    // A section with no figure to measure against is no data, not a NaN that
+    // poisons the whole score, so the composite is still shown from the
+    // sections that can be scored.
     expect(a.content).not.toContain('NaN')
     expect(a.content).toContain('not scored yet')
-    expect(a.content).toContain("can't be fully scored")
+    expect(a.content).toMatch(/readiness score is \*\*\d+\/100\*\*/)
     // Estate is out of this resolver's scope — it must say restricted, not guess.
     expect(a.content).toContain('restricted')
     expect(a.content).toContain('Emergency fund: 65/100')
