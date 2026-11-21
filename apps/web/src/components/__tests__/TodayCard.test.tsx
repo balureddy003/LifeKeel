@@ -131,4 +131,24 @@ describe('TodayCard', () => {
     })
     await waitFor(() => expect(screen.queryByText(/and confirm$/)).toBeNull())
   })
+
+  it('does not say "Check one policy" when a policy is already on the list', async () => {
+    getObligationsMap.mockResolvedValue({ obligations: [] })
+    getDomains.mockResolvedValue({
+      domains: [{ id: 'life_protection', title: 'Life and income protection' }],
+    })
+    getDomainView.mockResolvedValue({
+      rows: [{}],
+      result_version: 'v1',
+      confirmation: {
+        required: [{ id: 'a', name: 'Priya' }],
+        confirmed: [{ id: 'a', name: 'Priya', confirmed_at: '2026-11-20T10:00:00Z' }],
+        both_confirmed: true,
+        viewer_confirmed: true,
+      },
+    })
+    render(<TodayCard insights={[]} profileCompleteness={0} hasLiveData={false} />)
+    expect(await screen.findByText('Add the other adult')).toBeTruthy()
+    expect(screen.queryByText('Check one policy')).toBeNull()
+  })
 })
