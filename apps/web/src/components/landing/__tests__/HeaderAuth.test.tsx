@@ -38,9 +38,9 @@ describe('SiteHeader', () => {
     localStorage.clear()
   })
 
-  it('links the sections, signs in and starts on the app host, and reports the clicks', () => {
+  it('links the pages, signs in and starts on the app host, and reports the clicks', () => {
     render(<SiteHeader />)
-    expect(screen.getByRole('link', { name: 'Pricing' }).getAttribute('href')).toBe('#pricing')
+    expect(screen.getByRole('link', { name: 'Pricing' }).getAttribute('href')).toBe('/pricing')
     expect(
       within(screen.getByRole('navigation', { name: 'Main' }))
         .getByRole('link', { name: 'Guides' })

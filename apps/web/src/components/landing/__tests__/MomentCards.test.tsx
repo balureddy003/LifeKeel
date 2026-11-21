@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
-import { HomeExperience } from '../HomeExperience'
+import { FeaturesContent } from '../MarketingPage'
 import { MOMENTS } from '../MomentCards'
 import { CLAIMS } from '../claims'
 
@@ -16,13 +16,11 @@ describe('three ordinary moments', () => {
     }
   })
 
-  it('sits right after the story and before the chapters', () => {
-    render(<HomeExperience />)
+  it('opens /features, before the chapters', () => {
+    render(<FeaturesContent />)
     const pos = (name: string) => screen.getByRole('heading', { name })
-    const story = pos('Marcia’s Tuesday.')
     const moments = pos('Things that usually live in one head.')
     const chapters = pos('The things your family says out loud.')
-    expect(story.compareDocumentPosition(moments) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(
       moments.compareDocumentPosition(chapters) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()

@@ -126,11 +126,14 @@ function Newsletter() {
 }
 
 const PRODUCT = [
-  { href: '#features', label: 'Features', local: true },
-  { href: '#pricing', label: 'Pricing', local: true },
+  { href: '/how-it-works', label: 'How it works' },
+  { href: '/features', label: 'Features' },
+  { href: '/pricing', label: 'Pricing' },
+  { href: '/faq', label: 'FAQ' },
   { href: '/guides', label: 'Guides' },
 ]
 const COMPANY = [
+  { href: '/about', label: 'About' },
   { href: '/blog', label: 'Blog' },
   { href: '/support', label: 'Support' },
   { href: '/legal', label: 'Legal & trust' },
@@ -206,17 +209,11 @@ export function SiteFooter({
           </div>
           <nav aria-label="Product">
             <p className="lk-foot-h">Product</p>
-            {PRODUCT.map((l) =>
-              l.local ? (
-                <a key={l.href} href={home ? l.href : `/${l.href}`}>
-                  {l.label}
-                </a>
-              ) : (
-                <Link key={l.href} href={l.href}>
-                  {l.label}
-                </Link>
-              ),
-            )}
+            {PRODUCT.map((l) => (
+              <Link key={l.href} href={l.href}>
+                {l.label}
+              </Link>
+            ))}
           </nav>
           <nav aria-label="Company">
             <p className="lk-foot-h">Company</p>

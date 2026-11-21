@@ -19,6 +19,8 @@ const PUBLIC_FILES = [
   'components/landing/HomeExperience.tsx',
   'components/landing/VividHero.tsx',
   'components/landing/VividSections.tsx',
+  'components/landing/HomeSections.tsx',
+  'components/landing/MarketingPage.tsx',
   'components/landing/SiteHeader.tsx',
   'components/landing/SiteFooter.tsx',
   'components/landing/SignupCard.tsx',

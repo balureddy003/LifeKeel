@@ -28,7 +28,19 @@ export const TRACKERS_CONFIGURED = Boolean(
  * Pages a tag may run on. Anything else (the signed-in app, recovery and
  * invite links, which carry tokens in the URL) never loads one.
  */
-const TRACKABLE_PREFIXES = ['/blog', '/guides', '/readiness', '/trust', '/security', '/support']
+const TRACKABLE_PREFIXES = [
+  '/how-it-works',
+  '/features',
+  '/pricing',
+  '/about',
+  '/faq',
+  '/blog',
+  '/guides',
+  '/readiness',
+  '/trust',
+  '/security',
+  '/support',
+]
 
 export function isTrackablePath(pathname: string, signedIn: boolean): boolean {
   if (signedIn) return false

@@ -17,6 +17,13 @@ import ObligationsMapPage from '../map/page'
 import DomainsPage from '../domains/page'
 import { ThreeDoors } from '@/components/ThreeDoors'
 import { HomeExperience } from '@/components/landing/HomeExperience'
+import {
+  AboutContent,
+  FaqContent,
+  FeaturesContent,
+  HowItWorksContent,
+  PricingContent,
+} from '@/components/landing/MarketingPage'
 
 vi.mock('@/lib/auth-context', () => ({
   useAuth: () => ({
@@ -197,6 +204,16 @@ describe('accessibility (axe-core, WCAG 2 A and AA)', () => {
   })
   it('landing page', async () => {
     const { container } = render(<HomeExperience />)
+    expect(await violations(container)).toEqual([])
+  })
+  it.each([
+    ['how it works', HowItWorksContent],
+    ['features', FeaturesContent],
+    ['pricing', PricingContent],
+    ['about', AboutContent],
+    ['faq', FaqContent],
+  ] as const)('%s page', async (_name, Content) => {
+    const { container } = render(<Content />)
     expect(await violations(container)).toEqual([])
   })
   it('signup', async () => {

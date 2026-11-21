@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   UsersRound,
 } from 'lucide-react'
+import Link from 'next/link'
 import { appUrl } from '@/lib/region'
 import { track } from '@/lib/growth-track'
 import { haptic } from '@/lib/haptics'
@@ -66,9 +67,9 @@ export function VividHero() {
             Start your family’s list
             <ArrowRight size={18} aria-hidden="true" />
           </a>
-          <a className="vv-btn vv-btn-ghost" href="#features">
+          <Link className="vv-btn vv-btn-ghost" href="/how-it-works">
             See how it works
-          </a>
+          </Link>
         </div>
         <p className="vv-fine">Free to start. No card needed.</p>
         <ul className="vv-hero-trust">

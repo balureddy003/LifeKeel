@@ -227,7 +227,12 @@ function AskKeelButton({ context }: { context?: string }) {
 // waiting behind the auth check: the static HTML a search engine fetches then holds the page's
 // text, not a loading skeleton (PRD-210, phase 1). Sign-in and sign-up are here so they never
 // flash the dashboard skeleton first.
+// The marketing pages split out of the home page; public, and framed by MarketingPage.
+const MARKETING_PAGES = ['/how-it-works', '/features', '/pricing', '/about', '/faq']
+const isMarketingPath = (pathname: string) => MARKETING_PAGES.some((p) => pathname.startsWith(p))
+
 const PUBLIC_CONTENT_PREFIXES = [
+  ...MARKETING_PAGES,
   '/login',
   '/signup',
   '/blog',
@@ -290,7 +295,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/blog') ||
     pathname.startsWith('/guides') ||
     pathname.startsWith('/operator') ||
-    pathname.startsWith('/invite')
+    pathname.startsWith('/invite') ||
+    isMarketingPath(pathname)
 
   // A new account heads straight for its first step (the family list, or a money question picked
   // on the landing page). The household behind it
@@ -626,7 +632,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/readiness') ||
     pathname.startsWith('/blog') ||
     pathname.startsWith('/guides') ||
-    pathname.startsWith('/invite')
+    pathname.startsWith('/invite') ||
+    isMarketingPath(pathname)
 
   // The operator console ships its own header/nav in app/operator/layout.
   // Without this exclusion an operator who is also a signed-in family
@@ -648,6 +655,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // The sign-in screens (AuthShell) and the public pages (PublicShell) frame themselves on the
   // same container as the landing page, so they must not inherit the phone-width wrapper.
   const ownsLayout = [
+    ...MARKETING_PAGES,
     '/welcome',
     '/signup',
     '/login',

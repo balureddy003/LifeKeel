@@ -20,6 +20,7 @@ import {
   UserRoundX,
   type LucideIcon,
 } from 'lucide-react'
+import Link from 'next/link'
 import { appUrl } from '@/lib/region'
 import { track } from '@/lib/growth-track'
 import { haptic } from '@/lib/haptics'
@@ -36,7 +37,7 @@ function signup(location: string) {
   }
 }
 
-function Heading({
+export function Heading({
   eyebrow,
   title,
   id,
@@ -94,7 +95,7 @@ const STEPS: { icon: LucideIcon; title: string; body: string }[] = [
   },
 ]
 
-export function HowItWorks() {
+export function HowItWorks({ more = false }: { more?: boolean }) {
   return (
     <section className="vv-section" aria-labelledby="vv-how-h">
       <Heading eyebrow="How it works" id="vv-how-h" title="Three steps. One evening." />
@@ -110,6 +111,14 @@ export function HowItWorks() {
           </li>
         ))}
       </ol>
+      {more && (
+        <p className="vv-center">
+          <Link className="vv-learn" href="/how-it-works">
+            The full walkthrough
+            <ArrowRight size={16} aria-hidden="true" />
+          </Link>
+        </p>
+      )}
     </section>
   )
 }
@@ -284,7 +293,7 @@ const BAD_DAY: { icon: LucideIcon; title: string; body: string }[] = [
 
 export function BadDay() {
   return (
-    <section className="vv-section" aria-labelledby="vv-badday-h">
+    <section className="vv-section" id="bad-day" aria-labelledby="vv-badday-h">
       <div className="vv-dark">
         <Heading
           eyebrow="During and after"
@@ -413,6 +422,8 @@ export function Trust() {
   )
 }
 
+export const PLUS_PRICE = '£7.99 a month'
+
 export function Plans() {
   return (
     <section className="vv-section" id="pricing" aria-labelledby="vv-pricing-h">
@@ -444,7 +455,7 @@ export function Plans() {
         </article>
         <article className="vv-plan vv-plan-plus">
           <h3>Keel Plus</h3>
-          <p className="vv-price">£7.99 a month</p>
+          <p className="vv-price">{PLUS_PRICE}</p>
           <ul>
             {PLUS_ROWS.map((r) => (
               <li key={r.text}>

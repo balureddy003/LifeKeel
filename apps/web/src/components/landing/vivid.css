@@ -1095,3 +1095,60 @@
 
 /* The line a family says out loud, above each chapter name. */
 .vv-says { font-style: italic; font-weight: 600; margin: 0 0 4px; }
+
+/* Marketing pages split out of the home page: title block above the moved sections. */
+.vv-page-head {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: clamp(48px, 7vw, 88px) 24px 0;
+  text-align: center;
+}
+.vv-page-head h1 {
+  margin-top: 18px;
+  font-size: clamp(34px, 4.6vw, 52px);
+  line-height: 1.04;
+  font-weight: 900;
+  letter-spacing: -0.045em;
+}
+
+/* One "read the rest" link per home section. */
+.vv-learn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 48px;
+  margin-top: 8px;
+  font-weight: 700;
+  color: var(--vv-brand-text);
+}
+.vv-learn:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.vv-card .vv-learn {
+  margin-top: 12px;
+}
+
+/* Home pricing teaser: one line per plan instead of the full list. */
+.vv-plan-line {
+  flex: 1;
+  display: flex;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--vv-muted);
+}
+.vv-plan-line svg {
+  flex: none;
+  margin-top: 3px;
+  color: #059669;
+}
+:root[data-theme='dark'] .vv-plan-line svg {
+  color: #6ee7b7;
+}
+.vv-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}

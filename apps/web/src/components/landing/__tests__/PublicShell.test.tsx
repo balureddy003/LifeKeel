@@ -18,7 +18,7 @@ afterEach(() => {
 const APP = path.resolve(__dirname, '..', '..', '..', 'app')
 
 describe('PublicShell', () => {
-  it('wraps the page in the landing header and footer, and section links go back to /', () => {
+  it('wraps the page in the landing header and footer, and links go to the marketing pages', () => {
     render(
       <PublicShell>
         <h1>Terms of Service</h1>
@@ -27,7 +27,7 @@ describe('PublicShell', () => {
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Terms of Service')
     const pricing = screen.getAllByRole('link', { name: 'Pricing' })
     expect(pricing.length).toBeGreaterThanOrEqual(2) // header and footer
-    expect(pricing.every((a) => a.getAttribute('href') === '/#pricing')).toBe(true)
+    expect(pricing.every((a) => a.getAttribute('href') === '/pricing')).toBe(true)
     expect(screen.getAllByRole('link', { name: 'Guides' })[0]!.getAttribute('href')).toBe('/guides')
     expect(document.querySelector('footer.lk-footer')).not.toBeNull()
   })
