@@ -27,6 +27,9 @@ vi.mock('@/lib/api', async (orig) => ({
   confirmDomain: (id: string, v: string) => confirmDomain(id, v),
 }))
 vi.mock('@/components/Toast', () => ({ useToast: () => toast }))
+vi.mock('@/lib/mode-context', () => ({
+  useMode: () => ({ config: { showEmergencyButton: true }, activateEmergency: vi.fn() }),
+}))
 vi.mock('@/lib/haptics', () => ({ haptic: vi.fn() }))
 
 const view = (
