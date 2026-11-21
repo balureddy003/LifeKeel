@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { CheckCircle2 } from 'lucide-react'
 import { GlassCard, PageHeader, Skeleton } from '@/components/Glass'
+import { EmergencyRow } from '@/components/EmergencyRow'
 import {
   addDomainRecord,
   updateDomainRecord,
@@ -143,6 +144,7 @@ export default function DomainsPage() {
           title="What is on the family list"
           subtitle="Each area of family life, in one place."
         />
+        <EmergencyRow />
         {!packs ? (
           <Skeleton className="mt-6 h-20 w-full" />
         ) : (
@@ -167,6 +169,7 @@ export default function DomainsPage() {
         title={view?.pack.title ?? 'What is on the family list'}
         subtitle={view?.pack.summary ?? 'Each area of family life, in one place.'}
       />
+      <EmergencyRow />
       {view === undefined && (
         <div className="mt-6 space-y-3" role="status" aria-label="Loading">
           <Skeleton className="h-16 w-full" />
