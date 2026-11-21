@@ -168,7 +168,8 @@ describe('absurd horizons and zero savings', () => {
       },
       AS_OF,
     )
-    expect(out.template_sentence).toContain('there are no savings to draw on')
+    // Said once, with the two figures entered (see 'a household with no savings').
+    expect(out.template_sentence).toContain('nothing to draw on')
   })
 })
 
@@ -258,5 +259,44 @@ describe('first number from the minimum (PRD-230)', () => {
     )
     expect(out.facts.some((f) => f.label.startsWith('Assumed'))).toBe(false)
     expect(out.template_sentence).not.toContain('partial answer')
+  })
+})
+
+describe('a household with no savings', () => {
+  const none = {
+    monthly_income_minor: 120_000,
+    monthly_essentials_minor: 150_000,
+    liquid_savings_minor: 0,
+  }
+  const run = (over: object = {}) =>
+    solveCatalogueBrief(
+      'earning_less',
+      { ...none, new_income_minor: 0, change_date: '2026-11-28', ...over },
+      AS_OF,
+    ).template_sentence
+
+  it('says once that there is nothing to draw on, with the income and spending entered', () => {
+    const s = run()
+    expect(s.match(/no savings to draw on/g) ?? []).toHaveLength(0)
+    expect(s).toMatch(/No savings are entered, so there is nothing to draw on/)
+    expect(s).toContain('£1,200.00')
+    expect(s).toContain('£1,500.00')
+  })
+
+  it('never reports savings running out in "month 0.0" when there were none to begin with', () => {
+    expect(run()).not.toMatch(/run out around/)
+    expect(run()).not.toMatch(/month 0\.0/)
+  })
+
+  it('zero income and zero savings gets the same plain sentence, not a run-out date', () => {
+    const s = run({ monthly_income_minor: 0 })
+    expect(s).toMatch(/No savings are entered/)
+    expect(s).not.toMatch(/run out around/)
+  })
+
+  it('a household that does have savings keeps the three-stage wording', () => {
+    const s = run({ liquid_savings_minor: 20_000 })
+    expect(s).toMatch(/^Before the change, savings last about 0\.7 months\./)
+    expect(s).toMatch(/run out around/)
   })
 })

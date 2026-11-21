@@ -82,21 +82,23 @@ Changed
 Left alone, noted: the all-zero profile still scores protection as null and estate as 0 (an empty vault is a real gap);
 the savings tile on home shows "No data yet" for a deliberate zero; no screen-level view of the zero profile on staging.
 
-## Iteration 5: change one thing and see the impact (narrative 4)
-Finding: a premium could be added in one short form but not edited. The only way to change one was the long
-financial-profile wizard ("Some of this comes from your financial profile. Change it there."), and nothing said what
-had changed or what had not.
+## Iteration 6: single parent, almost no savings, low or no income (narrative 6)
+Method: ran the runway brief on four household shapes (no savings with no income, no savings with low income,
+a little savings with low income, income above spending with no savings).
 
-Changed:
-- API: `PATCH /family/policies/:id` changes cover, monthly premium or yearly premium on a policy on the list (household
-  editors only, strict body, nothing else editable) and answers with the saved policy, the monthly-versus-yearly check
-  re-run on the new figures, and `changes`: what changed (before, after) and what stayed the same. An edit that changes
-  nothing writes nothing and does not stale the briefs. Version bumps once per real change.
-- Web: "Update figures" on each policy row opens an inline form pre-filled with today's figures; the mismatch check
-  re-runs as you type; on save the row updates at once and says "Updated. Monthly premium was £42, now £45. Cover and
-  yearly premium stay the same." On failure the form stays open with the reason.
-Checked: red-then-green mutation on the change comparison (5 tests failed with it flipped); live at phone width against
-the stand-in API.
+Finding: the brief handled zero cleanly in the numbers but read as nonsense in words when savings were zero from
+the start. It said "there are no savings to draw on" three times (before, at the change, after the change) and then
+"savings would run out around October 2026 (about month 0.0 from the calculation date)", a run-out date for money
+that was never there.
 
-Still open: income edits (still the long wizard); the line "Change it there" on the domain page still points at the
-wizard for non-policy fields; the home score does not yet show a before/after when a figure moves.
+Changed: when there are no savings at any stage, the brief says it once, with the two figures the household entered:
+"No savings are entered, so there is nothing to draw on, before or after the change. Income entered is £1,200.00 a
+month against £1,500.00 of spending." No run-out date in that case. A household that has savings keeps the
+three-stage wording. The web headline mirrors the plain sentence. One existing test's wording was updated on purpose
+(it pinned the old repeated phrase); four new tests cover the four shapes.
+
+Not changed, still to check: how the home score and detectors read an all-zero saved profile; the pinned tile for
+savings shows "No data yet" for a deliberate zero (reads slightly wrong for a household that entered 0); the
+emergency-fund detector at zero monthly spending was not exercised.
+
+Local note: one API test fails only without a real MongoDB (users-email-index integration), as CLAUDE.md says.
