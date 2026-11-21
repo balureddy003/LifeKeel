@@ -23,6 +23,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { GlassCard, PageHeader, Skeleton } from '@/components/Glass'
+import { SaveFiguresCard } from '@/components/SaveFiguresCard'
 import { EmergencyRow } from '@/components/EmergencyRow'
 import {
   confirmBrief,
@@ -622,6 +623,8 @@ function ResultCard({
           </p>
         </div>
       )}
+
+      <SaveFiguresCard inputs={brief.inputs} />
 
       {(brief.facts ?? []).length > 0 && (
         <dl className="space-y-1 text-sm">

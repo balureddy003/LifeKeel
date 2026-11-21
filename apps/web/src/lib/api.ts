@@ -2951,6 +2951,24 @@ export async function addFamilyPolicy(
   return { ok: true, policy: r.data.policy, check: r.data.check }
 }
 
+export interface SavedFigures {
+  saved: Array<{ key: string; label: string; before: number | null; after: number }>
+  unchanged: Array<{ key: string; label: string; value: number }>
+}
+
+/** Save the figures a brief is built on onto the family list, so the estimate, tiles and checks use them. */
+export async function saveFamilyFigures(
+  body: Record<string, number>,
+): Promise<({ ok: true } & SavedFigures) | { ok: false; error: string }> {
+  const r = await policyRequest<SavedFigures>('/family/financial-profile/figures', body)
+  if (!r.ok) return r
+  invalidateCache('financial-profile')
+  invalidateCache('family-insights')
+  invalidateCache('inbox-items')
+  notifyKeelDataChanged('profile')
+  return { ok: true, saved: r.data.saved ?? [], unchanged: r.data.unchanged ?? [] }
+}
+
 export interface PolicyEditResult {
   policy: SavedPolicy
   changes: {
