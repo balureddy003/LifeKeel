@@ -69,6 +69,9 @@ function webCopyFiles(): string[] {
     'apps/web/src/lib/pinned-tiles.ts',
     'apps/web/src/components/PinnedTiles.tsx',
     'apps/web/src/lib/today-item.ts',
+    // Emergency steps page leads with the policies on file and a call link.
+    'apps/web/src/components/PolicyAtHand.tsx',
+    'apps/web/src/lib/emergency-policies.ts',
     'apps/web/src/components/SendLinkCard.tsx',
     'apps/web/src/lib/share-invite.ts',
     'apps/web/src/components/EmergencyRow.tsx',
