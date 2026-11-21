@@ -17,12 +17,7 @@ export const metadata: Metadata = {
 
 export default function FeaturesPage() {
   return (
-    <MarketingPage
-      page="features"
-      eyebrow="Features"
-      title="What LifeKeel does today"
-      intro="Six questions families say out loud, and what LifeKeel helps with for each, from what your family adds."
-    >
+    <MarketingPage page="features" eyebrow="Features" title="What LifeKeel does today">
       <FeaturesContent />
     </MarketingPage>
   )

@@ -15,12 +15,7 @@ export const metadata: Metadata = {
 
 export default function HowItWorksPage() {
   return (
-    <MarketingPage
-      page="how-it-works"
-      eyebrow="How it works"
-      title="How it works"
-      intro="Choose the problem, enter a few figures, and send the other adult the same answer. One evening."
-    >
+    <MarketingPage page="how-it-works" eyebrow="How it works" title="How it works">
       <HowItWorksContent />
     </MarketingPage>
   )

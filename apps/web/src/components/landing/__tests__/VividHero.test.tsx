@@ -28,13 +28,9 @@ describe('home hero', () => {
     expect(screen.getByText('A shared family list')).toBeTruthy()
   })
 
-  it('says what is kept and that every adult is asked to confirm, never that they all have', () => {
-    render(<VividHero />)
-    expect(
-      screen.getByText(
-        'One shared map of what your family would look for: policies, cars, school dates and who to call. It shows what is on file, what is coming next, and where it looks light, as an estimate from the figures you enter. Every adult is asked to confirm they have seen it.',
-      ),
-    ).toBeTruthy()
+  it('has no explanation paragraph under the headline', () => {
+    const { container } = render(<VividHero />)
+    expect(container.querySelector('.vv-lede')).toBeNull()
   })
 
   it('has one way in, and a way to read more', () => {

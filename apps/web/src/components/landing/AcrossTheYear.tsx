@@ -59,10 +59,6 @@ export function AcrossTheYear() {
       <header className="vv-head">
         <p className="vv-eyebrow">Across the year</p>
         <h2 id="yr-h">One list, four moments in the year.</h2>
-        <p className="vv-intro">
-          Dev and Marcia do not start again for each one. The car, the trip, the fees and the
-          mortgage all sit on the list their family already looks at.
-        </p>
       </header>
       <ol className="yr-grid">
         {YEAR.map(({ season, icon: Icon, title, story, limit, claims }) => (

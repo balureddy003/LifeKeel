@@ -127,10 +127,6 @@ export function FamilyStory() {
       <header className="vv-head">
         <p className="vv-eyebrow">A short story</p>
         <h2 id="fs-h">Marcia’s Tuesday.</h2>
-        <p className="vv-intro">
-          Dev, Marcia and Asha share one household. Six small moments, and nobody is in a hurry.
-          Nothing goes wrong that cannot be put right.
-        </p>
       </header>
 
       <div className="fs-stage" data-testid="story-stage" data-beat={beat} aria-hidden="true">

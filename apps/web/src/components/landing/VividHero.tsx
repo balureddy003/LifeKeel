@@ -50,11 +50,6 @@ export function VividHero() {
         <h1 id="vv-hero-h">
           Know where <span className="vv-grad">to look.</span>
         </h1>
-        <p className="vv-lede">
-          One shared map of what your family would look for: policies, cars, school dates and who to
-          call. It shows what is on file, what is coming next, and where it looks light, as an
-          estimate from the figures you enter. Every adult is asked to confirm they have seen it.
-        </p>
         <div className="vv-hero-cta" id="signup">
           <a
             className="vv-btn"

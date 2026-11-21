@@ -15,12 +15,7 @@ export const metadata: Metadata = {
 
 export default function AboutPage() {
   return (
-    <MarketingPage
-      page="about"
-      eyebrow="About"
-      title="Why LifeKeel"
-      intro="Most families run on one person’s memory. LifeKeel is a shared list every adult can open, with clear limits on what it does."
-    >
+    <MarketingPage page="about" eyebrow="About" title="Why LifeKeel">
       <AboutContent />
     </MarketingPage>
   )

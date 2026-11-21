@@ -15,12 +15,7 @@ export const metadata: Metadata = {
 
 export default function PricingPage() {
   return (
-    <MarketingPage
-      page="pricing"
-      eyebrow="Pricing"
-      title="Pricing"
-      intro="Free to start, with one optional paid plan. No commissions, no ads."
-    >
+    <MarketingPage page="pricing" eyebrow="Pricing" title="Pricing">
       <PricingContent />
     </MarketingPage>
   )

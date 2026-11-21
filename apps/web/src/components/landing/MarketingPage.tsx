@@ -6,7 +6,6 @@ import { currentUtm, track } from '@/lib/growth-track'
 import { SiteHeader } from './SiteHeader'
 import { SiteFooter } from './SiteFooter'
 import { AcrossTheYear } from './AcrossTheYear'
-import { CostSection } from './CostSection'
 import { FamilyStory } from './FamilyStory'
 import { MomentCards } from './MomentCards'
 import {
@@ -31,13 +30,11 @@ export function MarketingPage({
   page,
   eyebrow,
   title,
-  intro,
   children,
 }: {
   page: string
   eyebrow: string
   title: string
-  intro: string
   children: ReactNode
 }) {
   const { isAuthenticated } = useAuth()
@@ -54,7 +51,6 @@ export function MarketingPage({
         <header className="vv-page-head">
           <p className="vv-eyebrow">{eyebrow}</p>
           <h1>{title}</h1>
-          <p className="vv-intro">{intro}</p>
         </header>
         {children}
       </main>
@@ -101,7 +97,6 @@ export function PricingContent() {
 export function AboutContent() {
   return (
     <>
-      <CostSection />
       <Trust />
       <FinalCta />
     </>

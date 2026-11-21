@@ -37,22 +37,11 @@ function signup(location: string) {
   }
 }
 
-export function Heading({
-  eyebrow,
-  title,
-  id,
-  intro,
-}: {
-  eyebrow: string
-  title: string
-  id: string
-  intro?: string
-}) {
+export function Heading({ eyebrow, title, id }: { eyebrow: string; title: string; id: string }) {
   return (
     <header className="vv-head">
       <p className="vv-eyebrow">{eyebrow}</p>
       <h2 id={id}>{title}</h2>
-      {intro && <p className="vv-intro">{intro}</p>}
     </header>
   )
 }
@@ -172,7 +161,6 @@ export function ThreeProblems() {
         eyebrow="Start here"
         id="vv-problems-h"
         title="One problem, one evening, one number."
-        intro="Pick the question in front of your household. A few figures in, one answer out — send it to the other adult and you will see when they have opened it."
       />
       <div className="vv-plans">
         {PROBLEMS.map(([id, t, d]) => (
@@ -206,7 +194,6 @@ export function Features() {
         eyebrow="One list, six questions"
         id="vv-features-h"
         title="The things your family says out loud."
-        intro="Each one is something LifeKeel helps with today, from what your family adds. LifeKeel shows, estimates and drafts. You decide."
       />
       <div className="vv-moments">
         {CHAPTERS.map((ch) => {
@@ -333,12 +320,6 @@ export function PlusBand() {
         <div>
           <p className="vv-eyebrow">Keel Plus</p>
           <h2 id="vv-plus-h">Keep the household record current.</h2>
-          <p className="vv-intro">
-            The paid plan keeps your household record and briefs current as figures change.
-            Photograph an insurance policy or pension statement and it also reads out the provider,
-            policy number, amount and renewal date for you to confirm. Typing things in yourself
-            stays free.
-          </p>
           <a
             className="vv-btn vv-btn-light"
             href={appUrl('/signup')}
@@ -383,12 +364,7 @@ const TONES = ['cyan', 'blue', 'violet', 'amber', 'pink', 'green'] as const
 export function Trust() {
   return (
     <section className="vv-section" id="security" aria-labelledby="vv-trust-h">
-      <Heading
-        eyebrow="Trust and security"
-        id="vv-trust-h"
-        title="Six things Keel does not do."
-        intro="No commissions, no product picks, no quiet actions. Here is what is true today."
-      />
+      <Heading eyebrow="Trust and security" id="vv-trust-h" title="Six things Keel does not do." />
       <ul className="vv-grid3">
         {PROMISES.map((p, i) => {
           const Icon = PROMISE_ICONS[i] ?? ShieldCheck
@@ -427,12 +403,7 @@ export const PLUS_PRICE = '£7.99 a month'
 export function Plans() {
   return (
     <section className="vv-section" id="pricing" aria-labelledby="vv-pricing-h">
-      <Heading
-        eyebrow="Pricing"
-        id="vv-pricing-h"
-        title="Free to start. One optional paid plan."
-        intro="Checking what you have told Keel is free — including your first brief. The paid plan keeps the household record current and unlocks further briefs."
-      />
+      <Heading eyebrow="Pricing" id="vv-pricing-h" title="Free to start. One optional paid plan." />
       <div className="vv-plans">
         <article className="vv-plan">
           <h3>Free</h3>

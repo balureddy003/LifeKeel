@@ -84,12 +84,7 @@ const TEASER_PROMISES = PROMISES.slice(0, 3)
 export function PromisesTeaser() {
   return (
     <section className="vv-section" aria-labelledby="vv-promises-h">
-      <Heading
-        eyebrow="Trust"
-        id="vv-promises-h"
-        title="What Keel does not do."
-        intro="No commissions, no product picks, no quiet actions."
-      />
+      <Heading eyebrow="Trust" id="vv-promises-h" title="What Keel does not do." />
       <ul className="vv-grid3">
         {TEASER_PROMISES.map((p) => (
           <li key={p.title} className="vv-card">

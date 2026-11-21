@@ -124,13 +124,6 @@
   -webkit-background-clip: text;
   background-clip: text;
 }
-.vv-lede {
-  margin-top: 22px;
-  font-size: 16px;
-  line-height: 1.6;
-  color: var(--vv-muted);
-  max-width: 54ch;
-}
 .vv-hero-cta {
   margin-top: 32px;
   display: flex;
@@ -434,12 +427,6 @@
   line-height: 1.08;
   font-weight: 900;
   letter-spacing: -0.04em;
-}
-.vv-intro {
-  margin-top: 16px;
-  font-size: 15px;
-  line-height: 1.65;
-  color: var(--vv-muted);
 }
 .vv-fine {
   font-size: 13px;
@@ -754,10 +741,6 @@
 }
 .vv-plus h2 {
   color: #fff;
-}
-.vv-plus .vv-intro {
-  color: #e0f2fe;
-  margin-bottom: 28px;
 }
 .vv-scan {
   padding: 22px;

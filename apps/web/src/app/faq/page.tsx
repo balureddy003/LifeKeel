@@ -17,12 +17,7 @@ export const metadata: Metadata = {
 
 export default function FaqPage() {
   return (
-    <MarketingPage
-      page="faq"
-      eyebrow="FAQ"
-      title="Questions"
-      intro="Straight answers about what LifeKeel does, what it costs and what happens to your data."
-    >
+    <MarketingPage page="faq" eyebrow="FAQ" title="Questions">
       <FaqContent />
     </MarketingPage>
   )
