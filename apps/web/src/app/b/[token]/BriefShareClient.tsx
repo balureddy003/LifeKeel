@@ -96,6 +96,8 @@ export default function BriefShareClient() {
   const reduce = useReducedMotion()
   const [confirmError, setConfirmError] = useState<string | null>(null)
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
+  // Shared with a partner who has not joined yet: who it is for and from.
+  const [invite, setInvite] = useState<{ for_name: string; from_name: string | null } | null>(null)
 
   const load = useCallback(() => {
     if (!token) return () => {}
@@ -108,7 +110,16 @@ export default function BriefShareClient() {
     })
       .then(async (r) => {
         if (cancelled) return
-        if (r.status === 401) return setStatus('signin')
+        if (r.status === 401) {
+          const body = (await r.json().catch(() => ({}))) as {
+            pending_invite?: boolean
+            for_member_name?: string
+            from_name?: string | null
+          }
+          if (body.pending_invite && body.for_member_name)
+            setInvite({ for_name: body.for_member_name, from_name: body.from_name ?? null })
+          return setStatus('signin')
+        }
         if (r.status === 403) return setStatus('denied')
         if (r.status === 410) return setStatus('gone')
         if (r.status === 404) return setStatus('expired')
@@ -178,7 +189,23 @@ export default function BriefShareClient() {
         </div>
       )}
 
-      {status === 'signin' && (
+      {status === 'signin' && invite && (
+        <Notice
+          icon={<Lock size={20} />}
+          title={`${invite.for_name.split(' ')[0]}, ${invite.from_name ?? 'someone'} shared a brief with you`}
+        >
+          <p>
+            You have not joined the household yet. Open the invite link {invite.from_name ?? 'they'}{' '}
+            sent you, or the invite email, to set a password. You will come straight back to this
+            brief.
+          </p>
+          <Link href={`/login?next=${encodeURIComponent(`/b/${token}`)}`} className={primaryBtn}>
+            I already have a sign-in
+          </Link>
+        </Notice>
+      )}
+
+      {status === 'signin' && !invite && (
         <Notice icon={<Lock size={20} />} title="Sign in to see this brief">
           <p>
             This brief was shared with one named adult in a household. Sign in as that adult and you

@@ -2563,6 +2563,8 @@ export interface MemberInviteResult {
 export async function inviteFamilyMember(
   memberId: string,
   email?: string,
+  /** A brief shared with them (`/b/<token>`): they land on it after joining. */
+  next?: string,
 ): Promise<MemberInviteResult> {
   const base = getApiBase()
   const token = getAuthToken()
@@ -2572,7 +2574,7 @@ export async function inviteFamilyMember(
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify(email ? { email } : {}),
+    body: JSON.stringify({ ...(email ? { email } : {}), ...(next ? { next } : {}) }),
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || "Couldn't send the invite. Please try again.")
@@ -6713,10 +6715,18 @@ async function briefPost<T>(
   return { ok: true, status: res.status, data: (await res.json()) as T }
 }
 
+/** Someone a brief can be shared with: joined, or invited and not joined yet. */
+export interface BriefRecipient {
+  id: string
+  name: string
+  status?: 'active' | 'pending'
+  has_email?: boolean
+}
+
 export function getBriefCatalogue() {
   return apiFetch<{
     catalogue: BriefCatalogueEntry[]
-    recipients: Array<{ id: string; name: string }>
+    recipients: BriefRecipient[]
     current_user_id: string
     can_create?: boolean
   }>('/family/brief-catalogue', { catalogue: [], recipients: [], current_user_id: '' })

@@ -31,6 +31,7 @@ import {
   deleteBrief,
   getBrief,
   getBriefCatalogue,
+  inviteFamilyMember,
   listBriefs,
   listEmployerCover,
   previewBrief,
@@ -38,6 +39,7 @@ import {
   revokeBriefShare,
   type BriefCatalogueEntry,
   type BriefPreview,
+  type BriefRecipient,
   type HouseholdBrief,
 } from '@/lib/api'
 import { track } from '@/lib/growth-track'
@@ -50,6 +52,7 @@ import { CountUp } from './CountUp'
 import { RunwayChart } from './RunwayChart'
 import { WhatIf } from './WhatIf'
 import { countdownText, daysUntil } from './what-if'
+import { recipientLabel } from '@/lib/brief-recipient'
 import { briefHeadline, plainDates, runsOutAround, splitBriefSentence } from '@/lib/brief-text'
 import {
   MAX_STEPS,
@@ -523,16 +526,44 @@ function ResultCard({
   brief,
   origin,
   onChanged,
+  invited,
 }: {
   brief: HouseholdBrief
   origin: string
   onChanged: () => void
+  /** Set when the brief is shared with a partner who has not joined yet. */
+  invited?: BriefRecipient | undefined
 }) {
   const [copied, setCopied] = useState(false)
   const [copiedMsg, setCopiedMsg] = useState(false)
   const toast = useToast()
   const [busy, setBusy] = useState(false)
-  const url = brief.share?.url ? `${origin}/b/${brief.share.url}` : null
+  // An invited partner gets their invite link with this brief attached: one
+  // link sets up their sign-in and lands them on the brief.
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteError, setInviteError] = useState<string | null>(null)
+  const briefUrl = brief.share?.url ? `${origin}/b/${brief.share.url}` : null
+  const url = invited ? inviteUrl : briefUrl
+
+  async function makeInviteLink() {
+    if (!invited || !brief.share?.url) return
+    setBusy(true)
+    setInviteError(null)
+    try {
+      const r = await inviteFamilyMember(
+        invited.id,
+        invited.has_email ? undefined : inviteEmail.trim(),
+        `/b/${brief.share.url}`,
+      )
+      setInviteUrl(r.inviteUrl)
+      toast({ message: r.emailed ? `Invite emailed to ${other}` : `${other}'s link is ready` })
+    } catch (e) {
+      setInviteError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
   const other = brief.share?.for_member_name ?? 'the other adult'
   const runway = brief.result?.['projectedRunwayMonths']
   const { main, note } = splitBriefSentence(brief.template_sentence)
@@ -701,9 +732,45 @@ function ResultCard({
               {brief.share ? (
                 <>
                   <p className="text-sm font-medium text-ink-primary">Send the link to {other}</p>
-                  <p className="text-sm text-ink-secondary">
-                    They sign in, read it and confirm too. The link works for 30 days.
-                  </p>
+                  {invited ? (
+                    <p className="text-sm text-ink-secondary">
+                      {other} has not joined yet. Their link sets up their sign-in and opens this
+                      brief. It works for 7 days.
+                    </p>
+                  ) : (
+                    <p className="text-sm text-ink-secondary">
+                      They sign in, read it and confirm too. The link works for 30 days.
+                    </p>
+                  )}
+                  {invited && !inviteUrl && (
+                    <div className="mt-3 space-y-2">
+                      {!invited.has_email && (
+                        <label className="block text-sm text-ink-secondary">
+                          {other}&apos;s email
+                          <input
+                            type="email"
+                            autoComplete="off"
+                            value={inviteEmail}
+                            onChange={(e) => setInviteEmail(e.target.value)}
+                            className={`${inputCls} mt-1`}
+                          />
+                        </label>
+                      )}
+                      <button
+                        type="button"
+                        disabled={busy || (!invited.has_email && !inviteEmail.trim())}
+                        onClick={() => void makeInviteLink()}
+                        className="inline-flex min-h-[48px] w-full items-center justify-center rounded-full bg-family-500 px-5 text-sm font-semibold text-white disabled:opacity-50 sm:w-auto"
+                      >
+                        {busy ? 'Making the link…' : `Make ${other}'s link`}
+                      </button>
+                      {inviteError && (
+                        <p role="alert" className="text-sm text-red-500">
+                          {inviteError}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </>
               ) : (
                 <>
@@ -937,7 +1004,7 @@ export default function BriefsPage() {
     assumed?: string[]
   }>({ state: 'idle' })
   const [catalogue, setCatalogue] = useState<BriefCatalogueEntry[]>([])
-  const [recipients, setRecipients] = useState<Array<{ id: string; name: string }>>([])
+  const [recipients, setRecipients] = useState<BriefRecipient[]>([])
   const [briefs, setBriefs] = useState<HouseholdBrief[]>([])
   const [moment, setMoment] = useState<MomentKey | null>(null)
   const [showAll, setShowAll] = useState(false)
@@ -1287,7 +1354,14 @@ export default function BriefsPage() {
 
       {created && (
         <div ref={resultRef} className="mt-6 scroll-mt-40">
-          <ResultCard brief={created} origin={origin} onChanged={() => void refresh(created.id)} />
+          <ResultCard
+            brief={created}
+            origin={origin}
+            onChanged={() => void refresh(created.id)}
+            invited={recipients.find(
+              (r) => r.status === 'pending' && r.id === created.share?.for_member_id,
+            )}
+          />
           <button type="button" onClick={() => setCreated(null)} className={`${ghostBtn} mt-4`}>
             Start another
           </button>
@@ -1549,7 +1623,7 @@ export default function BriefsPage() {
                   >
                     {recipients.map((m) => (
                       <option key={m.id} value={m.id}>
-                        {m.name}
+                        {recipientLabel(m)}
                       </option>
                     ))}
                   </select>
@@ -1558,6 +1632,7 @@ export default function BriefsPage() {
             ) : recipients.length === 1 ? (
               <p className="text-sm text-ink-secondary">
                 Sharing with <strong className="text-ink-primary">{recipientName}</strong>
+                {recipients[0]?.status === 'pending' && ' (invited, not joined yet)'}
               </p>
             ) : (
               <p className="text-sm text-ink-secondary">

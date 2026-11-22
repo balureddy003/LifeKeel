@@ -110,6 +110,24 @@ export const briefsFor = (db: Db, tenantId: string) =>
 
 export const tokenHash = (token: string) => createHash('sha256').update(token).digest('hex')
 
+/**
+ * A brief can be shared with an invited partner before they have an account:
+ * the share names their roster entry but no user. When that entry becomes a
+ * real login (invite accepted or join request approved), the share is bound to
+ * it, so the existing participant check lets exactly that person in.
+ */
+export async function bindBriefSharesToMember(
+  db: Db,
+  tenantId: string,
+  memberId: string,
+  userId: string,
+): Promise<void> {
+  await briefsFor(db, tenantId).updateMany(
+    { 'share.for_member_id': memberId, 'share.for_user_id': { $exists: false } },
+    { $set: { 'share.for_user_id': userId, updated_at: new Date() } },
+  )
+}
+
 export function briefDataVersion(problem: string, inputs: Record<string, unknown>): string {
   const canon = JSON.stringify({ problem, inputs: sortKeys(inputs) })
   return createHash('sha256').update(canon).digest('hex').slice(0, 16)
