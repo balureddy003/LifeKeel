@@ -13,7 +13,12 @@ import type { FastifyInstance } from 'fastify'
 import type { Db } from 'mongodb'
 import { z } from 'zod'
 import { buildAiDisclosure } from '../ai/disclosure.js'
-import { getProcessorRegistry, getTaskRegistry } from '../ai/task-gateway.js'
+import {
+  getProcessorRegistry,
+  getTaskRegistry,
+  processorEnforcementFromEnv,
+  processorsInUse,
+} from '../ai/task-gateway.js'
 import { backupStatement } from '../deletion/receipt.js'
 import { requireOperator } from '../operator/operator-auth.js'
 import { OperatorAuditLogger } from '../operator/operator-audit.js'
@@ -26,8 +31,15 @@ const UpdateSchema = z.object({
   reason: z.string().trim().min(5).max(500),
 })
 
+/** Marks each processor that can receive a call here; the page lists those and names the rest in one line. */
+function withInUse<T extends { processors: { id: string }[] }>(ai: T, inUse: Set<string>): T {
+  return { ...ai, processors: ai.processors.map((p) => ({ ...p, in_use: inUse.has(p.id) })) }
+}
+
 export function registerTrustRoutes(app: FastifyInstance, db: Db): void {
   const audit = new OperatorAuditLogger(db)
+  // Read once: the env does not change while the process runs, and the reader logs on a downgrade.
+  const enforcement = processorEnforcementFromEnv()
 
   app.get('/trust', async (_req, reply) => {
     const processors = getProcessorRegistry()
@@ -45,7 +57,10 @@ export function registerTrustRoutes(app: FastifyInstance, db: Db): void {
           evidence: c.evidence,
           verified_at: c.verified_at,
         })),
-      ai: buildAiDisclosure(tasks, processors),
+      ai: withInUse(
+        buildAiDisclosure(tasks, processors),
+        processorsInUse(tasks.values(), processors, enforcement),
+      ),
       backups: backupStatement(),
     }
   })

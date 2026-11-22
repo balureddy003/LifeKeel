@@ -889,6 +889,12 @@ function Glance({
         Your latest brief
       </p>
       <p className="mt-1 text-lg font-semibold text-ink-primary">{title}</p>
+      {/* The answer leads the card; the countdown comes second. */}
+      {brief.template_sentence?.trim() && (
+        <p className="mt-1 text-base text-ink-primary" data-testid="glance-answer">
+          {briefHeadline(splitBriefSentence(brief.template_sentence).main)}
+        </p>
+      )}
       {days !== null && (
         <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-ink-secondary">
           <CalendarClock size={16} aria-hidden="true" /> The change {countdownText(days)}

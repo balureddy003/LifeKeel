@@ -42,3 +42,10 @@ describe('KEEL-014: personalizeAction swaps in a real provider name when one exi
     expect(personalizeAction(action, [makePolicy()])).toBe(action.label)
   })
 })
+
+describe('checklists assume no adviser (hands-on review G7)', () => {
+  it('no action tells the family to contact "your financial advisor"', () => {
+    const labels = Object.values(EVENT_ACTIONS).flatMap((list) => list.map((a) => a.label))
+    expect(labels.filter((l) => /your (financial )?advis[eo]r/i.test(l))).toEqual([])
+  })
+})

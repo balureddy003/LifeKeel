@@ -31,4 +31,18 @@ describe('colour classes', () => {
     )
     expect(bad).toEqual([])
   })
+
+  it('no text uses family-500, which is a pale fill colour and reads as disabled on light screens', () => {
+    const bad = walk(SRC).flatMap((f) =>
+      fs
+        .readFileSync(f, 'utf8')
+        .split('\n')
+        .flatMap((line, i) =>
+          /(?<![\w-])text-family-500(?![\w-])/.test(line)
+            ? [`${path.relative(SRC, f)}:${i + 1}`]
+            : [],
+        ),
+    )
+    expect(bad).toEqual([])
+  })
 })

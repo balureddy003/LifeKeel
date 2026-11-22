@@ -39,7 +39,7 @@ export default function CrisisMode({ eventId, onExit }: { eventId: string; onExi
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold text-family-500 uppercase tracking-wide">
+          <p className="text-xs font-semibold text-family-400 uppercase tracking-wide">
             Crisis mode
           </p>
           <h1 className="text-xl font-bold text-ink-primary">
@@ -74,7 +74,7 @@ export default function CrisisMode({ eventId, onExit }: { eventId: string; onExi
         )}
         <Link
           href={`/events/${eventId}`}
-          className="mt-4 inline-flex items-center gap-1 text-xs font-medium text-family-500 min-h-[36px]"
+          className="mt-4 inline-flex items-center gap-1 text-xs font-medium text-family-400 min-h-[36px]"
         >
           <CheckCircle2 size={14} /> Open the full checklist
         </Link>

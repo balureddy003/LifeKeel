@@ -60,7 +60,7 @@ export const EVENT_ACTIONS: Record<string, Action[]> = {
   default: [
     { id: '1', label: 'Review your insurance coverage', done: false },
     { id: '2', label: 'Check emergency savings', done: false },
-    { id: '3', label: 'Contact your financial advisor', done: false },
+    { id: '3', label: 'If you want advice, talk to a licensed professional', done: false },
   ],
 }
 

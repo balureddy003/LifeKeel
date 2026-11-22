@@ -4,6 +4,8 @@ import { render, screen, waitFor } from '@testing-library/react'
 const fetchTrust = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/api', () => ({ fetchTrust }))
 import TrustPage from '../page'
+import { STATUS_TEXT } from '@/lib/ai-disclosure-copy'
+const STATUS_UNREVIEWED = STATUS_TEXT.terms_under_review
 
 const ai = (status: string) => ({
   generated_at: '2026-10-20',
@@ -70,5 +72,47 @@ describe('trust page', () => {
     const hrefs = screen.getAllByRole('link').map((a) => a.getAttribute('href'))
     expect(hrefs).toEqual(expect.arrayContaining(['/family', '/ai-processing', '/settings']))
     await waitFor(() => expect(screen.getByText('Hosted one')).toBeTruthy())
+  })
+
+  it('lists only processors that can receive a call here, and names the rest in one line', async () => {
+    fetchTrust.mockResolvedValue({
+      claims: [],
+      ai: {
+        generated_at: '2026-11-22',
+        processors: [
+          {
+            id: 'g',
+            name: 'Groq',
+            status: 'approved',
+            retention: ['none'],
+            hosting: 'hosted',
+            in_use: true,
+          },
+          {
+            id: 'a',
+            name: 'Anthropic',
+            status: 'terms_under_review',
+            retention: ['unknown'],
+            hosting: 'hosted',
+            in_use: false,
+          },
+          {
+            id: 'o',
+            name: 'Self-hosted model',
+            status: 'run_by_lifekeel',
+            retention: ['none'],
+            hosting: 'self_hosted',
+            in_use: false,
+          },
+        ],
+        tasks: [],
+      },
+      backups: { retention_days: 35, statement: 'up to 35 days' },
+    })
+    render(<TrustPage />)
+    await waitFor(() => expect(screen.getByText('Groq')).toBeTruthy())
+    expect(screen.queryByText('Anthropic')).toBeNull()
+    expect(screen.getByText(/not used here: Anthropic, Self-hosted model/)).toBeTruthy()
+    expect(screen.queryByText(STATUS_UNREVIEWED)).toBeNull()
   })
 })

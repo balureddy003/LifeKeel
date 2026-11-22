@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Sparkles, CheckCircle2, Loader2, AlertCircle, ScanLine } from 'lucide-react'
+import { Sparkles, CheckCircle2, Loader2, AlertCircle } from 'lucide-react'
 import { PageHeader, GlassCard, GlassButton, Skeleton } from '@/components/Glass'
 import { haptic } from '@/lib/haptics'
 import { track } from '@/lib/growth-track'
@@ -14,78 +14,15 @@ import {
   type BillingSubscription,
 } from '@/lib/api'
 
+// What Plus adds, briefs first: the free plan includes one brief, so more briefs is what a family pays for.
+// Document and inbox reading stay as a convenience below, not the headline (PRD-222).
 const BENEFITS = [
-  'Your household record kept current — run as many briefs as you need, updated as figures change',
-  'AI reads your documents and pulls out the provider, policy number, amounts, and dates for you to confirm',
-  'AI-summarized inbox — financial emails read and explained in plain language',
+  'A brief for every situation you face, not just the first one',
+  'Both adults see each answer, and Keel marks a brief when your figures change',
+  'Your family list kept current as policies renew and figures move',
 ]
-
-const EXTRACTED_FIELDS = [
-  // Live-verification finding: "AllState Insurance" truncated to
-  // "AllState In..." in this chip's fixed width — the other three
-  // example values are all short enough to stay on one line, so
-  // shortening this illustrative (not real user data) example to match
-  // keeps the same single-line rhythm across all four, instead of this
-  // one alone needing to wrap.
-  { label: 'Provider', value: 'Example Insurer Ltd' },
-  { label: 'Policy Number', value: 'HO-88213-A' },
-  { label: 'Amount', value: '£1,240/yr' },
-  { label: 'Renews', value: 'Jun 14, 2027' },
-]
-
-// Show, don't tell — the benefits list said "AI reads your documents", so
-// this mocks what that actually looks like before the user reads the copy.
-function ExtractionPreview() {
-  return (
-    <GlassCard className="p-5 border-family-500/20 overflow-hidden">
-      <div className="flex items-center gap-2 mb-4">
-        <ScanLine size={16} className="text-family-400" />
-        <span className="text-sm font-semibold text-family-400">See it in action</span>
-      </div>
-      <div className="flex gap-4 items-start">
-        <div className="relative w-20 h-28 rounded-lg bg-tint/[0.04] border border-tint/[0.08] flex-shrink-0 overflow-hidden p-2.5 space-y-2">
-          <div className="h-1.5 w-3/4 rounded-full bg-tint/10" />
-          <div className="h-1.5 w-full rounded-full bg-tint/10" />
-          <div className="h-1.5 w-5/6 rounded-full bg-tint/10" />
-          <div className="h-1.5 w-2/3 rounded-full bg-tint/10" />
-          <div className="h-1.5 w-full rounded-full bg-tint/10" />
-          <div className="h-1.5 w-4/5 rounded-full bg-tint/10" />
-          <motion.div
-            className="absolute left-0 right-0 h-10 pointer-events-none"
-            style={{
-              background:
-                'linear-gradient(180deg, transparent, rgb(var(--family-accent) / 0.4), transparent)',
-            }}
-            initial={{ top: '-25%' }}
-            animate={{ top: '115%' }}
-            transition={{ duration: 1.8, repeat: Infinity, repeatDelay: 1.4, ease: 'easeInOut' }}
-          />
-        </div>
-        <div className="flex-1 space-y-2 min-w-0">
-          {EXTRACTED_FIELDS.map((f, i) => (
-            <motion.div
-              key={f.label}
-              initial={{ opacity: 0, x: 8 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.3 + i * 0.15, duration: 0.4 }}
-              className="flex items-center gap-1.5 rounded-lg bg-family-500/[0.06] px-2.5 py-1.5"
-            >
-              <CheckCircle2 size={12} className="text-family-400 flex-shrink-0" />
-              <div className="min-w-0">
-                <div className="text-caption text-ink-tertiary leading-none mb-0.5">{f.label}</div>
-                <div className="text-xs font-semibold text-ink-primary truncate">{f.value}</div>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      </div>
-      <p className="text-xs text-ink-tertiary mt-3 leading-relaxed">
-        Illustrative example — upload a real document and Keel Plus extracts the details
-        automatically.
-      </p>
-    </GlassCard>
-  )
-}
+const ALSO_INCLUDED =
+  'Also included: Keel reads a policy document or a financial email and lists what it found for you to confirm.'
 
 export default function UpgradePage() {
   const [loading, setLoading] = useState(true)
@@ -287,8 +224,6 @@ export default function UpgradePage() {
         </motion.div>
       ) : (
         <>
-          <ExtractionPreview />
-
           <GlassCard className="p-5 border-family-500/20">
             <div className="flex items-center gap-2 mb-3">
               <Sparkles size={18} className="text-family-400" />
@@ -305,6 +240,7 @@ export default function UpgradePage() {
                 </li>
               ))}
             </ul>
+            <p className="mt-3 text-xs text-ink-tertiary leading-relaxed">{ALSO_INCLUDED}</p>
           </GlassCard>
 
           <div role="radiogroup" aria-label="Billing period" className="grid grid-cols-2 gap-3">
@@ -313,15 +249,15 @@ export default function UpgradePage() {
                 {
                   value: 'year',
                   title: 'Yearly',
-                  price: '£5.00',
-                  per: '/mo billed yearly',
-                  note: '£59.99/yr — save 37%',
+                  price: '£59.99',
+                  per: 'a year',
+                  note: 'Cancel anytime',
                 },
                 {
                   value: 'month',
                   title: 'Monthly',
                   price: '£7.99',
-                  per: '/month',
+                  per: 'a month',
                   note: 'Cancel anytime',
                 },
               ] as const

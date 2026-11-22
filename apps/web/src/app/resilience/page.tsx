@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { PageHeader, GlassCard } from '@/components/Glass'
 import { FigureRow } from '@/components/FigureRow'
+import { IncomeStopBrief } from '@/components/IncomeStopBrief'
 import {
   confirmResilienceFigures,
   fetchConfirmationHistory,
@@ -68,6 +69,8 @@ export default function ResiliencePage() {
         backHref="/finances"
         subtitle="An estimate from the figures you entered"
       />
+
+      <IncomeStopBrief />
 
       {!loaded && (
         <div className="flex justify-center py-10 text-ink-tertiary">

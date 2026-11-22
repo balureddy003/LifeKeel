@@ -10,7 +10,13 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { GlassCard, PageHeader } from '@/components/Glass'
 import { fetchTrust, type TrustData } from '@/lib/api'
-import { RETENTION_TEXT, RULE_TEXT, STATUS_TEXT, UNREVIEWED_NOTE } from '@/lib/ai-disclosure-copy'
+import {
+  RETENTION_TEXT,
+  RULE_TEXT,
+  STATUS_TEXT,
+  UNREVIEWED_NOTE,
+  notInUseText,
+} from '@/lib/ai-disclosure-copy'
 import {
   BACKUPS_LEAD,
   BACKUPS_TITLE,
@@ -38,6 +44,10 @@ export default function TrustPage() {
   useEffect(() => {
     void fetchTrust().then(setData)
   }, [])
+  // An older API sends no in_use flag; then every processor is listed, as before.
+  const processors = data?.ai.processors ?? []
+  const inUse = processors.filter((p) => p.in_use !== false)
+  const notInUse = processors.filter((p) => p.in_use === false)
 
   return (
     <div className="px-5 pt-2 pb-12">
@@ -105,7 +115,7 @@ export default function TrustPage() {
 
           <H2 id="processors">{PROCESSORS_TITLE}</H2>
           <div className="space-y-3">
-            {data.ai.processors.map((p) => (
+            {inUse.map((p) => (
               <GlassCard key={p.id} className="p-4">
                 <div className="text-sm font-semibold text-ink-primary">{p.name}</div>
                 <p className="text-xs text-ink-secondary mt-1">{STATUS_TEXT[p.status]}</p>
@@ -117,8 +127,13 @@ export default function TrustPage() {
               </GlassCard>
             ))}
           </div>
-          {data.ai.processors.some((p) => p.status === 'terms_under_review') && (
+          {inUse.some((p) => p.status === 'terms_under_review') && (
             <p className="text-[11px] text-ink-tertiary mt-2 leading-relaxed">{UNREVIEWED_NOTE}</p>
+          )}
+          {notInUse.length > 0 && (
+            <p className="text-xs text-ink-tertiary mt-2 leading-relaxed">
+              {notInUseText(notInUse.map((p) => p.name))}
+            </p>
           )}
 
           <H2>{BACKUPS_TITLE}</H2>
