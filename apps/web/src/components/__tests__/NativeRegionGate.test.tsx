@@ -103,4 +103,20 @@ describe('NativeRegionGate', () => {
     render(<NativeRegionGate />)
     await waitFor(() => expect(setAccessoryBarVisible).toHaveBeenCalledWith({ isVisible: false }))
   })
+
+  it('marks the page while a field is focused so the tab bar can step aside', async () => {
+    fakeShell()
+    atHost('app.lifekeel.co.uk')
+    render(
+      <>
+        <NativeRegionGate />
+        <input aria-label="x" />
+      </>,
+    )
+    const input = document.querySelector('input') as HTMLInputElement
+    input.focus()
+    await waitFor(() => expect(document.documentElement.dataset['keyboard']).toBe('1'))
+    input.blur()
+    await waitFor(() => expect(document.documentElement.dataset['keyboard']).toBeUndefined())
+  })
 })
