@@ -10,7 +10,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { GlassCard, PageHeader } from '@/components/Glass'
 import { fetchTrust, type TrustData } from '@/lib/api'
-import { RETENTION_TEXT, STATUS_TEXT, UNREVIEWED_NOTE } from '@/lib/ai-disclosure-copy'
+import { RETENTION_TEXT, RULE_TEXT, STATUS_TEXT, UNREVIEWED_NOTE } from '@/lib/ai-disclosure-copy'
 import {
   BACKUPS_LEAD,
   BACKUPS_TITLE,
@@ -18,6 +18,8 @@ import {
   EVIDENCE_LABEL,
   MONEY_TEXT,
   MONEY_TITLE,
+  SHORT_ITEMS,
+  SHORT_TITLE,
   PROCESSORS_TITLE,
   TRUST_INTRO,
   TRUST_TITLE,
@@ -41,6 +43,23 @@ export default function TrustPage() {
     <div className="px-5 pt-2 pb-12">
       <PageHeader title={TRUST_TITLE} />
       <p className="text-sm text-ink-secondary leading-relaxed mt-2">{TRUST_INTRO}</p>
+
+      <H2>{SHORT_TITLE}</H2>
+      <ul className="space-y-3">
+        {SHORT_ITEMS.map((item) => (
+          <li key={item.q}>
+            <p className="text-sm font-medium text-ink-primary">{item.q}</p>
+            <p className="text-sm text-ink-secondary leading-relaxed">{item.a}</p>
+            <Link
+              href={item.href}
+              className="inline-flex min-h-[48px] items-center text-sm text-family-400 underline"
+            >
+              {item.link}
+            </Link>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 text-sm text-ink-secondary leading-relaxed">{RULE_TEXT}</p>
 
       <H2>{MONEY_TITLE}</H2>
       <p className="text-sm text-ink-secondary leading-relaxed">{MONEY_TEXT}</p>

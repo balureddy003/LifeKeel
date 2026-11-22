@@ -51,4 +51,24 @@ describe('trust page', () => {
     render(<TrustPage />)
     await waitFor(() => expect(screen.getByText(/not available right now/)).toBeTruthy())
   })
+
+  it('opens with four plain answers that each link to where the thing can be done', async () => {
+    fetchTrust.mockResolvedValue({
+      claims: [],
+      ai: ai('run_by_lifekeel'),
+      backups: { retention_days: null, statement: 'x' },
+    })
+    render(<TrustPage />)
+    expect(screen.getByRole('heading', { name: 'In short' })).toBeTruthy()
+    for (const q of [
+      'Who can see your list?',
+      'How is AI used?',
+      'Can you take your data with you?',
+      'Can you delete it?',
+    ])
+      expect(screen.getByText(q)).toBeTruthy()
+    const hrefs = screen.getAllByRole('link').map((a) => a.getAttribute('href'))
+    expect(hrefs).toEqual(expect.arrayContaining(['/family', '/ai-processing', '/settings']))
+    await waitFor(() => expect(screen.getByText('Hosted one')).toBeTruthy())
+  })
 })
