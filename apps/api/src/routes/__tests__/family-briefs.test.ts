@@ -674,11 +674,23 @@ describe('brief contract v2', () => {
         expect(body.for_member_name).toBe('Tom')
         expect(res.body).not.toContain('Tester')
         expect(body.from_name).toBe('Sam')
-        // Signed in as someone else: nothing, and no invite hint.
+        // Signed in to some other account (Tom's own, elsewhere): no figures,
+        // but the invite hint, since signing in does not join the household.
         currentUser = 'user-stranger'
         const other = await app.inject({ method: 'GET', url: `/b/${b.share.url}` })
         expect(other.statusCode).toBe(403)
         expect(other.json().pending_invite).toBe(true)
+        expect(other.body).not.toContain('Tester')
+        expect(other.json().result).toBeUndefined()
+      })
+
+      it('is not skipped as solo when the only other adult is invited', async () => {
+        const res = await app.inject({
+          method: 'POST',
+          url: '/family/briefs',
+          payload: { contract_version: 2, problem_type: 'earning_less', inputs: SOLO_INPUTS },
+        })
+        expect(res.statusCode).toBe(400)
       })
 
       it('once they join, the share binds to them and they can open and confirm', async () => {

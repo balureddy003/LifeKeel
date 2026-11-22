@@ -43,6 +43,8 @@ interface SharedBrief {
   can_confirm?: boolean
   /** True when read through the link with no account: the answer only, nothing to confirm yet. */
   read_only?: boolean
+  /** Shared with a partner who has not joined yet: their invite, not a sign-in, lets them confirm. */
+  pending_invite?: boolean
   confirmation?: Confirmation
   confirmed_opened_at: string | null
   created_at: string
@@ -113,7 +115,9 @@ export default function BriefShareClient() {
     })
       .then(async (r) => {
         if (cancelled) return
-        if (r.status === 401) {
+        if (r.status === 401 || r.status === 403) {
+          // Shared with a partner who has not joined: the invite, not a
+          // sign-in, is what lets them in, signed in elsewhere or not.
           const body = (await r.json().catch(() => ({}))) as {
             pending_invite?: boolean
             for_member_name?: string
@@ -121,9 +125,8 @@ export default function BriefShareClient() {
           }
           if (body.pending_invite && body.for_member_name)
             setInvite({ for_name: body.for_member_name, from_name: body.from_name ?? null })
-          return setStatus('signin')
+          return setStatus(r.status === 401 ? 'signin' : 'denied')
         }
-        if (r.status === 403) return setStatus('denied')
         if (r.status === 410) return setStatus('gone')
         if (r.status === 404) return setStatus('expired')
         if (!r.ok) return setStatus('error')
@@ -192,19 +195,16 @@ export default function BriefShareClient() {
         </div>
       )}
 
-      {status === 'signin' && invite && (
+      {(status === 'signin' || status === 'denied') && invite && (
         <Notice
           icon={<Lock size={20} />}
-          title={`${invite.for_name.split(' ')[0]}, ${invite.from_name ?? 'someone'} shared a brief with you`}
+          title={`${invite.for_name}, ${invite.from_name ?? 'someone'} shared a brief with you`}
         >
           <p>
             You have not joined the household yet. Open the invite link {invite.from_name ?? 'they'}{' '}
             sent you, or the invite email, to set a password. You will come straight back to this
-            brief.
+            brief. Signing in to another account does not join the household; the invite does.
           </p>
-          <Link href={`/login?next=${encodeURIComponent(`/b/${token}`)}`} className={primaryBtn}>
-            I already have a sign-in
-          </Link>
         </Notice>
       )}
 
@@ -221,7 +221,7 @@ export default function BriefShareClient() {
         </Notice>
       )}
 
-      {status === 'denied' && (
+      {status === 'denied' && !invite && (
         <Notice icon={<Lock size={20} />} title="This brief was sent to someone else">
           <p>
             You are signed in, but this link was made for another adult in the household. Ask the
@@ -324,20 +324,31 @@ export default function BriefShareClient() {
               {sentence.note && <p className="mt-2 text-xs text-ink-tertiary">{sentence.note}</p>}
             </details>
           </GlassCard>
-          <GlassCard className="p-6">
-            <p className="text-ink-secondary">
-              You are reading this without an account, so nothing is recorded yet. To confirm that
-              you have seen it, sign in
-              {name ? ` as ${name}` : ''}. If you have not joined the family yet, use the invite
-              from the person who sent this.
-            </p>
-            <Link
-              href={`/login?next=${encodeURIComponent(`/b/${token}`)}`}
-              className={`${primaryBtn} mt-4`}
-            >
-              Sign in to confirm
-            </Link>
-          </GlassCard>
+          {brief.pending_invite ? (
+            <GlassCard className="p-6">
+              <p className="text-ink-secondary">
+                You have not joined the household yet, so nothing is recorded. To confirm that you
+                have seen it, open the invite link {brief.from_name ?? 'they'} sent you, or the
+                invite email, and set a password. You will come straight back here. Signing in to
+                another account does not join the household; the invite does.
+              </p>
+            </GlassCard>
+          ) : (
+            <GlassCard className="p-6">
+              <p className="text-ink-secondary">
+                You are reading this without an account, so nothing is recorded yet. To confirm that
+                you have seen it, sign in
+                {name ? ` as ${name}` : ''}. If you have not joined the family yet, use the invite
+                from the person who sent this.
+              </p>
+              <Link
+                href={`/login?next=${encodeURIComponent(`/b/${token}`)}`}
+                className={`${primaryBtn} mt-4`}
+              >
+                Sign in to confirm
+              </Link>
+            </GlassCard>
+          )}
         </div>
       )}
 

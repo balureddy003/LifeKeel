@@ -104,6 +104,8 @@ const MAX_INVITES_PER_DAY = 20
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 /** The only place an invite may send someone after they join: a brief shared with them. */
 const BRIEF_NEXT_RE = /^\/b\/[0-9a-f]{48}$/
+/** Live brief-carrying invites kept per member, so an earlier brief's link still works. */
+const MAX_LIVE_INVITES_PER_MEMBER = 5
 
 /** A join request nobody answers stops being valid, and stops blocking a fresh one. */
 export const JOIN_REQUEST_TTL_DAYS = 14
@@ -530,9 +532,27 @@ export function registerFamilyJoinRoutes(
           .send({ error: 'Daily invitation limit reached for this household. Try again tomorrow.' })
       }
 
-      // One outstanding invite per member — re-inviting rotates the token
-      // rather than leaving multiple live claims on the same roster entry.
-      await invites.deleteMany({ tenant_id, member_id: member.id })
+      // One outstanding invite per member: a resend or a new address rotates
+      // the token rather than leaving stale claims on the roster entry. A
+      // brief-carrying invite to the same address is the exception: each brief
+      // shared before they join has its own link, and an earlier one keeps
+      // working (up to MAX_LIVE_INVITES_PER_MEMBER). Any of them claims the
+      // same entry, accepting one clears the rest, and every waiting share
+      // binds on join either way.
+      const existing = (await invites
+        .find({ tenant_id, member_id: member.id })
+        .toArray()) as unknown as FamilyMemberInviteDoc[]
+      const keep = new Set(
+        next
+          ? existing
+              .filter((i) => i.email === email && i.expires_at.getTime() > Date.now())
+              .sort((a, b) => b.created_at.getTime() - a.created_at.getTime())
+              .slice(0, MAX_LIVE_INVITES_PER_MEMBER - 1)
+              .map((i) => i.id)
+          : [],
+      )
+      const drop = existing.filter((i) => !keep.has(i.id)).map((i) => i.id)
+      if (drop.length) await invites.deleteMany({ id: { $in: drop } })
       const token = randomBytes(24).toString('hex')
       // An invite can reach the wrong person (a mistyped address). It says who sent it, so
       // the right person recognises it, and not which family: that is not for a stranger.
@@ -733,7 +753,8 @@ export function registerFamilyJoinRoutes(
           },
         },
       )
-      await invites.deleteOne({ id: invite.id })
+      // Every invite for this entry is spent now, not just the one used.
+      await invites.deleteMany({ tenant_id: invite.tenant_id, member_id: member.id })
       await bindBriefSharesToMember(db, invite.tenant_id, member.id, userId)
 
       getAuditLogger()?.log({
