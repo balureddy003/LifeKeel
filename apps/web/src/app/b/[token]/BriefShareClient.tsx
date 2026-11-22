@@ -41,6 +41,8 @@ interface SharedBrief {
   for_member_name: string | null
   from_name?: string | null
   can_confirm?: boolean
+  /** True when read through the link with no account: the answer only, nothing to confirm yet. */
+  read_only?: boolean
   confirmation?: Confirmation
   confirmed_opened_at: string | null
   created_at: string
@@ -52,7 +54,8 @@ interface SharedBrief {
   }
 }
 
-type Status = 'loading' | 'ready' | 'open' | 'gone' | 'expired' | 'signin' | 'denied' | 'error'
+type Status =
+  'loading' | 'ready' | 'readonly' | 'open' | 'gone' | 'expired' | 'signin' | 'denied' | 'error'
 
 const gbp = (minor: unknown) =>
   typeof minor === 'number' ? `£${Math.round(Math.abs(minor) / 100).toLocaleString('en-GB')}` : null
@@ -127,7 +130,7 @@ export default function BriefShareClient() {
         const data = (await r.json()) as SharedBrief
         setBrief(data)
         setConfirmation(data.confirmation ?? null)
-        setStatus('ready')
+        setStatus(data.read_only ? 'readonly' : 'ready')
       })
       .catch(() => !cancelled && setStatus('error'))
     return () => {
@@ -289,6 +292,53 @@ export default function BriefShareClient() {
             </p>
           )}
         </GlassCard>
+      )}
+
+      {status === 'readonly' && brief && (
+        <div className="mt-6 space-y-4">
+          <GlassCard className="p-6">
+            <h1 className="text-sm font-medium text-ink-tertiary">{brief.title}</h1>
+            {name && (
+              <p className="mt-1 text-sm text-ink-tertiary">
+                {brief.from_name
+                  ? `${brief.from_name} prepared this for ${name}`
+                  : `Prepared for ${name}`}
+              </p>
+            )}
+            <p className="mt-3 text-2xl font-semibold leading-snug text-ink-primary">
+              {briefHeadline(sentence.main)}
+            </p>
+            {typeof runway === 'number' ? (
+              <p className="mt-2 text-ink-primary">
+                <span className="text-3xl font-semibold tracking-tight">{runway}</span>
+                <span className="ml-2 text-base text-ink-secondary">
+                  months of savings after the change
+                </span>
+              </p>
+            ) : null}
+            <details className="mt-2">
+              <summary className="min-h-[48px] cursor-pointer py-2 text-sm font-medium text-family-400">
+                How this was worked out
+              </summary>
+              <p className="text-ink-secondary">{sentence.main}</p>
+              {sentence.note && <p className="mt-2 text-xs text-ink-tertiary">{sentence.note}</p>}
+            </details>
+          </GlassCard>
+          <GlassCard className="p-6">
+            <p className="text-ink-secondary">
+              You are reading this without an account, so nothing is recorded yet. To confirm that
+              you have seen it, sign in
+              {name ? ` as ${name}` : ''}. If you have not joined the family yet, use the invite
+              from the person who sent this.
+            </p>
+            <Link
+              href={`/login?next=${encodeURIComponent(`/b/${token}`)}`}
+              className={`${primaryBtn} mt-4`}
+            >
+              Sign in to confirm
+            </Link>
+          </GlassCard>
+        </div>
       )}
 
       {status === 'open' && brief && (

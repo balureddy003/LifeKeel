@@ -32,7 +32,9 @@ describe('KEEL-014: personalizeAction swaps in a real provider name when one exi
 
   it('personalizes the medical action for either a health or critical_illness policy', () => {
     const action = EVENT_ACTIONS.medical!.find((a) => a.id === '1')!
-    expect(personalizeAction(action, [makePolicy({ type: 'critical_illness', provider: 'Bupa' })])).toBe('Review your Bupa coverage details')
+    expect(
+      personalizeAction(action, [makePolicy({ type: 'critical_illness', provider: 'Bupa' })]),
+    ).toBe('Review your Bupa coverage details')
   })
 
   it('leaves actions with no policyTypes configured unchanged regardless of policies', () => {

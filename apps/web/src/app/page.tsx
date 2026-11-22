@@ -48,6 +48,8 @@ import { haptic } from '@/lib/haptics'
 import { PinnedTiles } from '@/components/PinnedTiles'
 import { EmergencyRow } from '@/components/EmergencyRow'
 import { SeenByCard } from '@/components/SeenByCard'
+import { LatestBriefCard } from '@/components/LatestBriefCard'
+import { shouldShowScore } from '@/lib/home-score'
 import { SERVICES, setupStepsFor } from '@/lib/services'
 import {
   visibleSetupSteps,
@@ -896,6 +898,7 @@ export default function HomePage() {
         hasLiveData={hasLiveData}
       />
       <SeenByCard />
+      <LatestBriefCard />
       <PinnedTiles />
       <SinceLastVisit
         score={readinessScore}
@@ -921,7 +924,7 @@ export default function HomePage() {
           event" link at lg+ — that card moved to the bottom of the page
           (a crisis entry point read as daily-dashboard clutter at the
           top), so the score now takes the full row again. */}
-      {(scoreLoading || hasLiveData) && (
+      {(scoreLoading || shouldShowScore({ score: readinessScore, hasLiveData })) && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

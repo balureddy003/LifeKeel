@@ -588,41 +588,84 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
     },
   )
 
-  app.get<{ Params: { token: string } }>('/b/:token', async (req, reply) => {
-    reply.header('Cache-Control', 'private, no-store')
-    const b = await loadShare(req.params.token)
-    const error = shareError(b)
-    if (error) return reply.code(error.status).send({ error: error.error })
-    if (b!.contract_version === 2 && !(await participant(b!, req.authContext))) {
-      // Shared with a partner who has not joined yet: say so, so the page can
-      // point them at their invite. Still no figures before their own sign-in,
-      // and first names only, as the invite page shows a link holder.
-      const pending = req.authContext ? undefined : await pendingRecipient(b!)
-      if (pending)
-        return reply.code(401).send({
-          error: 'Join the household from your invite to see this brief',
-          pending_invite: true,
-          for_member_name: pending.name.trim().split(/\s+/)[0] ?? null,
-          from_name: await creatorFirstName(b!),
-        })
-      return reply
-        .code(req.authContext ? 403 : 401)
-        .send({ error: 'Sign in as the adult this brief was shared with' })
-    }
-    await briefsFor(db, b!.tenant_id).updateOne(
-      { id: b!.id, link_fetched_at: null },
-      { $set: { link_fetched_at: new Date() } },
+  /**
+   * A money brief (never a handover or sensitive one) may be read through its link with no account, so the
+   * other adult sees the numbers before deciding to sign in. The view is trimmed to the answer, its labelled
+   * figures and first names: no ids, raw inputs, creator, share details or receipts. Reading earns no
+   * confirmation; confirming still needs the named adult's session.
+   */
+  function readableWithoutAccount(b: HouseholdBriefDoc) {
+    const entry = BRIEF_CATALOGUE.find((e) => e.id === b.problem_type)
+    return (
+      b.contract_version === 2 &&
+      !!entry &&
+      entry.mode !== 'handover' &&
+      !entry.sensitive &&
+      !b.sensitive &&
+      !b.facts_encrypted
     )
-    return {
-      ...briefView(b!, undefined, await factsFor(b!, req.authContext?.user_id)),
-      sentence: b!.template_sentence,
-      for_member_name: b!.share!.for_member_name,
-      // First name only, so the recipient knows who this is from.
-      from_name: await creatorFirstName(b!),
-      // Old anonymous opens remain readable but cannot earn adult receipts.
-      can_confirm: b!.contract_version === 2,
-    }
-  })
+  }
+
+  app.get<{ Params: { token: string } }>(
+    '/b/:token',
+    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    async (req, reply) => {
+      reply.header('Cache-Control', 'private, no-store')
+      reply.header('X-Robots-Tag', 'noindex, nofollow')
+      const b = await loadShare(req.params.token)
+      const error = shareError(b)
+      if (error) return reply.code(error.status).send({ error: error.error })
+      if (b!.contract_version === 2 && !(await participant(b!, req.authContext))) {
+        if (!req.authContext && readableWithoutAccount(b!))
+          return {
+            read_only: true,
+            // A partner not yet on the household is pointed at their invite.
+            ...((await pendingRecipient(b!)) ? { pending_invite: true } : {}),
+            can_confirm: false,
+            problem_type: b!.problem_type,
+            title: b!.title,
+            result_version: b!.result_version,
+            result: b!.result,
+            sentence: b!.template_sentence,
+            template_sentence: b!.template_sentence,
+            facts: b!.facts ?? [],
+            as_of_date: b!.as_of_date,
+            created_at: b!.created_at,
+            // First name only: this view is open to anyone holding the link.
+            for_member_name: b!.share!.for_member_name?.trim().split(/\s+/)[0] ?? null,
+            from_name: await creatorFirstName(b!),
+            expires_at: b!.share!.expires_at,
+          }
+        // Shared with a partner who has not joined yet: say so, so the page can
+        // point them at their invite (signing in elsewhere does not join the
+        // household; the invite does). Still no figures, first names only.
+        const pending = await pendingRecipient(b!)
+        if (pending)
+          return reply.code(req.authContext ? 403 : 401).send({
+            error: 'Join the household from your invite to see this brief',
+            pending_invite: true,
+            for_member_name: pending.name.trim().split(/\s+/)[0] ?? null,
+            from_name: await creatorFirstName(b!),
+          })
+        return reply
+          .code(req.authContext ? 403 : 401)
+          .send({ error: 'Sign in as the adult this brief was shared with' })
+      }
+      await briefsFor(db, b!.tenant_id).updateOne(
+        { id: b!.id, link_fetched_at: null },
+        { $set: { link_fetched_at: new Date() } },
+      )
+      return {
+        ...briefView(b!, undefined, await factsFor(b!, req.authContext?.user_id)),
+        sentence: b!.template_sentence,
+        for_member_name: b!.share!.for_member_name,
+        // First name only, so the recipient knows who this is from.
+        from_name: await creatorFirstName(b!),
+        // Old anonymous opens remain readable but cannot earn adult receipts.
+        can_confirm: b!.contract_version === 2,
+      }
+    },
+  )
 
   app.post<{ Params: { token: string } }>('/b/:token/confirm', async (req, reply) => {
     reply.header('Cache-Control', 'private, no-store')

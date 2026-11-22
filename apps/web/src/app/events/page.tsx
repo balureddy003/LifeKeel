@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 import {
@@ -43,19 +44,28 @@ const EVENT_ICONS: Record<string, LucideIcon> = {
   retirement: Palmtree,
 }
 
+/** The situations most families come for first; the rest are one tap away. */
+const LEAD_EVENT_IDS = ['job-loss', 'medical', 'bereavement', 'new-child']
+
 export default function EventsPage() {
+  const [showAll, setShowAll] = useState(false)
+  const events = showAll
+    ? LIFE_EVENTS
+    : LIFE_EVENTS.filter((e) => LEAD_EVENT_IDS.includes(e.id)).sort(
+        (a, b) => LEAD_EVENT_IDS.indexOf(a.id) - LEAD_EVENT_IDS.indexOf(b.id),
+      )
   return (
     <PageTransition>
       <div className="px-5 pt-2 space-y-5">
         <PageHeader
           title="What If?"
-          subtitle="Pick a situation to see your family's response plan"
+          subtitle="Pick a situation to see what is on your family list that applies"
         />
 
         <EmergencyRow />
 
         <div className="space-y-3">
-          {LIFE_EVENTS.map((event, i) => (
+          {events.map((event, i) => (
             <motion.div
               key={event.id}
               initial={{ opacity: 0, x: -20 }}
@@ -107,11 +117,19 @@ export default function EventsPage() {
           ))}
         </div>
 
+        <button
+          type="button"
+          onClick={() => setShowAll((v) => !v)}
+          className="min-h-[48px] w-full rounded-full border border-haze px-4 text-base font-medium text-ink-primary"
+        >
+          {showAll ? 'Show fewer' : 'Show every situation'}
+        </button>
+
         <div className="glass rounded-2xl p-4 flex items-start gap-2">
           <Info size={18} className="text-ink-tertiary flex-shrink-0 mt-0.5" />
           <p className="text-xs text-ink-tertiary leading-relaxed">
-            This is a simulation to help you prepare. Your family&apos;s real data stays private and
-            is never shared.
+            This shows what is on your family list for each situation. It is information only, and
+            your family&apos;s data stays private.
           </p>
         </div>
       </div>

@@ -37,4 +37,13 @@ describe('briefs page for a first-time solo household', () => {
     expect(before(choice, free)).toBe(true)
     expect(before(choice, solo)).toBe(true)
   })
+
+  it('opens at the top, not wherever the previous screen was scrolled to', async () => {
+    const scrollTo = vi.fn()
+    vi.stubGlobal('scrollTo', scrollTo)
+    render(<BriefsPage />)
+    await screen.findByRole('heading', { name: 'What is changing?' })
+    expect(scrollTo).toHaveBeenCalledWith(0, 0)
+    vi.unstubAllGlobals()
+  })
 })

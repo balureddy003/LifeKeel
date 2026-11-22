@@ -2016,6 +2016,63 @@ scenario(
   },
 )
 
+scenario(
+  '30 briefs: a money brief link is readable with no account, confirming is not',
+  async () => {
+    const fam = await makeFamily('Linkread', 'Open')
+    const partner = await joinAndApprove(fam, 'Tomas', 'Open')
+    check(
+      'the partner joined',
+      !!partner.token,
+      JSON.stringify(partner.j?.json ?? '').slice(0, 200),
+    )
+    const group = await call('GET', '/family', { token: fam.org.token })
+    const other = (group.json?.family?.members ?? []).find((m) => /^Tomas/.test(m.name ?? ''))
+    check('the partner is on the family list', !!other, JSON.stringify(group.json).slice(0, 200))
+    const made = await call('POST', '/family/briefs', {
+      token: fam.org.token,
+      body: {
+        contract_version: 2,
+        problem_type: 'earning_less',
+        for_member_id: other?.id,
+        inputs: {
+          monthly_income_minor: 420000,
+          monthly_essentials_minor: 360000,
+          liquid_savings_minor: 900000,
+          new_income_minor: 0,
+          new_essentials_minor: 360000,
+          change_date: '2027-03-01',
+        },
+      },
+    })
+    expectStatus('the brief is made and shared', made, 201)
+    const link = made.json?.brief?.share?.url
+    check('there is a link', !!link, made.text.slice(0, 200))
+    const anon = await call('GET', `/b/${link}`)
+    expectStatus('the link opens with no account', anon, 200)
+    check(
+      'it is read-only and carries the answer',
+      anon.json?.read_only === true && !!anon.json?.sentence && anon.json?.can_confirm === false,
+      anon.text.slice(0, 300),
+    )
+    check(
+      'it leaks no ids, inputs, creator or receipts',
+      ['id', 'inputs', 'created_by', 'share', 'confirmation'].every(
+        (k) => !(k in (anon.json ?? {})),
+      ),
+      Object.keys(anon.json ?? {}).join(','),
+    )
+    expectStatus(
+      'confirming with no account is refused',
+      await call('POST', `/b/${link}/confirm`, {
+        body: { result_version: anon.json?.result_version },
+      }),
+      401,
+    )
+    expectStatus('an unknown link is closed', await call('GET', '/b/not-a-real-link'), 404)
+  },
+)
+
 // ═════════════════════════ RUNNER ═══════════════════════════════════════════
 const started = Date.now()
 for (const s of scenarios) {
