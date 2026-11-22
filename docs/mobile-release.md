@@ -35,6 +35,10 @@ with fastlane → TestFlight; Android builds on `ubuntu-latest` → Play track.
    | `ASC_KEY_P8` | `base64 -i AuthKey_XXXX.p8` output |
    | `APPLE_TEAM_ID` | 10-char Team ID (developer.apple.com → Membership) |
 
+**Shortcut for step 4:** `apps/mobile/scripts/setup-ios-release.sh AuthKey_XXXX.p8 KEY_ID ISSUER_ID TEAM_ID`
+stores the four secrets (it prints none). If the first build fails at signing, give the API key the
+App Manager or Admin role: Xcode's cloud signing may need more than Developer.
+
 ## One-time setup — Android (~30 min, needs the Play account)
 
 1. **Play Console**: create the app (package `uk.co.lifekeel.app`), enable
