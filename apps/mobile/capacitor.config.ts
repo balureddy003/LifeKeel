@@ -21,6 +21,8 @@ const config: CapacitorConfig = {
     // user to app.lifekeel.si (accounts and sessions are per TLD).
     // LIFEKEEL_WEB_URL points a test build at staging; unset, it is production.
     url: process.env['LIFEKEEL_WEB_URL'] || 'https://app.lifekeel.co.uk',
+    // Local page (copied into www by the prepare scripts) shown when the site cannot be reached.
+    errorPath: 'offline.html',
     // Keep OAuth and deep links inside the shell instead of kicking out
     // to Safari — auth flows bounce through the API domain.
     allowNavigation: [
