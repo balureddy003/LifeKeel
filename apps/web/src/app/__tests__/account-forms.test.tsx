@@ -34,6 +34,20 @@ afterEach(() => {
 })
 
 describe('signup form', () => {
+  it('clears a field error as soon as that field is typed in, so a filled form never shows stale errors', () => {
+    render(<SignUpPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'Create your free account' }))
+    expect(screen.getByText('Enter your name.')).toBeTruthy()
+    expect(screen.getByText('Enter your email address.')).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'Sim Tester' } })
+    expect(screen.queryByText('Enter your name.')).toBeNull()
+    expect(screen.getByLabelText('Your name').getAttribute('aria-invalid')).toBeNull()
+    // the other field's error is untouched until it is typed in
+    expect(screen.getByText('Enter your email address.')).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Email address'), { target: { value: 'a@b.test' } })
+    expect(screen.queryByText('Enter your email address.')).toBeNull()
+  })
+
   it('is a real form: Enter submits, errors are announced, fields are marked invalid and focus moves', async () => {
     const { container } = render(<SignUpPage />)
     expect(container.querySelector('form')).not.toBeNull()

@@ -69,4 +69,13 @@ describe('VerifyEmailBanner', () => {
     await waitFor(() => expect(screen.getByText(/link sent/i)).toBeTruthy())
     expect(resendVerificationEmail).toHaveBeenCalledTimes(1)
   })
+
+  it('tells the page it is there, so the content under it does not add the status-bar gap twice', async () => {
+    signedIn(false)
+    const { unmount } = render(<VerifyEmailBanner />)
+    await waitFor(() => expect(document.documentElement.dataset['topBanner']).toBe('1'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Dismiss' }))
+    await waitFor(() => expect(document.documentElement.dataset['topBanner']).toBeUndefined())
+    unmount()
+  })
 })

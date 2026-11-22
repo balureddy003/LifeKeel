@@ -55,6 +55,10 @@ export default function SignUpPage() {
     password?: string
   }>({})
 
+  /** A field's error goes as soon as the person types in it, not at the next submit. */
+  const clearError = (k: 'name' | 'email' | 'password') =>
+    setFieldErrors((f) => (f[k] ? { ...f, [k]: undefined } : f))
+
   const validate = () => {
     const e: { name?: string; email?: string; password?: string } = {}
     if (!name.trim()) e.name = 'Enter your name.'
@@ -149,7 +153,10 @@ export default function SignUpPage() {
             id="signup-name"
             type="text"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value)
+              clearError('name')
+            }}
             autoComplete="name"
             className="lk-input"
             aria-invalid={fieldErrors.name ? true : undefined}
@@ -168,7 +175,10 @@ export default function SignUpPage() {
             type="email"
             placeholder="you@example.com"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              setEmail(e.target.value)
+              clearError('email')
+            }}
             autoComplete="email"
             className="lk-input"
             aria-invalid={fieldErrors.email ? true : undefined}
@@ -185,7 +195,10 @@ export default function SignUpPage() {
           <PasswordInput
             id="signup-password"
             value={password}
-            onChange={setPassword}
+            onChange={(v) => {
+              setPassword(v)
+              clearError('password')
+            }}
             autoComplete="new-password"
             inputClassName="lk-input"
             wrapperClassName="lk-pw"

@@ -9,6 +9,7 @@ vi.mock('../http', () => ({ credFetch: (...a: unknown[]) => credFetch(...a) }))
 vi.mock('../env', () => ({ getApiBase: () => 'https://api.test' }))
 
 import { subscribeNativePush, unregisterAllPush, unsubscribeNativePush } from '../push'
+import { getNativePushFailure } from '../native'
 
 type Cb = (d: { value?: string; error?: string }) => void
 
@@ -114,5 +115,27 @@ describe('sign-out unregistration', () => {
     prefs.set('lifekeel_push_token', 'device-token-abc')
     credFetch.mockRejectedValue(new Error('offline'))
     await expect(unregisterAllPush()).resolves.toBeUndefined()
+  })
+
+  describe('why it failed', () => {
+    it('says "denied" when the person refused the permission prompt', async () => {
+      fakeShell({ permission: 'denied' })
+      expect(await subscribeNativePush()).toBe(false)
+      expect(getNativePushFailure()).toBe('denied')
+    })
+
+    it('says "no_token" when permission was given but the device returned no token', async () => {
+      fakeShell({ permission: 'granted', token: null })
+      expect(await subscribeNativePush()).toBe(false)
+      expect(getNativePushFailure()).toBe('no_token')
+    })
+
+    it('clears the reason on success', async () => {
+      fakeShell({ permission: 'denied' })
+      await subscribeNativePush()
+      fakeShell({ permission: 'granted' })
+      expect(await subscribeNativePush()).toBe(true)
+      expect(getNativePushFailure()).toBeNull()
+    })
   })
 })

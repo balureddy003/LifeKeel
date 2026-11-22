@@ -52,6 +52,15 @@ export function VerifyEmailBanner() {
 
   const show = isAuthenticated && user?.emailVerified === false && !dismissed
 
+  // The banner already clears the status bar, so the page content below it must not add that gap again.
+  useEffect(() => {
+    if (!show) return
+    document.documentElement.dataset['topBanner'] = '1'
+    return () => {
+      delete document.documentElement.dataset['topBanner']
+    }
+  }, [show])
+
   return (
     <AnimatePresence>
       {show && (

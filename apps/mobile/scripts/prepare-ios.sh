@@ -9,6 +9,10 @@ cd "$(dirname "$0")/.."
 mkdir -p www
 [ -f www/index.html ] || echo '<!doctype html><title>LifeKeel</title>' > www/index.html
 
+# Branded page shown when the site cannot be reached (server.errorPath); its retry button
+# points at the same web URL this build loads.
+sed "s|__WEB_URL__|${LIFEKEEL_WEB_URL:-https://app.lifekeel.co.uk}|g" assets/offline.html > www/offline.html
+
 [ -d ios ] || pnpm run add:ios
 pnpm exec cap sync ios
 
