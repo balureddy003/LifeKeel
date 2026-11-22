@@ -393,6 +393,8 @@ html[data-session] .lk-landing-gate { visibility: hidden; }
    each page's PageHeader sticks just under it as the top bar. */
 .app-shell-with-rail { --app-header-height: env(safe-area-inset-top, 0px); }
 .app-shell-with-rail #main-content { padding-top: env(safe-area-inset-top, 0px); }
+/* A top banner (verify email) already clears the status bar; don't add the gap twice. */
+html[data-top-banner] .app-shell-with-rail #main-content { padding-top: 0; }
 .app-statusbar,
 .app-shell-with-rail .app-page-header {
   background: linear-gradient(180deg, rgb(var(--nav-bg) / .9), rgb(var(--nav-bg) / .76));
