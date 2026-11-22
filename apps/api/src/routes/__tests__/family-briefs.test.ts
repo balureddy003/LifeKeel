@@ -629,8 +629,6 @@ describe('brief contract v2', () => {
     expect(b.result_version).toHaveLength(64)
     expect(b.contract_version).toBe(2)
     const token = b.share.url
-    currentUser = null
-    expect((await app.inject({ method: 'GET', url: `/b/${token}` })).statusCode).toBe(401)
     currentUser = 'user-stranger'
     expect((await app.inject({ method: 'GET', url: `/b/${token}` })).statusCode).toBe(403)
     currentUser = PARTNER
@@ -638,6 +636,77 @@ describe('brief contract v2', () => {
     expect(opened.statusCode).toBe(200)
     // The recipient is told who it is from: a first name, nothing more.
     expect(opened.json().from_name).toBe('Sam')
+  })
+
+  describe('reading a money brief by link without an account', () => {
+    it('shows the answer read-only: no ids, inputs, creator or share details, and no receipt', async () => {
+      const b = (await createV2()).json().brief
+      currentUser = null
+      const res = await app.inject({ method: 'GET', url: `/b/${b.share.url}` })
+      expect(res.statusCode).toBe(200)
+      const v = res.json()
+      expect(v.read_only).toBe(true)
+      expect(v.can_confirm).toBe(false)
+      expect(v.sentence).toBe(b.template_sentence)
+      expect(v.from_name).toBe('Sam')
+      expect(v.for_member_name).toBeTruthy()
+      for (const leaked of [
+        'id',
+        'inputs',
+        'created_by',
+        'share',
+        'confirmation',
+        'sensitive_access',
+      ])
+        expect(v).not.toHaveProperty(leaked)
+      expect(res.headers['cache-control']).toContain('no-store')
+      expect(String(res.headers['x-robots-tag'])).toContain('noindex')
+      const stored = await db.collection('household_briefs').findOne({ id: b.id })
+      expect(stored!.acknowledgements ?? []).toEqual([])
+      expect(stored!.confirmed_opened_at ?? null).toBeNull()
+    })
+
+    it('still refuses confirming without a session, and a signed-in stranger cannot read', async () => {
+      const b = (await createV2()).json().brief
+      currentUser = null
+      const confirm = await app.inject({
+        method: 'POST',
+        url: `/b/${b.share.url}/confirm`,
+        payload: { result_version: b.result_version },
+      })
+      expect(confirm.statusCode).toBe(401)
+      currentUser = 'user-stranger'
+      expect((await app.inject({ method: 'GET', url: `/b/${b.share.url}` })).statusCode).toBe(403)
+    })
+
+    it('a revoked or unknown link stays closed to anonymous readers', async () => {
+      const b = (await createV2()).json().brief
+      currentUser = CREATOR
+      await app.inject({ method: 'POST', url: `/family/briefs/${b.id}/revoke` })
+      currentUser = null
+      expect((await app.inject({ method: 'GET', url: `/b/${b.share.url}` })).statusCode).toBe(410)
+      expect((await app.inject({ method: 'GET', url: '/b/not-a-real-token' })).statusCode).toBe(404)
+    })
+
+    it('handover briefs are never readable without a session', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/family/briefs',
+        payload: {
+          contract_version: 2,
+          problem_type: 'handover_gap',
+          for_member_id: 'm-partner',
+          inputs: {
+            change_date: '2026-10-28',
+            facts: { 'Key papers and their locations': 'Will is in the blue folder' },
+          },
+        },
+      })
+      expect(res.statusCode).toBe(201)
+      currentUser = null
+      const anon = await app.inject({ method: 'GET', url: `/b/${res.json().brief.share.url}` })
+      expect(anon.statusCode).toBe(401)
+    })
   })
 
   it('both adults confirm the same result_version; wrong version is refused', async () => {
