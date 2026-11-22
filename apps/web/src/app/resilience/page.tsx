@@ -85,7 +85,7 @@ export default function ResiliencePage() {
       {loaded && data?.status === 'needs_figures' && (
         <GlassCard className="p-4 space-y-2 text-sm text-ink-secondary">
           <p>To work this out we need: {data.missing.join(', ')}.</p>
-          <Link href="/financial-profile" className="text-accent underline">
+          <Link href="/financial-profile" className="text-family-400 underline">
             Open your financial profile
           </Link>
         </GlassCard>
@@ -145,7 +145,7 @@ export default function ResiliencePage() {
                   type="button"
                   disabled={busy}
                   onClick={confirm}
-                  className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                  className="rounded-xl bg-family-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
                 >
                   Confirm these figures
                 </button>
@@ -157,13 +157,13 @@ export default function ResiliencePage() {
           )}
           {history.length > 0 && <ConfirmationHistory entries={history} />}
           <GlassCard className="p-4 text-sm">
-            <Link href="/resilience/businesses" className="text-accent underline">
+            <Link href="/resilience/businesses" className="text-family-400 underline">
               Does a business pay part of your income? Add it
             </Link>
           </GlassCard>
           {sharingOn && (
             <GlassCard className="p-4 text-sm">
-              <Link href="/resilience/sharing" className="text-accent underline">
+              <Link href="/resilience/sharing" className="text-family-400 underline">
                 Share your range anonymously with other households
               </Link>
             </GlassCard>
@@ -178,7 +178,7 @@ export default function ResiliencePage() {
                   <li key={n}>{n}</li>
                 ))}
               </ul>
-              <Link href="/finances" className="text-sm text-accent underline">
+              <Link href="/finances" className="text-sm text-family-400 underline">
                 Update your profile if either is wrong
               </Link>
             </GlassCard>

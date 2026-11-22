@@ -59,7 +59,7 @@ export function FigureRow({
             <button
               type="button"
               aria-label={`Change ${figure.label}`}
-              className="min-h-[48px] px-2 text-accent underline"
+              className="min-h-[48px] px-2 text-family-400 underline"
               onClick={() => {
                 setText(String(Math.round(figure.valueMinor / 100)))
                 setError(null)
@@ -94,7 +94,7 @@ export function FigureRow({
             </button>
             <button
               type="button"
-              className="min-h-[48px] px-3 text-accent underline"
+              className="min-h-[48px] px-3 text-family-400 underline"
               onClick={() => setOpen(false)}
             >
               Cancel

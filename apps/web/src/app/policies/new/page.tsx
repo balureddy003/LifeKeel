@@ -372,7 +372,7 @@ function Saved({
               <p className="text-ink-secondary">Claims contact</p>
               {policy.contact_phone && (
                 <a
-                  className="block min-h-[48px] py-3 text-accent underline"
+                  className="block min-h-[48px] py-3 text-family-400 underline"
                   href={`tel:${policy.contact_phone.replace(/\s+/g, '')}`}
                 >
                   {policy.contact_phone}
@@ -380,7 +380,7 @@ function Saved({
               )}
               {policy.contact_email && (
                 <a
-                  className="block min-h-[48px] py-3 text-accent underline"
+                  className="block min-h-[48px] py-3 text-family-400 underline"
                   href={`mailto:${policy.contact_email}`}
                 >
                   {policy.contact_email}
@@ -391,13 +391,13 @@ function Saved({
           <div className="flex flex-wrap gap-3 pt-2">
             <Link
               href="/domains?d=life_protection"
-              className="min-h-[48px] py-3 text-accent underline"
+              className="min-h-[48px] py-3 text-family-400 underline"
             >
               See the family list
             </Link>
             <button
               type="button"
-              className="min-h-[48px] py-3 text-accent underline"
+              className="min-h-[48px] py-3 text-family-400 underline"
               onClick={onAgain}
             >
               Add another policy
