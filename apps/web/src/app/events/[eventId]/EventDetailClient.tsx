@@ -22,6 +22,7 @@ import { LIFE_EVENTS } from '@/lib/life-data'
 import { CRISIS_EVENT_KEY } from '@/components/CrisisMode'
 import { GlassCard, GlassButton, PageHeader, PageTransition } from '@/components/Glass'
 import { DraftProvenanceNote } from '@/components/DraftProvenance'
+import { IncomeStopBrief } from '@/components/IncomeStopBrief'
 import { haptic } from '@/lib/haptics'
 import { useEventReadiness } from '@/lib/useFamilyData'
 import { useAuth } from '@/lib/auth-context'
@@ -63,9 +64,9 @@ const EVENT_STABILITY: Record<string, number> = {
 // scenario that was never computed. A wrong number is structurally
 // impossible when there's nothing on screen to put one in.
 const SAMPLE_NARRATIVE =
-  "Keel can't compute this scenario yet — none of your data feeds it. " +
-  'Connect your accounts or add the inputs the banner names, and this ' +
-  'becomes a real projection instead of a placeholder.'
+  'Not worked out yet: your family list does not have the figures this needs. ' +
+  'Add your monthly income, spending and savings on your financial profile, or save them from a brief, ' +
+  'and the estimate appears here.'
 const PARTIAL_NARRATIVE =
   'Using the data you have so far — this is a partial picture, with the ' +
   'missing inputs named above.'
@@ -99,12 +100,14 @@ export default function EventDetailClient() {
   // Apply persisted completion after mount (not in useState's initializer)
   // so server-rendered and first-client-render output match — avoids a
   // hydration mismatch, at the cost of a brief unchecked-then-checked flash.
+  // eventId arrives after the first render (static export), so the initial list is the default one. Swap in
+  // this event's own list once the id is known, with saved completion applied.
   useEffect(() => {
     if (!eventId) return
     const done = loadDoneIds(eventId)
-    if (done.size === 0) return
-    setActions((prev) => prev.map((a) => ({ ...a, done: done.has(a.id) })))
-  }, [eventId])
+    const list = EVENT_ACTIONS[event?.id ?? 'default'] ?? EVENT_ACTIONS.default!
+    setActions(list.map((a) => ({ ...a, done: done.has(a.id) })))
+  }, [eventId, event?.id])
 
   useEffect(() => {
     let cancelled = false
@@ -232,6 +235,9 @@ export default function EventDetailClient() {
           subtitle="Here's your family's response plan"
         />
 
+        {/* One door for income stopping: the brief answers it; this page links there first. */}
+        {event.id === 'job-loss' && <IncomeStopBrief />}
+
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -287,7 +293,7 @@ export default function EventDetailClient() {
             ) : (
               <div className="flex items-center gap-1.5 text-xs text-warning mt-2">
                 <AlertTriangle size={12} />
-                <span>Sample scenario — connect your data for a real one</span>
+                <span>Not enough figures on your family list yet</span>
               </div>
             )}
           </GlassCard>
@@ -330,7 +336,7 @@ export default function EventDetailClient() {
           <Link
             href="/"
             onClick={() => localStorage.setItem(CRISIS_EVENT_KEY, event.id)}
-            className="flex items-center justify-center gap-2 w-full rounded-xl border border-family-500/30 bg-family-500/10 text-family-500 text-sm font-semibold min-h-[48px] mb-4"
+            className="flex items-center justify-center gap-2 w-full rounded-xl border border-family-400/40 bg-family-400/10 text-family-400 text-sm font-semibold min-h-[48px] mb-4"
           >
             <Siren size={15} /> Crisis mode — reduce Home to just these steps
           </Link>

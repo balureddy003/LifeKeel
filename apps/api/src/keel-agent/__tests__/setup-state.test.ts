@@ -104,7 +104,8 @@ describe('setup state', () => {
       evidence: { children: 2, children_with_goal: 1 },
     })
     expect(step(s, 'income_recorded').source_updated_at).toBe('2026-10-20T08:00:00.000Z')
-    expect(s.next_step_id).toBe('children_added')
+    // Money first: the half-entered savings come before the missing date of birth.
+    expect(s.next_step_id).toBe('emergency_fund_recorded')
     expect(s.verified_complete).toBe(false)
     expect(s.completed).toBe(s.steps.filter((x) => x.status === 'done').length)
   })
@@ -147,6 +148,8 @@ describe('setup state', () => {
     const s = await state(createFakeDb(seed([organizer, partnerActive])))
     expect(step(s, 'education_goals').status).toBe('not_applicable')
     expect(s.total).toBe(s.steps.length - 1)
+    // A household with no children is asked for its money figures next, not to add children.
+    expect(s.next_step_id).toBe('income_recorded')
     expect(step(s, 'partner_invited').status).toBe('done')
   })
 

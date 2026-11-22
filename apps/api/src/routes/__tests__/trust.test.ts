@@ -1,7 +1,12 @@
 /** PRD-208: GET /trust is public and filtered; PUT /operator/evidence records and audits. */
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import Fastify from 'fastify'
-import { initTaskGateway } from '../../ai/task-gateway.js'
+import {
+  getProcessorRegistry,
+  getTaskRegistry,
+  initTaskGateway,
+  processorsInUse,
+} from '../../ai/task-gateway.js'
 
 vi.mock('../../operator/operator-auth.js', () => ({
   requireOperator: () => async (req: { operatorContext?: unknown }) => {
@@ -46,12 +51,56 @@ async function setup() {
   return { app, evidence, audit }
 }
 
+const PROVIDER_ENV = [
+  'LIFEKEEL_LLM_PROVIDER',
+  'AZURE_OPENAI_ENDPOINT',
+  'VERTEX_PROJECT',
+  'GROQ_API_KEY',
+  'XAI_API_KEY',
+  'ANTHROPIC_API_KEY',
+  'OPENAI_API_KEY',
+  'OLLAMA_BASE_URL',
+  'LOCAL_TEXT_ENABLED',
+]
+
+describe('processors in use (hands-on review G8)', () => {
+  afterEach(() => vi.unstubAllEnvs())
+  const only = (name: string) => {
+    for (const k of PROVIDER_ENV) vi.stubEnv(k, '')
+    vi.stubEnv(name, 'x')
+  }
+
+  it('leaves out an unreviewed provider under enforce, because every call to it is refused', () => {
+    initTaskGateway({ collection: () => ({}) } as never)
+    only('ANTHROPIC_API_KEY')
+    const tasks = [...getTaskRegistry().values()]
+    expect(processorsInUse(tasks, getProcessorRegistry(), 'enforce').has('anthropic')).toBe(false)
+    expect(processorsInUse(tasks, getProcessorRegistry(), 'warn').has('anthropic')).toBe(true)
+  })
+
+  it('counts no hosted provider when no credential is configured', () => {
+    initTaskGateway({ collection: () => ({}) } as never)
+    for (const k of PROVIDER_ENV) vi.stubEnv(k, '')
+    expect(processorsInUse(getTaskRegistry().values(), getProcessorRegistry(), 'warn').size).toBe(0)
+  })
+
+  it('lists the approved provider that serves, and not the self-hosted model while it is off', () => {
+    initTaskGateway({ collection: () => ({}) } as never)
+    only('GROQ_API_KEY')
+    const inUse = processorsInUse(getTaskRegistry().values(), getProcessorRegistry(), 'enforce')
+    expect(inUse.has('groq')).toBe(true)
+    expect(inUse.has('ollama')).toBe(false)
+    expect(inUse.has('anthropic')).toBe(false)
+  })
+})
+
 describe('trust routes', () => {
   it('serves the processor table and no claims until one is evidenced, with no internals', async () => {
     const { app } = await setup()
     const body = (await app.inject({ method: 'GET', url: '/trust' })).json()
     expect(body.claims).toEqual([])
     expect(body.ai.processors.length).toBeGreaterThan(0)
+    for (const p of body.ai.processors) expect(typeof p.in_use).toBe('boolean')
     expect(body.backups).toHaveProperty('statement')
     expect(JSON.stringify(body)).not.toMatch(/owner|reason/)
   })

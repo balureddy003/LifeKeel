@@ -1094,6 +1094,8 @@ export interface AiDisclosureProcessor {
   sub_processors: string[] | null
   review_due: string | null
   used_by_tasks: number
+  /** GET /trust only: whether this processor can receive a call in this deployment. */
+  in_use?: boolean
 }
 
 export interface AiDisclosureTask {

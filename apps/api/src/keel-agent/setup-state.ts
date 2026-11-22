@@ -201,6 +201,8 @@ const adultsOf = (m: FamilyMemberDoc[]) =>
   m.filter((x) => x.status === 'active' && !isMinorMember(x))
 const childrenOf = (m: FamilyMemberDoc[]) => m.filter((x) => isMinorMember(x))
 
+// Order is the order Keel suggests. The money figures come before children: every household has them, a
+// childless one never adds children, and asking about children first read as a form (hands-on review, G9).
 const STEP_DEFS: StepDef[] = [
   {
     id: 'household_created',
@@ -230,31 +232,6 @@ const STEP_DEFS: StepDef[] = [
         status: active > 0 ? 'done' : pending > 0 ? 'waiting_on_other' : 'not_started',
         ...(pending > 0 && active === 0 ? { reason_code: 'invite_pending' } : {}),
         evidence: { other_adults_active: active, other_adults_pending: pending },
-        needs: ['family'],
-      }
-    },
-  },
-  {
-    id: 'children_added',
-    title: 'Add your children to the household',
-    route_key: 'family',
-    est_minutes: 3,
-    who: 'editor',
-    evaluate: (s) => {
-      const kids = childrenOf(roster(s))
-      const noDob = kids.filter((k) => !k.date_of_birth).length
-      return {
-        status: kids.length === 0 ? 'not_started' : noDob > 0 ? 'partial' : 'done',
-        ...(noDob > 0
-          ? {
-              reason_code: 'missing_date_of_birth',
-              title:
-                noDob === 1
-                  ? "Add your child's date of birth"
-                  : "Add your children's dates of birth",
-            }
-          : {}),
-        evidence: { children: kids.length, children_missing_dob: noDob },
         needs: ['family'],
       }
     },
@@ -351,6 +328,31 @@ const STEP_DEFS: StepDef[] = [
         evidence: { adults: everyone.length, adults_with_cover_recorded: covered },
         needs: ['family', 'profile'],
         updated: p?.updated_at ?? null,
+      }
+    },
+  },
+  {
+    id: 'children_added',
+    title: 'Add your children to the household',
+    route_key: 'family',
+    est_minutes: 3,
+    who: 'editor',
+    evaluate: (s) => {
+      const kids = childrenOf(roster(s))
+      const noDob = kids.filter((k) => !k.date_of_birth).length
+      return {
+        status: kids.length === 0 ? 'not_started' : noDob > 0 ? 'partial' : 'done',
+        ...(noDob > 0
+          ? {
+              reason_code: 'missing_date_of_birth',
+              title:
+                noDob === 1
+                  ? "Add your child's date of birth"
+                  : "Add your children's dates of birth",
+            }
+          : {}),
+        evidence: { children: kids.length, children_missing_dob: noDob },
+        needs: ['family'],
       }
     },
   },

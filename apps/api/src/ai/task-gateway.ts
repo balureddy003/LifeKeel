@@ -163,6 +163,35 @@ export function resolveServingProcessor(policy: AiTaskPolicy): string | null {
   }
 }
 
+/**
+ * The processors that can actually receive a call in this deployment, mirroring baseFor(): the self-hosted
+ * model only when it is switched on, a hosted provider only where a task may reach one. An unreviewed
+ * processor under `enforce` is left out, because every call to it is refused. Feeds the public trust page,
+ * so it lists what can serve rather than everything in the registry.
+ */
+export function processorsInUse(
+  tasks: Iterable<AiTaskPolicy>,
+  processors: ProcessorRegistry,
+  enforcement: ProcessorEnforcement,
+): Set<string> {
+  const out = new Set<string>()
+  for (const p of tasks) {
+    if (p.data_boundary === 'device_only') continue
+    if (p.data_boundary === 'lifekeel_infra_required' && !localTextConfigured()) continue
+    if (p.data_boundary === 'lifekeel_infra' && !localTextConfigured() && !hostedFallbackAllowed())
+      continue
+    const id = resolveServingProcessor(p)
+    if (!id) continue
+    // With no provider credential at all the router answers with canned text and sends nothing out.
+    if (id !== 'ollama' && detectActiveProvider() === null) continue
+    const entry = processors.get(id)
+    if (!entry) continue
+    if (enforcement === 'enforce' && entry.status === 'unreviewed') continue
+    out.add(id)
+  }
+  return out
+}
+
 function onProcessorViolation(v: ProcessorViolation, mode: 'warn' | 'enforce'): void {
   recordProcessorViolation(v.reason, mode)
   // Names and reasons only: never a prompt, completion or tenant.

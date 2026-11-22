@@ -1467,7 +1467,7 @@ export default function SettingsPage() {
           >
             <div className="text-base font-medium">Automation & Approvals</div>
             <div className="text-xs text-ink-tertiary mt-0.5">
-              Dry-run mode and the trust Keel earns from your approvals
+              Dry-run mode and a record of what you approved
             </div>
           </ListRow>
           <ListRow

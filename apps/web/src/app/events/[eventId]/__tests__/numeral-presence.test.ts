@@ -92,3 +92,11 @@ describe('intent 65: scenario narrations only speak solver numbers', () => {
     })
   }
 })
+
+describe('runway phrase', () => {
+  it('rounds down like the server text, so 2.5 months reads as about 2 everywhere', () => {
+    expect(runwayPhrase(2.5)).toBe('about 2 months')
+    expect(runwayPhrase(1.9)).toBe('about 1 month')
+    expect(runwayPhrase(0.6)).toBe('less than a month')
+  })
+})

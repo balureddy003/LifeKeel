@@ -97,6 +97,10 @@ function webCopyFiles(): string[] {
     // A brief's figures offered to the family list: states what was typed and what is on file.
     'apps/web/src/app/b/[token]/BriefShareClient.tsx',
     'apps/web/src/components/LatestBriefCard.tsx',
+    // Hands-on review: the income-stop door, What If checklists and the Keel Plus page.
+    'apps/web/src/components/IncomeStopBrief.tsx',
+    'apps/web/src/lib/event-actions.ts',
+    'apps/web/src/app/upgrade/page.tsx',
     'apps/web/src/lib/home-score.ts',
     'apps/web/src/app/events/page.tsx',
     'apps/web/src/lib/life-data.ts',
