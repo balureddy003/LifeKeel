@@ -6,6 +6,7 @@ const confirmResilienceFigures = vi.fn()
 const fetchFamilyLearning = vi.fn()
 const fetchConfirmationHistory = vi.fn()
 vi.mock('@/lib/api', () => ({
+  listBriefs: () => Promise.resolve([]),
   fetchFamilyLearning: () => fetchFamilyLearning() ?? Promise.resolve(null),
   fetchConfirmationHistory: () => fetchConfirmationHistory() ?? Promise.resolve(null),
   fetchFamilyResilience: () => fetchFamilyResilience(),
@@ -49,6 +50,11 @@ describe('/resilience', () => {
     expect(screen.getByText(/tax and benefits/)).toBeTruthy()
     expect(screen.getByText(/Check the savings balance/)).toBeTruthy()
     expect(screen.getAllByText(/estimate/i).length).toBeGreaterThan(0)
+    // One door (G3): the brief is offered first, and this estimate names its own assumption.
+    expect(screen.getByRole('heading', { name: 'If all income stopped today' })).toBeTruthy()
+    expect((await screen.findByTestId('income-stop-brief')).getAttribute('href')).toBe(
+      '/briefs?start=income_stops',
+    )
   })
 
   it('asks for the missing figures instead of showing a number', async () => {

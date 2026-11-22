@@ -65,7 +65,8 @@ const EVENT_STABILITY: Record<string, number> = {
 // impossible when there's nothing on screen to put one in.
 const SAMPLE_NARRATIVE =
   'Not worked out yet: your family list does not have the figures this needs. ' +
-  'Add your monthly income, spending and savings on your financial profile and the estimate appears here.'
+  'Add your monthly income, spending and savings on your financial profile, or save them from a brief, ' +
+  'and the estimate appears here.'
 const PARTIAL_NARRATIVE =
   'Using the data you have so far — this is a partial picture, with the ' +
   'missing inputs named above.'
@@ -99,12 +100,14 @@ export default function EventDetailClient() {
   // Apply persisted completion after mount (not in useState's initializer)
   // so server-rendered and first-client-render output match — avoids a
   // hydration mismatch, at the cost of a brief unchecked-then-checked flash.
+  // eventId arrives after the first render (static export), so the initial list is the default one. Swap in
+  // this event's own list once the id is known, with saved completion applied.
   useEffect(() => {
     if (!eventId) return
     const done = loadDoneIds(eventId)
-    if (done.size === 0) return
-    setActions((prev) => prev.map((a) => ({ ...a, done: done.has(a.id) })))
-  }, [eventId])
+    const list = EVENT_ACTIONS[event?.id ?? 'default'] ?? EVENT_ACTIONS.default!
+    setActions(list.map((a) => ({ ...a, done: done.has(a.id) })))
+  }, [eventId, event?.id])
 
   useEffect(() => {
     let cancelled = false

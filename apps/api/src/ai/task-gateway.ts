@@ -182,6 +182,8 @@ export function processorsInUse(
       continue
     const id = resolveServingProcessor(p)
     if (!id) continue
+    // With no provider credential at all the router answers with canned text and sends nothing out.
+    if (id !== 'ollama' && detectActiveProvider() === null) continue
     const entry = processors.get(id)
     if (!entry) continue
     if (enforcement === 'enforce' && entry.status === 'unreviewed') continue

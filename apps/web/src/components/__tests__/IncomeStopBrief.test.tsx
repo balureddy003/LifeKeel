@@ -11,7 +11,8 @@ const brief = (over: object = {}) => ({
   id: 'b1',
   problem_type: 'income_stops',
   title: 'One of us might stop earning',
-  template_sentence: 'Your savings would last until about June 2027.',
+  template_sentence:
+    'Savings last about 5.3 months. On these figures savings would run out around June 2027 (about month 6.3). Figures are the household’s own entries — tax is not covered.',
   created_at: '2026-11-21T10:00:00Z',
   stale: false,
   ...over,

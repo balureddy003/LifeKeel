@@ -48,4 +48,11 @@ describe('checklists assume no adviser (hands-on review G7)', () => {
     const labels = Object.values(EVENT_ACTIONS).flatMap((list) => list.map((a) => a.label))
     expect(labels.filter((l) => /your (financial )?advis[eo]r/i.test(l))).toEqual([])
   })
+
+  it('uses UK wording, not US terms', () => {
+    const labels = Object.values(EVENT_ACTIONS).flatMap((list) => list.map((a) => a.label))
+    const us =
+      /resume|HSA|out-of-pocket|pre-authori[sz]ation|utilized|unemployment benefits|financial advisor/i
+    expect(labels.filter((l) => us.test(l))).toEqual([])
+  })
 })

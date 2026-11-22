@@ -87,7 +87,11 @@ export default function ResiliencePage() {
 
       {loaded && data?.status === 'needs_figures' && (
         <GlassCard className="p-4 space-y-2 text-sm text-ink-secondary">
-          <p>To work this out we need: {data.missing.join(', ')}.</p>
+          <p>
+            This estimate uses your family list, which does not have these yet:{' '}
+            {data.missing.join(', ')}. A brief keeps its own figures; open it and save them to the
+            list, or add them on your financial profile.
+          </p>
           <Link href="/financial-profile" className="text-family-400 underline">
             Open your financial profile
           </Link>
@@ -97,6 +101,11 @@ export default function ResiliencePage() {
       {loaded && data?.status === 'ready' && (
         <>
           <GlassCard className="p-4 space-y-3">
+            {/* Names its assumption, so it does not read as a second answer to the brief above, which
+                counts any income still coming in after the change. */}
+            <h2 className="text-sm font-semibold text-ink-tertiary uppercase tracking-wide">
+              If all income stopped today
+            </h2>
             <p className="text-base text-ink-primary">{data.text}</p>
             <p className="text-sm text-ink-tertiary">
               Left out of this estimate: {data.left_out.join(', ')}.

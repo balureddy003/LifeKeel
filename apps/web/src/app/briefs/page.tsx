@@ -1846,6 +1846,8 @@ export default function BriefsPage() {
                         {briefHeadline(splitBriefSentence(b.template_sentence).main)}
                       </p>
                       <WhatIf brief={b} />
+                      {/* A saved brief can still hand its figures to the family list, not only a new one. */}
+                      {canCreate && <SaveFiguresCard inputs={b.inputs} />}
                       {!b.confirmation?.creator_at && b.result_version && (
                         <button
                           type="button"

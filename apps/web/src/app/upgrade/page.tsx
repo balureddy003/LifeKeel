@@ -19,7 +19,6 @@ import {
 const BENEFITS = [
   'A brief for every situation you face, not just the first one',
   'Both adults see each answer, and Keel marks a brief when your figures change',
-  'Your family list kept current as policies renew and figures move',
 ]
 const ALSO_INCLUDED =
   'Also included: Keel reads a policy document or a financial email and lists what it found for you to confirm.'

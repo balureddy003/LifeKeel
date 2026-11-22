@@ -78,6 +78,12 @@ describe('processors in use (hands-on review G8)', () => {
     expect(processorsInUse(tasks, getProcessorRegistry(), 'warn').has('anthropic')).toBe(true)
   })
 
+  it('counts no hosted provider when no credential is configured', () => {
+    initTaskGateway({ collection: () => ({}) } as never)
+    for (const k of PROVIDER_ENV) vi.stubEnv(k, '')
+    expect(processorsInUse(getTaskRegistry().values(), getProcessorRegistry(), 'warn').size).toBe(0)
+  })
+
   it('lists the approved provider that serves, and not the self-hosted model while it is off', () => {
     initTaskGateway({ collection: () => ({}) } as never)
     only('GROQ_API_KEY')

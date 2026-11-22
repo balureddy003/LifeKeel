@@ -41,7 +41,10 @@ function gbp(minor: number): string {
 export function runwayPhrase(months: number): string {
   if (months < 1) return 'less than a month'
   if (months > 60) return 'more than five years'
-  return `about ${Math.round(months)} ${Math.round(months) === 1 ? 'month' : 'months'}`
+  // Whole months, rounded down like the server's readiness text and the income-stops estimate, so one page
+  // never says "about 3 months" beside "about 2 months" for the same figures.
+  const whole = Math.floor(months)
+  return `about ${whole} ${whole === 1 ? 'month' : 'months'}`
 }
 
 interface EarnerOption {

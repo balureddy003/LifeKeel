@@ -38,3 +38,5 @@ export const UNREVIEWED_NOTE =
 /** Trust page: processors in the registry that cannot receive a call here, named in one line. */
 export const notInUseText = (names: string[]) =>
   `Also in the registry but not used here: ${names.join(', ')}. LifeKeel sends them nothing in this service.`
+export const NONE_IN_USE =
+  'No AI provider is switched on in this service, so no content is sent to one.'

@@ -14,6 +14,7 @@ import {
   RETENTION_TEXT,
   RULE_TEXT,
   STATUS_TEXT,
+  NONE_IN_USE,
   UNREVIEWED_NOTE,
   notInUseText,
 } from '@/lib/ai-disclosure-copy'
@@ -114,6 +115,9 @@ export default function TrustPage() {
           )}
 
           <H2 id="processors">{PROCESSORS_TITLE}</H2>
+          {inUse.length === 0 && (
+            <p className="text-sm text-ink-secondary leading-relaxed">{NONE_IN_USE}</p>
+          )}
           <div className="space-y-3">
             {inUse.map((p) => (
               <GlassCard key={p.id} className="p-4">

@@ -10,6 +10,7 @@ import Link from 'next/link'
 import { ChevronRight, FileText } from 'lucide-react'
 import { GlassCard } from '@/components/Glass'
 import { listBriefs, type HouseholdBrief } from '@/lib/api'
+import { briefHeadline, splitBriefSentence } from '@/lib/brief-text'
 
 /** The brief situations that answer "how long would our savings last if income stops or falls". */
 export const INCOME_BRIEFS = new Set(['income_stops', 'earning_less', 'job_change'])
@@ -52,7 +53,7 @@ export function IncomeStopBrief() {
           </span>
           <span className="block text-sm text-ink-secondary">
             {brief
-              ? brief.template_sentence
+              ? briefHeadline(splitBriefSentence(brief.template_sentence).main)
               : 'About two minutes. You get the month your savings would run out, shared with the other adult.'}
           </span>
           {brief?.stale && (
