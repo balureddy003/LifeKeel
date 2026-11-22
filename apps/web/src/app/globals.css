@@ -49,6 +49,13 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Controls behave like native ones on touch: no long-press link preview or text selection on a button or tab. */
+button, [role='button'], [role='tab'], nav a {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 .safe-area-top { padding-top: env(safe-area-inset-top); }
 .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
 
