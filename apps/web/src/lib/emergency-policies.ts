@@ -12,6 +12,8 @@ const RELEVANT: Partial<Record<LifeEventType, PolicyType[]>> = {
   medical: ['critical_illness', 'income_protection'],
   disability: ['income_protection', 'critical_illness'],
   job_loss: ['income_protection'],
+  // Home damage: the home policy on file and who to call. Car and travel come from their own packs.
+  property: ['home'],
 }
 
 export function emergencyPolicies(
@@ -27,4 +29,5 @@ export const POLICY_TYPE_LABEL: Record<string, string> = {
   life: 'Life cover',
   income_protection: 'Income protection',
   critical_illness: 'Critical illness cover',
+  home: 'Home insurance',
 }

@@ -142,7 +142,9 @@ describe('POST /assistant/ask — verified tier (PRD-212)', () => {
     expect(llmMock).not.toHaveBeenCalled()
   })
 
-  it('asks a clarification rather than guessing between two matched operations', async () => {
+  it('answers both parts of a two-part question instead of asking which was meant', async () => {
+    // Hands-on review G9: the old reply asked "which did you mean" with options the app never
+    // made tappable, so the question went unanswered.
     const app = await buildApp()
     const res = await app.inject({
       method: 'POST',
@@ -151,7 +153,11 @@ describe('POST /assistant/ask — verified tier (PRD-212)', () => {
     })
     const body = res.json()
     expect(body.verified).toBe(true)
-    expect(body.clarify).toEqual(expect.arrayContaining(['Emergency fund', 'Policy renewal dates']))
+    expect(body.clarify).toBeUndefined()
+    expect(body.operations).toEqual(expect.arrayContaining(['emergency_fund', 'policy_renewals']))
+    expect(body.content).toContain('**Emergency fund**')
+    expect(body.content).toContain('**Policy renewal dates**')
+    expect(body.content).toContain('2026-11-15')
     expect(llmMock).not.toHaveBeenCalled()
   })
 

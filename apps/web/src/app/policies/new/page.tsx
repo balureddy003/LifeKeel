@@ -24,6 +24,7 @@ const TYPES: Array<{ v: NewPolicyInput['type']; l: string }> = [
   { v: 'life', l: 'Life cover' },
   { v: 'income_protection', l: 'Income protection' },
   { v: 'critical_illness', l: 'Critical illness cover' },
+  { v: 'home', l: 'Home insurance' },
 ]
 
 /** Pounds typed by a person to whole pence; undefined when blank or not a sensible amount. */
@@ -54,7 +55,13 @@ export default function NewPolicyPage() {
 
   useEffect(() => {
     void fetchFamilyGroup().then((g) => setPeople(g?.members ?? []))
+    // A link can open the form on one type, e.g. the home-damage steps asking for the home policy.
+    const want = new URLSearchParams(window.location.search).get('type')
+    const match = TYPES.find((t) => t.v === want)
+    if (match) setType(match.v)
   }, [])
+  // A home policy covers the home, not a person.
+  const forPerson = type !== 'home'
 
   // The check runs as the two premiums are typed; the server owns the rule.
   useEffect(() => {
@@ -77,7 +84,7 @@ export default function NewPolicyPage() {
     const r = await addFamilyPolicy({
       type,
       provider: provider.trim(),
-      ...(covers ? { covers_member_id: covers } : {}),
+      ...(covers && forPerson ? { covers_member_id: covers } : {}),
       ...(heldBy ? { member_id: heldBy } : {}),
       ...(c ? { coverage_amount_minor: c } : {}),
       ...(m ? { monthly_premium_minor: m } : {}),
@@ -156,27 +163,31 @@ export default function NewPolicyPage() {
             autoComplete="off"
           />,
         )}
-        {field(
-          'pol-covers',
-          'Who it covers (optional)',
-          <select
-            id="pol-covers"
-            className={inputCls}
-            value={covers}
-            onChange={(e) => setCovers(e.target.value)}
-          >
-            <option value="">Not stated</option>
-            {people.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>,
+        {forPerson && (
+          <>
+            {field(
+              'pol-covers',
+              'Who it covers (optional)',
+              <select
+                id="pol-covers"
+                className={inputCls}
+                value={covers}
+                onChange={(e) => setCovers(e.target.value)}
+              >
+                <option value="">Not stated</option>
+                {people.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>,
+            )}
+            <p className="-mt-2 text-sm text-ink-secondary">
+              Pick a person and the policy shows under their name on the family list. Left blank, it
+              shows as not yet matched.
+            </p>
+          </>
         )}
-        <p className="-mt-2 text-sm text-ink-secondary">
-          Pick a person and the policy shows under their name on the family list. Left blank, it
-          shows as not yet matched.
-        </p>
         {field(
           'pol-cover',
           'Cover amount in £ (optional)',

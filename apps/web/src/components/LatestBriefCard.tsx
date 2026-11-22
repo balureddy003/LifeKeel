@@ -10,6 +10,17 @@ import Link from 'next/link'
 import { ChevronRight, FileText } from 'lucide-react'
 import { GlassCard } from '@/components/Glass'
 import { listBriefs, type HouseholdBrief } from '@/lib/api'
+import { briefHeadline, splitBriefSentence } from '@/lib/brief-text'
+
+/** Who has seen it, in the same words the Briefs page uses; null for a brief saved only for its maker. */
+export function seenLine(b: HouseholdBrief): string | null {
+  const c = b.confirmation
+  if (!b.share || b.share.revoked) return null
+  const other = b.share.for_member_name ?? 'the other adult'
+  if (c?.both_confirmed) return 'You have both seen the same numbers.'
+  if (c?.creator_at) return `Waiting for ${other} to read and confirm.`
+  return 'Read it and confirm, so you can both see the same numbers.'
+}
 
 export function LatestBriefCard() {
   const [brief, setBrief] = useState<HouseholdBrief | null>(null)
@@ -40,7 +51,12 @@ export function LatestBriefCard() {
           <span className="mt-1 block font-medium text-ink-primary">
             {brief.title ?? 'Your brief'}
           </span>
-          <span className="block text-sm text-ink-secondary">{brief.template_sentence}</span>
+          <span className="block text-sm text-ink-secondary">
+            {briefHeadline(splitBriefSentence(brief.template_sentence).main)}
+          </span>
+          {seenLine(brief) && (
+            <span className="mt-1 block text-sm text-ink-tertiary">{seenLine(brief)}</span>
+          )}
           {brief.stale && (
             <span className="mt-1 block text-sm text-ink-secondary">
               The figures have changed since. Open it to see the new answer.

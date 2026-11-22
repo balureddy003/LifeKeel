@@ -2875,7 +2875,7 @@ export type PolicyCheck =
     }
 
 export interface NewPolicyInput {
-  type: 'life' | 'income_protection' | 'critical_illness'
+  type: 'life' | 'income_protection' | 'critical_illness' | 'home'
   provider: string
   covers_member_id?: string
   member_id?: string

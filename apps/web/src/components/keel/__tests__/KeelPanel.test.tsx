@@ -171,6 +171,20 @@ describe('KeelDock', () => {
     expect(useKeelPanel.getState().greeted).toBe(true)
   })
 
+  it('drops the setup summary once the person has asked something, so the answer gets the space', async () => {
+    await open()
+    await screen.findByTestId('setup-summary')
+    act(() =>
+      useKeelPanel.setState((s) => ({
+        messages: [
+          ...s.messages,
+          { id: 'u1', role: 'user', content: 'Where do I start?', cards: [] },
+        ],
+      })),
+    )
+    await waitFor(() => expect(screen.queryByTestId('setup-summary')).toBeNull())
+  })
+
   it('Escape closes it; Ctrl+J toggles it', async () => {
     await open()
     fireEvent.keyDown(screen.getByLabelText('Keel assistant'), { key: 'Escape' })

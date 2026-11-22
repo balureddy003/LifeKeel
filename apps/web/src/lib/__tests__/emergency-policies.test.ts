@@ -24,4 +24,9 @@ describe('emergencyPolicies', () => {
   it('does not apply to events none of these policies bear on', () => {
     expect(emergencyPolicies('car', all)).toEqual({ applies: false, matches: [] })
   })
+  it('home damage points at the home policy on file (property had no emergency section before)', () => {
+    const withHome = [...all, pol('home', 'H')]
+    expect(emergencyPolicies('property', withHome).matches.map((p) => p.provider)).toEqual(['H'])
+    expect(emergencyPolicies('property', all)).toEqual({ applies: true, matches: [] })
+  })
 })

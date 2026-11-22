@@ -39,11 +39,11 @@ describe('AtHand', () => {
       ),
     )
   })
-  it('renders nothing for an event no service covers', async () => {
+  it('home damage asks for the home policy and links to a form that can add one', async () => {
     vi.mocked(fetchFinancialProfile).mockResolvedValue({ policies: [] } as never)
-    const { container } = render(<AtHand eventType="property" />)
-    await new Promise((r) => setTimeout(r, 30))
-    expect(container.firstChild).toBeNull()
+    render(<AtHand eventType="property" />)
+    const link = await screen.findByRole('link', { name: /Add a policy/ })
+    expect(link.getAttribute('href')).toBe('/policies/new?type=home')
   })
   it('a car event leads with the car policy from the family list and a call button', async () => {
     vi.mocked(fetchFinancialProfile).mockResolvedValue({ policies: [] } as never)

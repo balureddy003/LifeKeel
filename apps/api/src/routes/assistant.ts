@@ -32,6 +32,7 @@ import {
   classifyVerifiedIntent,
   renderVerifiedAnswer,
   VERIFIED_OP_LABELS,
+  type VerifiedOperationId,
 } from '../assistant/verified-answer.js'
 import { projectScenario } from '../scenarios/project.js'
 import { ScenarioStepSchema } from './family-scenarios.js'
@@ -613,7 +614,59 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
       // unchanged and no health-hinted text ever reaches these templates.
       if (!quarantined) {
         const intent = classifyVerifiedIntent(query)
+        // The renderers compute from real profile sections — a sparse or
+        // unusual profile can still throw. A verified tier that 500s an ask
+        // is worse than generation, so a render failure degrades honestly.
+        const render = async (operation: VerifiedOperationId) => {
+          // The readiness composite needs the same vault-side estate inputs
+          // /family/readiness uses — computing without them gates that
+          // component and re-weights the rest, so the verified answer could
+          // quote a different score than Home for the same family. Loaded
+          // here (adult-gated inside the helper) and only for readiness
+          // asks; a load failure degrades to the previous gated behavior.
+          const estateInputs =
+            operation === 'readiness' && !member_id && profileDoc
+              ? await loadEstateReadinessInputs(db, tenant_id, user_id).catch(() => undefined)
+              : undefined
+          try {
+            return renderVerifiedAnswer(operation, {
+              profile: profileDoc,
+              family: familyDoc,
+              memberId: member_id,
+              twin,
+              estateInputs,
+            })
+          } catch (err) {
+            req.log.warn({ err, operation }, 'Verified render failed — degrading to generation')
+            return null
+          }
+        }
         if (intent?.kind === 'clarify') {
+          // A two-part question gets both parts answered: each is computed from saved records, so
+          // answering both is not a guess. Only when a part cannot be rendered does Keel ask which
+          // was meant, with the options sent back as tappable choices.
+          const parts = await Promise.all(intent.options.map(render))
+          if (parts.every((p) => p !== null)) {
+            const answers = parts as NonNullable<(typeof parts)[number]>[]
+            recordRoute(db, 'verified')
+            getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', {
+              is_live: true,
+              verified: true,
+              operations: answers.map((a) => a.operation),
+              ...(member_id ? { member_id } : {}),
+            })
+            return reply.send({
+              content: answers
+                .map((a) => `**${VERIFIED_OP_LABELS[a.operation]}**\n\n${a.content}`)
+                .join('\n\n'),
+              isLive: true,
+              verified: true,
+              operation: answers[0]!.operation,
+              operations: answers.map((a) => a.operation),
+              provenance: answers[0]!.provenance,
+              data_as_of: dataAsOf,
+            })
+          }
           recordRoute(db, 'clarified')
           getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', {
             is_live: true,
@@ -630,36 +683,7 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
           })
         }
         if (intent?.kind === 'operation') {
-          // The readiness composite needs the same vault-side estate inputs
-          // /family/readiness uses — computing without them gates that
-          // component and re-weights the rest, so the verified answer could
-          // quote a different score than Home for the same family. Loaded
-          // here (adult-gated inside the helper) and only for readiness
-          // asks; a load failure degrades to the previous gated behavior.
-          const estateInputs =
-            intent.operation === 'readiness' && !member_id && profileDoc
-              ? await loadEstateReadinessInputs(db, tenant_id, user_id).catch(() => undefined)
-              : undefined
-          // The renderers compute from real profile sections — a sparse or
-          // unusual profile can still throw. A verified tier that 500s an ask
-          // is worse than generation, so a render failure degrades honestly.
-          const answer = (() => {
-            try {
-              return renderVerifiedAnswer(intent.operation, {
-                profile: profileDoc,
-                family: familyDoc,
-                memberId: member_id,
-                twin,
-                estateInputs,
-              })
-            } catch (err) {
-              req.log.warn(
-                { err, operation: intent.operation },
-                'Verified render failed — degrading to generation',
-              )
-              return null
-            }
-          })()
+          const answer = await render(intent.operation)
           if (answer) {
             recordRoute(db, 'verified')
             getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', {

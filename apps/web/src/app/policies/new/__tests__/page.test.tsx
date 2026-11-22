@@ -34,3 +34,15 @@ describe('add a policy: the mismatch check as you type', () => {
     )
   })
 })
+
+describe('add a policy: opened for one type', () => {
+  it('?type=home opens on home insurance and drops the person picker', async () => {
+    window.history.replaceState(null, '', '/policies/new?type=home')
+    render(<NewPolicyPage />)
+    await waitFor(() =>
+      expect((screen.getByLabelText('Type') as HTMLSelectElement).value).toBe('home'),
+    )
+    expect(screen.queryByLabelText('Who it covers (optional)')).toBeNull()
+    window.history.replaceState(null, '', '/')
+  })
+})

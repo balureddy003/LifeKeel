@@ -889,6 +889,8 @@ export default function HomePage() {
       />
 
       <EmergencyRow />
+      {/* Home leads with the family's latest answer (hands-on review G4); it renders nothing until there is one. */}
+      <LatestBriefCard />
 
       {/* After the first result, not before: before it, the Start here card above is the one ask, and a second would compete with it. */}
       {hasLiveData && <InviteFamilyBanner />}
@@ -898,7 +900,6 @@ export default function HomePage() {
         hasLiveData={hasLiveData}
       />
       <SeenByCard />
-      <LatestBriefCard />
       <PinnedTiles />
       <SinceLastVisit
         score={readinessScore}
