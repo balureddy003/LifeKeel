@@ -19,7 +19,8 @@ const config: CapacitorConfig = {
     // Canonical entry point. server.url is build-time config, so every launch
     // starts here; apps/web's NativeRegionGate then redirects a Slovenian
     // user to app.lifekeel.si (accounts and sessions are per TLD).
-    url: 'https://app.lifekeel.co.uk',
+    // LIFEKEEL_WEB_URL points a test build at staging; unset, it is production.
+    url: process.env['LIFEKEEL_WEB_URL'] || 'https://app.lifekeel.co.uk',
     // Keep OAuth and deep links inside the shell instead of kicking out
     // to Safari — auth flows bounce through the API domain.
     allowNavigation: [
@@ -29,6 +30,7 @@ const config: CapacitorConfig = {
       'api.lifekeel.si',
       // Only the API host this build talks to, never every Cloud Run
       // service (R34). Set when the API isn't on an api.lifekeel.* domain.
+      ...(process.env['LIFEKEEL_WEB_URL'] ? [new URL(process.env['LIFEKEEL_WEB_URL']).host] : []),
       ...(process.env['LIFEKEEL_API_HOST'] ? [process.env['LIFEKEEL_API_HOST']] : []),
     ],
   },

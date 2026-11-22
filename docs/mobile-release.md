@@ -60,11 +60,17 @@ with fastlane → TestFlight; Android builds on `ubuntu-latest` → Play track.
    | `PLAY_SERVICE_ACCOUNT_JSON` | `base64 -i service-account.json` |
    | `GOOGLE_SERVICES_JSON` | `base64 -i google-services.json` (optional until FCM push) |
 
+**Shortcut for steps 2 and 5:** after the Play Console app and service account exist,
+run `apps/mobile/scripts/setup-android-release.sh /path/to/service-account.json`. It makes the
+upload keystore and stores the five Android secrets on the repo (it prints none of them).
+Back up the keystore file it writes.
+
 ## Releasing
 
 Actions → **Release mobile** → Run workflow (from `main`) → pick platform,
 `version_name`, and Android track. `build_number`/`versionCode` defaults to the
-run number. Artifacts (`.ipa`/`.aab`) are attached to every run for manual
+run number. For a beta, set `web_url` to the staging web URL so testers load staging; blank means
+production. Artifacts (`.ipa`/`.aab`) are attached to every run for manual
 upload if the store upload step is skipped or fails.
 
 Both stores require a **human publish** the first time — internal track and
