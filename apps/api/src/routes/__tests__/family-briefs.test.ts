@@ -620,6 +620,102 @@ describe('brief contract v2', () => {
       expect(share.statusCode).toBe(200)
       expect(share.json().share.url).toBeTruthy()
     })
+
+    describe('invited partner who has not joined yet', () => {
+      // Full name on the roster; a link holder is only ever told the first name.
+      const INVITED_M = {
+        id: 'm-invited',
+        name: 'Tom Tester',
+        role: 'adult',
+        status: 'pending',
+        email: 'tom@x.co',
+      }
+      beforeEach(async () => {
+        await db
+          .collection('family_groups')
+          .updateOne({ tenant_id: TENANT }, { $push: { members: INVITED_M as never } })
+      })
+      async function shareWithInvited() {
+        const res = await app.inject({
+          method: 'POST',
+          url: '/family/briefs',
+          payload: {
+            contract_version: 2,
+            problem_type: 'earning_less',
+            for_member_id: 'm-invited',
+            inputs: SOLO_INPUTS,
+          },
+        })
+        expect(res.statusCode).toBe(201)
+        return res.json().brief
+      }
+
+      it('is offered as a recipient and can be named on a brief, bound to no user yet', async () => {
+        const cat = await app.inject({ method: 'GET', url: '/family/brief-catalogue' })
+        expect(cat.json().recipients).toEqual([
+          { id: 'm-invited', name: 'Tom Tester', status: 'pending', has_email: true },
+        ])
+        const b = await shareWithInvited()
+        expect(b.share.for_member_name).toBe('Tom Tester')
+        const doc = await briefsFor(db, TENANT).findOne({ id: b.id })
+        expect(doc!.share!.for_member_id).toBe('m-invited')
+        expect(doc!.share!.for_user_id).toBeUndefined()
+      })
+
+      it('a signed-out open reads the brief read-only, flags the invite, and leaks nothing else', async () => {
+        const b = await shareWithInvited()
+        currentUser = null
+        const res = await app.inject({ method: 'GET', url: `/b/${b.share.url}` })
+        expect(res.statusCode).toBe(200)
+        const body = res.json()
+        expect(body.read_only).toBe(true)
+        expect(body.can_confirm).toBe(false)
+        expect(body.pending_invite).toBe(true)
+        expect(body.for_member_name).toBe('Tom')
+        expect(res.body).not.toContain('Tester')
+        expect(body.from_name).toBe('Sam')
+        // Signed in as someone else: nothing, and no invite hint.
+        currentUser = 'user-stranger'
+        const other = await app.inject({ method: 'GET', url: `/b/${b.share.url}` })
+        expect(other.statusCode).toBe(403)
+        expect(other.json().pending_invite).toBe(true)
+      })
+
+      it('once they join, the share binds to them and they can open and confirm', async () => {
+        const b = await shareWithInvited()
+        await db
+          .collection('family_groups')
+          .updateOne(
+            { tenant_id: TENANT, 'members.id': 'm-invited' },
+            { $set: { 'members.$.status': 'active', 'members.$.user_id': 'user-tom' } },
+          )
+        const { bindBriefSharesToMember } = await import('../../briefs/briefs.js')
+        await bindBriefSharesToMember(db, TENANT, 'm-invited', 'user-tom')
+        currentUser = 'user-tom'
+        currentRoles = ['viewer']
+        const opened = await app.inject({ method: 'GET', url: `/b/${b.share.url}` })
+        expect(opened.statusCode).toBe(200)
+        const confirm = await app.inject({
+          method: 'POST',
+          url: `/b/${b.share.url}/confirm`,
+          payload: { result_version: b.result_version },
+        })
+        expect(confirm.statusCode).toBe(200)
+        expect(confirm.json().confirmed_opened_at).toBeTruthy()
+      })
+
+      it('binding never moves a share that already names a user', async () => {
+        const b = await shareWithInvited()
+        await briefsFor(db, TENANT).updateOne(
+          { id: b.id },
+          { $set: { 'share.for_user_id': 'user-first' } },
+        )
+        const { bindBriefSharesToMember } = await import('../../briefs/briefs.js')
+        await bindBriefSharesToMember(db, TENANT, 'm-invited', 'user-second')
+        const doc = await briefsFor(db, TENANT).findOne({ id: b.id })
+        expect(doc!.share!.for_user_id).toBe('user-first')
+      })
+    })
   })
 
   it('creates a versioned snapshot; anonymous and other-user opens are refused', async () => {

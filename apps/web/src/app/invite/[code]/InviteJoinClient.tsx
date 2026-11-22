@@ -13,6 +13,7 @@ import { joinFamily, fetchFamilyInvite, type FamilyInviteInfo } from '@/lib/api'
 import { inviteIntro, INVITE_BUTTON, WRONG_PERSON } from './invite-copy'
 import { useAuth } from '@/lib/auth-context'
 import { haptic } from '@/lib/haptics'
+import { safeNext } from '@/lib/return-to'
 import { Turnstile, useTurnstile } from '@/components/security/Turnstile'
 
 // This page serves two different "invite" flows, distinguished by the URL
@@ -72,7 +73,9 @@ function AcceptMemberInvite({ token }: { token: string }) {
     try {
       await acceptFamilyInvite(token, password)
       haptic('success')
-      router.push('/')
+      // An invite that carries a brief shared with them lands on that brief.
+      const next = safeNext(new URLSearchParams(window.location.search).get('next'))
+      router.push(next ?? '/')
     } catch (err) {
       haptic('warning')
       setError(err instanceof Error ? err.message : "Couldn't accept the invite. Please try again.")

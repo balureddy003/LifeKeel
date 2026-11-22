@@ -230,6 +230,12 @@ vi.mock('../../auth-email.js', async (importOriginal) => ({
   sendFamilyInviteEmail: (...args: unknown[]) => sendFamilyInviteEmail(...args),
 }))
 
+const bindBriefSharesToMember = vi.fn(async (..._args: unknown[]) => {})
+vi.mock('../../briefs/briefs.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../briefs/briefs.js')>()),
+  bindBriefSharesToMember: (...args: unknown[]) => bindBriefSharesToMember(...args),
+}))
+
 vi.mock('../../db.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../db.js')>()
   return {
@@ -1053,5 +1059,72 @@ describe('PRD-123: approve links an existing pending roster member instead of du
     const sam = members.find((m) => m['id'] === PENDING_MEMBER_ID)!
     expect(sam['status']).toBe('active')
     expect(sam['user_id']).toBe(state.users[0]!['id'])
+    // A brief already shared with Sam while invited now opens for Sam.
+    expect(bindBriefSharesToMember).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT,
+      PENDING_MEMBER_ID,
+      state.users[0]!['id'],
+    )
+  })
+})
+
+describe('a brief shared with an invited partner rides on the invite', () => {
+  beforeEach(() => {
+    state = makeState()
+    bindBriefSharesToMember.mockClear()
+  })
+  const NEXT = `/b/${'a1'.repeat(24)}`
+
+  it('carries next=/b/<token> on the invite link', async () => {
+    const app = await buildApp(ORGANIZER_ID)
+    const res = await app.inject({
+      method: 'POST',
+      url: `/family/members/${PENDING_MEMBER_ID}/invite`,
+      payload: { next: NEXT },
+    })
+    expect(res.statusCode).toBe(201)
+    const url = new URL(String(res.json().invite_url))
+    expect(url.searchParams.get('next')).toBe(NEXT)
+    expect(url.pathname).toMatch(/^\/invite\/[0-9a-f]{48}$/)
+  })
+
+  it('refuses any next that is not a brief link', async () => {
+    const app = await buildApp(ORGANIZER_ID)
+    for (const next of [
+      'https://evil.example/b/x',
+      '//evil.example',
+      '/settings',
+      `/b/${'z'.repeat(48)}`,
+    ]) {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/family/members/${PENDING_MEMBER_ID}/invite`,
+        payload: { next },
+      })
+      expect(res.statusCode).toBe(400)
+    }
+  })
+
+  it('accepting the invite binds waiting brief shares to the new account', async () => {
+    const app = await buildApp(ORGANIZER_ID)
+    const inv = await app.inject({
+      method: 'POST',
+      url: `/family/members/${PENDING_MEMBER_ID}/invite`,
+      payload: { next: NEXT },
+    })
+    const token = new URL(String(inv.json().invite_url)).pathname.split('/invite/')[1]!
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/invite/accept',
+      payload: { token, password: 'password123' },
+    })
+    expect(res.statusCode).toBe(200)
+    expect(bindBriefSharesToMember).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT,
+      PENDING_MEMBER_ID,
+      state.users[0]!['id'],
+    )
   })
 })

@@ -1,7 +1,9 @@
 /**
- * Immutable household briefs. New catalogue shares are addressed to an active
- * adult and require that participant's session. Acknowledgements bind each
- * adult to the same stored result hash; link fetches are telemetry only.
+ * Immutable household briefs. New catalogue shares are addressed to one named
+ * adult (joined, or invited and not yet joined) and require that adult's own
+ * session; an invited partner's share binds to them when they join.
+ * Acknowledgements bind each adult to the same stored result hash; link
+ * fetches are telemetry only.
  */
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import type { Db } from 'mongodb'
@@ -34,6 +36,11 @@ import {
   type BriefProblemType,
   type HouseholdBriefDoc,
 } from '../briefs/briefs.js'
+
+/** An adult who can be named on a share: already joined, or invited and not yet joined. */
+function isShareableAdult(m: FamilyGroupDoc['members'][number]) {
+  return (m.status === 'active' || (m.status === 'pending' && !m.user_id)) && !isMinorMember(m)
+}
 
 const PAID_PLANS = new Set(['plus', 'family', 'pro', 'unlimited'])
 const CreateSchema = z
@@ -138,8 +145,7 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
       .collection<FamilyGroupDoc>('family_groups')
       .findOne({ tenant_id: tenant })
     return group?.members.find(
-      (m) =>
-        m.id === id && m.status === 'active' && !isMinorMember(m) && !memberMatchesUser(m, creator),
+      (m) => m.id === id && isShareableAdult(m) && !memberMatchesUser(m, creator),
     )
   }
   async function hasOtherActiveAdult(tenant: string, creator: string) {
@@ -149,6 +155,14 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
     return (group?.members ?? []).some(
       (m) => m.status === 'active' && !isMinorMember(m) && !memberMatchesUser(m, creator),
     )
+  }
+  /** The roster entry a share names, when that person has not joined yet. */
+  async function pendingRecipient(b: HouseholdBriefDoc) {
+    if (!b.share?.for_member_id || b.share.for_user_id) return undefined
+    const group = await db
+      .collection<FamilyGroupDoc>('family_groups')
+      .findOne({ tenant_id: b.tenant_id })
+    return group?.members.find((m) => m.id === b.share!.for_member_id && m.status === 'pending')
   }
   async function participant(b: HouseholdBriefDoc, ctx?: { tenant_id: string; user_id: string }) {
     return (
@@ -217,8 +231,14 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
       // Lets the form say up front that this person cannot create briefs.
       can_create: await isHouseholdEditor(db, tenant_id, user_id, req.authContext.roles),
       recipients: (group?.members ?? [])
-        .filter((m) => m.status === 'active' && !isMinorMember(m) && !memberMatchesUser(m, user_id))
-        .map((m) => ({ id: m.id, name: m.name })),
+        .filter((m) => isShareableAdult(m) && !memberMatchesUser(m, user_id))
+        .map((m) => ({
+          id: m.id,
+          name: m.name,
+          // An invited partner can be named now; they open it once they join.
+          status: m.status,
+          has_email: !!m.email,
+        })),
     }
   })
 
@@ -285,7 +305,7 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
       !(await hasOtherActiveAdult(tenant_id, user_id))
     if (contract_version === 2 && !member && !solo)
       return reply.code(400).send({
-        error: 'Choose another active adult in your household. Invite them from Family if needed.',
+        error: 'Choose another adult in your household. Invite them from Family if needed.',
       })
     if (contract_version === 2 && !(await isFamilyAdult(db, tenant_id, user_id)))
       return reply.code(403).send({ error: 'An active adult household membership is required' })
@@ -380,7 +400,9 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
             token_hash: tokenHash(token),
             for_member_id: member?.id ?? parsed.data.for_member_id ?? null,
             for_member_name: member?.name ?? null,
-            ...(member ? { for_user_id: member.user_id ?? member.id } : {}),
+            ...(member && member.status === 'active'
+              ? { for_user_id: member.user_id ?? member.id }
+              : {}),
             expires_at: new Date(now.getTime() + SHARE_TOKEN_TTL_DAYS * 86_400_000),
             revoked_at: null,
           },
@@ -532,7 +554,9 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
         req.body?.for_member_id ?? b.share?.for_member_id,
       )
       if (b.contract_version === 2 && !member)
-        return reply.code(400).send({ error: 'Choose another active adult in your household' })
+        return reply
+          .code(400)
+          .send({ error: 'Choose another adult in your household, or invite them from Family' })
       const token = randomBytes(24).toString('hex')
       const expiresAt = new Date(Date.now() + SHARE_TOKEN_TTL_DAYS * 86_400_000)
       await briefsFor(db, tenant_id).updateOne(
@@ -544,7 +568,9 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
               for_member_id:
                 member?.id ?? req.body?.for_member_id ?? b.share?.for_member_id ?? null,
               for_member_name: member?.name ?? b.share?.for_member_name ?? null,
-              ...(member ? { for_user_id: member.user_id ?? member.id } : {}),
+              ...(member && member.status === 'active'
+                ? { for_user_id: member.user_id ?? member.id }
+                : {}),
               expires_at: expiresAt,
               revoked_at: null,
             },
@@ -593,6 +619,8 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
         if (!req.authContext && readableWithoutAccount(b!))
           return {
             read_only: true,
+            // A partner not yet on the household is pointed at their invite.
+            ...((await pendingRecipient(b!)) ? { pending_invite: true } : {}),
             can_confirm: false,
             problem_type: b!.problem_type,
             title: b!.title,
@@ -603,10 +631,22 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
             facts: b!.facts ?? [],
             as_of_date: b!.as_of_date,
             created_at: b!.created_at,
-            for_member_name: b!.share!.for_member_name,
+            // First name only: this view is open to anyone holding the link.
+            for_member_name: b!.share!.for_member_name?.trim().split(/\s+/)[0] ?? null,
             from_name: await creatorFirstName(b!),
             expires_at: b!.share!.expires_at,
           }
+        // Shared with a partner who has not joined yet: say so, so the page can
+        // point them at their invite (signing in elsewhere does not join the
+        // household; the invite does). Still no figures, first names only.
+        const pending = await pendingRecipient(b!)
+        if (pending)
+          return reply.code(req.authContext ? 403 : 401).send({
+            error: 'Join the household from your invite to see this brief',
+            pending_invite: true,
+            for_member_name: pending.name.trim().split(/\s+/)[0] ?? null,
+            from_name: await creatorFirstName(b!),
+          })
         return reply
           .code(req.authContext ? 403 : 401)
           .send({ error: 'Sign in as the adult this brief was shared with' })

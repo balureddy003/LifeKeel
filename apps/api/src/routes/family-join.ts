@@ -54,6 +54,7 @@ import { isMinorMember, memberMatchesUser } from '../family/family-permissions.j
 import { generateInviteCode, type FamilyGroupDoc, type FamilyMemberDoc } from './family-group.js'
 import type { AuthService } from '@lifekeel/platform'
 import { setSessionCookie } from '../auth/session-cookie.js'
+import { bindBriefSharesToMember } from '../briefs/briefs.js'
 
 const log = createLogger({ service: 'family-join', version: '0.0.0' })
 
@@ -101,6 +102,8 @@ function inviteTokenFilter(token: unknown): { token: { $in: string[] } } | null 
 const MAX_INVITES_PER_DAY = 20
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000
+/** The only place an invite may send someone after they join: a brief shared with them. */
+const BRIEF_NEXT_RE = /^\/b\/[0-9a-f]{48}$/
 
 /** A join request nobody answers stops being valid, and stops blocking a fresh one. */
 export const JOIN_REQUEST_TTL_DAYS = 14
@@ -362,6 +365,7 @@ export function registerFamilyJoinRoutes(
             },
           },
         )
+        await bindBriefSharesToMember(db, tenant_id, pendingMatch.id, newUser.id)
       } else {
         // Deliberately 'adult' — PRD-110 scopes this feature to adults only;
         // there is no path here that could ever land someone at 'child' or
@@ -477,7 +481,7 @@ export function registerFamilyJoinRoutes(
   // code and the organizer approving, the organizer names the person and the
   // person accepts — and acceptance activates the *existing* roster entry,
   // not a duplicate.
-  fastify.post<{ Params: { id: string }; Body: { email?: string } }>(
+  fastify.post<{ Params: { id: string }; Body: { email?: string; next?: string } }>(
     '/family/members/:id/invite',
     // Organizer-initiated so it doesn't need the tight brute-force limit
     // /family/join gets, but bounded anyway — each send is a real outbound
@@ -499,6 +503,9 @@ export function registerFamilyJoinRoutes(
         return reply.status(400).send({ error: 'Members under 18 cannot have their own sign-in' })
       if (member.status !== 'pending')
         return reply.status(409).send({ error: 'This member is already active' })
+      const next = req.body?.next
+      if (next !== undefined && (typeof next !== 'string' || !BRIEF_NEXT_RE.test(next)))
+        return reply.status(400).send({ error: 'Invalid next page' })
 
       // Email comes from the roster entry when the organizer set it at
       // member-add time; otherwise it's supplied here and persisted so the
@@ -552,7 +559,9 @@ export function registerFamilyJoinRoutes(
       }
 
       const appUrl = (process.env['LIFEKEEL_URL'] ?? 'http://localhost:3002').replace(/\/$/, '')
-      const inviteUrl = `${appUrl}/invite/${token}`
+      // A brief shared with this person rides on the invite, so they open one
+      // link, set a password, and land on the brief.
+      const inviteUrl = `${appUrl}/invite/${token}${next ? `?next=${encodeURIComponent(next)}` : ''}`
       await sendFamilyInviteEmail(email, member.name, inviterFirstName, inviteUrl)
 
       // Token deliberately absent from audit metadata — it's a live credential.
@@ -725,6 +734,7 @@ export function registerFamilyJoinRoutes(
         },
       )
       await invites.deleteOne({ id: invite.id })
+      await bindBriefSharesToMember(db, invite.tenant_id, member.id, userId)
 
       getAuditLogger()?.log({
         tenant_id: invite.tenant_id,
