@@ -28,7 +28,10 @@ const dir = args[0] ?? (nextMode ? 'apps/web/.next' : 'apps/web/out')
 // score "Why this score?" expander (intent 20) and the crisis-mode entry
 // (intent 33). Bump deliberately, with a note — the budget exists to catch
 // accidental bloat, not to freeze the page.
-const budgetKb = Number(args[1] ?? (nextMode ? 285 : 295))
+// 290 KB (static export 300), bumped from 285 on 2026-11-22: main was 0.1 KB over after the
+// confirm-from-Home card and the "start with a policy" tier landed in the shared shell.
+// Deliberate 5 KB of headroom, not a drift: look before raising it again.
+const budgetKb = Number(args[1] ?? (nextMode ? 290 : 300))
 
 function scriptUrls(html) {
   const urls = new Set()
