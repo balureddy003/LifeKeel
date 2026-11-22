@@ -32,3 +32,32 @@ export const SECURITY_ASK =
   'Include what you found, how to reproduce it, and how to reach you. Please do not access other people’s data, and do not run tests that could disrupt the service.'
 export const SECURITY_NO_CONTACT =
   'A reporting address has not been published yet. Check back soon.'
+
+export const SHORT_TITLE = 'In short'
+/** Plain pointers to where each thing can be seen or done. They state no new promise beyond the pages they link to. */
+export const SHORT_ITEMS: Array<{ q: string; a: string; href: string; link: string }> = [
+  {
+    q: 'Who can see your list?',
+    a: 'Every member of your family group and their role is shown on the Family page.',
+    href: '/family',
+    link: 'Open Family',
+  },
+  {
+    q: 'How is AI used?',
+    a: 'The AI page says which tasks use an AI service and what each provider is allowed to do.',
+    href: '/ai-processing',
+    link: 'Open the AI page',
+  },
+  {
+    q: 'Can you take your data with you?',
+    a: 'Settings has Export Your Data, which downloads what LifeKeel holds about your family.',
+    href: '/settings',
+    link: 'Open Settings',
+  },
+  {
+    q: 'Can you delete it?',
+    a: 'Deleting your account erases your data from live systems and gives you a receipt.',
+    href: '/settings',
+    link: 'Open Settings',
+  },
+]

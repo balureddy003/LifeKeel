@@ -90,7 +90,7 @@ export function RunwayChart({
   const { pts, zeroAt } = built
   const W = 320
   const H = 132
-  const pad = { l: 8, r: 8, t: 12, b: 22 }
+  const pad = { l: 8, r: 8, t: 20, b: 22 }
   const all = [...pts, ...(base?.pts ?? [])]
   const maxT = Math.max(1, ...all.map((p) => p.t))
   const maxS = Math.max(1, ...all.map((p) => p.s))
@@ -158,8 +158,8 @@ export function RunwayChart({
         >
           {`month ${Math.round(maxT)}`}
         </text>
-        <text x={pad.l} y={pad.t - 2} fontSize="10" fill="currentColor" opacity="0.7">
-          {gbp(maxS)}
+        <text x={pad.l} y={pad.t - 8} fontSize="10" fill="currentColor" opacity="0.7">
+          {maxS === pts[0]!.s ? `Savings today ${gbp(maxS)}` : `Up to ${gbp(maxS)}`}
         </text>
       </svg>
       <figcaption className="mt-1 text-xs text-ink-tertiary">

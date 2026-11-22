@@ -8,7 +8,7 @@ vi.mock('@/lib/growth-track', () => ({ track }))
 vi.mock('@/lib/native', () => ({ isNativeShell: () => false }))
 vi.mock('@/lib/platform', () => ({ isIOS: () => false, isStandalone: () => false }))
 
-vi.mock('next/navigation', () => ({ usePathname: () => '/' }))
+vi.mock('next/navigation', () => ({ usePathname: () => '/settings' }))
 
 import { InstallHint } from '../InstallHint'
 
