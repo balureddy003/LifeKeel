@@ -85,7 +85,7 @@ export function SaveFiguresCard({ inputs }: { inputs: BriefInputs | undefined })
           type="button"
           onClick={save}
           disabled={busy}
-          className="min-h-[48px] rounded-xl bg-accent px-4 text-sm font-semibold text-white disabled:opacity-60"
+          className="min-h-[48px] rounded-xl bg-family-500 px-4 text-sm font-semibold text-white disabled:opacity-60"
         >
           Save to the family list
         </button>

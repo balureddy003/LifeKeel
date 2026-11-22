@@ -107,7 +107,7 @@ export function SeenByCard() {
                   type="button"
                   onClick={() => confirm(row)}
                   disabled={busy === row.id}
-                  className="min-h-[48px] w-full rounded-xl bg-accent px-4 text-sm font-semibold text-white disabled:opacity-60"
+                  className="min-h-[48px] w-full rounded-xl bg-family-500 px-4 text-sm font-semibold text-white disabled:opacity-60"
                 >
                   {busy === row.id ? 'Saving…' : "I've seen this"}
                 </button>

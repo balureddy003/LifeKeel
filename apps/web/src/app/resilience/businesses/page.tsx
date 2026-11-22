@@ -141,7 +141,7 @@ export default function BusinessesPage() {
               type="button"
               disabled={busy}
               onClick={save}
-              className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              className="rounded-xl bg-family-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
             >
               Save
             </button>
