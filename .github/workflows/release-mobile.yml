@@ -29,6 +29,10 @@ on:
         type: string
         required: false
         default: '0.1.0'
+      web_url:
+        description: 'Web app the shell loads (blank = production). Use the staging URL for a beta.'
+        type: string
+        required: false
       android_track:
         description: 'Play Console track'
         type: choice
@@ -68,6 +72,7 @@ jobs:
     env:
       BUILD_NUMBER: ${{ inputs.build_number || github.run_number }}
       VERSION_NAME: ${{ inputs.version_name }}
+      LIFEKEEL_WEB_URL: ${{ inputs.web_url }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -131,6 +136,7 @@ jobs:
     env:
       BUILD_NUMBER: ${{ inputs.build_number || github.run_number }}
       VERSION_NAME: ${{ inputs.version_name }}
+      LIFEKEEL_WEB_URL: ${{ inputs.web_url }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
