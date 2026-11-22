@@ -32,6 +32,18 @@ export function onFormRoute(pathname: string | null | undefined): boolean {
   return FORM_ROUTES.includes(p)
 }
 
+/**
+ * Where the hint may appear. A floating hint covers whatever sits at the bottom of the screen, which on Home is
+ * the "who has looked" row and on a brief is the result's buttons, so it is offered only on the screens that end
+ * in settings rather than an action. When no path is known it is not restricted.
+ */
+const HINT_ROUTES = ['/family', '/settings']
+
+function onHintRoute(pathname: string | null | undefined): boolean {
+  if (!pathname) return true
+  return HINT_ROUTES.includes(pathname.replace(/\/+$/, ''))
+}
+
 export function chooseHint(input: {
   authenticated: boolean
   standalone: boolean
@@ -46,7 +58,7 @@ export function chooseHint(input: {
   pathname?: string | null
 }): InstallPlatform | null {
   if (!input.authenticated || input.standalone || input.nativeShell) return null
-  if (onFormRoute(input.pathname)) return null
+  if (onFormRoute(input.pathname) || !onHintRoute(input.pathname)) return null
   if (input.visits < MIN_VISITS) return null
   if (dismissalActive(input.dismissedAt, input.now)) return null
   if (input.ios) return isIOSInAppBrowser(input.ua) ? 'ios_in_app' : 'ios'

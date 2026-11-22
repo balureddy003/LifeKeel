@@ -30,8 +30,13 @@ describe('chooseHint', () => {
     for (const pathname of ['/policies/new', '/policies/new/', '/financial-profile/']) {
       expect(chooseHint({ ...base, pathname })).toBeNull()
     }
-    expect(chooseHint({ ...base, pathname: '/' })).toBe('prompt')
     expect(chooseHint({ ...base, pathname: '/family/' })).toBe('prompt')
+  })
+  it('is offered only on the quiet screens, never over Home rows or a brief result', () => {
+    for (const pathname of ['/', '/briefs', '/briefs/', '/domains', '/resilience', '/inbox'])
+      expect(chooseHint({ ...base, pathname })).toBeNull()
+    for (const pathname of ['/family', '/family/', '/settings/'])
+      expect(chooseHint({ ...base, pathname })).toBe('prompt')
   })
   it('gives iOS steps, and an open-in-Safari note inside in-app browsers', () => {
     expect(chooseHint({ ...base, ios: true, hasPrompt: false })).toBe('ios')
