@@ -29,10 +29,10 @@ interface CapacitorPlugins {
       correctOrientation: boolean
     }) => Promise<CameraPhoto>
   }
-  BiometricAuth?: {
-    authenticate: (opts: { reason: string }) => Promise<void>
-    checkBiometry: () => Promise<{ isAvailable: boolean }>
-  }
+  /** What the native Face ID plugin actually registers as (its jsName). */
+  BiometricAuthNative?: BiometricPlugin
+  /** The npm wrapper's name, kept for builds that bundle it. */
+  BiometricAuth?: BiometricPlugin
   SplashScreen?: { hide: () => Promise<void> }
   Preferences?: {
     get: (opts: { key: string }) => Promise<{ value: string | null }>
@@ -46,6 +46,20 @@ interface CapacitorPlugins {
       cb: (data: { value?: string; error?: string }) => void,
     ) => Promise<{ remove: () => Promise<void> }>
   }
+}
+
+interface BiometricPlugin {
+  checkBiometry: () => Promise<{ isAvailable: boolean }>
+  /** The friendly wrapper method. */
+  authenticate?: (opts: { reason: string }) => Promise<void>
+  /** The method the native plugin really exposes. */
+  internalAuthenticate?: (opts: { reason: string }) => Promise<void>
+}
+
+function biometricPlugin(): BiometricPlugin | undefined {
+  if (!isNativeShell()) return undefined
+  const p = window.Capacitor?.Plugins
+  return p?.BiometricAuthNative ?? p?.BiometricAuth
 }
 
 declare global {
@@ -111,10 +125,11 @@ export async function takeNativePhoto(): Promise<File | null> {
  *  isBiometricAvailable first — a device without a sensor must never be
  *  locked out of its own data. */
 export async function verifyBiometric(reason: string): Promise<boolean> {
-  const auth = isNativeShell() ? window.Capacitor?.Plugins?.BiometricAuth : undefined
-  if (!auth) return false
+  const auth = biometricPlugin()
+  const authenticate = auth?.authenticate ?? auth?.internalAuthenticate
+  if (!auth || !authenticate) return false
   try {
-    await auth.authenticate({ reason })
+    await authenticate.call(auth, { reason })
     return true
   } catch {
     return false
@@ -122,7 +137,7 @@ export async function verifyBiometric(reason: string): Promise<boolean> {
 }
 
 export async function isBiometricAvailable(): Promise<boolean> {
-  const auth = isNativeShell() ? window.Capacitor?.Plugins?.BiometricAuth : undefined
+  const auth = biometricPlugin()
   if (!auth) return false
   try {
     const result = await auth.checkBiometry()
