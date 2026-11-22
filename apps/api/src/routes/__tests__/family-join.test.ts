@@ -164,6 +164,9 @@ function makeFakeDb(state: FakeState) {
   const memberInvitesCol = {
     findOne: async (filter: Record<string, unknown>) =>
       state.memberInvites.find((i) => match(i, filter)) ?? null,
+    find: (filter: Record<string, unknown>) => ({
+      toArray: async () => state.memberInvites.filter((i) => match(i, filter)),
+    }),
     insertOne: async (doc: Record<string, unknown>) => {
       state.memberInvites.push(doc)
       return { insertedId: doc['id'] }
@@ -1087,6 +1090,61 @@ describe('a brief shared with an invited partner rides on the invite', () => {
     const url = new URL(String(res.json().invite_url))
     expect(url.searchParams.get('next')).toBe(NEXT)
     expect(url.pathname).toMatch(/^\/invite\/[0-9a-f]{48}$/)
+  })
+
+  it('a second brief invite leaves the first brief link working; a plain resend rotates', async () => {
+    const app = await buildApp(ORGANIZER_ID)
+    const NEXT2 = `/b/${'b2'.repeat(24)}`
+    for (const next of [NEXT, NEXT2])
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url: `/family/members/${PENDING_MEMBER_ID}/invite`,
+            payload: { next },
+          })
+        ).statusCode,
+      ).toBe(201)
+    expect(state.memberInvites).toHaveLength(2)
+    // A plain resend from Family still leaves one outstanding invite.
+    await app.inject({
+      method: 'POST',
+      url: `/family/members/${PENDING_MEMBER_ID}/invite`,
+      payload: {},
+    })
+    expect(state.memberInvites).toHaveLength(1)
+  })
+
+  it('keeps at most five live brief invites per member', async () => {
+    const app = await buildApp(ORGANIZER_ID)
+    for (let n = 0; n < 7; n++)
+      await app.inject({
+        method: 'POST',
+        url: `/family/members/${PENDING_MEMBER_ID}/invite`,
+        payload: { next: `/b/${String(n).repeat(48)}` },
+      })
+    expect(state.memberInvites).toHaveLength(5)
+  })
+
+  it('accepting one brief invite spends the others', async () => {
+    const app = await buildApp(ORGANIZER_ID)
+    const urls: string[] = []
+    for (const next of [NEXT, `/b/${'c3'.repeat(24)}`]) {
+      const r = await app.inject({
+        method: 'POST',
+        url: `/family/members/${PENDING_MEMBER_ID}/invite`,
+        payload: { next },
+      })
+      urls.push(String(r.json().invite_url))
+    }
+    const token = new URL(urls[0]!).pathname.split('/').pop()!
+    const accepted = await app.inject({
+      method: 'POST',
+      url: '/family/invite/accept',
+      payload: { token, password: 'a-long-password' },
+    })
+    expect(accepted.statusCode).toBe(200)
+    expect(state.memberInvites).toHaveLength(0)
   })
 
   it('refuses any next that is not a brief link', async () => {

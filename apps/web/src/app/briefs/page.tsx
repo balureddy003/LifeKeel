@@ -735,7 +735,7 @@ function ResultCard({
                   {invited ? (
                     <p className="text-sm text-ink-secondary">
                       {other} has not joined yet. Their link sets up their sign-in and opens this
-                      brief. It works for 7 days.
+                      brief.
                     </p>
                   ) : (
                     <p className="text-sm text-ink-secondary">
@@ -852,7 +852,7 @@ function Glance({
   title,
   canUpdate,
   next: nextEntry,
-  origin,
+  linkFor,
   onWhatIf,
   onUpdate,
   onNext,
@@ -861,7 +861,8 @@ function Glance({
   title: string
   canUpdate: boolean
   next?: BriefCatalogueEntry | undefined
-  origin: string
+  /** The link to send for a share: an invited partner's invite, else the brief link. */
+  linkFor: (shareUrl: string) => Promise<string>
   onWhatIf: () => void
   onUpdate: () => void
   onNext: (e: BriefCatalogueEntry) => void
@@ -915,8 +916,8 @@ function Glance({
               type="button"
               className={ghostBtn}
               onClick={async () => {
-                const url = `${origin}/b/${brief.share!.url}`
                 try {
+                  const url = await linkFor(brief.share?.url ?? '')
                   await navigator.clipboard.writeText(
                     `Hi ${other} — a quick nudge about the numbers I shared (“${title}”). It takes a minute to read: ${url}`,
                   )
@@ -1048,6 +1049,9 @@ export default function BriefsPage() {
   // ?start=<id>: the question picked on the landing page opens straight into
   // its form, once, instead of asking the person to pick again.
   const { family } = useAuth()
+  // The same invite words the Family list shows ("Invite sent", "Not invited yet").
+  const inviteStatusOf = (id: string | undefined) =>
+    family?.members.find((m) => m.id === id)?.inviteStatus
   const waitingAdult = (family?.members ?? []).some(
     (m) => m.role !== 'child' && (m as { status?: string }).status === 'pending',
   )
@@ -1089,6 +1093,24 @@ export default function BriefsPage() {
     }, 50)
   }
 
+  /**
+   * What to send for a share. A partner who has not joined gets their invite
+   * with the brief attached (one link: set a password, land on the brief); a
+   * bare brief link would only tell them to find an invite. Without an email
+   * on file the invite can't be made here, so the brief link it is.
+   */
+  async function partnerLink(memberId: string | null | undefined, shareUrl: string) {
+    const invited = recipients.find((m) => m.status === 'pending' && m.id === memberId)
+    if (invited?.has_email) {
+      try {
+        return (await inviteFamilyMember(invited.id, undefined, `/b/${shareUrl}`)).inviteUrl
+      } catch {
+        // Rate-limited or refused: the brief link still names them.
+      }
+    }
+    return `${origin}/b/${shareUrl}`
+  }
+
   async function newLink(b: HouseholdBrief, other: string) {
     const active = b.share && !b.share.revoked
     if (
@@ -1106,7 +1128,7 @@ export default function BriefsPage() {
     // A brief saved while you were the only adult has no recipient yet.
     const r = await reShareBrief(b.id, b.share ? undefined : recipients[0]?.id)
     if (r.ok && r.data?.share.url) {
-      const link = `${origin}/b/${r.data.share.url}`
+      const link = await partnerLink(b.share?.for_member_id ?? recipients[0]?.id, r.data.share.url)
       try {
         await navigator.clipboard.writeText(link)
         haptic('success')
@@ -1379,7 +1401,7 @@ export default function BriefsPage() {
             byId.get(briefs[0].problem_type)?.mode !== 'handover' &&
             !!byId.get(briefs[0].problem_type)
           }
-          origin={origin}
+          linkFor={(u) => partnerLink(briefs[0]!.share?.for_member_id, u)}
           next={nextProblem}
           onWhatIf={() => openBrief(briefs[0]!.id)}
           onUpdate={() => startUpdate(briefs[0]!)}
@@ -1626,7 +1648,7 @@ export default function BriefsPage() {
                   >
                     {recipients.map((m) => (
                       <option key={m.id} value={m.id}>
-                        {recipientLabel(m)}
+                        {recipientLabel(m, inviteStatusOf(m.id))}
                       </option>
                     ))}
                   </select>
@@ -1634,8 +1656,12 @@ export default function BriefsPage() {
               </Field>
             ) : recipients.length === 1 ? (
               <p className="text-sm text-ink-secondary">
-                Sharing with <strong className="text-ink-primary">{recipientName}</strong>
-                {recipients[0]?.status === 'pending' && ' (invited, not joined yet)'}
+                Sharing with{' '}
+                <strong className="text-ink-primary">
+                  {recipients[0]
+                    ? recipientLabel(recipients[0], inviteStatusOf(recipients[0].id))
+                    : recipientName}
+                </strong>
               </p>
             ) : (
               <p className="text-sm text-ink-secondary">

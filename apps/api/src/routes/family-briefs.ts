@@ -148,13 +148,12 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
       (m) => m.id === id && isShareableAdult(m) && !memberMatchesUser(m, creator),
     )
   }
-  async function hasOtherActiveAdult(tenant: string, creator: string) {
+  /** Anyone a share could name: an invited partner counts, so the brief is not saved solo. */
+  async function hasOtherAdult(tenant: string, creator: string) {
     const group = await db
       .collection<FamilyGroupDoc>('family_groups')
       .findOne({ tenant_id: tenant })
-    return (group?.members ?? []).some(
-      (m) => m.status === 'active' && !isMinorMember(m) && !memberMatchesUser(m, creator),
-    )
+    return (group?.members ?? []).some((m) => isShareableAdult(m) && !memberMatchesUser(m, creator))
   }
   /** The roster entry a share names, when that person has not joined yet. */
   async function pendingRecipient(b: HouseholdBriefDoc) {
@@ -162,7 +161,9 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
     const group = await db
       .collection<FamilyGroupDoc>('family_groups')
       .findOne({ tenant_id: b.tenant_id })
-    return group?.members.find((m) => m.id === b.share!.for_member_id && m.status === 'pending')
+    return group?.members.find(
+      (m) => m.id === b.share!.for_member_id && m.status === 'pending' && isShareableAdult(m),
+    )
   }
   async function participant(b: HouseholdBriefDoc, ctx?: { tenant_id: string; user_id: string }) {
     return (
@@ -302,7 +303,7 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
     const solo =
       contract_version === 2 &&
       !parsed.data.for_member_id &&
-      !(await hasOtherActiveAdult(tenant_id, user_id))
+      !(await hasOtherAdult(tenant_id, user_id))
     if (contract_version === 2 && !member && !solo)
       return reply.code(400).send({
         error: 'Choose another adult in your household. Invite them from Family if needed.',
