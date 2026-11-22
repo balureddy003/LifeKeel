@@ -6,7 +6,11 @@ vi.mock('@/lib/push', () => ({
   subscribeNativePush: () => subscribeNativePush(),
   isPushSupported: () => true,
 }))
-vi.mock('@/lib/native', () => ({ isNativeShell: () => false }))
+const getNativePushFailure = vi.fn<() => 'denied' | 'no_token' | null>(() => null)
+vi.mock('@/lib/native', () => ({
+  isNativeShell: () => false,
+  getNativePushFailure: () => getNativePushFailure(),
+}))
 vi.mock('@/lib/platform', () => ({ isIOS: () => false, isStandalone: () => false }))
 vi.mock('@/lib/haptics', () => ({ haptic: vi.fn() }))
 
@@ -86,5 +90,18 @@ describe('ChannelsCard', () => {
       />,
     )
     expect(await screen.findByText(/Add LifeKeel to your Home Screen/)).toBeTruthy()
+  })
+
+  it('tells a refused permission apart from a device that could not register', async () => {
+    subscribeNativePush.mockResolvedValue(false)
+    getNativePushFailure.mockReturnValue('denied')
+    const first = render(<ChannelsCard loadState={async () => base} readFacts={() => facts} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Turn on alerts' }))
+    expect(await screen.findByText(/turned off for LifeKeel/)).toBeTruthy()
+    first.unmount()
+    getNativePushFailure.mockReturnValue('no_token')
+    render(<ChannelsCard loadState={async () => base} readFacts={() => facts} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Turn on alerts' }))
+    expect(await screen.findByText(/allowed, but this device did not register/)).toBeTruthy()
   })
 })

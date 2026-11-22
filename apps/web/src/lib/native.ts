@@ -181,17 +181,30 @@ export async function saveRegion(region: Region): Promise<void> {
 // cleared on unregister.
 const PUSH_TOKEN_KEY = 'lifekeel_push_token'
 
+let nativePushFailure: 'denied' | 'no_token' | null = null
+
+/** Why the last token request came back empty: the person said no, or the device gave no token. */
+export function getNativePushFailure(): 'denied' | 'no_token' | null {
+  return nativePushFailure
+}
+
 /** Ask for permission and resolve with the device's push token, or null. */
 export async function requestNativePushToken(timeoutMs = 10_000): Promise<string | null> {
+  nativePushFailure = null
   const push = isNativeShell() ? window.Capacitor?.Plugins?.PushNotifications : undefined
   if (!push) return null
   try {
     const perm = await push.requestPermissions()
-    if (perm.receive !== 'granted') return null
+    if (perm.receive !== 'granted') {
+      nativePushFailure = 'denied'
+      return null
+    }
+    nativePushFailure = 'no_token'
     return await new Promise<string | null>((resolve) => {
       const timer = setTimeout(() => resolve(null), timeoutMs)
       const done = (v: string | null) => {
         clearTimeout(timer)
+        if (v) nativePushFailure = null
         resolve(v)
       }
       void push.addListener('registration', (d) => done(d.value ?? null))

@@ -13,7 +13,7 @@ import { haptic } from '@/lib/haptics'
 import { fetchChannelState, type ChannelState } from '@/lib/api'
 import { explainChannels, type ClientFacts } from '@/lib/channel-explain'
 import { isIOS, isStandalone } from '@/lib/platform'
-import { isNativeShell } from '@/lib/native'
+import { getNativePushFailure, isNativeShell } from '@/lib/native'
 import { isPushSupported, subscribeNativePush } from '@/lib/push'
 
 // Module-level default — an inline arrow in the signature gets a new
@@ -56,7 +56,16 @@ export function ChannelsCard({
     const ok = await subscribeNativePush()
     setBusy(false)
     if (ok) await refresh()
-    else setNote('Could not turn alerts on. Check that notifications are allowed for LifeKeel.')
+    else {
+      const why = getNativePushFailure()
+      setNote(
+        why === 'denied'
+          ? 'Notifications are turned off for LifeKeel. Allow them in your phone settings, then try again.'
+          : why === 'no_token'
+            ? 'Notifications are allowed, but this device did not register. Try again in a moment.'
+            : 'Could not turn alerts on. Check that notifications are allowed for LifeKeel.',
+      )
+    }
   }
 
   return (
