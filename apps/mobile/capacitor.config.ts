@@ -37,8 +37,19 @@ const config: CapacitorConfig = {
   ios: {
     contentInset: 'never',
     scheme: 'LifeKeel',
+    // The page's own background (light theme), so there is no black or white flash before it paints.
+    backgroundColor: '#FDFCF9',
   },
   plugins: {
+    SplashScreen: {
+      // The branded launch screen stays up until the web app calls hide() (NativeRegionGate), with a
+      // timer as the backstop so a page that never loads cannot leave it up.
+      launchShowDuration: 4000,
+      launchAutoHide: true,
+      launchFadeOutDuration: 200,
+      backgroundColor: '#FDFCF9',
+      showSpinner: false,
+    },
     PushNotifications: {
       presentationOptions: ['badge', 'sound', 'alert'],
     },

@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react'
 import { decideRegion } from '@/lib/region'
-import { getSavedRegion, isNativeShell, saveRegion } from '@/lib/native'
+import { getSavedRegion, hideNativeSplash, isNativeShell, saveRegion } from '@/lib/native'
 
 /**
  * Inside the Capacitor shell, sends the user to their region's app host.
@@ -32,9 +32,10 @@ export function NativeRegionGate() {
         hasSession,
         loc: window.location,
       })
-      if (!decision) return
+      if (!decision) return void hideNativeSplash()
       if (decision.persist) await saveRegion(decision.region)
       if (decision.redirectTo && !cancelled) window.location.replace(decision.redirectTo)
+      else void hideNativeSplash()
     })()
     return () => {
       cancelled = true

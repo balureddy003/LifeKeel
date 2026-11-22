@@ -33,6 +33,7 @@ interface CapacitorPlugins {
     authenticate: (opts: { reason: string }) => Promise<void>
     checkBiometry: () => Promise<{ isAvailable: boolean }>
   }
+  SplashScreen?: { hide: () => Promise<void> }
   Preferences?: {
     get: (opts: { key: string }) => Promise<{ value: string | null }>
     set: (opts: { key: string; value: string }) => Promise<void>
@@ -70,6 +71,17 @@ export function nativePlatform(): 'ios' | 'android' | 'web' {
   if (!isNativeShell()) return 'web'
   const p = window.Capacitor?.getPlatform?.()
   return p === 'ios' || p === 'android' ? p : 'web'
+}
+
+/** Drop the native launch screen once the app has something to show. Safe to call anywhere; the
+ *  shell also hides it on a timer, so a page that never loads cannot leave it up. */
+export async function hideNativeSplash(): Promise<void> {
+  const splash = isNativeShell() ? window.Capacitor?.Plugins?.SplashScreen : undefined
+  try {
+    await splash?.hide()
+  } catch {
+    /* already hidden */
+  }
 }
 
 /** Take a document photo natively. Returns null on any failure/cancel —

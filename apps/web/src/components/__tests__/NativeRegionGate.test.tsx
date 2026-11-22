@@ -2,6 +2,8 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, waitFor, cleanup } from '@testing-library/react'
 import { NativeRegionGate } from '../NativeRegionGate'
 
+const splashHide = vi.fn(async () => {})
+
 function fakeShell(initial: Record<string, string> = {}) {
   const store = { ...initial }
   const set = vi.fn(async ({ key, value }: { key: string; value: string }) => {
@@ -11,6 +13,7 @@ function fakeShell(initial: Record<string, string> = {}) {
     isNativePlatform: () => true,
     getPlatform: () => 'ios',
     Plugins: {
+      SplashScreen: { hide: splashHide },
       Preferences: {
         get: async ({ key }: { key: string }) => ({ value: store[key] ?? null }),
         set,
@@ -28,6 +31,7 @@ function atHost(host: string, language = 'en-GB') {
 }
 
 afterEach(() => {
+  splashHide.mockClear()
   cleanup()
   vi.unstubAllGlobals()
   delete (window as unknown as { Capacitor?: unknown }).Capacitor
@@ -72,5 +76,20 @@ describe('NativeRegionGate', () => {
     render(<NativeRegionGate />)
     await new Promise((r) => setTimeout(r, 20))
     expect(replace).not.toHaveBeenCalled()
+  })
+
+  it('hides the native launch screen once the app is up and not about to redirect', async () => {
+    fakeShell({ lifekeel_region: 'uk' })
+    atHost('app.lifekeel.co.uk')
+    render(<NativeRegionGate />)
+    await waitFor(() => expect(splashHide).toHaveBeenCalledTimes(1))
+  })
+
+  it('keeps the launch screen up while it redirects to the other region host', async () => {
+    fakeShell({ lifekeel_region: 'si' })
+    const replace = atHost('app.lifekeel.co.uk')
+    render(<NativeRegionGate />)
+    await waitFor(() => expect(replace).toHaveBeenCalled())
+    expect(splashHide).not.toHaveBeenCalled()
   })
 })
