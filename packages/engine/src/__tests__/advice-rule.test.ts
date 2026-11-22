@@ -94,6 +94,10 @@ function webCopyFiles(): string[] {
     'apps/web/src/app/resilience/page.tsx',
     'apps/web/src/components/FigureRow.tsx',
     'apps/web/src/lib/figure-edit.ts',
+    // A brief's figures offered to the family list: states what was typed and what is on file.
+    'apps/web/src/components/SaveFiguresCard.tsx',
+    'apps/web/src/lib/brief-figures.ts',
+    'apps/api/src/routes/family-figures.ts',
     // Quick policy add: the premium check states arithmetic and points at the policy document.
     'apps/web/src/app/policies/new/page.tsx',
     'apps/web/src/app/domains/PolicyDetails.tsx',

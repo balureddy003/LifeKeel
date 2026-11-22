@@ -30,7 +30,7 @@ export const FIGURE_FIELDS: Record<string, FigureField> = {
   life_cover_lump_sum_minor: { section: 'household', field: 'life_cover_minor', allowZero: false },
 }
 
-const gbp = (minor: number) => `£${Math.round(minor / 100).toLocaleString('en-GB')}`
+export const gbp = (minor: number) => `£${Math.round(minor / 100).toLocaleString('en-GB')}`
 
 /** Pounds typed by a person to whole pence; null when blank, not a number, negative or too large. */
 export function parsePounds(text: string, allowZero: boolean): number | null {

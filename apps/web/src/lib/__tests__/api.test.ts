@@ -17,6 +17,7 @@ import {
   submitFinancialProfile,
   addFamilyPolicy,
   editFamilyPolicy,
+  saveFamilyFigures,
   RESOLVED_INSIGHT_STATES,
 } from '../api'
 import { clearAllCaches } from '../fetch-cache'
@@ -737,5 +738,50 @@ describe('a policy saved on the quick form reaches Home', () => {
     expect(await save()).toMatchObject({ ok: true })
     expect((await fetchFamilyInsights()).map((i) => i.id)).toEqual(['after'])
     expect(fn).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('figures saved from a brief reach Home', () => {
+  it('drops the cached insights so the next read is fresh', async () => {
+    const insight = (id: string) => ({
+      insights: [
+        {
+          id,
+          detector_id: 'family_protection_gap',
+          rule_id: 'r',
+          hypothesis: 'h',
+          reasoning: 'x',
+          actions: [],
+          confidence: 1,
+          urgency: 'low',
+          category: 'c',
+          state: 'new',
+          created_at: '2026-11-01T00:00:00Z',
+        },
+      ],
+    })
+    const fn = mockFetchSequence(
+      { body: insight('before') },
+      {
+        body: {
+          saved: [{ key: 'savings_minor', label: 'Savings', before: null, after: 1 }],
+          unchanged: [],
+        },
+      },
+      { body: insight('after') },
+    )
+    await fetchFamilyInsights()
+    const r = await saveFamilyFigures({ savings_minor: 100 })
+    expect(r).toMatchObject({ ok: true })
+    expect((await fetchFamilyInsights()).map((i) => i.id)).toEqual(['after'])
+    expect(fn).toHaveBeenCalledTimes(3)
+  })
+
+  it('says why when the server refuses', async () => {
+    mockFetchSequence({ body: { error: 'Only household editors can save figures' }, ok: false })
+    expect(await saveFamilyFigures({ savings_minor: 100 })).toEqual({
+      ok: false,
+      error: 'Only household editors can save figures',
+    })
   })
 })

@@ -1955,6 +1955,67 @@ scenario('28 policies: one short form adds a policy and checks the premiums', as
   )
 })
 
+scenario(
+  "29 figures: a brief's numbers are saved to the family list and the estimate uses them",
+  async () => {
+    const fam = await makeFamily('Figures', 'Saved')
+    const tok = fam.org.token
+    const figs = {
+      savings_minor: 900000,
+      monthly_spend_minor: 360000,
+      monthly_inflow_minor: 420000,
+    }
+    const first = await call('POST', '/family/financial-profile/figures', {
+      token: tok,
+      body: figs,
+    })
+    expectStatus('the figures are saved with no financial profile on file', first, 200)
+    check(
+      'all three are reported as saved',
+      (first.json?.saved ?? []).length === 3,
+      first.text.slice(0, 300),
+    )
+    const est = await call('GET', '/family/resilience', { token: tok })
+    const used = JSON.stringify(est.json?.figures ?? [])
+    check(
+      'the income-stops estimate reads the saved savings',
+      used.includes('900000') && used.includes('360000'),
+      est.text.slice(0, 400),
+    )
+    const again = await call('POST', '/family/financial-profile/figures', {
+      token: tok,
+      body: figs,
+    })
+    check(
+      'saving the same figures again reports them unchanged',
+      (again.json?.saved ?? []).length === 0 && (again.json?.unchanged ?? []).length === 3,
+      again.text.slice(0, 300),
+    )
+    expectStatus(
+      'zero spending is refused',
+      await call('POST', '/family/financial-profile/figures', {
+        token: tok,
+        body: { monthly_spend_minor: 0 },
+      }),
+      400,
+    )
+    expectStatus(
+      'an absurd amount is refused',
+      await call('POST', '/family/financial-profile/figures', {
+        token: tok,
+        body: { savings_minor: 1e15 },
+      }),
+      400,
+    )
+    expectStatus(
+      'no token is refused',
+      await call('POST', '/family/financial-profile/figures', { body: figs }),
+      401,
+      403,
+    )
+  },
+)
+
 // ═════════════════════════ RUNNER ═══════════════════════════════════════════
 const started = Date.now()
 for (const s of scenarios) {
