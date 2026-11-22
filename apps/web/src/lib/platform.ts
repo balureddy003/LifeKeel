@@ -11,16 +11,23 @@
  *   Share → "Add to Home Screen", which the UI has to describe in words.
  */
 
+import { isNativeShell } from './native'
+
 export function isIOS(): boolean {
   if (typeof navigator === 'undefined') return false
   // iPadOS reports as MacIntel with touch points — the standard check.
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  )
 }
 
 /** True when running as an installed home-screen app rather than a tab. */
 export function isStandalone(): boolean {
   if (typeof window === 'undefined') return false
+  // The Capacitor shell is an installed app too, and has native push: without
+  // this, iOS shows "add to Home Screen" inside the app with no way to enable push.
+  if (isNativeShell()) return true
   return (
     window.matchMedia('(display-mode: standalone)').matches ||
     // iOS Safari pre-display-mode — still the reliable check there.
