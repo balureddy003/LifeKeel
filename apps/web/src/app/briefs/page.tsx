@@ -988,7 +988,10 @@ export default function BriefsPage() {
   const [wantsStart, setWantsStart] = useState(false)
   const [startMissing, setStartMissing] = useState(false)
   useEffect(() => {
-    setWantsStart(!!new URLSearchParams(window.location.search).get('start'))
+    const start = !!new URLSearchParams(window.location.search).get('start')
+    setWantsStart(start)
+    // A fresh visit opens at the top; a deep link to one situation scrolls to its own form instead.
+    if (!start) window.scrollTo(0, 0)
   }, [])
   useEffect(() => {
     if (startedRef.current || !loaded || !canCreate) return
@@ -1653,8 +1656,8 @@ export default function BriefsPage() {
               role="alert"
               className="mt-4 rounded-2xl border border-amber-400/40 bg-amber-500/10 p-4 text-sm text-ink-primary"
             >
-              Your first brief is free. Making more, and keeping your record up to date, is part of
-              the household record.
+              Your free brief has been used. Making another, and keeping your record up to date, is
+              part of the household record.
               <Link href="/upgrade" className="ml-2 font-semibold underline">
                 See the plan
               </Link>
