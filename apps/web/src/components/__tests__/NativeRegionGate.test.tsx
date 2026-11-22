@@ -92,4 +92,15 @@ describe('NativeRegionGate', () => {
     await waitFor(() => expect(replace).toHaveBeenCalled())
     expect(splashHide).not.toHaveBeenCalled()
   })
+
+  it('hides the web-style bar above the keyboard in the shell', async () => {
+    const setAccessoryBarVisible = vi.fn(async () => {})
+    fakeShell()
+    ;(window as unknown as { Capacitor: { Plugins: Record<string, unknown> } }).Capacitor.Plugins[
+      'Keyboard'
+    ] = { setAccessoryBarVisible }
+    atHost('app.lifekeel.co.uk')
+    render(<NativeRegionGate />)
+    await waitFor(() => expect(setAccessoryBarVisible).toHaveBeenCalledWith({ isVisible: false }))
+  })
 })

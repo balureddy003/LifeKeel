@@ -34,6 +34,7 @@ interface CapacitorPlugins {
   /** The npm wrapper's name, kept for builds that bundle it. */
   BiometricAuth?: BiometricPlugin
   SplashScreen?: { hide: () => Promise<void> }
+  Keyboard?: { setAccessoryBarVisible: (opts: { isVisible: boolean }) => Promise<void> }
   Preferences?: {
     get: (opts: { key: string }) => Promise<{ value: string | null }>
     set: (opts: { key: string; value: string }) => Promise<void>
@@ -95,6 +96,16 @@ export async function hideNativeSplash(): Promise<void> {
     await splash?.hide()
   } catch {
     /* already hidden */
+  }
+}
+
+/** Hide the web-style prev/next/done bar above the keyboard; native screens do not have one. */
+export async function hideKeyboardAccessoryBar(): Promise<void> {
+  const kb = isNativeShell() ? window.Capacitor?.Plugins?.Keyboard : undefined
+  try {
+    await kb?.setAccessoryBarVisible({ isVisible: false })
+  } catch {
+    /* not supported on this platform */
   }
 }
 

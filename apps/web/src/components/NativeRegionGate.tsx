@@ -2,7 +2,13 @@
 
 import { useEffect } from 'react'
 import { decideRegion } from '@/lib/region'
-import { getSavedRegion, hideNativeSplash, isNativeShell, saveRegion } from '@/lib/native'
+import {
+  getSavedRegion,
+  hideKeyboardAccessoryBar,
+  hideNativeSplash,
+  isNativeShell,
+  saveRegion,
+} from '@/lib/native'
 
 /**
  * Inside the Capacitor shell, sends the user to their region's app host.
@@ -13,6 +19,7 @@ import { getSavedRegion, hideNativeSplash, isNativeShell, saveRegion } from '@/l
 export function NativeRegionGate() {
   useEffect(() => {
     if (!isNativeShell()) return
+    void hideKeyboardAccessoryBar()
     let cancelled = false
     void (async () => {
       const saved = await getSavedRegion()

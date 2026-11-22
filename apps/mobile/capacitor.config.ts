@@ -41,8 +41,14 @@ const config: CapacitorConfig = {
     scheme: 'LifeKeel',
     // The page's own background (light theme), so there is no black or white flash before it paints.
     backgroundColor: '#FDFCF9',
+    // No long-press link preview sheet: it is a website behaviour, not an app one.
+    allowsLinkPreview: false,
   },
   plugins: {
+    Keyboard: {
+      // The webview shrinks above the keyboard (like a native screen) instead of scrolling the page.
+      resize: 'native',
+    },
     SplashScreen: {
       // The branded launch screen stays up until the web app calls hide() (NativeRegionGate), with a
       // timer as the backstop so a page that never loads cannot leave it up.
