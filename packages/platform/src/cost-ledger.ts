@@ -42,6 +42,9 @@ const DEFAULT_PRICING: Record<string, ModelPricing> = {
   'o3-mini': { input_per_1k: 110, output_per_1k: 440 },
   o3: { input_per_1k: 1000, output_per_1k: 4000 },
   // Groq (significantly cheaper — open models via inference API)
+  // gpt-oss on Groq: $0.15/$0.60 (120b) and $0.075/$0.30 (20b) per 1M, console.groq.com/docs/models, 2026-11-26.
+  'openai/gpt-oss-120b': { input_per_1k: 15, output_per_1k: 60 },
+  'openai/gpt-oss-20b': { input_per_1k: 7.5, output_per_1k: 30 },
   'llama-3.1-8b-instant': { input_per_1k: 5, output_per_1k: 8 },
   'llama-3.1-70b-versatile': { input_per_1k: 59, output_per_1k: 79 },
   // xAI Grok — grok-4.3 $1.25/$2.50 and grok-4.7 $2/$6 per 1M (short-context

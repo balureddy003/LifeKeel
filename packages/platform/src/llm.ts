@@ -105,9 +105,11 @@ export const DEFAULT_TIER_MODELS: Record<LlmProvider, Record<ReasoningTier, stri
     powerful: 'o3-mini',
   },
   groq: {
-    fast: 'llama-3.1-8b-instant',
-    balanced: 'llama-3.1-70b-versatile',
-    powerful: 'llama-3.1-70b-versatile', // Groq doesn't have o-series yet
+    // Groq retired every Llama 3.x id (3.1-70b Jan 2025; 3.1-8b and 3.3-70b 16 Aug 2026,
+    // console.groq.com/docs/deprecations). Its production text models are the gpt-oss pair.
+    fast: 'openai/gpt-oss-20b',
+    balanced: 'openai/gpt-oss-120b',
+    powerful: 'openai/gpt-oss-120b',
   },
   xai: {
     // grok-4.3 is the floor of the current lineup (the grok-4-fast-* slugs
@@ -306,6 +308,9 @@ const MODEL_PROVIDER_MAP: Record<string, LlmProvider> = {
   o3: 'openai',
   'o3-mini': 'openai',
   // Groq
+  // Served by Groq, despite the 'openai/' namespace: open-weight models, not OpenAI's API.
+  'openai/gpt-oss-120b': 'groq',
+  'openai/gpt-oss-20b': 'groq',
   'llama-3.1-70b-versatile': 'groq',
   'llama-3.1-8b-instant': 'groq',
   'mixtral-8x7b-32768': 'groq',
@@ -323,7 +328,7 @@ const MODEL_PROVIDER_MAP: Record<string, LlmProvider> = {
   'grok-4.7': 'xai',
 }
 
-function detectProviderFromModel(model: string): LlmProvider | null {
+export function detectProviderFromModel(model: string): LlmProvider | null {
   // Exact match
   if (MODEL_PROVIDER_MAP[model]) return MODEL_PROVIDER_MAP[model]!
   // Prefix match
@@ -1126,7 +1131,7 @@ export const DEFAULT_MODELS: Record<LlmProvider, string> = {
   openai: 'gpt-4o-mini',
   azure: 'gpt-4o',
   vertex: 'gemini-3.5-flash',
-  groq: 'llama-3.1-70b-versatile',
+  groq: 'openai/gpt-oss-120b',
   xai: 'grok-4.3',
   ollama: 'llama3.1',
   auto: 'claude-haiku-4-5',
