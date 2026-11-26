@@ -94,6 +94,21 @@ export function runwayPoints(
   return { pts, zeroAt }
 }
 
+/** The gap in words. Shown under the chart, and on its own under a saved brief's answer. */
+export function WaitingGapNote({ gap, chart = false }: { gap: WaitingGap; chart?: boolean }) {
+  return (
+    <p
+      data-testid="waiting-gap-note"
+      className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-ink-primary"
+    >
+      Savings run out about {gap.months.toFixed(1)} months before the cover payment starts: from
+      around {gap.runsOut} until around {gap.coverStarts}, there would be neither.
+      {chart ? ' The shaded part of the chart is that gap.' : ''} If you want advice about it, talk
+      to a licensed professional.
+    </p>
+  )
+}
+
 export function RunwayChart({
   result,
   startSavings,
@@ -224,17 +239,7 @@ export function RunwayChart({
           </text>
         )}
       </svg>
-      {waiting && (
-        <p
-          data-testid="waiting-gap-note"
-          className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-ink-primary"
-        >
-          Savings run out about {waiting.months.toFixed(1)} months before the cover payment starts:
-          from around {waiting.runsOut} until around {waiting.coverStarts}, there would be neither.
-          The shaded part of the chart is that gap. If you want advice about it, talk to a licensed
-          professional.
-        </p>
-      )}
+      {waiting && <WaitingGapNote gap={waiting} chart />}
       <figcaption className="mt-1 text-xs text-ink-tertiary">
         {zeroAt !== null && runsOutLabel ? `Savings reach zero ${runsOutLabel}. ` : ''}
         {base

@@ -49,7 +49,7 @@ import { useToast } from '@/components/Toast'
 import { motion, useReducedMotion } from 'framer-motion'
 import { MOMENTS, type MomentKey } from './moments'
 import { CountUp } from './CountUp'
-import { RunwayChart } from './RunwayChart'
+import { RunwayChart, WaitingGapNote, waitingGapOf } from './RunwayChart'
 import { WhatIf } from './WhatIf'
 import { countdownText, daysUntil } from './what-if'
 import { briefNextLine } from '@/lib/brief-status'
@@ -1838,6 +1838,7 @@ export default function BriefsPage() {
                       <p className="text-lg font-medium text-ink-primary">
                         {briefHeadline(splitBriefSentence(b.template_sentence).main)}
                       </p>
+                      {waitingGapOf(b.result) && <WaitingGapNote gap={waitingGapOf(b.result)!} />}
                       <WhatIf brief={b} />
                       {/* A saved brief can still hand its figures to the family list, not only a new one. */}
                       {canCreate && <SaveFiguresCard inputs={b.inputs} />}
