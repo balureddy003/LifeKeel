@@ -101,6 +101,8 @@ function webCopyFiles(): string[] {
     'apps/web/src/components/IncomeStopBrief.tsx',
     'apps/web/src/lib/event-actions.ts',
     'apps/web/src/app/upgrade/page.tsx',
+    // Innovation scan idea 1: the blind check's form and comparison.
+    'apps/web/src/components/BlindCheck.tsx',
     'apps/web/src/lib/home-score.ts',
     'apps/web/src/app/events/page.tsx',
     'apps/web/src/lib/life-data.ts',

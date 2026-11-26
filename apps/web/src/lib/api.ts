@@ -6662,6 +6662,26 @@ export interface BriefCatalogueEntry {
   moment?: 'baby' | 'job' | 'care' | 'fix'
 }
 
+/** The three figures a blind check asks the other adult for. */
+export type BlindField =
+  'monthly_income_minor' | 'monthly_essentials_minor' | 'liquid_savings_minor'
+
+/**
+ * Blind check (innovation scan idea 1): the other adult gives their own figures before seeing the creator's.
+ * `waiting_for_you` comes with no figures at all; `answered` carries both sets side by side.
+ */
+export interface BlindCheckView {
+  status: 'waiting_for_you' | 'waiting_for_them' | 'answered' | 'sign_in_to_answer'
+  fields?: BlindField[]
+  rows?: Array<{
+    field: BlindField
+    label: string
+    creator_minor: number
+    recipient_minor: number
+    difference_pct: number | null
+  }>
+}
+
 export interface HouseholdBrief {
   id: string
   problem_type: string
@@ -6692,6 +6712,7 @@ export interface HouseholdBrief {
   confirmed_opened_at: string | null
   created_by: string
   created_at: string
+  blind_check?: BlindCheckView | null
 }
 
 export interface SharedBriefView extends HouseholdBrief {
@@ -6753,8 +6774,15 @@ export function createBrief(body: {
   problem_type: BriefProblemType
   inputs: BriefInputs
   for_member_id?: string | null
+  /** Ask the other adult for their own figures before they see these (money briefs only). */
+  blind_check?: boolean
 }) {
   return briefPost<{ brief: HouseholdBrief }>('/family/briefs', body)
+}
+
+/** The other adult's own figures, given once; the reply carries both sets side by side. */
+export function answerBlindCheck(id: string, values: Record<BlindField, number>) {
+  return briefPost<{ brief: HouseholdBrief }>(`/family/briefs/${id}/blind-check`, { values })
 }
 
 /** The answer before anything is saved or shared (money briefs only). */
