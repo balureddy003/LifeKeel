@@ -30,6 +30,7 @@ import {
   type ScenarioInputs,
   type ScenarioResult,
 } from '@/lib/api'
+import { coverMonths } from '@/lib/months'
 
 function gbp(minor: number): string {
   return `${minor < 0 ? '-' : ''}£${Math.round(Math.abs(minor) / 100).toLocaleString('en-GB')}`
@@ -38,14 +39,8 @@ function gbp(minor: number): string {
 /** Honest runway phrasing — never fake precision (150.0 months) or a
  *  double hedge ("about less than a month"). >5 years reads as a span,
  *  not a decimal (intent 51). */
-export function runwayPhrase(months: number): string {
-  if (months < 1) return 'less than a month'
-  if (months > 60) return 'more than five years'
-  // Whole months, rounded down like the server's readiness text and the income-stops estimate, so one page
-  // never says "about 3 months" beside "about 2 months" for the same figures.
-  const whole = Math.floor(months)
-  return `about ${whole} ${whole === 1 ? 'month' : 'months'}`
-}
+// Whole months, rounded down, the one rule every screen uses (lib/months.ts).
+export const runwayPhrase = coverMonths
 
 interface EarnerOption {
   /** Roster member id (null = the "whole household" chip some templates

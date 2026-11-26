@@ -119,7 +119,7 @@ describe('POST /assistant/ask — verified tier (PRD-212)', () => {
     expect(body.verified).toBe(true)
     expect(body.operation).toBe('emergency_fund')
     expect(body.isLive).toBe(true)
-    expect(body.content).toContain('9000.00')
+    expect(body.content).toContain('£9,000')
     expect(body.content).toContain('months of cover')
     expect(body.content).toContain('2026-10-12')
     expect(body.provenance.source).toContain('emergency fund')

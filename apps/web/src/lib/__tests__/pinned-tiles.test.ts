@@ -20,12 +20,12 @@ describe('pinnedTiles', () => {
       expect(t.emptyHint).not.toBe('')
     }
   })
-  it('runway is savings over monthly costs, to one decimal under ten months', () => {
+  it('runway is savings over monthly costs, in whole months rounded down like every other screen', () => {
     const p = base({
       emergency_fund: { emergency_savings_minor: 700000, monthly_expenses_minor: 200000 } as never,
     })
     const t = byId(p, 'runway')
-    expect(t.value).toBe('3.5 months')
+    expect(t.value).toBe('about 3 months')
     expect(t.detail).toBe('£7,000 savings, £2,000 a month in costs')
   })
   it('runway needs both figures and never divides by zero', () => {
@@ -35,7 +35,7 @@ describe('pinnedTiles', () => {
     const one = base({
       emergency_fund: { emergency_savings_minor: 100000, monthly_expenses_minor: 100000 } as never,
     })
-    expect(byId(one, 'runway').value).toBe('1 month')
+    expect(byId(one, 'runway').value).toBe('about 1 month')
   })
   it('counts policies and is empty at zero', () => {
     expect(byId(base({}), 'policies').value).toBeNull()

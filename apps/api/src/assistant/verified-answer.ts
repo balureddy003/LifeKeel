@@ -23,6 +23,7 @@ import { toScenarioProfileInput, type MemberScope } from '../scenarios/profile-i
 import { formatScenarioResult } from '../scenarios/format.js'
 import { computeReadiness } from '../readiness/score.js'
 import { ungroundedNumbers } from '../local-model.js'
+import { coverMonths } from '../format/months.js'
 import type { MemberTwinResult } from '../routes/member-twin.js'
 import type { EstateSignalData } from '../legacy/estate-signal.js'
 
@@ -198,8 +199,13 @@ interface RenderedAnswer {
 
 export type VerifiedAnswer = Omit<RenderedAnswer, 'grounding'>
 
+// £9,000 or £42.50: the way every other screen writes money. The grounding check strips the commas.
 function money(minor: number | undefined): string {
-  return typeof minor === 'number' ? `£${(minor / 100).toFixed(2)}` : 'not provided'
+  if (typeof minor !== 'number') return 'not provided'
+  return `£${(minor / 100).toLocaleString('en-GB', {
+    minimumFractionDigits: minor % 100 ? 2 : 0,
+    maximumFractionDigits: 2,
+  })}`
 }
 
 function profileFreshness(profile: VerifiedProfile | null): string | null {
@@ -245,13 +251,13 @@ function renderEmergencyFund(data: VerifiedAnswerData): RenderedAnswer {
     ef.emergency_savings_minor !== undefined &&
     ef.monthly_expenses_minor !== undefined &&
     ef.monthly_expenses_minor > 0
-      ? Math.round((ef.emergency_savings_minor / ef.monthly_expenses_minor) * 10) / 10
+      ? ef.emergency_savings_minor / ef.monthly_expenses_minor
       : null
   return {
     content:
       `Your emergency fund has ${money(ef.emergency_savings_minor)} saved against ` +
       `${money(ef.monthly_expenses_minor)}/month in expenses` +
-      (months !== null ? ` — that's **${months} months of cover**.` : '.') +
+      (months !== null ? ` — that's **${coverMonths(months)} of cover**.` : '.') +
       (ef.has_high_interest_debt
         ? ' Your profile also flags high-interest debt, which affects how far that cushion goes.'
         : '') +
