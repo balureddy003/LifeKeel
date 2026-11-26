@@ -21,6 +21,28 @@ const MAX_HORIZON = 120
 
 const gbp = (minor: number) => `£${Math.round(minor / 100).toLocaleString('en-GB')}`
 
+/** The solver's waiting-period gap: savings run out before income protection starts paying. */
+export interface WaitingGap {
+  months: number
+  runsOutMonth: number
+  coverStartsMonth: number
+  runsOut: string
+  coverStarts: string
+}
+
+/** Exported for tests. Reads only what the solver sent; never works a gap out itself. */
+export function waitingGapOf(result: Record<string, unknown> | null): WaitingGap | null {
+  const g = result?.['waitingGap'] as Partial<WaitingGap> | undefined
+  return g &&
+    typeof g.months === 'number' &&
+    typeof g.runsOutMonth === 'number' &&
+    typeof g.coverStartsMonth === 'number' &&
+    typeof g.runsOut === 'string' &&
+    typeof g.coverStarts === 'string'
+    ? (g as WaitingGap)
+    : null
+}
+
 /** Exported for tests. */
 export function runwayPoints(
   result: Record<string, unknown> | null,
@@ -88,11 +110,14 @@ export function RunwayChart({
   if (!built) return null
   const base = baseline ? runwayPoints(baseline.result, baseline.startSavings) : null
   const { pts, zeroAt } = built
+  const waiting = waitingGapOf(result)
+  const coverAt = result?.['coverStartsAtMonth']
+  const coverStarts = typeof coverAt === 'number' ? coverAt : null
   const W = 320
   const H = 132
   const pad = { l: 8, r: 8, t: 20, b: 22 }
   const all = [...pts, ...(base?.pts ?? [])]
-  const maxT = Math.max(1, ...all.map((p) => p.t))
+  const maxT = Math.max(1, ...all.map((p) => p.t), coverStarts !== null ? coverStarts + 2 : 0)
   const maxS = Math.max(1, ...all.map((p) => p.s))
   const x = (t: number) => pad.l + (t / maxT) * (W - pad.l - pad.r)
   const y = (s: number) => pad.t + (1 - s / maxS) * (H - pad.t - pad.b)
@@ -116,6 +141,40 @@ export function RunwayChart({
         className="w-full text-family-400"
       >
         <polygon points={area} fill="currentColor" opacity="0.12" />
+        {waiting && (
+          <rect
+            data-testid="waiting-gap"
+            x={x(waiting.runsOutMonth)}
+            y={pad.t}
+            width={Math.max(1, x(waiting.coverStartsMonth) - x(waiting.runsOutMonth))}
+            height={y(0) - pad.t}
+            className="fill-red-500"
+            opacity="0.12"
+          />
+        )}
+        {coverStarts !== null && (
+          <g data-testid="cover-starts">
+            <line
+              x1={x(coverStarts)}
+              x2={x(coverStarts)}
+              y1={pad.t}
+              y2={y(0)}
+              stroke="currentColor"
+              strokeDasharray="2 3"
+              opacity="0.6"
+            />
+            <text
+              x={x(coverStarts)}
+              y={pad.t - 8}
+              fontSize="10"
+              textAnchor={x(coverStarts) > W / 2 ? 'end' : 'start'}
+              fill="currentColor"
+              opacity="0.8"
+            >
+              Cover starts
+            </text>
+          </g>
+        )}
         {base && (
           <polyline
             points={toLine(base.pts)}
@@ -158,10 +217,24 @@ export function RunwayChart({
         >
           {`month ${Math.round(maxT)}`}
         </text>
-        <text x={pad.l} y={pad.t - 8} fontSize="10" fill="currentColor" opacity="0.7">
-          {maxS === pts[0]!.s ? `Savings today ${gbp(maxS)}` : `Up to ${gbp(maxS)}`}
-        </text>
+        {/* The top-left figure gives way when the cover label would sit on top of it. */}
+        {!(coverStarts !== null && x(coverStarts) < W / 2) && (
+          <text x={pad.l} y={pad.t - 8} fontSize="10" fill="currentColor" opacity="0.7">
+            {maxS === pts[0]!.s ? `Savings today ${gbp(maxS)}` : `Up to ${gbp(maxS)}`}
+          </text>
+        )}
       </svg>
+      {waiting && (
+        <p
+          data-testid="waiting-gap-note"
+          className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-ink-primary"
+        >
+          Savings run out about {waiting.months.toFixed(1)} months before the cover payment starts:
+          from around {waiting.runsOut} until around {waiting.coverStarts}, there would be neither.
+          The shaded part of the chart is that gap. If you want advice about it, talk to a licensed
+          professional.
+        </p>
+      )}
       <figcaption className="mt-1 text-xs text-ink-tertiary">
         {zeroAt !== null && runsOutLabel ? `Savings reach zero ${runsOutLabel}. ` : ''}
         {base
