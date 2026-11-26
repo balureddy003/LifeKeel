@@ -32,6 +32,7 @@ import {
   classifyVerifiedIntent,
   renderVerifiedAnswer,
   VERIFIED_OP_LABELS,
+  type VerifiedOperationId,
 } from '../assistant/verified-answer.js'
 import { projectScenario } from '../scenarios/project.js'
 import { ScenarioStepSchema } from './family-scenarios.js'
@@ -613,23 +614,10 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
       // unchanged and no health-hinted text ever reaches these templates.
       if (!quarantined) {
         const intent = classifyVerifiedIntent(query)
-        if (intent?.kind === 'clarify') {
-          recordRoute(db, 'clarified')
-          getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', {
-            is_live: true,
-            verified: true,
-            clarify: intent.options,
-          })
-          const labels = intent.options.map((op) => VERIFIED_OP_LABELS[op])
-          return reply.send({
-            content: `I can answer that from your data — which did you mean: **${labels.join('** or **')}**?`,
-            isLive: true,
-            verified: true,
-            clarify: labels,
-            data_as_of: dataAsOf,
-          })
-        }
-        if (intent?.kind === 'operation') {
+        // The renderers compute from real profile sections — a sparse or
+        // unusual profile can still throw. A verified tier that 500s an ask
+        // is worse than generation, so a render failure degrades honestly.
+        const render = async (operation: VerifiedOperationId) => {
           // The readiness composite needs the same vault-side estate inputs
           // /family/readiness uses — computing without them gates that
           // component and re-weights the rest, so the verified answer could
@@ -637,29 +625,57 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
           // here (adult-gated inside the helper) and only for readiness
           // asks; a load failure degrades to the previous gated behavior.
           const estateInputs =
-            intent.operation === 'readiness' && !member_id && profileDoc
+            operation === 'readiness' && !member_id && profileDoc
               ? await loadEstateReadinessInputs(db, tenant_id, user_id).catch(() => undefined)
               : undefined
-          // The renderers compute from real profile sections — a sparse or
-          // unusual profile can still throw. A verified tier that 500s an ask
-          // is worse than generation, so a render failure degrades honestly.
-          const answer = (() => {
-            try {
-              return renderVerifiedAnswer(intent.operation, {
-                profile: profileDoc,
-                family: familyDoc,
-                memberId: member_id,
-                twin,
-                estateInputs,
-              })
-            } catch (err) {
-              req.log.warn(
-                { err, operation: intent.operation },
-                'Verified render failed — degrading to generation',
-              )
-              return null
-            }
-          })()
+          try {
+            return renderVerifiedAnswer(operation, {
+              profile: profileDoc,
+              family: familyDoc,
+              memberId: member_id,
+              twin,
+              estateInputs,
+            })
+          } catch (err) {
+            req.log.warn({ err, operation }, 'Verified render failed — degrading to generation')
+            return null
+          }
+        }
+        if (intent?.kind === 'clarify') {
+          // A two-part question gets both parts answered: each is computed from saved records, so
+          // answering both is not a guess. A part that cannot be rendered is named, not guessed; if no
+          // part renders, the ask falls through to generation like a single failed render does.
+          const parts = await Promise.all(intent.options.map(render))
+          const answers = parts.filter((p): p is NonNullable<typeof p> => p !== null)
+          if (answers.length > 0) {
+            const missed = intent.options.filter((op) => !answers.some((a) => a.operation === op))
+            recordRoute(db, 'verified')
+            getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', {
+              is_live: true,
+              verified: true,
+              operations: answers.map((a) => a.operation),
+              ...(missed.length ? { not_rendered: missed } : {}),
+              ...(member_id ? { member_id } : {}),
+            })
+            return reply.send({
+              content: [
+                ...answers.map((a) => `**${VERIFIED_OP_LABELS[a.operation]}**\n\n${a.content}`),
+                ...missed.map(
+                  (op) =>
+                    `I couldn't work out **${VERIFIED_OP_LABELS[op]}** from your saved records just now.`,
+                ),
+              ].join('\n\n'),
+              isLive: true,
+              verified: true,
+              operation: answers[0]!.operation,
+              operations: answers.map((a) => a.operation),
+              provenance: answers[0]!.provenance,
+              data_as_of: dataAsOf,
+            })
+          }
+        }
+        if (intent?.kind === 'operation') {
+          const answer = await render(intent.operation)
           if (answer) {
             recordRoute(db, 'verified')
             getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', {

@@ -23,7 +23,8 @@ const money = z.number().int().nonnegative().max(MAX_MINOR)
 
 const PolicyBody = z
   .object({
-    type: z.enum(['life', 'income_protection', 'critical_illness']),
+    // Home insurance too, so the home-damage steps can offer to add the policy they look for.
+    type: z.enum(['life', 'income_protection', 'critical_illness', 'home']),
     provider: z.string().trim().min(1).max(120),
     member_id: z.string().min(1).max(60).optional(),
     covers_member_id: z.string().min(1).max(60).optional(),

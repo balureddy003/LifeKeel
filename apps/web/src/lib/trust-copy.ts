@@ -49,6 +49,13 @@ export const SHORT_ITEMS: Array<{ q: string; a: string; href: string; link: stri
     link: 'Open the AI page',
   },
   {
+    // PRD-113: built, and no competitor offers it, but nothing outside Settings said so (hands-on review).
+    q: 'Can AI help without your words leaving your device?',
+    a: 'Yes, for life-event drafts. Where your browser supports it, Settings can write them on this device, so they never leave it.',
+    href: '/settings',
+    link: 'Open Settings',
+  },
+  {
     q: 'Can you take your data with you?',
     a: 'Settings has Export Your Data, which downloads what LifeKeel holds about your family.',
     href: '/settings',

@@ -52,6 +52,7 @@ import { CountUp } from './CountUp'
 import { RunwayChart } from './RunwayChart'
 import { WhatIf } from './WhatIf'
 import { countdownText, daysUntil } from './what-if'
+import { briefNextLine } from '@/lib/brief-status'
 import { recipientLabel } from '@/lib/brief-recipient'
 import { briefHeadline, plainDates, runsOutAround, splitBriefSentence } from '@/lib/brief-text'
 import {
@@ -874,15 +875,7 @@ function Glance({
   const days = date ? daysUntil(date, today) : null
   const other = brief.share?.for_member_name ?? 'the other adult'
   const c = brief.confirmation
-  const next = !c?.creator_at
-    ? brief.share
-      ? 'Read it and confirm, so you can both see the same numbers.'
-      : 'Read it and confirm, so it is on record that you have seen these numbers.'
-    : !brief.share
-      ? 'Saved for you. Add another adult in Family when you want to share it.'
-      : !c.recipient_at
-        ? `Waiting for ${other} to read and confirm.`
-        : 'You have both seen the same numbers. Things change, so update the figures when they do.'
+  const next = briefNextLine(brief)
   return (
     <GlassCard className="mt-6 p-5">
       <p className="text-xs font-medium uppercase tracking-wide text-ink-tertiary">

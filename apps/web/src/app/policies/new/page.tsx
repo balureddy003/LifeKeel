@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * /policies/new: add one life or income protection policy in one short form.
+ * /policies/new: add one policy (life, income protection, critical illness or home) in one short form.
  * Shows at once whether twelve monthly premiums equal the yearly one (the server does the arithmetic, so there
  * is one rule), then the contact details. Says what is on the page, never whether the cover is enough.
  */
@@ -18,12 +18,14 @@ import {
   type PolicyCheck,
   type SavedPolicy,
 } from '@/lib/api'
+import { PERSON_SCOPED_POLICY_TYPES } from '@/lib/policyTypes'
 import { inputCls, primaryBtn } from '../../domains/AddRecordForm'
 
 const TYPES: Array<{ v: NewPolicyInput['type']; l: string }> = [
   { v: 'life', l: 'Life cover' },
   { v: 'income_protection', l: 'Income protection' },
   { v: 'critical_illness', l: 'Critical illness cover' },
+  { v: 'home', l: 'Home insurance' },
 ]
 
 /** Pounds typed by a person to whole pence; undefined when blank or not a sensible amount. */
@@ -54,7 +56,13 @@ export default function NewPolicyPage() {
 
   useEffect(() => {
     void fetchFamilyGroup().then((g) => setPeople(g?.members ?? []))
+    // A link can open the form on one type, e.g. the home-damage steps asking for the home policy.
+    const want = new URLSearchParams(window.location.search).get('type')
+    const match = TYPES.find((t) => t.v === want)
+    if (match) setType(match.v)
   }, [])
+  // Household-wide types (home) cover the home, not a person: no person pickers, as in the wizard.
+  const forPerson = PERSON_SCOPED_POLICY_TYPES.has(type)
 
   // The check runs as the two premiums are typed; the server owns the rule.
   useEffect(() => {
@@ -77,8 +85,8 @@ export default function NewPolicyPage() {
     const r = await addFamilyPolicy({
       type,
       provider: provider.trim(),
-      ...(covers ? { covers_member_id: covers } : {}),
-      ...(heldBy ? { member_id: heldBy } : {}),
+      ...(covers && forPerson ? { covers_member_id: covers } : {}),
+      ...(heldBy && forPerson ? { member_id: heldBy } : {}),
       ...(c ? { coverage_amount_minor: c } : {}),
       ...(m ? { monthly_premium_minor: m } : {}),
       ...(a ? { annual_premium_minor: a } : {}),
@@ -156,27 +164,31 @@ export default function NewPolicyPage() {
             autoComplete="off"
           />,
         )}
-        {field(
-          'pol-covers',
-          'Who it covers (optional)',
-          <select
-            id="pol-covers"
-            className={inputCls}
-            value={covers}
-            onChange={(e) => setCovers(e.target.value)}
-          >
-            <option value="">Not stated</option>
-            {people.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>,
+        {forPerson && (
+          <>
+            {field(
+              'pol-covers',
+              'Who it covers (optional)',
+              <select
+                id="pol-covers"
+                className={inputCls}
+                value={covers}
+                onChange={(e) => setCovers(e.target.value)}
+              >
+                <option value="">Not stated</option>
+                {people.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>,
+            )}
+            <p className="-mt-2 text-sm text-ink-secondary">
+              Pick a person and the policy shows under their name on the family list. Left blank, it
+              shows as not yet matched.
+            </p>
+          </>
         )}
-        <p className="-mt-2 text-sm text-ink-secondary">
-          Pick a person and the policy shows under their name on the family list. Left blank, it
-          shows as not yet matched.
-        </p>
         {field(
           'pol-cover',
           'Cover amount in £ (optional)',
@@ -253,23 +265,24 @@ export default function NewPolicyPage() {
             More details (optional)
           </summary>
           <div className="space-y-4">
-            {field(
-              'pol-held',
-              'Held by',
-              <select
-                id="pol-held"
-                className={inputCls}
-                value={heldBy}
-                onChange={(e) => setHeldBy(e.target.value)}
-              >
-                <option value="">Not stated</option>
-                {people.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>,
-            )}
+            {forPerson &&
+              field(
+                'pol-held',
+                'Held by',
+                <select
+                  id="pol-held"
+                  className={inputCls}
+                  value={heldBy}
+                  onChange={(e) => setHeldBy(e.target.value)}
+                >
+                  <option value="">Not stated</option>
+                  {people.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>,
+              )}
             {field(
               'pol-number',
               'Policy number',
@@ -309,6 +322,11 @@ export default function NewPolicyPage() {
       </GlassCard>
     </div>
   )
+}
+
+/** Where a saved policy shows: the life-protection list holds person cover; a home policy lives on the profile. */
+function familyListHref(type: string): string {
+  return type === 'home' ? '/financial-profile?step=protection' : '/domains?d=life_protection'
 }
 
 function Saved({
@@ -390,7 +408,7 @@ function Saved({
           )}
           <div className="flex flex-wrap gap-3 pt-2">
             <Link
-              href="/domains?d=life_protection"
+              href={familyListHref(policy.type)}
               className="min-h-[48px] py-3 text-family-400 underline"
             >
               See the family list

@@ -10,6 +10,8 @@ import Link from 'next/link'
 import { ChevronRight, FileText } from 'lucide-react'
 import { GlassCard } from '@/components/Glass'
 import { listBriefs, type HouseholdBrief } from '@/lib/api'
+import { briefHeadline, splitBriefSentence } from '@/lib/brief-text'
+import { briefNextLine } from '@/lib/brief-status'
 
 export function LatestBriefCard() {
   const [brief, setBrief] = useState<HouseholdBrief | null>(null)
@@ -40,7 +42,10 @@ export function LatestBriefCard() {
           <span className="mt-1 block font-medium text-ink-primary">
             {brief.title ?? 'Your brief'}
           </span>
-          <span className="block text-sm text-ink-secondary">{brief.template_sentence}</span>
+          <span className="block text-sm text-ink-secondary">
+            {briefHeadline(splitBriefSentence(brief.template_sentence).main)}
+          </span>
+          <span className="mt-1 block text-sm text-ink-tertiary">{briefNextLine(brief)}</span>
           {brief.stale && (
             <span className="mt-1 block text-sm text-ink-secondary">
               The figures have changed since. Open it to see the new answer.

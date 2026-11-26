@@ -149,7 +149,7 @@ export const SERVICES: ServiceDef[] = [
         })),
         empty: {
           text: 'No matching policy is on your list yet. If you have one to hand, you can add it now.',
-          href: '/policies/new',
+          href: eventType === 'property' ? '/policies/new?type=home' : '/policies/new',
           label: 'Add a policy',
         },
       }

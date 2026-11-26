@@ -18,6 +18,9 @@ import { KeelThread } from './KeelThread'
 function SetupSummary({ onNavigate }: { onNavigate?: () => void }) {
   const setup = useKeelPanel((s) => s.setup)
   const failed = useKeelPanel((s) => s.setupFailed)
+  // Questions first, setup second: once the person has asked something, the conversation gets the space.
+  const asked = useKeelPanel((s) => s.messages.some((m) => m.role === 'user'))
+  if (asked) return null
   if (!setup || setup.role === 'child')
     return failed ? (
       <p className="px-3 py-2 text-xs text-ink-tertiary">

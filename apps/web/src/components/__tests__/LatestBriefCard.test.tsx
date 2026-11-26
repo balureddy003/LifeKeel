@@ -56,4 +56,31 @@ describe('LatestBriefCard', () => {
     await Promise.resolve()
     expect(container.textContent).toBe('')
   })
+
+  it('shows the one-line answer, not the fine print, and who has seen it', async () => {
+    api.listBriefs.mockResolvedValue([
+      brief({
+        template_sentence:
+          'On these figures savings would run out around June 2027 (about month 6.3). Figures are the household’s own entries — tax is not covered.',
+        share: { for_member_id: 'm2', for_member_name: 'Tom', expires_at: 'x', revoked: false },
+        confirmation: { creator_at: '2026-11-21', recipient_at: null, both_confirmed: false },
+      }),
+    ])
+    render(<LatestBriefCard />)
+    expect(await screen.findByText('Your savings would last until about June 2027.')).toBeTruthy()
+    expect(screen.queryByText(/Figures are the household/)).toBeNull()
+    expect(screen.getByText('Waiting for Tom to read and confirm.')).toBeTruthy()
+  })
+})
+
+describe('Home order', () => {
+  it('puts the latest brief first, straight under the emergency row (hands-on review G4)', async () => {
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    const src = fs.readFileSync(path.resolve(__dirname, '../../app/page.tsx'), 'utf8')
+    const at = (tag: string) => src.indexOf(tag)
+    expect(at('<LatestBriefCard />')).toBeGreaterThan(at('<EmergencyRow />'))
+    expect(at('<LatestBriefCard />')).toBeLessThan(at('<TodayCard'))
+    expect(src.split('<LatestBriefCard />').length).toBe(2)
+  })
 })

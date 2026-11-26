@@ -67,6 +67,7 @@ describe('trust page', () => {
       'How is AI used?',
       'Can you take your data with you?',
       'Can you delete it?',
+      'Can AI help without your words leaving your device?',
     ])
       expect(screen.getByText(q)).toBeTruthy()
     const hrefs = screen.getAllByRole('link').map((a) => a.getAttribute('href'))

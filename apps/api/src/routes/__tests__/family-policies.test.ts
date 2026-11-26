@@ -109,6 +109,19 @@ describe('POST /family/policies', () => {
     expect(markBriefsStale).toHaveBeenCalledOnce()
   })
 
+  it('adds a home policy, so the home-damage steps can ask for one', async () => {
+    const res = await add('u1', {
+      type: 'home',
+      provider: 'Example Home',
+      contact_phone: '0800 111 222',
+    })
+    expect(res.statusCode).toBe(201)
+    expect((profile?.['policies'] as Record<string, unknown>[])[0]).toMatchObject({
+      type: 'home',
+      provider: 'Example Home',
+    })
+  })
+
   it('says the figures match when they do, and says nothing when one is missing', async () => {
     expect((await add('u1', { ...TOM, annual_premium_minor: 50_400 })).json().check).toEqual({
       status: 'match',
