@@ -41,6 +41,11 @@ exist".
 until it is overwritten. Set `BACKUP_RETENTION_DAYS` to the real window. Until it is set,
 receipts say it is not confirmed.
 
+Where it is set: production reads the `production` GitHub environment variable
+`BACKUP_RETENTION_DAYS` through `deploy-api.yml`; staging has it on the `lifekeel-api-staging`
+Cloud Run service directly (the staging deploy keeps service settings). Both are 30 days as of
+2026-11-26. Change it only when the backup or host snapshot window changes.
+
 ## Age-based sweep (derived data only)
 
 `RetentionWorker` runs nightly at 02:00. Per tenant, configurable in `tenants.data_retention`
