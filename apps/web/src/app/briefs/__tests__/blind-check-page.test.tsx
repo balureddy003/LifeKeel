@@ -105,6 +105,9 @@ describe('the other adult, before answering', () => {
     expect(await screen.findByText(/Before you see Sam's figures/)).toBeTruthy()
     expect(screen.queryByTestId('glance-answer')).toBeNull()
     expect(screen.getByText('Give your own figures first, then you will see theirs.')).toBeTruthy()
+    // The list speaks from Alex's side: Alex has not confirmed, and is waiting on Sam (not on Alex).
+    expect(screen.getByText('Waiting for Sam')).toBeTruthy()
+    expect(screen.queryByText('Waiting for Alex Stone')).toBeNull()
     expect(
       screen.getByRole('button', { name: 'Try a what-if', hidden: true }).closest('[hidden]'),
     ).not.toBeNull()

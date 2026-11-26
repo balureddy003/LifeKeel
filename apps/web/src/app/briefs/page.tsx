@@ -501,8 +501,11 @@ function BriefFields({
   )
 }
 
-function Status({ b, other }: { b: HouseholdBrief; other: string }) {
+/** Who has confirmed, said from the viewer's side: "You" is whoever is looking, sharer or not. */
+function Status({ b, other, mine = true }: { b: HouseholdBrief; other: string; mine?: boolean }) {
   const c = b.confirmation
+  const youAt = mine ? c?.creator_at : c?.recipient_at
+  const otherAt = mine ? c?.recipient_at : c?.creator_at
   const chip = (done: boolean, text: string) => (
     <span
       className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
@@ -517,9 +520,8 @@ function Status({ b, other }: { b: HouseholdBrief; other: string }) {
   if (!b.share && !c?.creator_at) return null
   return (
     <div className="flex flex-wrap gap-2">
-      {chip(!!c?.creator_at, c?.creator_at ? 'You confirmed' : 'You have not confirmed')}
-      {b.share &&
-        chip(!!c?.recipient_at, c?.recipient_at ? `${other} confirmed` : `Waiting for ${other}`)}
+      {chip(!!youAt, youAt ? 'You confirmed' : 'You have not confirmed')}
+      {b.share && chip(!!otherAt, otherAt ? `${other} confirmed` : `Waiting for ${other}`)}
     </div>
   )
 }
@@ -1852,7 +1854,11 @@ export default function BriefsPage() {
           <ul className="mt-3 space-y-3">
             {briefs.map((b) => {
               const title = b.title ?? byId.get(b.problem_type)?.title ?? b.problem_type
-              const other = b.share?.for_member_name ?? 'the other adult'
+              // The list holds briefs this person made and briefs shared with them.
+              const mine = b.created_by === user?.id
+              const other = mine
+                ? (b.share?.for_member_name ?? 'the other adult')
+                : firstNameOfUser(b.created_by)
               const isOpen = open === b.id
               return (
                 <li
@@ -1884,7 +1890,7 @@ export default function BriefsPage() {
                     />
                   </button>
                   <div className="mt-3">
-                    <Status b={b} other={other} />
+                    <Status b={b} other={other} mine={mine} />
                   </div>
                   {isOpen && b.blind_check?.status === 'waiting_for_you' && (
                     <div className="mt-4 border-t border-haze pt-4">{blindPanel(b)}</div>

@@ -150,7 +150,7 @@ export function BlindCheckCompare({
           <tr className="text-left text-xs text-ink-tertiary">
             <th className="py-1 pr-2 font-medium">Figure</th>
             <th className="py-1 pr-2 font-medium">You</th>
-            <th className="py-1 pr-2 font-medium">{otherName}</th>
+            <th className="whitespace-nowrap py-1 pr-2 font-medium">{otherName}</th>
           </tr>
         </thead>
         <tbody>
@@ -164,7 +164,7 @@ export function BlindCheckCompare({
               ) : null
             const cell = (minor: number, isRecipient: boolean) => (
               <td className="py-2 pr-2 tabular-nums text-ink-primary">
-                {gbp(minor)}
+                <span className="whitespace-nowrap">{gbp(minor)}</span>
                 {isRecipient && note}
               </td>
             )
