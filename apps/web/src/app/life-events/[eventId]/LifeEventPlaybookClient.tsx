@@ -360,13 +360,26 @@ export default function LifeEventPlaybookClient() {
   const [doneIds, setDoneIds] = useState<Set<string>>(new Set())
   const [syncError, setSyncError] = useState(false)
   const [queuedOffline, setQueuedOffline] = useState(false)
+  // A failed read is not a missing event: offline during an emergency must say "couldn't load", with a retry,
+  // never "couldn't be found" (seen on staging right after reporting, when the request dropped).
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     if (!eventId) return
     let cancelled = false
-    fetchLifeEvents().then((events) => {
+    let failed = false
+    setLoadFailed(false)
+    fetchLifeEvents(() => {
+      failed = true
+    }).then((events) => {
       if (cancelled) return
       const found = events.find((e) => e.id === eventId) ?? null
+      if (!found && failed) {
+        setLoadFailed(true)
+        setEvent(null)
+        return
+      }
       setEvent(found)
       if (found) {
         // Server is authoritative — overrides the localStorage snapshot
@@ -379,7 +392,7 @@ export default function LifeEventPlaybookClient() {
     return () => {
       cancelled = true
     }
-  }, [eventId])
+  }, [eventId, attempt])
 
   useEffect(() => {
     if (eventId) setDoneIds(loadDoneIds(eventId))
@@ -422,6 +435,30 @@ export default function LifeEventPlaybookClient() {
       <div className="px-5 pt-8 space-y-3">
         <div className="shimmer h-24 rounded-2xl" />
         <div className="shimmer h-24 rounded-2xl" />
+      </div>
+    )
+  }
+
+  if (!event && loadFailed) {
+    return (
+      <div className="px-4 pt-8 text-center" role="alert">
+        <div className="w-16 h-16 rounded-3xl bg-tint/[0.03] border border-tint/[0.08] flex items-center justify-center mb-4 mx-auto">
+          <HelpCircle size={32} className="text-ink-tertiary" />
+        </div>
+        <p className="text-ink-secondary">
+          Your plan couldn&apos;t load just now. Nothing was lost. Check your connection and try
+          again.
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            setEvent(undefined)
+            setAttempt((n) => n + 1)
+          }}
+          className="mt-4 min-h-[48px] rounded-full bg-family-500 px-5 text-sm font-semibold text-[rgb(var(--on-cta))]"
+        >
+          Try again
+        </button>
       </div>
     )
   }

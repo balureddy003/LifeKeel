@@ -56,9 +56,10 @@ describe('price', () => {
 })
 
 describe('Security', () => {
-  it('shows three plain statements', () => {
+  it('shows one plain statement per security claim, including on-device drafts', () => {
     render(<Security />)
-    expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(3)
+    expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(SECURITY.length)
+    expect(screen.getByRole('heading', { name: 'Drafts that stay on your device' })).toBeTruthy()
   })
 })
 

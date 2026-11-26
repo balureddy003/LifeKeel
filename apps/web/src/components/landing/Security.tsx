@@ -14,6 +14,11 @@ export const SECURITY: { claim: string; title: string; body: string }[] = [
     body: "Your financial data isn't sold. Approved AI providers process it only for the request you make.",
   },
   {
+    claim: 'on-device-drafts',
+    title: 'Drafts that stay on your device',
+    body: 'Where your browser supports it, Keel can write life-event drafts on your device, so those words never leave it. Turn it on in Settings.',
+  },
+  {
     claim: 'delete-account',
     title: 'Yours to delete',
     body: 'Export your data or request account deletion from Settings. See the privacy notice for deletion and retention details.',

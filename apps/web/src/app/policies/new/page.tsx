@@ -133,7 +133,7 @@ export default function NewPolicyPage() {
     <div className="px-5 pt-2 pb-10 space-y-5">
       <PageHeader
         title="Add a policy"
-        backHref="/domains?d=life_protection"
+        backHref={familyListHref(type)}
         subtitle="What is on the policy, in one go"
       />
       <GlassCard className="p-4 space-y-4">
@@ -344,7 +344,7 @@ function Saved({
     <div className="px-5 pt-2 pb-10 space-y-5">
       <PageHeader
         title="Policy saved"
-        backHref="/domains?d=life_protection"
+        backHref={familyListHref(policy.type)}
         subtitle="It is on the family list"
       />
       <div data-testid="saved-policy">

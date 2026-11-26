@@ -202,6 +202,15 @@ export const CLAIMS: Claim[] = [
   },
 
   {
+    // PRD-113: unclaimed by competitors (hands-on review, improvement 8). Opt-in, and only where the
+    // browser has WebGPU or built-in AI; Settings hides the switch otherwise.
+    id: 'on-device-drafts',
+    text: 'Life-event drafts can be written on your device, where your browser supports it',
+    status: 'live',
+    page: true,
+    evidence: 'apps/web/src/lib/onDeviceLlm.ts',
+  },
+  {
     id: 'encrypted-at-rest',
     text: 'Connector passwords and access tokens are encrypted before they are stored',
     status: 'live',
