@@ -213,6 +213,7 @@ jobs:
             R2_ACCOUNT_ID=${{ vars.R2_ACCOUNT_ID }}
             R2_JURISDICTION=${{ vars.R2_JURISDICTION }}
             EMAIL_FROM=${{ vars.EMAIL_FROM }}
+            BACKUP_RETENTION_DAYS=${{ vars.BACKUP_RETENTION_DAYS }}
           # NOTE: no comments inside this block — deploy-cloudrun feeds every
           # line to gcloud verbatim. Web push: without the VAPID secrets,
           # /push/vapid-key 503s and no browser can subscribe. Values come from
