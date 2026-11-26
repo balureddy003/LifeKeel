@@ -643,22 +643,28 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
         }
         if (intent?.kind === 'clarify') {
           // A two-part question gets both parts answered: each is computed from saved records, so
-          // answering both is not a guess. Only when a part cannot be rendered does Keel ask which
-          // was meant, with the options sent back as tappable choices.
+          // answering both is not a guess. A part that cannot be rendered is named, not guessed; if no
+          // part renders, the ask falls through to generation like a single failed render does.
           const parts = await Promise.all(intent.options.map(render))
-          if (parts.every((p) => p !== null)) {
-            const answers = parts as NonNullable<(typeof parts)[number]>[]
+          const answers = parts.filter((p): p is NonNullable<typeof p> => p !== null)
+          if (answers.length > 0) {
+            const missed = intent.options.filter((op) => !answers.some((a) => a.operation === op))
             recordRoute(db, 'verified')
             getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', {
               is_live: true,
               verified: true,
               operations: answers.map((a) => a.operation),
+              ...(missed.length ? { not_rendered: missed } : {}),
               ...(member_id ? { member_id } : {}),
             })
             return reply.send({
-              content: answers
-                .map((a) => `**${VERIFIED_OP_LABELS[a.operation]}**\n\n${a.content}`)
-                .join('\n\n'),
+              content: [
+                ...answers.map((a) => `**${VERIFIED_OP_LABELS[a.operation]}**\n\n${a.content}`),
+                ...missed.map(
+                  (op) =>
+                    `I couldn't work out **${VERIFIED_OP_LABELS[op]}** from your saved records just now.`,
+                ),
+              ].join('\n\n'),
               isLive: true,
               verified: true,
               operation: answers[0]!.operation,
@@ -667,20 +673,6 @@ export function registerAssistantRoutes(app: FastifyInstance, db: Db): void {
               data_as_of: dataAsOf,
             })
           }
-          recordRoute(db, 'clarified')
-          getAuditLogger()?.fromRequest(req, 'assistant.ask', 'assistant', 'ask', {
-            is_live: true,
-            verified: true,
-            clarify: intent.options,
-          })
-          const labels = intent.options.map((op) => VERIFIED_OP_LABELS[op])
-          return reply.send({
-            content: `I can answer that from your data — which did you mean: **${labels.join('** or **')}**?`,
-            isLive: true,
-            verified: true,
-            clarify: labels,
-            data_as_of: dataAsOf,
-          })
         }
         if (intent?.kind === 'operation') {
           const answer = await render(intent.operation)

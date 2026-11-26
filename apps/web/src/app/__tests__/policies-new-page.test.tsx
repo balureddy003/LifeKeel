@@ -125,4 +125,38 @@ describe('/policies/new', () => {
     await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/household editors/))
     expect((screen.getByLabelText(/Provider/) as HTMLInputElement).value).toBe('Example Life')
   })
+
+  it('a home policy names no person, and its saved screen links to where it shows', async () => {
+    addFamilyPolicy.mockResolvedValue({
+      ok: true,
+      check: { status: 'incomplete' },
+      policy: {
+        id: 'pol_h',
+        type: 'home',
+        provider: 'Example Home',
+        coverage_amount_minor: 0,
+        monthly_premium_minor: 0,
+      },
+    })
+    setup()
+    // A person picked while on life cover must not ride along once the type is home.
+    await waitFor(() =>
+      expect(screen.getAllByRole('option', { name: 'Tom' }).length).toBeGreaterThan(0),
+    )
+    type(/Who it covers/, 'tom')
+    type(/^Type$/, 'home')
+    expect(screen.queryByLabelText(/Who it covers/)).toBeNull()
+    expect(screen.queryByLabelText(/Held by/)).toBeNull()
+    type(/Provider/, 'Example Home')
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Save this policy/ }))
+    })
+    const sent = addFamilyPolicy.mock.calls[0]![0] as Record<string, unknown>
+    expect(sent).toMatchObject({ type: 'home', provider: 'Example Home' })
+    expect(sent).not.toHaveProperty('covers_member_id')
+    expect(sent).not.toHaveProperty('member_id')
+    expect(
+      (await screen.findByRole('link', { name: 'See the family list' })).getAttribute('href'),
+    ).toBe('/financial-profile?step=protection')
+  })
 })

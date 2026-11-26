@@ -18,6 +18,19 @@ vi.mock('@lifekeel/platform', async (importOriginal) => {
   return { ...actual, createLlmRouterFromEnv: () => llmMock }
 })
 
+// Lets a test make one verified renderer throw, as a sparse profile can.
+const failing = vi.hoisted(() => ({ op: null as string | null }))
+vi.mock('../../assistant/verified-answer.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../assistant/verified-answer.js')>()
+  return {
+    ...actual,
+    renderVerifiedAnswer: (op: string, data: never) => {
+      if (op === failing.op) throw new Error('sparse profile')
+      return actual.renderVerifiedAnswer(op as never, data)
+    },
+  }
+})
+
 vi.mock('../../db.js', () => ({
   getInsightsCollection: vi.fn(async () => ({
     find: () => ({ sort: () => ({ limit: () => ({ toArray: async () => [] }) }) }),
@@ -159,6 +172,26 @@ describe('POST /assistant/ask — verified tier (PRD-212)', () => {
     expect(body.content).toContain('**Policy renewal dates**')
     expect(body.content).toContain('2026-11-15')
     expect(llmMock).not.toHaveBeenCalled()
+  })
+
+  it('answers the part it can and names the one it cannot, rather than a dead-end question', async () => {
+    failing.op = 'policy_renewals'
+    try {
+      const app = await buildApp()
+      const res = await app.inject({
+        method: 'POST',
+        url: '/assistant/ask',
+        payload: { query: 'how much is in our emergency fund and when does insurance renew?' },
+      })
+      const body = res.json()
+      expect(body.clarify).toBeUndefined()
+      expect(body.operations).toEqual(['emergency_fund'])
+      expect(body.content).toContain('**Emergency fund**')
+      expect(body.content).toMatch(/couldn't work out \*\*Policy renewal dates\*\*/)
+      expect(llmMock).not.toHaveBeenCalled()
+    } finally {
+      failing.op = null
+    }
   })
 
   it('unresolvable questions still reach the governed LLM path', async () => {
