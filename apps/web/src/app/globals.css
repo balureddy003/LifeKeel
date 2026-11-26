@@ -485,6 +485,9 @@ html[data-top-banner] .app-shell-with-rail #main-content { padding-top: 0; }
   box-shadow: inset 0 1px 0 rgb(255 255 255 / .32), inset 0 0 0 1px rgb(var(--family-500) / .2);
 }
 .app-nav-space { padding-bottom: var(--app-dock-space); }
+html[data-keyboard] { --app-dock-space: 0px; }
+html[data-keyboard] .app-bottom-nav,
+html[data-keyboard] [aria-label='Suggested questions'] { display: none; }
 .app-chat { height: calc(100dvh - var(--app-chat-top, var(--app-header-height)) - var(--app-dock-space) - 8px); min-height: 320px; }
 .app-setup-chat { height: calc(100dvh - var(--app-header-height) - 8px); min-height: 400px; }
 .app-chat > :not([role='log']), .app-setup-chat > :not([role='log']) { flex-shrink: 0; }

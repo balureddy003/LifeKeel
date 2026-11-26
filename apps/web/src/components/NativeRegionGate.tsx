@@ -17,6 +17,27 @@ import {
  * in a plain browser. Renders nothing.
  */
 export function NativeRegionGate() {
+  // While a text field has focus the keyboard is up: let the CSS hide the floating tab bar, as native apps do.
+  useEffect(() => {
+    if (!isNativeShell()) return
+    const root = document.documentElement
+    const isField = (t: EventTarget | null) =>
+      t instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)
+    const on = (e: FocusEvent) => {
+      if (isField(e.target)) root.dataset['keyboard'] = '1'
+    }
+    const off = () => {
+      delete root.dataset['keyboard']
+    }
+    document.addEventListener('focusin', on)
+    document.addEventListener('focusout', off)
+    return () => {
+      document.removeEventListener('focusin', on)
+      document.removeEventListener('focusout', off)
+      off()
+    }
+  }, [])
+
   useEffect(() => {
     if (!isNativeShell()) return
     void hideKeyboardAccessoryBar()
