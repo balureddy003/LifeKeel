@@ -126,9 +126,9 @@ describe('classifyVerifiedIntent', () => {
 describe('renderVerifiedAnswer', () => {
   it('emergency fund: computes months of cover and carries provenance + freshness', () => {
     const a = renderVerifiedAnswer('emergency_fund', data())!
-    expect(a.content).toContain('£9000.00')
-    expect(a.content).toContain('£3000.00')
-    expect(a.content).toContain('3 months of cover')
+    expect(a.content).toContain('£9,000')
+    expect(a.content).toContain('£3,000')
+    expect(a.content).toContain('about 3 months of cover')
     expect(a.content).toContain('last updated 2026-10-12')
     expect(a.provenance).toEqual({
       source: 'financial profile — emergency fund',
@@ -208,8 +208,8 @@ describe('renderVerifiedAnswer', () => {
   it('education funds: shows each fund against its target', () => {
     const a = renderVerifiedAnswer('education_funds', data())!
     expect(a.content).toContain('Sam')
-    expect(a.content).toContain('£2000.00')
-    expect(a.content).toContain('£8000.00')
+    expect(a.content).toContain('£2,000')
+    expect(a.content).toContain('£8,000')
   })
 
   it('income stops: runs the real scenario calculator and states the runway', () => {
@@ -237,6 +237,6 @@ describe('renderVerifiedAnswer', () => {
     expect(a).not.toBeNull() // baseline: the real renderer passes its own check
     // A profile whose savings just don't appear in the content would fail —
     // assert the invariant the other way: the rendered figure IS the profile's.
-    expect(a!.content).toContain('9000.00')
+    expect(a!.content).toContain('£9,000')
   })
 })

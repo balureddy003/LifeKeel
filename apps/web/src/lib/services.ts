@@ -10,6 +10,7 @@
 import type { DomainView, FinancialProfile, LifeEventType } from './api'
 import type { PinnedTile } from './pinned-tiles'
 import { emergencyPolicies, POLICY_TYPE_LABEL } from './emergency-policies'
+import { coverMonths } from './months'
 
 export interface ServiceCtx {
   profile: FinancialProfile | null
@@ -58,11 +59,6 @@ const gbp = (minor: number) => `£${Math.round(minor / 100).toLocaleString('en-G
 export function runwayMonths(savingsMinor: number, monthlyCostsMinor: number): number | null {
   if (!(savingsMinor > 0) || !(monthlyCostsMinor > 0)) return null
   return savingsMinor / monthlyCostsMinor
-}
-
-function monthsLabel(m: number): string {
-  const rounded = m < 10 ? Math.round(m * 10) / 10 : Math.round(m)
-  return `${rounded} ${rounded === 1 ? 'month' : 'months'}`
 }
 
 const looksLikeNumber = (s: string) => (s.match(/\d/g)?.length ?? 0) >= 6
@@ -191,7 +187,7 @@ export const SERVICES: ServiceDef[] = [
       return {
         id: 'runway',
         title: 'Savings and monthly costs',
-        value: months === null ? null : monthsLabel(months),
+        value: months === null ? null : coverMonths(months),
         detail:
           months === null
             ? ''

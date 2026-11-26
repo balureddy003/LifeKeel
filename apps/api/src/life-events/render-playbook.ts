@@ -18,6 +18,7 @@ import path from 'node:path'
 import yaml from 'js-yaml'
 import { repoRoot, formatMoney } from '@lifekeel/platform'
 import type { FinancialProfile } from '../routes/family-financial-profile.js'
+import { coverMonths } from '../format/months.js'
 
 export type LifeEventType =
   'job_loss' | 'bereavement' | 'disability' | 'medical' | 'car' | 'property' | 'travel'
@@ -120,12 +121,6 @@ function resolveEarner(profile: FinancialProfile, affectedMemberId?: string) {
   }
 }
 
-function formatMonths(months: number): string {
-  if (months < 1) return 'less than a month'
-  if (months === 1) return '1 month'
-  return `${Math.floor(months)} months`
-}
-
 function renderJobLossStep(
   stepId: string,
   profile: FinancialProfile,
@@ -139,7 +134,7 @@ function renderJobLossStep(
       return "We don't have your monthly expenses on file yet, so we can't calculate a real runway — add them to your financial profile for an actual number instead of a guess."
     }
     const months = emergency_savings_minor / monthly_expenses_minor
-    return `Based on your real numbers, your emergency savings of ${formatMoney(emergency_savings_minor)} cover about ${formatMonths(months)} at your current spend of ${formatMoney(monthly_expenses_minor)}/month.`
+    return `Based on your real numbers, your emergency savings of ${formatMoney(emergency_savings_minor)} cover ${coverMonths(months)} at your current spend of ${formatMoney(monthly_expenses_minor)}/month.`
   }
 
   if (stepId === 'income_protection') {

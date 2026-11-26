@@ -30,7 +30,7 @@ describe('PinnedTiles', () => {
       policies: [{}],
     } as never)
     render(<PinnedTiles />)
-    await waitFor(() => expect(screen.getByText('3 months')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('about 3 months')).toBeTruthy())
     expect(screen.getByText('1 policy recorded')).toBeTruthy()
   })
 })

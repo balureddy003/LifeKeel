@@ -25,6 +25,7 @@
 import { formatMoney } from '@lifekeel/platform'
 import type { FinancialProfile } from '../routes/family-financial-profile.js'
 import { educationFundingGapMinor, projectRetirement } from '../routes/family-financial-profile.js'
+import { coverMonths } from '../format/months.js'
 
 export interface EventReadinessResult {
   stability: number
@@ -53,12 +54,6 @@ function clampScore(n: number): number {
   return Math.max(5, Math.min(98, Math.round(n)))
 }
 
-function formatMonths(months: number): string {
-  if (months < 1) return 'less than a month'
-  if (months === 1) return '1 month'
-  return `${Math.floor(months)} months`
-}
-
 function jobLossReadiness(profile: FinancialProfile): EventReadinessResult {
   const { emergency_savings_minor } = profile.emergency_fund
   // Same fallback readiness/score.ts applies — a family that only entered
@@ -70,7 +65,7 @@ function jobLossReadiness(profile: FinancialProfile): EventReadinessResult {
   const months = emergency_savings_minor / monthly_expenses_minor
   return {
     stability: clampScore((months / 6) * 100),
-    explanation: `Based on your real numbers, your emergency savings of ${formatMoney(emergency_savings_minor)} cover about ${formatMonths(months)} at your current spend of ${formatMoney(monthly_expenses_minor)}/month. A common guideline is 3-6 months.`,
+    explanation: `Based on your real numbers, your emergency savings of ${formatMoney(emergency_savings_minor)} cover ${coverMonths(months)} at your current spend of ${formatMoney(monthly_expenses_minor)}/month. A common guideline is 3-6 months.`,
     hasLiveData: true,
   }
 }
