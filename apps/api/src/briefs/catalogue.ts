@@ -269,7 +269,7 @@ const monthLabel = (asOf: string, monthsFrom: number) =>
     timeZone: 'UTC',
   })
 
-const FIELD_LABELS: Record<string, string> = {
+export const FIELD_LABELS: Record<string, string> = {
   monthly_income_minor: 'Take-home income',
   monthly_essentials_minor: 'Spending',
   liquid_savings_minor: 'Liquid savings',

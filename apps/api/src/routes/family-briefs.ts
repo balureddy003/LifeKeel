@@ -19,9 +19,16 @@ import {
 import type { FamilyGroupDoc } from './family-group.js'
 import { taskLlm } from '../ai/task-gateway.js'
 import { encryptForTenant, decryptEnveloped } from '../crypto/envelope.js'
-import { BRIEF_CATALOGUE, solveCatalogueBrief, type BriefFact } from '../briefs/catalogue.js'
 import {
+  BRIEF_CATALOGUE,
+  FIELD_LABELS,
+  solveCatalogueBrief,
+  type BriefFact,
+} from '../briefs/catalogue.js'
+import {
+  BLIND_FIELDS,
   BRIEF_PROBLEM_TYPES,
+  blindOpenFor,
   SENSITIVE_FACTS_TTL_MS,
   BRIEF_SOLVER_VERSION,
   SHARE_TOKEN_TTL_DAYS,
@@ -32,6 +39,7 @@ import {
   solveBrief,
   tokenHash,
   withoutHandoverFacts,
+  type BlindCheck,
   type BriefInputs,
   type BriefProblemType,
   type HouseholdBriefDoc,
@@ -49,6 +57,19 @@ const CreateSchema = z
     problem_type: z.string().max(80),
     inputs: z.record(z.string(), z.unknown()),
     for_member_id: z.string().max(120).nullable().optional(),
+    blind_check: z.boolean().optional(),
+  })
+  .strict()
+const money = z.number().int().nonnegative().max(1e10)
+const BlindAnswerSchema = z
+  .object({
+    values: z
+      .object({
+        monthly_income_minor: money,
+        monthly_essentials_minor: money,
+        liquid_savings_minor: money,
+      })
+      .strict(),
   })
   .strict()
 const AckSchema = z.object({ result_version: z.string().length(64) }).strict()
@@ -72,16 +93,61 @@ function confirmation(b: HouseholdBriefDoc) {
   return { creator_at: creator, recipient_at: recipient, both_confirmed: !!creator && !!recipient }
 }
 
-function briefView(b: HouseholdBriefDoc, token?: string, facts?: BriefFact[]) {
+/** A money brief (not a handover or sensitive one): the only kind a blind check or a no-account read covers. */
+function isMoneyBrief(
+  b: Pick<HouseholdBriefDoc, 'problem_type' | 'sensitive' | 'facts_encrypted'>,
+) {
+  const entry = BRIEF_CATALOGUE.find((e) => e.id === b.problem_type)
+  return (
+    !!entry && entry.mode !== 'handover' && !entry.sensitive && !b.sensitive && !b.facts_encrypted
+  )
+}
+
+function newBlindCheck(): BlindCheck {
+  return { opened_at: new Date(), fields: [...BLIND_FIELDS] }
+}
+
+const blindFor = (b: HouseholdBriefDoc, viewer?: string) => blindOpenFor(b, viewer)
+
+function blindCheckView(b: HouseholdBriefDoc, viewer?: string) {
+  const c = b.blind_check
+  if (!c) return null
+  if (!c.answer)
+    return {
+      status: blindFor(b, viewer) ? 'waiting_for_you' : 'waiting_for_them',
+      fields: c.fields,
+    }
+  return {
+    status: 'answered' as const,
+    fields: c.fields,
+    rows: c.fields.map((field) => {
+      const creator = Number((b.inputs as Record<string, unknown>)[field] ?? 0)
+      const recipient = c.answer!.values[field]
+      return {
+        field,
+        label: FIELD_LABELS[field] ?? field,
+        creator_minor: creator,
+        recipient_minor: recipient,
+        // How far the other adult's figure is from the creator's, as a share of the creator's.
+        difference_pct: creator > 0 ? Math.round(((recipient - creator) / creator) * 100) : null,
+      }
+    }),
+  }
+}
+
+function briefView(b: HouseholdBriefDoc, token?: string, facts?: BriefFact[], viewer?: string) {
+  // Until the named adult gives their own figures, the brief they see carries none of the creator's.
+  const hidden = blindFor(b, viewer)
   return {
     id: b.id,
     problem_type: b.problem_type,
     contract_version: b.contract_version,
     title: b.title,
-    inputs: b.sensitive ? withoutHandoverFacts(b.inputs) : b.inputs,
-    result: b.result,
-    template_sentence: b.template_sentence,
-    facts: facts ?? b.facts ?? [],
+    inputs: hidden ? {} : b.sensitive ? withoutHandoverFacts(b.inputs) : b.inputs,
+    result: hidden ? null : b.result,
+    template_sentence: hidden ? '' : b.template_sentence,
+    facts: hidden ? [] : (facts ?? b.facts ?? []),
+    blind_check: blindCheckView(b, viewer),
     sensitive: !!b.sensitive,
     sensitive_access: b.sensitive_access ?? [],
     solver_version: b.solver_version,
@@ -414,6 +480,9 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
       created_at: now,
       updated_at: now,
     }
+    // The sharer chose to ask the other adult for their own figures first (money briefs only).
+    if (parsed.data.blind_check && doc.share && contract_version === 2 && isMoneyBrief(doc))
+      doc.blind_check = newBlindCheck()
     await briefsFor(db, tenant_id).insertOne(doc)
     await emitBriefEvent(db, tenant_id, 'brief_created', { problem_type: problem })
     if (!solo)
@@ -445,7 +514,7 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
     return {
       briefs: await Promise.all(
         list.map(async (b: HouseholdBriefDoc) =>
-          briefView(b, undefined, await factsFor(b, ctx.user_id)),
+          briefView(b, undefined, await factsFor(b, ctx.user_id), ctx.user_id),
         ),
       ),
     }
@@ -483,7 +552,7 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
     }
     return reply
       .header('Cache-Control', 'private, no-store')
-      .send({ brief: briefView(b, undefined, await factsFor(b, ctx.user_id)) })
+      .send({ brief: briefView(b, undefined, await factsFor(b, ctx.user_id), ctx.user_id) })
   })
 
   app.post<{ Params: { id: string } }>('/family/briefs/:id/confirm', async (req, reply) => {
@@ -496,6 +565,8 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
       return reply
         .code(410)
         .send({ error: 'Share expired or revoked; the creator can issue a new link' })
+    if (blindFor(b, ctx.user_id))
+      return reply.code(409).send({ error: 'Give your own figures first' })
     const ack = AckSchema.safeParse(req.body)
     if (!ack.success || ack.data.result_version !== b.result_version)
       return reply.code(409).send({ error: 'Reload and read this version before confirming' })
@@ -541,53 +612,106 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
     return { ok: true }
   })
 
-  app.post<{ Params: { id: string }; Body: { for_member_id?: string | null } }>(
-    '/family/briefs/:id/share',
-    async (req, reply) => {
-      const { tenant_id, user_id, roles } = req.authContext
-      if (!(await isHouseholdEditor(db, tenant_id, user_id, roles)))
-        return reply.code(403).send({ error: 'Only a household editor can share a brief' })
-      const b = await briefsFor(db, tenant_id).findOne({ id: req.params.id, created_by: user_id })
-      if (!b) return reply.code(404).send({ error: 'Brief not found' })
-      const member = await recipient(
-        tenant_id,
-        user_id,
-        req.body?.for_member_id ?? b.share?.for_member_id,
-      )
-      if (b.contract_version === 2 && !member)
-        return reply
-          .code(400)
-          .send({ error: 'Choose another adult in your household, or invite them from Family' })
-      const token = randomBytes(24).toString('hex')
-      const expiresAt = new Date(Date.now() + SHARE_TOKEN_TTL_DAYS * 86_400_000)
-      await briefsFor(db, tenant_id).updateOne(
-        { id: b.id },
-        {
-          $set: {
-            share: {
-              token_hash: tokenHash(token),
-              for_member_id:
-                member?.id ?? req.body?.for_member_id ?? b.share?.for_member_id ?? null,
-              for_member_name: member?.name ?? b.share?.for_member_name ?? null,
-              ...(member && member.status === 'active'
-                ? { for_user_id: member.user_id ?? member.id }
-                : {}),
-              expires_at: expiresAt,
-              revoked_at: null,
-            },
-            // Re-sharing always requires fresh explicit receipts from both adults.
-            acknowledgements: [],
-            confirmed_opened_at: null,
-            confirmed_by: null,
-            link_fetched_at: null,
-            updated_at: new Date(),
+  app.post<{
+    Params: { id: string }
+    Body: { for_member_id?: string | null; blind_check?: boolean }
+  }>('/family/briefs/:id/share', async (req, reply) => {
+    const { tenant_id, user_id, roles } = req.authContext
+    if (!(await isHouseholdEditor(db, tenant_id, user_id, roles)))
+      return reply.code(403).send({ error: 'Only a household editor can share a brief' })
+    const b = await briefsFor(db, tenant_id).findOne({ id: req.params.id, created_by: user_id })
+    if (!b) return reply.code(404).send({ error: 'Brief not found' })
+    const member = await recipient(
+      tenant_id,
+      user_id,
+      req.body?.for_member_id ?? b.share?.for_member_id,
+    )
+    if (b.contract_version === 2 && !member)
+      return reply
+        .code(400)
+        .send({ error: 'Choose another adult in your household, or invite them from Family' })
+    const token = randomBytes(24).toString('hex')
+    const expiresAt = new Date(Date.now() + SHARE_TOKEN_TTL_DAYS * 86_400_000)
+    const nextMember = member?.id ?? req.body?.for_member_id ?? b.share?.for_member_id ?? null
+    // A new link asks again when the sharer ticks the box. Unsaid, a check stays with the same adult and
+    // goes when the brief is shared with someone else, since its answer was theirs.
+    const wantsBlind = req.body?.blind_check
+    const blindCheck =
+      wantsBlind === true && b.contract_version === 2 && isMoneyBrief(b)
+        ? newBlindCheck()
+        : wantsBlind === undefined && nextMember === b.share?.for_member_id
+          ? (b.blind_check ?? null)
+          : null
+    await briefsFor(db, tenant_id).updateOne(
+      { id: b.id },
+      {
+        $set: {
+          share: {
+            token_hash: tokenHash(token),
+            for_member_id: nextMember,
+            for_member_name: member?.name ?? b.share?.for_member_name ?? null,
+            ...(member && member.status === 'active'
+              ? { for_user_id: member.user_id ?? member.id }
+              : {}),
+            expires_at: expiresAt,
+            revoked_at: null,
           },
+          // Re-sharing always requires fresh explicit receipts from both adults.
+          acknowledgements: [],
+          blind_check: blindCheck,
+          confirmed_opened_at: null,
+          confirmed_by: null,
+          link_fetched_at: null,
+          updated_at: new Date(),
         },
-      )
-      await getAuditLogger()?.fromRequest(req, 'brief.share_created', 'household_briefs', b.id, {})
-      return { share: { url: token, expires_at: expiresAt } }
-    },
-  )
+      },
+    )
+    await getAuditLogger()?.fromRequest(req, 'brief.share_created', 'household_briefs', b.id, {})
+    return { share: { url: token, expires_at: expiresAt } }
+  })
+
+  /** The named adult gives their own figures, once; then both adults see where they differ. */
+  app.post<{ Params: { id: string } }>('/family/briefs/:id/blind-check', async (req, reply) => {
+    const ctx = req.authContext
+    if (!ctx) return reply.code(401).send({ error: 'Sign in to give your figures' })
+    const b = await briefsFor(db, ctx.tenant_id).findOne({ id: req.params.id })
+    if (!b || !(await participant(b, ctx)))
+      return reply.code(404).send({ error: 'Brief not found' })
+    if (!b.blind_check || ctx.user_id !== b.share?.for_user_id)
+      return reply.code(403).send({ error: 'Only the adult this brief was shared with can answer' })
+    const parsed = BlindAnswerSchema.safeParse(req.body)
+    if (!parsed.success) return reply.code(400).send({ error: 'Enter each amount in whole pence' })
+    const res = (await briefsFor(db, ctx.tenant_id).updateOne(
+      { id: b.id, 'blind_check.answer': { $exists: false } },
+      {
+        $set: {
+          'blind_check.answer': {
+            user_id: ctx.user_id,
+            values: parsed.data.values,
+            at: new Date(),
+          },
+          updated_at: new Date(),
+        },
+      },
+    )) as { matchedCount?: number }
+    if (!res.matchedCount)
+      return reply.code(409).send({ error: 'Your figures were already given for this brief' })
+    // Field names only, never the amounts.
+    await getAuditLogger()?.fromRequest(
+      req,
+      'brief.blind_check_answered',
+      'household_briefs',
+      b.id,
+      {
+        fields: [...BLIND_FIELDS],
+      },
+    )
+    await emitBriefEvent(db, ctx.tenant_id, 'brief_blind_check_answered', {
+      problem_type: b.problem_type,
+    })
+    const fresh = await briefsFor(db, ctx.tenant_id).findOne({ id: b.id })
+    return { brief: briefView(fresh!, undefined, await factsFor(fresh!, ctx.user_id), ctx.user_id) }
+  })
 
   /**
    * A money brief (never a handover or sensitive one) may be read through its link with no account, so the
@@ -596,15 +720,7 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
    * confirmation; confirming still needs the named adult's session.
    */
   function readableWithoutAccount(b: HouseholdBriefDoc) {
-    const entry = BRIEF_CATALOGUE.find((e) => e.id === b.problem_type)
-    return (
-      b.contract_version === 2 &&
-      !!entry &&
-      entry.mode !== 'handover' &&
-      !entry.sensitive &&
-      !b.sensitive &&
-      !b.facts_encrypted
-    )
+    return b.contract_version === 2 && isMoneyBrief(b)
   }
 
   app.get<{ Params: { token: string } }>(
@@ -617,6 +733,24 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
       const error = shareError(b)
       if (error) return reply.code(error.status).send({ error: error.error })
       if (b!.contract_version === 2 && !(await participant(b!, req.authContext))) {
+        // An open blind check: the named adult answers first, so nobody reads the figures by link meanwhile.
+        if (
+          !req.authContext &&
+          readableWithoutAccount(b!) &&
+          b!.blind_check &&
+          !b!.blind_check.answer
+        )
+          return {
+            read_only: true,
+            ...((await pendingRecipient(b!)) ? { pending_invite: true } : {}),
+            can_confirm: false,
+            problem_type: b!.problem_type,
+            title: b!.title,
+            blind_check: { status: 'sign_in_to_answer' },
+            for_member_name: b!.share!.for_member_name?.trim().split(/\s+/)[0] ?? null,
+            from_name: await creatorFirstName(b!),
+            expires_at: b!.share!.expires_at,
+          }
         if (!req.authContext && readableWithoutAccount(b!))
           return {
             read_only: true,
@@ -656,9 +790,10 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
         { id: b!.id, link_fetched_at: null },
         { $set: { link_fetched_at: new Date() } },
       )
+      const viewer = req.authContext?.user_id
       return {
-        ...briefView(b!, undefined, await factsFor(b!, req.authContext?.user_id)),
-        sentence: b!.template_sentence,
+        ...briefView(b!, undefined, await factsFor(b!, viewer), viewer),
+        sentence: blindFor(b!, viewer) ? '' : b!.template_sentence,
         for_member_name: b!.share!.for_member_name,
         // First name only, so the recipient knows who this is from.
         from_name: await creatorFirstName(b!),
@@ -694,6 +829,8 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
     if (!req.authContext) return reply.code(401).send({ error: 'Sign in to confirm this brief' })
     if (!(await participant(b!, req.authContext)))
       return reply.code(403).send({ error: 'Only the two named adults can confirm' })
+    if (blindFor(b!, req.authContext.user_id))
+      return reply.code(409).send({ error: 'Give your own figures first' })
     const ack = AckSchema.safeParse(req.body)
     if (!ack.success || ack.data.result_version !== b!.result_version)
       return reply.code(409).send({ error: 'Reload and read this version before confirming' })
@@ -709,7 +846,11 @@ export function registerFamilyBriefRoutes(app: FastifyInstance, db: Db) {
     // constructing a model gateway, so handover/health content can never
     // reach a provider.
     if (b.contract_version === 2)
-      return { sentence: b.template_sentence, narrated: false, from_cache: false }
+      return {
+        sentence: blindFor(b, req.authContext?.user_id) ? '' : b.template_sentence,
+        narrated: false,
+        from_cache: false,
+      }
     try {
       return await narrateBrief(db, b, taskLlm('brief.narrate.v1', tenant_id))
     } catch {

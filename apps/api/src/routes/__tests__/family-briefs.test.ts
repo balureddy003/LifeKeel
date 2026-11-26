@@ -1240,3 +1240,178 @@ describe('catalogue review fixes', () => {
     expect(BRIEF_CATALOGUE.find((e) => e.id === 'bereavement')!.sensitive).toBe(true)
   })
 })
+
+describe('blind check (innovation scan idea 1)', () => {
+  const members = [
+    { id: 'm-creator', name: 'Sam Stone', role: 'organizer', status: 'active', user_id: CREATOR },
+    { id: 'm-partner', name: 'Alex Stone', role: 'adult', status: 'active', user_id: PARTNER },
+    { id: 'm-other', name: 'Kim Stone', role: 'adult', status: 'active', user_id: 'user-other' },
+  ]
+  const INPUTS = {
+    monthly_income_minor: 300000,
+    monthly_essentials_minor: 200000,
+    liquid_savings_minor: 600000,
+    new_income_minor: 150000,
+    new_essentials_minor: 200000,
+    change_date: '2027-01-01',
+  }
+  const ANSWER = {
+    values: {
+      monthly_income_minor: 300000,
+      monthly_essentials_minor: 160000,
+      liquid_savings_minor: 660000,
+    },
+  }
+
+  beforeEach(async () => {
+    await db.collection('family_groups').insertOne({ tenant_id: TENANT, members })
+    await db.collection('tenants').insertOne({ tenant_id: TENANT, plan: 'plus' })
+  })
+
+  async function create(blind: boolean, problem = 'earning_less', inputs: object = INPUTS) {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/family/briefs',
+      payload: {
+        contract_version: 2,
+        problem_type: problem,
+        for_member_id: 'm-partner',
+        inputs,
+        blind_check: blind,
+      },
+    })
+    expect(res.statusCode).toBe(201)
+    return res.json().brief as { id: string; share: { url: string }; result_version: string }
+  }
+  const as = (user: string | null) => {
+    currentUser = user
+  }
+  const get = (url: string) => app.inject({ method: 'GET', url })
+  const post = (url: string, payload: object = {}) => app.inject({ method: 'POST', url, payload })
+  const noFigures = (v: Record<string, unknown>) => {
+    expect(v['inputs']).toEqual({})
+    expect(v['result']).toBeNull()
+    expect(v['template_sentence']).toBe('')
+    expect(v['facts']).toEqual([])
+    expect(JSON.stringify(v)).not.toMatch(/200000|600000|£2,000|£6,000/)
+  }
+
+  it('hides the figures from the other adult everywhere until they answer; the creator still sees them', async () => {
+    const b = await create(true)
+    as(CREATOR)
+    const mine = (await get(`/family/briefs/${b.id}`)).json().brief
+    expect(mine.template_sentence).not.toBe('')
+    expect(mine.blind_check.status).toBe('waiting_for_them')
+
+    as(PARTNER)
+    const one = (await get(`/family/briefs/${b.id}`)).json().brief
+    noFigures(one)
+    expect(one.blind_check).toMatchObject({ status: 'waiting_for_you' })
+    noFigures((await get('/family/briefs')).json().briefs[0])
+    const link = (await get(`/b/${b.share.url}`)).json()
+    noFigures(link)
+    expect(link.sentence).toBe('')
+    expect((await post(`/family/briefs/${b.id}/narrate`)).json().sentence).toBe('')
+
+    as(null)
+    const anon = (await get(`/b/${b.share.url}`)).json()
+    expect(anon.blind_check).toEqual({ status: 'sign_in_to_answer' })
+    expect(anon.result).toBeUndefined()
+    expect(anon.sentence).toBeUndefined()
+    expect(JSON.stringify(anon)).not.toMatch(/200000|600000/)
+  })
+
+  it('the other adult cannot confirm before answering', async () => {
+    const b = await create(true)
+    as(PARTNER)
+    const payload = { result_version: b.result_version }
+    expect((await post(`/family/briefs/${b.id}/confirm`, payload)).statusCode).toBe(409)
+    expect((await post(`/b/${b.share.url}/confirm`, payload)).statusCode).toBe(409)
+  })
+
+  it('only the other adult answers, once, with a strict body; then both see where they differ', async () => {
+    const b = await create(true)
+    as(CREATOR)
+    expect((await post(`/family/briefs/${b.id}/blind-check`, ANSWER)).statusCode).toBe(403)
+    as('user-other')
+    expect((await post(`/family/briefs/${b.id}/blind-check`, ANSWER)).statusCode).toBe(404)
+
+    as(PARTNER)
+    expect(
+      (await post(`/family/briefs/${b.id}/blind-check`, { values: { ...ANSWER.values, x: 1 } }))
+        .statusCode,
+    ).toBe(400)
+    expect(
+      (
+        await post(`/family/briefs/${b.id}/blind-check`, {
+          values: { ...ANSWER.values, liquid_savings_minor: -1 },
+        })
+      ).statusCode,
+    ).toBe(400)
+    const answered = await post(`/family/briefs/${b.id}/blind-check`, ANSWER)
+    expect(answered.statusCode).toBe(200)
+    const view = answered.json().brief
+    expect(view.template_sentence).not.toBe('')
+    expect(view.blind_check.status).toBe('answered')
+    expect(view.blind_check.rows).toEqual([
+      expect.objectContaining({
+        field: 'monthly_income_minor',
+        creator_minor: 300000,
+        recipient_minor: 300000,
+        difference_pct: 0,
+      }),
+      expect.objectContaining({
+        field: 'monthly_essentials_minor',
+        creator_minor: 200000,
+        recipient_minor: 160000,
+        difference_pct: -20,
+      }),
+      expect.objectContaining({
+        field: 'liquid_savings_minor',
+        creator_minor: 600000,
+        recipient_minor: 660000,
+        difference_pct: 10,
+      }),
+    ])
+    expect((await post(`/family/briefs/${b.id}/blind-check`, ANSWER)).statusCode).toBe(409)
+    expect(
+      (await post(`/family/briefs/${b.id}/confirm`, { result_version: b.result_version }))
+        .statusCode,
+    ).toBe(200)
+
+    as(CREATOR)
+    expect((await get(`/family/briefs/${b.id}`)).json().brief.blind_check.rows).toHaveLength(3)
+    // The funnel event carries no amounts.
+    const ev = await db.collection('growth_events').findOne({ event: 'brief_blind_check_answered' })
+    expect(ev).not.toBeNull()
+    expect(JSON.stringify(ev)).not.toMatch(/160000|660000/)
+  })
+
+  it('without the box ticked, the brief reads as before', async () => {
+    const b = await create(false)
+    as(PARTNER)
+    const v = (await get(`/family/briefs/${b.id}`)).json().brief
+    expect(v.template_sentence).not.toBe('')
+    expect(v.blind_check).toBeNull()
+  })
+
+  it('a re-share to someone else drops the check; ticking again on re-share opens a new one', async () => {
+    const b = await create(true)
+    as(CREATOR)
+    await post(`/family/briefs/${b.id}/share`, { for_member_id: 'm-other' })
+    expect((await briefsFor(db, TENANT).findOne({ id: b.id }))!.blind_check).toBeNull()
+    await post(`/family/briefs/${b.id}/share`, { for_member_id: 'm-partner', blind_check: true })
+    expect((await briefsFor(db, TENANT).findOne({ id: b.id }))!.blind_check).toMatchObject({
+      fields: ['monthly_income_minor', 'monthly_essentials_minor', 'liquid_savings_minor'],
+    })
+  })
+
+  it('is never opened on a handover brief', async () => {
+    const handover = BRIEF_CATALOGUE.find((e) => e.mode === 'handover' && !e.sensitive)!
+    const b = await create(true, handover.id, {
+      change_date: '2027-01-01',
+      facts: { [handover.fields![0]!]: 'In the blue folder' },
+    })
+    expect((await briefsFor(db, TENANT).findOne({ id: b.id }))!.blind_check).toBeUndefined()
+  })
+})
