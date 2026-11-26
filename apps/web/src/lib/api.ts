@@ -3774,8 +3774,9 @@ export interface LifeEvent {
   playbook: LifeEventPlaybook | null
 }
 
-export async function fetchLifeEvents(): Promise<LifeEvent[]> {
-  return apiFetch<{ events: LifeEvent[] }>('/family/life-events', { events: [] }).then(
+/** `onFailure` runs when the list could not be read (offline, 5xx), so a caller can tell that from "no events". */
+export async function fetchLifeEvents(onFailure?: () => void): Promise<LifeEvent[]> {
+  return apiFetch<{ events: LifeEvent[] }>('/family/life-events', { events: [] }, onFailure).then(
     (r) => r.events ?? [],
   )
 }
