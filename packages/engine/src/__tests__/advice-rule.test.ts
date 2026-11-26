@@ -101,6 +101,9 @@ function webCopyFiles(): string[] {
     'apps/web/src/components/IncomeStopBrief.tsx',
     'apps/web/src/lib/event-actions.ts',
     'apps/web/src/app/upgrade/page.tsx',
+    // Innovation scan idea 3: the waiting-period gap note and its server sentence.
+    'apps/web/src/app/briefs/RunwayChart.tsx',
+    'apps/api/src/briefs/catalogue.ts',
     'apps/web/src/lib/home-score.ts',
     'apps/web/src/app/events/page.tsx',
     'apps/web/src/lib/life-data.ts',

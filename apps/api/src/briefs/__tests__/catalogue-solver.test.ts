@@ -300,3 +300,42 @@ describe('a household with no savings', () => {
     expect(s).toMatch(/run out around/)
   })
 })
+
+describe('the waiting-period gap (innovation scan, idea 3)', () => {
+  // £5,000 in, £3,000 out, £9,000 saved. Income stops on 28 Nov (month ~1); savings then fall by £3,000 a month.
+  const stops = {
+    ...base,
+    new_income_minor: 0,
+    change_date: '2026-11-28',
+    income_protection_monthly_minor: 300_000,
+  }
+
+  it('says when savings run out before the cover payment starts, and by how much', () => {
+    const out = solveCatalogueBrief('income_stops', { ...stops, deferred_period_months: 6 }, AS_OF)
+    const gap = (out.result as { waitingGap?: Record<string, unknown> }).waitingGap
+    expect(gap).toBeDefined()
+    expect(gap!['coverStartsMonth']).toBe(7) // change at month 1.0 + a 6-month wait
+    expect(gap!['months']).toBeGreaterThan(2)
+    expect(gap!['months']).toBeLessThan(3)
+    expect(out.template_sentence).toMatch(
+      /Savings would run out before the cover payment starts: about 2\.\d months with neither, from around \w+ 2027 until around \w+ 2027/,
+    )
+    expect(out.facts.map((f) => f.label)).toContain(
+      'Months with neither savings nor the cover payment',
+    )
+  })
+
+  it('says nothing about a gap when the cover starts before savings run out', () => {
+    const out = solveCatalogueBrief('income_stops', { ...stops, deferred_period_months: 1 }, AS_OF)
+    expect((out.result as { waitingGap?: unknown }).waitingGap).toBeUndefined()
+    expect(out.template_sentence).not.toMatch(/with neither/)
+    expect((out.result as { coverStartsAtMonth?: number }).coverStartsAtMonth).toBe(2) // 1.0 + 1
+  })
+
+  it('has no gap and no cover marker when no cover is entered', () => {
+    const { income_protection_monthly_minor: _ip, ...noCover } = stops
+    const out = solveCatalogueBrief('income_stops', noCover, AS_OF)
+    expect((out.result as { waitingGap?: unknown }).waitingGap).toBeUndefined()
+    expect((out.result as { coverStartsAtMonth?: unknown }).coverStartsAtMonth).toBeUndefined()
+  })
+})

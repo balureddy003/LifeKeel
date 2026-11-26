@@ -144,10 +144,13 @@ export function solveCatalogueBrief(problem: string, raw: unknown, asOf: string)
     },
   ]
   const cover = i.income_protection_monthly_minor ?? 0
+  // When income protection starts paying, in months from the calculation date (null with no cover entered).
+  let coverStartMonth: number | null = null
   if (cover > 0) {
     if (entry.mode !== 'stop')
       throw new Error('Enter any expected cover payments in total household income for this brief')
     const coverStart = at + (i.deferred_period_months ?? 0)
+    coverStartMonth = coverStart
     const coverEnd = i.cover_end_date ? monthOffset(asOf, i.cover_end_date) : null
     if (coverEnd !== null && coverEnd <= coverStart)
       throw new Error('Cover must end after its waiting period')
@@ -243,6 +246,27 @@ export function solveCatalogueBrief(problem: string, raw: unknown, asOf: string)
     depletedAt === null || depletedAt >= MAX_MONTHS || nothingToDraw
       ? ''
       : ` On these figures savings would run out around ${monthLabel(asOf, depletedAt)} (about month ${depletedAt.toFixed(1)} from the calculation date).`
+  // The waiting-period gap: savings run out before the cover's waiting period ends, so for a while there is
+  // neither. Arithmetic on the household's own figures; it names no product and says nothing about what to buy.
+  const waitingGap =
+    coverStartMonth !== null &&
+    depletedAt !== null &&
+    !nothingToDraw &&
+    depletedAt < coverStartMonth &&
+    coverStartMonth - depletedAt >= 0.05
+      ? {
+          months: Math.round((coverStartMonth - depletedAt) * 10) / 10,
+          runsOutMonth: Math.round(depletedAt * 10) / 10,
+          coverStartsMonth: Math.round(coverStartMonth * 10) / 10,
+          runsOut: monthLabel(asOf, depletedAt),
+          coverStarts: monthLabel(asOf, coverStartMonth),
+        }
+      : null
+  if (waitingGap)
+    fact('Months with neither savings nor the cover payment', waitingGap.months.toFixed(1))
+  const waitingNote = waitingGap
+    ? ` Savings would run out before the cover payment starts: about ${waitingGap.months.toFixed(1)} months with neither, from around ${waitingGap.runsOut} until around ${waitingGap.coverStarts}, when the waiting period on the entered cover ends.`
+    : ''
   const coverNote = i.cover_may_end_with_employment
     ? ` Cover on file may end with the employment${i.cover_end_date ? ` (${i.cover_end_date})` : ''}.`
     : ''
@@ -255,10 +279,23 @@ export function solveCatalogueBrief(problem: string, raw: unknown, asOf: string)
       : ''
   return {
     inputs: i,
-    result,
+    result: {
+      ...result,
+      ...(coverStartMonth !== null
+        ? { coverStartsAtMonth: Math.round(coverStartMonth * 10) / 10 }
+        : {}),
+      ...(waitingGap ? { waitingGap } : {}),
+    },
     facts,
     template_sentence:
-      description + oneOff + gap + cashGap + coverNote + assumedNote + MONEY_DISCLAIMER,
+      description +
+      oneOff +
+      gap +
+      waitingNote +
+      cashGap +
+      coverNote +
+      assumedNote +
+      MONEY_DISCLAIMER,
   }
 }
 
