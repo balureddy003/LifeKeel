@@ -819,6 +819,10 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 18px;
 }
+/* Four security cards read as two rows of two, not three and one left over. */
+.vv-grid3.vv-security {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
 .vv-card {
   padding: 26px;
   border-radius: 24px;
@@ -1062,6 +1066,9 @@
   .vv-plans {
     grid-template-columns: minmax(0, 1fr);
   }
+  .vv-grid3.vv-security {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .vv-steps li:not(:last-child)::after {
     display: none;
   }
@@ -1089,9 +1096,23 @@
 }
 
 /* The line under the hero buttons needs air, or it touches the button. */
-.vv-hero-cta + .vv-fine { margin-top: 14px; }
-.vv-signin { margin-top: 6px; }
-.vv-signin a { display: inline-flex; align-items: center; min-height: 48px; padding: 0 4px; font-weight: 600; }
+.vv-hero-cta + .vv-fine {
+  margin-top: 14px;
+}
+.vv-signin {
+  margin-top: 6px;
+}
+.vv-signin a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 0 4px;
+  font-weight: 600;
+}
 
 /* The line a family says out loud, above each chapter name. */
-.vv-says { font-style: italic; font-weight: 600; margin: 0 0 4px; }
+.vv-says {
+  font-style: italic;
+  font-weight: 600;
+  margin: 0 0 4px;
+}

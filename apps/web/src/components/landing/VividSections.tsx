@@ -16,6 +16,7 @@ import {
   ScanSearch,
   ShieldCheck,
   Siren,
+  Smartphone,
   Trash2,
   UserRoundX,
   type LucideIcon,
@@ -368,7 +369,7 @@ export function PlusBand() {
 }
 
 const PROMISE_ICONS: LucideIcon[] = [BellRing, ShieldCheck, Compass, PenLine, UserRoundX, KeyRound]
-const SECURITY_ICONS: LucideIcon[] = [KeyRound, ShieldCheck, Trash2]
+const SECURITY_ICONS: LucideIcon[] = [KeyRound, ShieldCheck, Smartphone, Trash2]
 const TONES = ['cyan', 'blue', 'violet', 'amber', 'pink', 'green'] as const
 
 export function Trust() {
