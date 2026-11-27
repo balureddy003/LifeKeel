@@ -972,37 +972,9 @@
   color: var(--vv-muted);
 }
 
-/* Final CTA */
+/* The closing breath is the page's last section; give it room to end. */
 .vv-section:last-child {
   padding-bottom: clamp(56px, 8vw, 104px);
-}
-.vv-final {
-  position: relative;
-  overflow: hidden;
-  text-align: center;
-  padding: clamp(40px, 7vw, 80px) 24px;
-  border-radius: 36px;
-  color: #fff;
-  background:
-    radial-gradient(400px 260px at 15% 20%, rgba(255, 255, 255, 0.18), transparent 70%),
-    linear-gradient(120deg, #0e7490 0%, #2563eb 50%, #4f46e5 100%);
-  box-shadow: var(--vv-shadow-lg);
-}
-.vv-final h2 {
-  max-width: 22ch;
-  margin: 0 auto;
-  color: #fff;
-  font-size: clamp(26px, 3.4vw, 38px);
-  line-height: 1.1;
-  font-weight: 900;
-  letter-spacing: -0.04em;
-}
-.vv-final p {
-  max-width: 58ch;
-  margin: 16px auto 28px;
-  color: #e0f2fe;
-  font-size: 15px;
-  line-height: 1.6;
 }
 
 @keyframes vv-float {
@@ -1089,8 +1061,7 @@
     padding: 14px;
   }
   .vv-dark,
-  .vv-plus,
-  .vv-final {
+  .vv-plus {
     border-radius: 28px;
   }
 }
@@ -1115,4 +1086,61 @@
   font-style: italic;
   font-weight: 600;
   margin: 0 0 4px;
+}
+
+
+/* Cinematic §4 / Scroll 1 — two cameras on the ordinary cost.
+   See apps/web/src/components/landing/CostSection.tsx. */
+.cost .cost-scenes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(28px, 4vw, 56px);
+  max-width: 1100px;
+  margin: clamp(28px, 4vw, 48px) auto 0;
+}
+.cost .cost-scene {
+  position: relative;
+  padding: 24px 28px;
+  border: 1px solid var(--vv-line);
+  border-radius: 18px;
+  background: var(--vv-surface);
+}
+.cost .cost-setting {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--vv-muted);
+}
+.cost .cost-beat {
+  margin: 12px 0 0;
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--vv-ink);
+  font-weight: 500;
+}
+.cost .cost-texture {
+  margin: 12px 0 0;
+  font-size: 14px;
+  font-style: italic;
+  line-height: 1.55;
+  color: var(--vv-muted);
+}
+.cost .cost-close {
+  margin: clamp(28px, 4vw, 48px) auto 0;
+  max-width: 760px;
+  text-align: center;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: 0.01em;
+  color: var(--vv-brand-text);
+}
+@media (max-width: 860px) {
+  .cost .cost-scenes {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
 }

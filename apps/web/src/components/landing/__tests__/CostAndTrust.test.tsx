@@ -13,10 +13,14 @@ const after = (a: string, b: string) =>
   Node.DOCUMENT_POSITION_FOLLOWING
 
 describe('the calm cost, and the promises up front', () => {
-  it('names the ordinary cost right after the hero, before the story', () => {
+  it('names the ordinary cost right after the hero, before the difficult day', () => {
     render(<HomeExperience />)
     expect(after('Know where to look.', 'Most families run on one person’s memory.')).toBeTruthy()
-    expect(after('Most families run on one person’s memory.', 'Marcia’s Tuesday.')).toBeTruthy()
+    // Scroll 2 answers what the list is for before the day is shown.
+    expect(
+      after('Most families run on one person’s memory.', 'The list is the quiet hero.'),
+    ).toBeTruthy()
+    expect(after('The list is the quiet hero.', 'A difficult ordinary day.')).toBeTruthy()
   })
 
   it('keeps the cost ordinary: no disaster imagery, no fear, no advice', () => {
@@ -27,11 +31,7 @@ describe('the calm cost, and the promises up front', () => {
 
   it('shows what LifeKeel does not do before the long list of use cases', () => {
     render(<HomeExperience />)
-    expect(
-      after('Things that usually live in one head.', 'Six things Keel does not do.'),
-    ).toBeTruthy()
-    expect(
-      after('Six things Keel does not do.', 'The things your family says out loud.'),
-    ).toBeTruthy()
+    expect(after('Things that usually live in one head.', 'It belongs to everyone.')).toBeTruthy()
+    expect(after('It belongs to everyone.', 'The things your family says out loud.')).toBeTruthy()
   })
 })

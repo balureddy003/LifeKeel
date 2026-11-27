@@ -8,25 +8,18 @@ import {
   ClipboardList,
   Compass,
   FolderLock,
-  KeyRound,
   LifeBuoy,
   Mail,
   MessageSquareText,
   PenLine,
   ScanSearch,
-  ShieldCheck,
   Siren,
-  Smartphone,
-  Trash2,
-  UserRoundX,
   type LucideIcon,
 } from 'lucide-react'
 import { appUrl } from '@/lib/region'
 import { track } from '@/lib/growth-track'
 import { haptic } from '@/lib/haptics'
 import { CAPABILITIES, CHAPTERS, type Capability, type Chapter } from './capabilities'
-import { PROMISES } from './Promises'
-import { SECURITY } from './Security'
 import { FREE_ROWS, PLUS_ROWS } from './Pricing'
 import { FAQ } from './faq-data'
 
@@ -368,60 +361,14 @@ export function PlusBand() {
   )
 }
 
-const PROMISE_ICONS: LucideIcon[] = [BellRing, ShieldCheck, Compass, PenLine, UserRoundX, KeyRound]
-const SECURITY_ICONS: LucideIcon[] = [KeyRound, ShieldCheck, Smartphone, Trash2]
-const TONES = ['cyan', 'blue', 'violet', 'amber', 'pink', 'green'] as const
-
-export function Trust() {
-  return (
-    <section className="vv-section" id="security" aria-labelledby="vv-trust-h">
-      <Heading
-        eyebrow="Trust and security"
-        id="vv-trust-h"
-        title="Six things Keel does not do."
-        intro="No commissions, no product picks, no quiet actions. Here is what is true today."
-      />
-      <ul className="vv-grid3">
-        {PROMISES.map((p, i) => {
-          const Icon = PROMISE_ICONS[i] ?? ShieldCheck
-          return (
-            <li key={p.title} className={`vv-card vv-${TONES[i % TONES.length]}`}>
-              <span className="vv-icon">
-                <Icon size={20} aria-hidden="true" />
-              </span>
-              <h3>{p.title}</h3>
-              <p>{p.body}</p>
-            </li>
-          )
-        })}
-      </ul>
-      <h3 className="vv-subhead">What we do with your data.</h3>
-      <ul className="vv-grid3 vv-security">
-        {SECURITY.map((s, i) => {
-          const Icon = SECURITY_ICONS[i] ?? ShieldCheck
-          return (
-            <li key={s.title} className="vv-card">
-              <span className="vv-icon vv-icon-grad">
-                <Icon size={20} aria-hidden="true" />
-              </span>
-              <h4>{s.title}</h4>
-              <p>{s.body}</p>
-            </li>
-          )
-        })}
-      </ul>
-    </section>
-  )
-}
-
 export function Plans() {
   return (
     <section className="vv-section" id="pricing" aria-labelledby="vv-pricing-h">
       <Heading
         eyebrow="Pricing"
         id="vv-pricing-h"
-        title="Free to start. One optional paid plan."
-        intro="Checking what you have told Keel is free — including your first brief. The paid plan keeps the household record current and unlocks further briefs."
+        title="Free for a household. Honest plans for a team."
+        intro="Free stays free. Keel Plus is £7.99 a month and cancels any time — one subscription for one household, or one subscription for one small team. No commissions, no per-seat mystery, no card needed to start."
       />
       <div className="vv-plans">
         <article className="vv-plan">
@@ -476,24 +423,6 @@ export function Questions() {
             <p>{f.a}</p>
           </details>
         ))}
-      </div>
-    </section>
-  )
-}
-
-export function FinalCta() {
-  return (
-    <section className="vv-section" aria-labelledby="vv-final-h">
-      <div className="vv-final" id="signup-final">
-        <h2 id="vv-final-h">Make your account. Keel starts checking what you tell it.</h2>
-        <p>
-          Free to start. An optional paid plan reads policy documents for you. Information only: not
-          financial, tax or legal advice.
-        </p>
-        <a className="vv-btn vv-btn-light" href={appUrl('/signup')} onClick={signup('final')}>
-          Create your free account
-          <ArrowRight size={18} aria-hidden="true" />
-        </a>
       </div>
     </section>
   )

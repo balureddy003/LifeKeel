@@ -238,6 +238,7 @@ const PUBLIC_CONTENT_PREFIXES = [
   '/legal',
   '/support',
   '/readiness',
+  '/pricing',
   '/trust',
   '/security',
 ]
@@ -620,6 +621,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/privacy') ||
     pathname.startsWith('/cookies') ||
     pathname.startsWith('/legal') ||
+    pathname.startsWith('/pricing') ||
     pathname.startsWith('/trust') ||
     pathname.startsWith('/security') ||
     pathname.startsWith('/support') ||

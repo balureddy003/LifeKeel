@@ -45,7 +45,16 @@ describe('PublicShell', () => {
   })
 
   it('is applied to terms, privacy, support, blog and guides through their layouts', () => {
-    for (const route of ['terms', 'privacy', 'cookies', 'legal', 'support', 'blog', 'guides']) {
+    for (const route of [
+      'terms',
+      'privacy',
+      'cookies',
+      'legal',
+      'pricing',
+      'support',
+      'blog',
+      'guides',
+    ]) {
       const layout = fs.readFileSync(path.join(APP, route, 'layout.tsx'), 'utf8')
       expect(layout, route).toMatch(/<PublicShell(\s+newsletter)?>/)
     }
@@ -58,6 +67,7 @@ describe('PublicShell', () => {
       '/privacy',
       '/cookies',
       '/legal',
+      '/pricing',
       '/support',
       '/blog',
       '/guides',

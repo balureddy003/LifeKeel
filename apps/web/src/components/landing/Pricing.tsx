@@ -1,3 +1,22 @@
+/**
+ * "Free for a household. Honest plans for a team."
+ *
+ * Locked pricing copy lives here; every row in FREE_ROWS / PLUS_ROWS points
+ * to a `live` claim in claims.ts (LowerSections.test.tsx enforces this).
+ * The £7.99 figure matches `apps/api/src/billing/billing-constants.ts`
+ * (PLAN_QUOTAS['starter']).
+ *
+ * Compliance: never moves money, never quotes a per-seat price, never
+ * recommends a switch, never quotes more than the live registry, never
+ * quotes more than what billing-constants.ts says for the Keel Plus price.
+ *
+ * Brand spec: §9.1 owner-locked — household free, one Keel Plus subscription
+ * per team of two or more adults. The standalone /pricing route
+ * (apps/web/src/app/pricing/page.tsx) is the public landing for both
+ * audiences. The home page renders the same data via `Plans` in
+ * VividSections.tsx — keep the data arrays in sync with that copy if
+ * anything changes here.
+ */
 'use client'
 
 import { appUrl } from '@/lib/region'
@@ -79,10 +98,11 @@ export function Pricing() {
   return (
     <section className="lk-band" id="pricing" aria-labelledby="lk-pricing-h">
       <p className="lk-eyebrow">Pricing</p>
-      <h2 id="lk-pricing-h">Free to start. One optional paid plan.</h2>
+      <h2 id="lk-pricing-h">Free for a household. Honest plans for a team.</h2>
       <p className="lk-intro">
-        Checking what you have told Keel starts free. The only paid plan adds AI document reading.
-        No commissions, no ads, no card needed to start.
+        Free stays free. Keel Plus is £7.99 a month and cancels any time — one subscription for one
+        household, or one subscription for one small team. No commissions, no per-seat mystery, no
+        card needed to start.
       </p>
       <div className="lk-plans">
         <Plan

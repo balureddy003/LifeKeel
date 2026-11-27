@@ -10,15 +10,18 @@ describe('homepage live content', () => {
     render(<HomeExperience />)
     for (const name of [
       'Know where to look.',
+      'A difficult ordinary day.',
+      'Through the year.',
+      'Different questions, same list.',
       'Three steps. One evening.',
       'One problem, one evening, one number.',
       'The things your family says out loud.',
       'When something happens, your family has somewhere to start.',
       'Keep the household record current.',
-      'Six things Keel does not do.',
-      'Free to start. One optional paid plan.',
+      'It belongs to everyone.',
+      'Free for a household. Honest plans for a team.',
       'Straight answers.',
-      'Make your account. Keel starts checking what you tell it.',
+      'Begin.',
     ])
       expect(screen.getByRole('heading', { name })).toBeTruthy()
     // The problems come before the steps and the capability list.
@@ -33,20 +36,23 @@ describe('homepage live content', () => {
     expect(screen.queryByText(/deleted immediately|Deletion is immediate/i)).toBeNull()
   })
 
-  it('tells the short story right after the hero, then the chapters, then the rest', () => {
+  it('carries the opening act in order: hero, cost, list, the day, then the chapters', () => {
     render(<HomeExperience />)
     const after = (a: string, b: string) =>
       screen
         .getByRole('heading', { name: a })
         .compareDocumentPosition(screen.getByRole('heading', { name: b })) &
       Node.DOCUMENT_POSITION_FOLLOWING
-    expect(after('Know where to look.', 'Marcia’s Tuesday.')).toBeTruthy()
-    expect(after('Marcia’s Tuesday.', 'The things your family says out loud.')).toBeTruthy()
+    expect(after('Know where to look.', 'A difficult ordinary day.')).toBeTruthy()
+    expect(after('A difficult ordinary day.', 'The things your family says out loud.')).toBeTruthy()
     expect(
       after('The things your family says out loud.', 'One problem, one evening, one number.'),
     ).toBeTruthy()
     expect(
-      after('The things your family says out loud.', 'Free to start. One optional paid plan.'),
+      after(
+        'The things your family says out loud.',
+        'Free for a household. Honest plans for a team.',
+      ),
     ).toBeTruthy()
   })
 
