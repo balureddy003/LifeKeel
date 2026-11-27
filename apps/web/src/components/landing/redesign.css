@@ -96,10 +96,6 @@
 .landing.landing .lk-faq details { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; }
 .landing.landing .lk-faq summary { padding: 24px 0; font-size: 16px; }
 .landing.landing .lk-faq details p { padding: 0 32px 24px 0; font-size: 15px; line-height: 1.8; }
-.landing.landing .lk-dawn { background: var(--cta); color: var(--on-cta); border-radius: 18px; padding-bottom: 60px; }
-.landing.landing .lk-dawn .lk-fine { color: var(--on-cta); opacity: .85; }
-.landing.landing .lk-dawn .lk-btn { background: var(--surface); color: var(--ink); }
-.landing.landing .lk-dawn .lk-layer, .landing.landing .lk-dawn .lk-front, .landing.landing .lk-dawn .lk-dawn-boat { display: none; }
 .landing.landing .lk-footer { max-width: none; padding: 64px max(32px, calc((100% - 1200px) / 2)) 32px; background: var(--surface); border-top: 1px solid var(--line); }
 .landing.landing .lk-foot-inner { border: 0; padding-top: 0; }
 .landing.landing .lk-footer-intro { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; padding-bottom: 48px; margin-bottom: 48px; border-bottom: 1px solid var(--line); }

@@ -16,12 +16,12 @@ describe('three ordinary moments', () => {
     }
   })
 
-  it('sits right after the story and before the chapters', () => {
+  it('sits right after the story and before the promises', () => {
     render(<HomeExperience />)
     const pos = (name: string) => screen.getByRole('heading', { name })
     const story = pos('A difficult ordinary day.')
     const moments = pos('Things that usually live in one head.')
-    const chapters = pos('The things your family says out loud.')
+    const chapters = pos('What we promise, in plain words.')
     expect(story.compareDocumentPosition(moments) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(
       moments.compareDocumentPosition(chapters) & Node.DOCUMENT_POSITION_FOLLOWING,

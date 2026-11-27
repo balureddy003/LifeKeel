@@ -9,16 +9,7 @@ import { ThroughTheYear } from './ThroughTheYear'
 import { TrustAct } from './TrustAct'
 import { MomentCards } from './MomentCards'
 import { Begin } from './Begin'
-import {
-  BadDay,
-  Features,
-  HowItWorks,
-  Plans,
-  PlusBand,
-  Questions,
-  StatStrip,
-  ThreeProblems,
-} from './VividSections'
+import { Plans, Questions } from './VividSections'
 import './vivid.css'
 
 export function HomeExperience() {
@@ -47,14 +38,6 @@ export function HomeExperience() {
       <MomentCards />
       {/* Scroll 5: the trust act — seven promises, each backed by a live claim. */}
       <TrustAct />
-      <Features />
-      <BadDay />
-      <div id="how-it-works">
-        <ThreeProblems />
-        <HowItWorks />
-      </div>
-      <PlusBand />
-      <StatStrip />
       <Plans />
       <Questions />
       {/* The closing breath, not a button — and back on paper, so the film

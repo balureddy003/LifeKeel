@@ -23,7 +23,6 @@ const PUBLIC_FILES = [
   'components/landing/SiteHeader.tsx',
   'components/landing/SiteFooter.tsx',
   'components/landing/SignupCard.tsx',
-  'components/landing/DawnClose.tsx',
   'components/landing/Pricing.tsx',
   'components/landing/StickyCta.tsx',
   'app/readiness/page.tsx',

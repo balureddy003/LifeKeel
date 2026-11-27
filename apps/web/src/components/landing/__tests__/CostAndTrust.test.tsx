@@ -29,13 +29,13 @@ describe('the calm cost, and the promises up front', () => {
     expect(text).not.toMatch(/\byou should\b|\bbuy\b|\bgap\b|not covered/i)
   })
 
-  it('shows what LifeKeel does not do before the long list of use cases', () => {
+  it('shows what LifeKeel does not do before the price', () => {
     render(<HomeExperience />)
     expect(
       after('Things that usually live in one head.', 'What we promise, in plain words.'),
     ).toBeTruthy()
     expect(
-      after('What we promise, in plain words.', 'The things your family says out loud.'),
+      after('What we promise, in plain words.', 'Free for a household. One optional plan.'),
     ).toBeTruthy()
   })
 })

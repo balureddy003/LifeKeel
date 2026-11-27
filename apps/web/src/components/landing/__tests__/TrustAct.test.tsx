@@ -46,14 +46,14 @@ describe('the trust act', () => {
     expect(last.compareDocumentPosition(foot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
-  it('sits after the year and before the long feature list', () => {
+  it('sits after the year and before the price', () => {
     render(<HomeExperience />)
     const h = (name: string) => screen.getByRole('heading', { name })
     const year = h('Through the year.')
     const trust = h('What we promise, in plain words.')
-    const features = h('The things your family says out loud.')
+    const price = h('Free for a household. One optional plan.')
     expect(year.compareDocumentPosition(trust) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(trust.compareDocumentPosition(features) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(trust.compareDocumentPosition(price) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('offers nothing to click, no badge, no score and no customer count', () => {

@@ -13,8 +13,7 @@ import './hero.css'
 import './bands.css'
 
 const LINKS: { href: string; label: string; page?: boolean }[] = [
-  { href: '#how-it-works', label: 'How it works' },
-  { href: '#features', label: 'Features' },
+  { href: '#stories', label: 'How it works' },
   { href: '#pricing', label: 'Pricing' },
   { href: '#security', label: 'Security' },
   { href: '/guides', label: 'Guides', page: true },

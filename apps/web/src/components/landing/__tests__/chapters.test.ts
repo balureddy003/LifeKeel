@@ -3,17 +3,11 @@
  * board (this file); chapter 7, "It's yours", is the trust section. A new use case is one line on the
  * board and one claim, never a new story (docs/research/brand-and-story-guide-2026-11-08.md).
  */
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { CAPABILITIES, CHAPTERS } from '../capabilities'
 import { CLAIMS } from '../claims'
-import { Features } from '../VividSections'
-
-vi.mock('@/lib/growth-track', () => ({ track: vi.fn() }))
-vi.mock('@/lib/haptics', () => ({ haptic: vi.fn() }))
-afterEach(cleanup)
 
 const REPO = path.resolve(__dirname, '..', '..', '..', '..', '..', '..')
 
@@ -74,38 +68,5 @@ describe('the chapters', () => {
       .map((c) => `${c.text} ${c.qualifier ?? ''}`)
       .join(' ')
     expect(text).not.toMatch(/\b(brief|runway|roster)\b/i)
-  })
-})
-
-describe('the chapters on the page', () => {
-  it('shows each chapter with its family line and only live scenes', () => {
-    render(<Features />)
-    for (const ch of CHAPTERS) {
-      const card = screen.getByRole('article', { name: new RegExp(ch.name) })
-      expect(within(card).getByText(ch.says)).toBeTruthy()
-      for (const cap of CAPABILITIES.filter((c) => c.chapter === ch.id)) {
-        if (cap.live) expect(within(card).getByText(cap.text)).toBeTruthy()
-        else expect(within(card).queryByText(cap.text)).toBeNull()
-      }
-    }
-  })
-
-  it('keeps the honest qualifier beside every live scene', () => {
-    const { container } = render(<Features />)
-    const live = CAPABILITIES.filter((c) => c.live)
-    expect(container.querySelectorAll('small').length).toBeGreaterThanOrEqual(live.length)
-  })
-
-  it('says no Live or Planned wording on the public page', () => {
-    const { container } = render(<Features />)
-    expect(container.textContent).not.toMatch(/\b(Live|Planned|Coming soon)\b/)
-  })
-
-  it('shows at most three scenes per card; the rest sit behind a "more" toggle', () => {
-    const { container } = render(<Features />)
-    for (const card of container.querySelectorAll('article.vv-moment')) {
-      expect(card.querySelectorAll(':scope > ul > li').length).toBeLessThanOrEqual(3)
-    }
-    expect(container.querySelectorAll('details.vv-more').length).toBeGreaterThan(0)
   })
 })
