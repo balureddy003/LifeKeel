@@ -1,10 +1,8 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { render, screen, cleanup } from '@testing-library/react'
 import { CrisisSteps } from '../CrisisSteps'
 import { Promises, PROMISES } from '../Promises'
-import { DawnClose } from '../DawnClose'
 import { CLAIMS } from '../claims'
-import { track } from '@/lib/growth-track'
 
 vi.mock('@/lib/growth-track', () => ({ track: vi.fn() }))
 vi.mock('@/lib/haptics', () => ({ haptic: vi.fn() }))
@@ -34,17 +32,5 @@ describe('Promises', () => {
     const { container } = render(<Promises />)
     expect(container.textContent).not.toMatch(/never sends/i)
     expect(container.textContent).toMatch(/switch them on/)
-  })
-})
-
-describe('DawnClose', () => {
-  it('has one signup link, no fields, and reports the click as the final CTA', () => {
-    const { container } = render(<DawnClose />)
-    expect(container.querySelector('input')).toBeNull()
-    const link = screen.getByRole('link', { name: 'Create your free account' })
-    expect(link.getAttribute('href')).toMatch(/\/signup$/)
-    document.addEventListener('click', (e) => e.preventDefault(), { once: true })
-    fireEvent.click(link)
-    expect(track).toHaveBeenCalledWith('landing_cta_click', { location: 'final', method: 'signup' })
   })
 })

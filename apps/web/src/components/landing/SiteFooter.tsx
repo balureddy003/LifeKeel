@@ -126,7 +126,7 @@ function Newsletter() {
 }
 
 const PRODUCT = [
-  { href: '#features', label: 'Features', local: true },
+  { href: '#stories', label: 'How it works', local: true },
   { href: '#pricing', label: 'Pricing', local: true },
   { href: '/guides', label: 'Guides' },
 ]
