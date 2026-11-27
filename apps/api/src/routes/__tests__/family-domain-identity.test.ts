@@ -139,3 +139,75 @@ describe('one car per registration', () => {
     expect((await addCar('old123')).statusCode).toBe(409)
   })
 })
+
+describe('one car per registration, while the index is still being built', () => {
+  it('a double tap that lands before the index exists still leaves exactly one', async () => {
+    // Hold the unique-index build until the saves are already in flight: the race the
+    // fire-and-forget build lost under load, made deterministic.
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    const slowDb = client.db('domain-identity-slow-index')
+    await slowDb.dropDatabase()
+    await slowDb.collection('family_groups').insertOne({
+      id: 'fam-t-one',
+      tenant_id: 't-one',
+      name: 'Fam',
+      invite_code: 'C-slow',
+      members: [
+        {
+          id: 'sam',
+          user_id: 'sam',
+          name: 'Sam',
+          email: 's@x.test',
+          role: 'organizer',
+          status: 'active',
+          joined_at: '2026-01-01',
+        },
+      ],
+    })
+    const gated = new Proxy(slowDb, {
+      get(target, prop) {
+        if (prop !== 'collection') return Reflect.get(target, prop, target)
+        return (name: string) => {
+          const col = target.collection(name)
+          if (name !== 'domain_records') return col
+          return new Proxy(col, {
+            get(c, p) {
+              if (p === 'createIndex')
+                return async (...args: Parameters<typeof c.createIndex>) => {
+                  await gate
+                  return c.createIndex(...args)
+                }
+              const v = Reflect.get(c, p, c)
+              return typeof v === 'function' ? v.bind(c) : v
+            },
+          })
+        }
+      },
+    }) as Db
+    const slowApp = Fastify()
+    slowApp.addHook('onRequest', async (req) => {
+      ;(req as unknown as Record<string, unknown>)['authContext'] = {
+        tenant_id: 't-one',
+        user_id: 'sam',
+        roles: ['admin'],
+      }
+    })
+    registerFamilyDomainRoutes(slowApp, gated)
+    await slowApp.ready()
+    const save = () =>
+      slowApp.inject({
+        method: 'POST',
+        url: '/family/domains/car/records/vehicle',
+        payload: { values: { reg: 'XY99 ZZZ', make_model: 'Hatchback' } },
+      })
+    const pending = Promise.all([save(), save(), save()])
+    await new Promise((r) => setTimeout(r, 100))
+    release()
+    const results = await pending
+    expect(results.filter((r) => r.statusCode === 201)).toHaveLength(1)
+    expect(results.filter((r) => r.statusCode === 409)).toHaveLength(2)
+    expect(await slowDb.collection('domain_records').countDocuments({})).toBe(1)
+    await slowApp.close()
+  })
+})

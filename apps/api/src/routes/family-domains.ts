@@ -57,12 +57,28 @@ export function registerFamilyDomainRoutes(
   // One record per real-world thing (a car per registration), even when two saves land at
   // once: the key is unique per household, domain and record type. Records saved before
   // this rule have no key, so they are checked by value as well (see the add route).
-  db.collection('domain_records')
-    .createIndex(
-      { tenant_id: 1, domain_id: 1, record: 1, identity_key: 1 },
-      { unique: true, partialFilterExpression: { identity_key: { $type: 'string' } } },
-    )
-    .catch(() => {})
+  // The value check alone is check-then-insert, so the index is what makes it atomic: a
+  // save that carries a key waits for the index to exist rather than racing its build
+  // (a fire-and-forget build let a double tap under load save three cars). A failed
+  // build is retried on the next save, and until it succeeds keyed saves are refused.
+  let identityIndex: Promise<unknown> | undefined
+  const identityIndexReady = () => {
+    identityIndex ??= db
+      .collection('domain_records')
+      .createIndex(
+        { tenant_id: 1, domain_id: 1, record: 1, identity_key: 1 },
+        { unique: true, partialFilterExpression: { identity_key: { $type: 'string' } } },
+      )
+      .catch((err: unknown) => {
+        identityIndex = undefined
+        app.log.error({ err }, 'domain_records identity index could not be built')
+        throw err
+      })
+    return identityIndex
+  }
+  identityIndexReady().catch(() => {})
+  const indexUnavailable = (reply: { code: (c: number) => { send: (b: unknown) => unknown } }) =>
+    reply.code(503).send({ error: 'Saving is paused for a moment. Try again shortly.' })
   const identityKey = (v: string | undefined) => (v ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
 
   /** The checks adding and editing share: shape, known fields, real people and dates, no secrets. */
@@ -150,6 +166,13 @@ export function registerFamilyDomainRoutes(
       const already = () =>
         reply.code(409).send({ error: `That ${rec.label.toLowerCase()} is already on the list.` })
       if (wanted) {
+        if (
+          !(await identityIndexReady().then(
+            () => true,
+            () => false,
+          ))
+        )
+          return indexUnavailable(reply)
         const have = (await records(ctx.tenant_id)
           .find({ domain_id: pack.id, record: rec.key })
           .toArray()) as DomainRecordDoc[]
@@ -210,6 +233,13 @@ export function registerFamilyDomainRoutes(
       const clash = () =>
         reply.code(409).send({ error: `That ${rec.label.toLowerCase()} is already on the list.` })
       if (wanted) {
+        if (
+          !(await identityIndexReady().then(
+            () => true,
+            () => false,
+          ))
+        )
+          return indexUnavailable(reply)
         const have = (await records(ctx.tenant_id)
           .find({ domain_id: pack.id, record: rec.key })
           .toArray()) as DomainRecordDoc[]
