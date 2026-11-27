@@ -19,6 +19,7 @@ import { ArrowRight } from 'lucide-react'
 import { appUrl } from '@/lib/region'
 import { track } from '@/lib/growth-track'
 import { haptic } from '@/lib/haptics'
+import { BUSINESS_SITE_URL, businessDoorOpen } from './verticals'
 
 export const BEGIN_BODY_LINES = [
   'One list. The people who need to know.',
@@ -26,7 +27,7 @@ export const BEGIN_BODY_LINES = [
 ] as const
 
 export const BEGIN_BODY = BEGIN_BODY_LINES.join(' ')
-export const BEGIN_CLOSING = 'Free for a household. Honest plans for a team. Information only.'
+export const BEGIN_CLOSING = 'Free for a household. Information only.'
 
 /** Claims the close rests on. All `live` — see claims.ts. */
 export const BEGIN_CLAIMS = [
@@ -69,9 +70,11 @@ export function Begin() {
           Start your free list
           <ArrowRight size={18} aria-hidden="true" />
         </a>
-        <a href="/pricing" className="lk-begin-secondary">
-          For a small team — see plans →
-        </a>
+        {businessDoorOpen() && (
+          <a href={BUSINESS_SITE_URL} className="lk-begin-secondary">
+            Running a small business? LifeKeel for business →
+          </a>
+        )}
       </div>
     </section>
   )

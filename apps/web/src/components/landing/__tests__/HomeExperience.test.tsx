@@ -12,14 +12,14 @@ describe('homepage live content', () => {
       'Know where to look.',
       'A difficult ordinary day.',
       'Through the year.',
-      'Different questions, same list.',
+      'What the list is for.',
       'Three steps. One evening.',
       'One problem, one evening, one number.',
       'The things your family says out loud.',
       'When something happens, your family has somewhere to start.',
       'Keep the household record current.',
-      'It belongs to everyone.',
-      'Free for a household. Honest plans for a team.',
+      'What we promise, in plain words.',
+      'Free for a household. One optional plan.',
       'Straight answers.',
       'Begin.',
     ])
@@ -49,10 +49,7 @@ describe('homepage live content', () => {
       after('The things your family says out loud.', 'One problem, one evening, one number.'),
     ).toBeTruthy()
     expect(
-      after(
-        'The things your family says out loud.',
-        'Free for a household. Honest plans for a team.',
-      ),
+      after('The things your family says out loud.', 'Free for a household. One optional plan.'),
     ).toBeTruthy()
   })
 

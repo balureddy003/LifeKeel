@@ -19,7 +19,7 @@ describe('through the year', () => {
     expect(VIGNETTES.map((v) => v.title)).toEqual([
       'A renewal in February.',
       'A trip deposit in spring.',
-      'A staff change in autumn.',
+      'A new adult in autumn.',
     ])
     render(<HomeExperience />)
     for (const v of VIGNETTES) {

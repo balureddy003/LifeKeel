@@ -50,7 +50,7 @@ describe('the trust act', () => {
     render(<HomeExperience />)
     const h = (name: string) => screen.getByRole('heading', { name })
     const year = h('Through the year.')
-    const trust = h('It belongs to everyone.')
+    const trust = h('What we promise, in plain words.')
     const features = h('The things your family says out loud.')
     expect(year.compareDocumentPosition(trust) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(trust.compareDocumentPosition(features) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
@@ -64,5 +64,15 @@ describe('the trust act', () => {
       /trust score|badge|certified|10,000|thousands of families/i,
     )
     expect(section.textContent).not.toMatch(/\d+%|\bguarantee\b/i)
+  })
+
+  it('says only what each claim backs: encrypted when stored, and AI providers named, not "nobody"', () => {
+    const text = TRUST_PROMISES.map((p) => `${p.promise} ${p.gloss}`).join(' ')
+    // Encryption happens on the server before storage, not on the device.
+    expect(text).not.toMatch(/before it reaches our servers|end-to-end/i)
+    expect(text).toMatch(/encrypted before they are stored/i)
+    // Requests do reach the AI providers listed on the Trust page (CLAUDE.md rule 3).
+    expect(text).not.toMatch(/anyone off the team|never leaves your account/i)
+    expect(text).toMatch(/AI providers listed on the Trust page/)
   })
 })

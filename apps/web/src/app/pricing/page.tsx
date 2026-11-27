@@ -4,9 +4,8 @@ import { Pricing } from '@/components/landing/Pricing'
 /**
  * Public pricing route.
  *
- * Owner-locked §9.1: "Free for a household. Honest plans for a team. £7.99
- * a month per subscription. One Keel Plus per team of two or more adults;
- * the household-side subscription stays at the same number."
+ * The family vertical's pricing. Small businesses are a separate vertical at
+ * business.lifekeel.com with their own pricing (owner, 27 Nov 2026).
  *
  * The route re-uses the home-page Pricing component so the data arrays
  * (FREE_ROWS / PLUS_ROWS — both gated on `live` claim rows in claims.ts)
@@ -17,7 +16,7 @@ import { Pricing } from '@/components/landing/Pricing'
 export const metadata: Metadata = {
   title: 'Pricing — LifeKeel',
   description:
-    'Free for a household. Honest plans for a team. One Keel Plus subscription per unit, £7.99 a month, cancels any time. No commissions, no per-seat mystery.',
+    'Free for a household. Keel Plus is £7.99 a month for the household and cancels any time. No commissions, no ads, no card needed to start.',
 }
 
 export default function PricingPage() {

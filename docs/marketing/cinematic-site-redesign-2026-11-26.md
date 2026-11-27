@@ -6,6 +6,20 @@
 does not contradict it. Anything in the brand guide that disagrees with
 this brief wins.
 
+> **Amended 2026-11-27 (owner).** Families and small businesses are two
+> separate verticals, at `family.lifekeel.com` and `business.lifekeel.com`.
+> The second audience is a **small business owner**, never "a small team",
+> co-founders, staff or payroll. Wherever this brief says "team", read
+> "small business", and treat it as that vertical's own story, not the
+> family story with the nouns swapped.
+>
+> `business.lifekeel.com` is not open for sign-ups yet, and the public site
+> shows only what is available today (`NoRoadmap.test.tsx`). So the business
+> door is built but hidden behind `NEXT_PUBLIC_BUSINESS_DOOR`
+> (`apps/web/src/components/landing/verticals.ts`). Turn it on only when that
+> vertical is live and its features are `live` rows in `claims.ts`. Until then
+> the home page and `/pricing` tell and price the family story only.
+
 ## 0. What this brief is, and what it isn't
 
 This brief repositions the public site as **a cinematic page** that

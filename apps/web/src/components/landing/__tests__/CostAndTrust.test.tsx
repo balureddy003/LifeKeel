@@ -31,7 +31,11 @@ describe('the calm cost, and the promises up front', () => {
 
   it('shows what LifeKeel does not do before the long list of use cases', () => {
     render(<HomeExperience />)
-    expect(after('Things that usually live in one head.', 'It belongs to everyone.')).toBeTruthy()
-    expect(after('It belongs to everyone.', 'The things your family says out loud.')).toBeTruthy()
+    expect(
+      after('Things that usually live in one head.', 'What we promise, in plain words.'),
+    ).toBeTruthy()
+    expect(
+      after('What we promise, in plain words.', 'The things your family says out loud.'),
+    ).toBeTruthy()
   })
 })

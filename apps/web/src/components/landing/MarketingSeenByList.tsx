@@ -35,7 +35,7 @@ export interface MarketingSeenByLastSeen {
 }
 
 export interface MarketingSeenByListProps {
-  /** Family or team name shown at the top of the prop. */
+  /** Family name shown at the top of the prop. */
   familyName: string
   /** Row shape — one entry per item on the list. */
   rows: MarketingSeenByListRow[]

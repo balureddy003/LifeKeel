@@ -40,8 +40,9 @@ describe('LandingHero (paper-mode)', () => {
     render(<LandingHero />)
     const start = screen.getByRole('link', { name: /Start a free list/ })
     expect(start.getAttribute('href')).toMatch(/\/signup$/)
-    const team = screen.getByRole('link', { name: /For a small team/ })
-    expect(team.textContent).toMatch(/see plans/)
+    // Families and small businesses are separate verticals; while the business door is shut
+    // (verticals.ts), the hero has one way in and no business or team link.
+    expect(screen.queryByRole('link', { name: /small business|small team|see plans/i })).toBeNull()
   })
 
   it('uses the Rivera family cast (Dev / Marcia / Asha) — one cast for the home page', () => {
@@ -65,7 +66,7 @@ describe('LandingHero (paper-mode)', () => {
   it('states the no-money, no-advice, free-to-start microcopy beneath the CTA', () => {
     render(<LandingHero />)
     expect(document.body.textContent).toMatch(/Free for a household/)
-    expect(document.body.textContent).toMatch(/Honest plans for a team/)
+    expect(document.body.textContent).not.toMatch(/\bteam\b/i)
     expect(document.body.textContent).toMatch(/never moves money/)
     expect(document.body.textContent).toMatch(/never gives advice/)
   })

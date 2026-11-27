@@ -12,10 +12,10 @@
  * Above (body):    "The important things usually live in one head."
  * Below (body):    "One list. The people who need to know can see it."
  *
- * Below the lines: one singular primary CTA ("Start a free list") and
- * a quiet team secondary ("For a small team — see plans"). The team
- * path is a text link, not a button, so the page does not split into
- * two products on a phone.
+ * Below the lines: one singular primary CTA ("Start a free list"). While
+ * the business door is open (verticals.ts), a quiet text link goes to
+ * business.lifekeel.com, a separate vertical; it is a text link, not a
+ * button, so the page does not split into two products on a phone.
  *
  * On the right (above on mobile): the props component
  * MarketingSeenByList, which is the visual hero — a paper-textured
@@ -40,6 +40,7 @@ import { track } from '@/lib/growth-track'
 import { haptic } from '@/lib/haptics'
 import { MarketingSeenByList } from './MarketingSeenByList'
 import { SAMPLE_LAST_SEEN, SAMPLE_ROWS } from './sample-list'
+import { BUSINESS_SITE_URL, businessDoorOpen } from './verticals'
 
 export function LandingHero() {
   const ref = useRef<HTMLElement>(null)
@@ -80,13 +81,14 @@ export function LandingHero() {
             Start a free list
             <ArrowRight size={18} aria-hidden="true" />
           </a>
-          <a href="/pricing" className="lk-paper-hero-secondary">
-            For a small team — see plans →
-          </a>
+          {businessDoorOpen() && (
+            <a href={BUSINESS_SITE_URL} className="lk-paper-hero-secondary">
+              Running a small business? LifeKeel for business →
+            </a>
+          )}
         </div>
         <p className="lk-paper-hero-micro">
-          Free for a household. Honest plans for a team. Information only — never moves money, never
-          gives advice.
+          Free for a household. Information only — never moves money, never gives advice.
         </p>
       </div>
 

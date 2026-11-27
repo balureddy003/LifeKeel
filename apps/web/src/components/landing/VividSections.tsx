@@ -367,8 +367,8 @@ export function Plans() {
       <Heading
         eyebrow="Pricing"
         id="vv-pricing-h"
-        title="Free for a household. Honest plans for a team."
-        intro="Free stays free. Keel Plus is £7.99 a month and cancels any time — one subscription for one household, or one subscription for one small team. No commissions, no per-seat mystery, no card needed to start."
+        title="Free for a household. One optional plan."
+        intro="Free stays free. Keel Plus is £7.99 a month for the household and cancels any time. No commissions, no ads, no card needed to start."
       />
       <div className="vv-plans">
         <article className="vv-plan">

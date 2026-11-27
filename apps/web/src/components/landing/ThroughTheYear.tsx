@@ -26,7 +26,7 @@ export interface Vignette {
   body: string
   /** The row that lands on the list in this moment. */
   row: string
-  /** Adults (or the team role) whose tick appears on the row. */
+  /** Adults whose tick appears on the row. */
   seenBy: string[]
   claims: string[]
 }
@@ -35,33 +35,33 @@ export const VIGNETTES: Vignette[] = [
   {
     when: 'February',
     title: 'A renewal in February.',
-    body: 'The car insurance email arrives. It goes onto the list. The partner looks; they have seen it. The renewal happens on schedule, while the four-year-old is unwell and the founder is travelling and the kitchen is, briefly, only a kitchen.',
-    row: 'Car insurance — renewal 14 February',
+    body: 'The car insurance email arrives. It goes onto the list. The partner looks; they have seen it. The renewal goes through on time, even with a sick four-year-old at home.',
+    row: 'Car cover renews 14 February',
     seenBy: ['Marcia'],
     claims: ['family-list', 'dates-coming-up', 'every-adult-confirms'],
   },
   {
     when: 'Spring',
     title: 'A trip deposit in spring.',
-    body: 'The deposit reference lands between two other emails. It goes onto the list. Two names tick it. Six months later, it is the answer to a question that did not have to be asked out loud.',
+    body: 'The booking number turns up between two other emails. It goes onto the list. Two names tick it. Six months later, it is the answer to a question that did not have to be asked out loud.',
     row: 'Trip deposit — reference 8814',
     seenBy: ['Dev', 'Marcia'],
     claims: ['family-list', 'every-adult-confirms'],
   },
   {
     when: 'Autumn',
-    title: 'A staff change in autumn.',
-    body: 'A co-founder leaves. The list does not. The new co-founder looks at the same list, ticks what they need, and the question — whose inbox holds the renewal, where is the signed copy? — stops being a question.',
-    row: 'Client renewal — contact on the file',
-    seenBy: ['New co-founder'],
-    claims: ['join-with-code', 'edit-access', 'family-list'],
+    title: 'A new adult in autumn.',
+    body: 'Marcia’s sister moves in to help for the winter. She joins with a code, Marcia approves her, and she looks at the same list. The question — where is the boiler cover, who do we call? — stops being a question.',
+    row: 'Boiler cover — who to call is on the policy papers',
+    seenBy: ['Marcia', 'Lena'],
+    claims: ['join-with-code', 'every-adult-confirms', 'family-list'],
   },
 ]
 
 export const YEAR_CLOSING =
   'The list is rarely the right answer to a hard day. It is more often the right answer to a Tuesday.'
 
-export const YEAR_CAPTION = 'Three example list entries, from a made-up family and a made-up team.'
+export const YEAR_CAPTION = 'Three example list entries, from a made-up family.'
 
 function Vignette({ v }: { v: Vignette }) {
   return (

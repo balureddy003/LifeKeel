@@ -21,16 +21,24 @@ describe('the closing breath', () => {
     expect(body.compareDocumentPosition(closing) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
-  it('offers the hero two invitations at the same weight, and no form', () => {
+  it('offers one invitation and no form while the business door is shut', () => {
     const { container } = render(<HomeExperience />)
     const section = container.querySelector('.lk-begin')!
     expect(section.querySelectorAll('input, textarea, select')).toHaveLength(0)
     const links = [...section.querySelectorAll('a')]
-    expect(links).toHaveLength(2)
+    expect(links).toHaveLength(1)
     expect(links[0]!.textContent?.trim()).toBe('Start your free list')
     expect(links[0]!.getAttribute('href')).toMatch(/\/signup$/)
-    expect(links[1]!.textContent?.trim()).toBe('For a small team — see plans →')
-    expect(links[1]!.getAttribute('href')).toBe('/pricing')
+  })
+
+  it('once the business door is open, adds a quiet second door to the business vertical', () => {
+    vi.stubEnv('NEXT_PUBLIC_BUSINESS_DOOR', 'on')
+    const { container } = render(<HomeExperience />)
+    const links = [...container.querySelector('.lk-begin')!.querySelectorAll('a')]
+    expect(links).toHaveLength(2)
+    expect(links[1]!.textContent?.trim()).toBe('Running a small business? LifeKeel for business →')
+    expect(links[1]!.getAttribute('href')).toBe('https://business.lifekeel.com')
+    vi.unstubAllEnvs()
   })
 
   it('reports the primary as the final CTA', () => {

@@ -43,7 +43,7 @@ export const TRUST_PROMISES: TrustPromise[] = [
   {
     promise: 'Details not sold.',
     gloss:
-      'What your family puts in stays in your account. It does not go to advertising networks or to anyone off the team.',
+      'What your family puts in is not sold and does not go to advertising networks. The AI providers listed on the Trust page process a request only to answer it.',
     claims: ['no-selling'],
   },
   {
@@ -58,7 +58,7 @@ export const TRUST_PROMISES: TrustPromise[] = [
     claims: ['leave-and-removal', 'export-data', 'delete-account'],
   },
   {
-    promise: 'Encrypted before it reaches our servers.',
+    promise: 'Passwords encrypted before they are stored.',
     gloss: 'Connector passwords and access tokens are encrypted before they are stored.',
     claims: ['encrypted-at-rest'],
   },
@@ -78,8 +78,8 @@ export function TrustAct() {
   return (
     <section className="vv-section lk-trust" id="security" aria-labelledby="lk-trust-h">
       <header className="vv-head">
-        <p className="vv-eyebrow">What we promise</p>
-        <h2 id="lk-trust-h">It belongs to everyone.</h2>
+        <p className="vv-eyebrow">The promises</p>
+        <h2 id="lk-trust-h">What we promise, in plain words.</h2>
       </header>
 
       <dl className="lk-trust-list">

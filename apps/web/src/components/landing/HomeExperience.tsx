@@ -36,11 +36,11 @@ export function HomeExperience() {
           honest line. Sits between the cost and the difficult day so the
           page answers "what is the point of a list?" before it is tested. */}
       <TheList />
-      {/* The fork: a household list looks for what is missing; a team list
-          looks for what only one person knows. The story is not the same
-          from here, so the two panels stop being a mirror. */}
+      {/* What the list is for: a family's list shows what is missing. The
+          small business door (business.lifekeel.com, a separate vertical)
+          joins it only when switched on; see verticals.ts. */}
       <TwoStories />
-      {/* Scroll 3: the same list under pressure, family and team side by side. */}
+      {/* Scroll 3: the family's list under pressure. */}
       <DifficultDay />
       {/* Scroll 4: the same list on ordinary weeks, through the year. */}
       <ThroughTheYear />
