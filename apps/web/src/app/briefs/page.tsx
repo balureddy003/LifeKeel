@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import { GlassCard, PageHeader, Skeleton } from '@/components/Glass'
 import { SaveFiguresCard } from '@/components/SaveFiguresCard'
+import { BlindCheckCompare, BlindCheckForm } from '@/components/BlindCheck'
 import { EmergencyRow } from '@/components/EmergencyRow'
 import {
   confirmBrief,
@@ -500,8 +501,11 @@ function BriefFields({
   )
 }
 
-function Status({ b, other }: { b: HouseholdBrief; other: string }) {
+/** Who has confirmed, said from the viewer's side: "You" is whoever is looking, sharer or not. */
+function Status({ b, other, mine = true }: { b: HouseholdBrief; other: string; mine?: boolean }) {
   const c = b.confirmation
+  const youAt = mine ? c?.creator_at : c?.recipient_at
+  const otherAt = mine ? c?.recipient_at : c?.creator_at
   const chip = (done: boolean, text: string) => (
     <span
       className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
@@ -516,9 +520,8 @@ function Status({ b, other }: { b: HouseholdBrief; other: string }) {
   if (!b.share && !c?.creator_at) return null
   return (
     <div className="flex flex-wrap gap-2">
-      {chip(!!c?.creator_at, c?.creator_at ? 'You confirmed' : 'You have not confirmed')}
-      {b.share &&
-        chip(!!c?.recipient_at, c?.recipient_at ? `${other} confirmed` : `Waiting for ${other}`)}
+      {chip(!!youAt, youAt ? 'You confirmed' : 'You have not confirmed')}
+      {b.share && chip(!!otherAt, otherAt ? `${other} confirmed` : `Waiting for ${other}`)}
     </div>
   )
 }
@@ -857,6 +860,7 @@ function Glance({
   onWhatIf,
   onUpdate,
   onNext,
+  blind,
 }: {
   brief: HouseholdBrief
   title: string
@@ -867,6 +871,8 @@ function Glance({
   onWhatIf: () => void
   onUpdate: () => void
   onNext: (e: BriefCatalogueEntry) => void
+  /** The blind check, when there is one to answer or compare. */
+  blind?: React.ReactNode
 }) {
   const toast = useToast()
   const [nudged, setNudged] = useState(() => wasNudged(brief.id))
@@ -882,6 +888,7 @@ function Glance({
         Your latest brief
       </p>
       <p className="mt-1 text-lg font-semibold text-ink-primary">{title}</p>
+      {blind && <div className="mt-3">{blind}</div>}
       {/* The answer leads the card; the countdown comes second. */}
       {brief.template_sentence?.trim() && (
         <p className="mt-1 text-base text-ink-primary" data-testid="glance-answer">
@@ -934,7 +941,11 @@ function Glance({
           )}
         </div>
       )}
-      <div className="mt-4 flex flex-wrap gap-2">
+      {/* Nothing to try or update until the other adult can see the figures. */}
+      <div
+        className="mt-4 flex flex-wrap gap-2"
+        hidden={brief.blind_check?.status === 'waiting_for_you'}
+      >
         <button type="button" onClick={onWhatIf} className={ghostBtn}>
           Try a what-if
         </button>
@@ -1047,7 +1058,28 @@ export default function BriefsPage() {
 
   // ?start=<id>: the question picked on the landing page opens straight into
   // its form, once, instead of asking the person to pick again.
-  const { family } = useAuth()
+  const { family, user } = useAuth()
+  // The sharer chose to ask the other adult for their own figures first (ticked by default).
+  const [askBlind, setAskBlind] = useState(true)
+  const firstNameOfUser = (uid: string) =>
+    family?.members
+      .find((m) => (m.userId ?? m.id) === uid)
+      ?.name.trim()
+      .split(/\s+/)[0] ?? 'the other adult'
+  /** Answer form for the other adult, or both sets side by side once answered; nothing otherwise. */
+  function blindPanel(b: HouseholdBrief) {
+    const c = b.blind_check
+    if (!c) return null
+    const mine = b.created_by === user?.id
+    const other = mine
+      ? (b.share?.for_member_name?.split(/\s+/)[0] ?? 'the other adult')
+      : firstNameOfUser(b.created_by)
+    if (c.status === 'waiting_for_you')
+      return <BlindCheckForm briefId={b.id} fromName={other} onAnswered={() => void refresh()} />
+    if (c.status === 'answered')
+      return <BlindCheckCompare view={c} viewerIsCreator={mine} otherName={other} />
+    return null
+  }
   // The same invite words the Family list shows ("Invite sent", "Not invited yet").
   const inviteStatusOf = (id: string | undefined) =>
     family?.members.find((m) => m.id === id)?.inviteStatus
@@ -1302,6 +1334,9 @@ export default function BriefsPage() {
       problem_type: entry.id,
       inputs: buildInputs(entry, f),
       ...(forMember ? { for_member_id: forMember } : {}),
+      ...(forMember && entry.mode !== 'handover' && !entry.sensitive
+        ? { blind_check: askBlind }
+        : {}),
     })
     setBusy(false)
     if (!res.ok) {
@@ -1401,6 +1436,7 @@ export default function BriefsPage() {
             !!byId.get(briefs[0].problem_type)
           }
           linkFor={(u) => partnerLink(briefs[0]!.share?.for_member_id, u)}
+          blind={blindPanel(briefs[0])}
           next={nextProblem}
           onWhatIf={() => openBrief(briefs[0]!.id)}
           onUpdate={() => startUpdate(briefs[0]!)}
@@ -1662,7 +1698,26 @@ export default function BriefsPage() {
                     : recipientName}
                 </strong>
               </p>
-            ) : (
+            ) : null}
+            {recipients.length > 0 && entry.mode !== 'handover' && !entry.sensitive && (
+              <label htmlFor="f-blind" className="flex items-start gap-3 text-sm text-ink-primary">
+                <input
+                  id="f-blind"
+                  type="checkbox"
+                  checked={askBlind}
+                  onChange={(e) => setAskBlind(e.target.checked)}
+                  className="mt-1 h-5 w-5 accent-family-500"
+                />
+                <span>
+                  Ask {recipientName.split(/\s+/)[0]} for their own figures first
+                  <span className="block text-ink-secondary">
+                    They give their best guess before seeing yours, then you both see where you
+                    differ.
+                  </span>
+                </span>
+              </label>
+            )}
+            {recipients.length === 0 && (
               <p className="text-sm text-ink-secondary">
                 This brief is just for you for now.{' '}
                 <Link href="/family" className="font-medium text-family-400 underline">
@@ -1799,7 +1854,11 @@ export default function BriefsPage() {
           <ul className="mt-3 space-y-3">
             {briefs.map((b) => {
               const title = b.title ?? byId.get(b.problem_type)?.title ?? b.problem_type
-              const other = b.share?.for_member_name ?? 'the other adult'
+              // The list holds briefs this person made and briefs shared with them.
+              const mine = b.created_by === user?.id
+              const other = mine
+                ? (b.share?.for_member_name ?? 'the other adult')
+                : firstNameOfUser(b.created_by)
               const isOpen = open === b.id
               return (
                 <li
@@ -1831,10 +1890,14 @@ export default function BriefsPage() {
                     />
                   </button>
                   <div className="mt-3">
-                    <Status b={b} other={other} />
+                    <Status b={b} other={other} mine={mine} />
                   </div>
-                  {isOpen && (
+                  {isOpen && b.blind_check?.status === 'waiting_for_you' && (
+                    <div className="mt-4 border-t border-haze pt-4">{blindPanel(b)}</div>
+                  )}
+                  {isOpen && b.blind_check?.status !== 'waiting_for_you' && (
                     <div className="mt-4 space-y-4 border-t border-haze pt-4">
+                      {blindPanel(b)}
                       <p className="text-lg font-medium text-ink-primary">
                         {briefHeadline(splitBriefSentence(b.template_sentence).main)}
                       </p>

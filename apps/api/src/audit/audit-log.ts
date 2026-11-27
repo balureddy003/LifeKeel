@@ -88,6 +88,7 @@ export type AuditAction =
   | 'brief.created'
   | 'brief.share_created'
   | 'brief.share_revoked'
+  | 'brief.blind_check_answered'
   | 'obligation.created'
   | 'obligation.updated'
   | 'obligation.deleted'

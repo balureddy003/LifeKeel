@@ -7,6 +7,11 @@ import type { HouseholdBrief } from './api'
 export function briefNextLine(b: HouseholdBrief): string {
   const other = b.share?.for_member_name ?? 'the other adult'
   const c = b.confirmation
+  // A blind check comes first: nothing else to read until the other adult has given their own figures.
+  if (b.blind_check?.status === 'waiting_for_you')
+    return 'Give your own figures first, then you will see theirs.'
+  if (b.blind_check?.status === 'waiting_for_them')
+    return `Waiting for ${other.split(/\s+/)[0]} to give their own figures.`
   if (!c?.creator_at)
     return b.share
       ? 'Read it and confirm, so you can both see the same numbers.'

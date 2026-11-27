@@ -183,6 +183,13 @@ describe('export applies the same read rules as the app (review F02)', () => {
     await db.collection('household_briefs').insertMany([
       brief('ORG-PRIVATE-BRIEF', ORGANIZER.id),
       brief('SHARED-WITH-MEM', ORGANIZER.id, { share: { for_user_id: MEMBER.id } }),
+      // A blind check the member has not answered: their export must not carry the organizer's figures.
+      brief('BLIND-FOR-MEM', ORGANIZER.id, {
+        share: { for_user_id: MEMBER.id },
+        inputs: { liquid_savings_minor: 7_654_321 },
+        template_sentence: 'BLIND-SENTENCE',
+        blind_check: { opened_at: new Date(), fields: ['liquid_savings_minor'] },
+      }),
       brief('MEM-SENSITIVE', MEMBER.id, {
         problem_type: 'medical_contacts',
         sensitive: true,
@@ -208,9 +215,12 @@ describe('export applies the same read rules as the app (review F02)', () => {
       'SHARED-WITH-MEM',
       'MEM-SENSITIVE',
       'MEM-PROPOSAL',
+      'BLIND-FOR-MEM',
     ])
       expect(res.body, visible).toContain(visible)
     for (const hidden of [
+      '7654321',
+      'BLIND-SENTENCE',
       'ORG-ONLY-WILL',
       'ORG-PRIVATE-BRIEF',
       'ORG-PROPOSAL',

@@ -21,7 +21,8 @@ import { AlertCircle, Check, Clock, Lock, Printer, ShieldCheck } from 'lucide-re
 import { GlassCard, Skeleton } from '@/components/Glass'
 import { useRouteParam } from '@/lib/useRouteParam'
 import { getApiBase } from '@/lib/env'
-import { getAuthToken } from '@/lib/api'
+import { getAuthToken, type BlindCheckView } from '@/lib/api'
+import { BlindCheckCompare, BlindCheckForm } from '@/components/BlindCheck'
 import { haptic } from '@/lib/haptics'
 import { briefHeadline, plainDates, splitBriefSentence } from '@/lib/brief-text'
 
@@ -32,6 +33,9 @@ interface Confirmation {
 }
 
 interface SharedBrief {
+  id?: string
+  /** Blind check: give your own figures first (no figures sent until then), or both sets once answered. */
+  blind_check?: BlindCheckView | null
   problem_type: string
   title?: string
   result_version?: string
@@ -131,6 +135,13 @@ export default function BriefShareClient() {
         if (r.status === 404) return setStatus('expired')
         if (!r.ok) return setStatus('error')
         const data = (await r.json()) as SharedBrief
+        // An open blind check read with no account: sign in (or join from the invite) to give your figures.
+        if (data.blind_check?.status === 'sign_in_to_answer') {
+          if (data.pending_invite && data.for_member_name)
+            setInvite({ for_name: data.for_member_name, from_name: data.from_name ?? null })
+          setBrief(data)
+          return setStatus('signin')
+        }
         setBrief(data)
         setConfirmation(data.confirmation ?? null)
         setStatus(data.read_only ? 'readonly' : 'ready')
@@ -209,11 +220,18 @@ export default function BriefShareClient() {
       )}
 
       {status === 'signin' && !invite && (
-        <Notice icon={<Lock size={20} />} title="Sign in to see this brief">
+        <Notice
+          icon={<Lock size={20} />}
+          title={
+            brief?.blind_check
+              ? `${brief.from_name ?? 'They'} asked for your own figures first`
+              : 'Sign in to see this brief'
+          }
+        >
           <p>
-            This brief was shared with one named adult in a household. Sign in as that adult and you
-            will come straight back here. If you have not set up your account yet, use the invite
-            email or link from the person who sent this.
+            {brief?.blind_check
+              ? 'Before you see their figures, you give your own best guess, then you both see where you differ. Sign in as the adult this was shared with to start.'
+              : 'This brief was shared with one named adult in a household. Sign in as that adult and you will come straight back here. If you have not set up your account yet, use the invite email or link from the person who sent this.'}
           </p>
           <Link href={`/login?next=${encodeURIComponent(`/b/${token}`)}`} className={primaryBtn}>
             Sign in
@@ -263,33 +281,54 @@ export default function BriefShareClient() {
                 : `Prepared for ${name}`}
             </p>
           )}
-          <p className="mt-4 text-ink-secondary">
-            The months and the date are on the next screen. Tapping records that you have seen this
-            exact version.
-          </p>
-          {brief.can_confirm ? (
-            <button
-              type="button"
-              disabled={confirming}
-              onClick={() => void confirmAndView()}
-              className={`${primaryBtn} mt-6`}
-            >
-              {confirming
-                ? 'Confirming…'
-                : name
-                  ? `I’m ${name} — view the numbers`
-                  : 'View the numbers'}
-            </button>
+          {brief.blind_check?.status === 'waiting_for_you' && brief.id ? (
+            <div className="mt-6">
+              <BlindCheckForm
+                briefId={brief.id}
+                fromName={brief.from_name}
+                onAnswered={() => void load()}
+              />
+            </div>
           ) : (
-            <p className="mt-6 text-sm text-ink-tertiary">
-              This brief can be viewed but not confirmed: it was shared before two-adult
-              confirmation was introduced.
-            </p>
-          )}
-          {confirmError && (
-            <p role="alert" className="mt-3 text-sm text-red-500">
-              {confirmError}
-            </p>
+            <>
+              {brief.blind_check?.status === 'answered' && (
+                <div className="mt-4">
+                  <BlindCheckCompare
+                    view={brief.blind_check}
+                    viewerIsCreator={false}
+                    otherName={brief.from_name ?? 'The brief'}
+                  />
+                </div>
+              )}
+              <p className="mt-4 text-ink-secondary">
+                The months and the date are on the next screen. Tapping records that you have seen
+                this exact version.
+              </p>
+              {brief.can_confirm ? (
+                <button
+                  type="button"
+                  disabled={confirming}
+                  onClick={() => void confirmAndView()}
+                  className={`${primaryBtn} mt-6`}
+                >
+                  {confirming
+                    ? 'Confirming…'
+                    : name
+                      ? `I’m ${name} — view the numbers`
+                      : 'View the numbers'}
+                </button>
+              ) : (
+                <p className="mt-6 text-sm text-ink-tertiary">
+                  This brief can be viewed but not confirmed: it was shared before two-adult
+                  confirmation was introduced.
+                </p>
+              )}
+              {confirmError && (
+                <p role="alert" className="mt-3 text-sm text-red-500">
+                  {confirmError}
+                </p>
+              )}
+            </>
           )}
         </GlassCard>
       )}

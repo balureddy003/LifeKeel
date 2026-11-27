@@ -66,6 +66,24 @@ export interface BriefShare {
   for_user_id?: string
 }
 
+/** The three figures every money brief has; the blind check asks the other adult for theirs. */
+export const BLIND_FIELDS = [
+  'monthly_income_minor',
+  'monthly_essentials_minor',
+  'liquid_savings_minor',
+] as const
+export type BlindField = (typeof BLIND_FIELDS)[number]
+
+/**
+ * Innovation scan idea 1. The named adult gives their own figures before seeing the creator's, so the two
+ * can see where they differ. Stored on the brief, so erasure and export cover it with the brief.
+ */
+export interface BlindCheck {
+  opened_at: Date
+  fields: BlindField[]
+  answer?: { user_id: string; values: Record<BlindField, number>; at: Date }
+}
+
 export interface HouseholdBriefDoc extends Record<string, unknown> {
   id: string
   tenant_id: string
@@ -103,6 +121,18 @@ export interface HouseholdBriefDoc extends Record<string, unknown> {
   result_version?: string
   as_of_date?: string
   acknowledgements?: Array<{ user_id: string; result_version: string; confirmed_at: Date }>
+  blind_check?: BlindCheck | null
+}
+
+/**
+ * The named adult has not given their own figures yet, so nothing that carries the creator's figures may
+ * reach them: the brief views and the data export both use this.
+ */
+export function blindOpenFor(
+  b: Pick<HouseholdBriefDoc, 'blind_check' | 'share'>,
+  viewer: string | undefined,
+): boolean {
+  return !!b.blind_check && !b.blind_check.answer && !!viewer && viewer === b.share?.for_user_id
 }
 
 export const briefsFor = (db: Db, tenantId: string) =>
@@ -262,7 +292,8 @@ export async function emitBriefEvent(
     | 'brief_link_fetched'
     | 'brief_confirmed_open'
     | 'brief_gate_hit'
-    | 'brief_gate_converted',
+    | 'brief_gate_converted'
+    | 'brief_blind_check_answered',
   meta: Record<string, unknown> | null = null,
 ): Promise<void> {
   // meta.tenant_id is where every growth_events writer keeps the tenant,

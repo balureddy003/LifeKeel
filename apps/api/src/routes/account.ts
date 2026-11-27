@@ -50,7 +50,12 @@ import {
   isHouseholdEditor,
 } from '../family/family-permissions.js'
 import { decryptEnveloped } from '../crypto/envelope.js'
-import { briefsFor, withoutHandoverFacts, type HouseholdBriefDoc } from '../briefs/briefs.js'
+import {
+  blindOpenFor,
+  briefsFor,
+  withoutHandoverFacts,
+  type HouseholdBriefDoc,
+} from '../briefs/briefs.js'
 import { legacyDocumentVisible, type LegacyDocumentDoc } from './family-legacy.js'
 import type { FamilyGroupDoc } from './family-group.js'
 import { ESTATE_VAULT_CATEGORY, HIDDEN_STATUSES } from './documents.js'
@@ -160,6 +165,19 @@ async function exportBrief(
   b: HouseholdBriefDoc,
   viewer: string,
 ): Promise<Record<string, unknown>> {
+  // An open blind check: the named adult has not given their own figures, so the export carries none of
+  // the creator's (the same rule as the brief views).
+  if (blindOpenFor(b, viewer)) {
+    const {
+      inputs: _i,
+      result: _r,
+      template_sentence: _t,
+      facts: _f,
+      narrated_sentence: _n,
+      ...rest
+    } = b
+    return { ...rest, inputs: {}, result: null, template_sentence: '', facts: [] }
+  }
   if (!b.sensitive && !b.facts_encrypted) return b as unknown as Record<string, unknown>
   const { facts_encrypted, ...rest } = b
   let facts: unknown = []
