@@ -24,14 +24,14 @@
   },
   "dependencies": {
     "@lifekeel/platform": "workspace:^",
-    "mongodb": "^7.9.0",
+    "mongodb": "^7.9.1",
     "zod": "^4.6.6"
   },
   "devDependencies": {
     "@lifekeel/eslint-config": "workspace:*",
-    "@types/node": "^22.20.5",
+    "@types/node": "^22.20.7",
     "eslint": "^9.19.0",
-    "mongodb-memory-server": "^11.3.0",
+    "mongodb-memory-server": "^11.4.0",
     "typescript": "^5.6.0",
     "vitest": "^4.1.9"
   }
